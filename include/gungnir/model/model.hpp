@@ -1,5 +1,6 @@
 #pragma once
 
+#include <gungnir/core/types.hpp>
 #include <gungnir/model/field.hpp>
 #include <gungnir/model/foreign_key.hpp>
 #include <gungnir/model/primary_key.hpp>
