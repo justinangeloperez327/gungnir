@@ -8,6 +8,7 @@
 
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/method.hpp>
+#include <gungnir/validation/rules.hpp>
 
 namespace gungnir::routing {
 class Router;
@@ -54,6 +55,7 @@ public:
 
     [[nodiscard]] const Json& json() const;
     [[nodiscard]] const Input& form() const noexcept;
+    [[nodiscard]] bool expects_json() const noexcept;
 
     [[nodiscard]] std::string input(std::string_view name) const;
     [[nodiscard]] bool has(std::string_view name) const;
@@ -63,6 +65,10 @@ public:
     ) const;
     [[nodiscard]] Input except(
         std::initializer_list<std::string_view> names
+    ) const;
+
+    [[nodiscard]] Input validate(
+        const validation::Rules& rules
     ) const;
 
 private:

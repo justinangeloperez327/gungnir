@@ -447,7 +447,9 @@ ModelType Query<ModelType>::first_or_fail() const {
     auto result = first();
 
     if (!result) {
-        throw std::out_of_range("Gungnir ORM model was not found");
+        throw ModelNotFoundError{
+            String{ModelType::table_name()}
+        };
     }
 
     return std::move(*result);
@@ -491,6 +493,7 @@ std::optional<Derived> Model<Derived>::find(
 ) {
     return query().where_key(std::move(key)).first();
 }
+
 
 template <typename Derived>
 Derived Model<Derived>::create(const AttributeMap& values) {

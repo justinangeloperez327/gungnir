@@ -18,6 +18,7 @@ add_library(gungnir
     src/database/pool.cpp
     src/database/runtime.cpp
     src/database/transaction.cpp
+    src/http/exception_handler.cpp
     src/http/json.cpp
     src/http/message.cpp
     src/http/request.cpp
@@ -31,6 +32,7 @@ add_library(gungnir
     src/migration/table.cpp
     src/routing/route.cpp
     src/routing/router.cpp
+    src/validation/validator.cpp
     src/view/engine.cpp
     src/view/runtime.cpp
     src/view/value.cpp
@@ -54,6 +56,7 @@ add_library(gungnir-language
     src/language/model_lowering.cpp
     src/language/parser.cpp
     src/language/transpiler.cpp
+    src/language/validation_lowering.cpp
     src/language/view_lowering.cpp
 )
 
@@ -234,6 +237,16 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_middleware_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_middleware_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.middleware COMMAND gungnir_middleware_test)
+
+    add_executable(gungnir_validation_test tests/validation.cpp)
+    target_link_libraries(gungnir_validation_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_validation_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.validation COMMAND gungnir_validation_test)
+
+    add_executable(gungnir_exception_test tests/exceptions.cpp)
+    target_link_libraries(gungnir_exception_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_exception_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.exceptions COMMAND gungnir_exception_test)
 
     add_executable(gungnir_view_test tests/view.cpp)
     target_link_libraries(gungnir_view_test PRIVATE gungnir::orm)

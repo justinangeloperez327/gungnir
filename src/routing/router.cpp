@@ -1,5 +1,7 @@
 #include <gungnir/routing/router.hpp>
 
+#include <exception>
+
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -160,6 +162,7 @@ class Router::Impl {
 public:
     std::vector<RouteEntry> routes;
     std::vector<http::MiddlewareHandler> middleware;
+    http::ExceptionHandler exceptions;
 };
 
 RouteRegistration& RouteRegistration::middleware(
@@ -509,12 +512,19 @@ Task<http::Response> Router::dispatch(
         request.clear_route_parameters();
     }
 
-    co_return co_await run_pipeline(
-        pipeline,
-        0,
-        terminal,
-        request
-    );
+    try {
+        co_return co_await run_pipeline(
+            pipeline,
+            0,
+            terminal,
+            request
+        );
+    } catch (...) {
+        co_return impl_->exceptions.render(
+            request,
+            std::current_exception()
+        );
+    }
 }
 
 } // namespace gungnir::routing

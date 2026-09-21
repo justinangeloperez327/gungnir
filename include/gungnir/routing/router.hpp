@@ -6,6 +6,7 @@
 #include <string>
 
 #include <gungnir/core/task.hpp>
+#include <gungnir/http/exception_handler.hpp>
 #include <gungnir/http/method.hpp>
 #include <gungnir/http/middleware.hpp>
 #include <gungnir/http/request.hpp>

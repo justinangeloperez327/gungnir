@@ -502,3 +502,57 @@ the request by returning a response without invoking \`next\`.
 The continuation is asynchronous by design. Gungnir does not disguise a
 possibly asynchronous downstream controller as a synchronous call, so
 middleware that continues the pipeline uses \`async\` and \`await\`.
+
+
+## Validation
+
+Controllers can validate request input without constructing validator objects.
+
+```gungnir
+Response store(Request request)
+{
+    const data = request.validate({
+        "name": "required|string|min:2|max:80",
+        "email": "required|email",
+        "age": "nullable|integer|min:18"
+    });
+
+    const user = User::create(data);
+
+    return json(user, 201);
+}
+```
+
+The Gungnir frontend lowers the object-style rule declaration to the typed
+native validation runtime. Successful validation returns only fields declared
+in the rule set.
+
+The core rule set currently includes `required`, `present`, `sometimes`,
+`nullable`, `string`, `integer`, `numeric`, `boolean`, `email`, `accepted`,
+`min`, `max`, `length`, `in`, `same`, and `confirmed`.
+
+Database-backed rules such as `unique` and `exists` are intentionally not
+implemented by issuing ad-hoc SQL from the HTTP layer. They should be added
+after validation can reuse a shared database query abstraction across SQL and
+MongoDB backends.
+
+## Centralized exceptions
+
+Exceptions raised by middleware and controllers now pass through one framework
+exception handler before HTTP serialization.
+
+Default mappings are:
+
+- validation failures -> `422`
+- authentication failures -> `401`
+- authorization failures -> `403`
+- model-not-found failures -> `404`
+- other HTTP exceptions -> their explicit status
+- unexpected exceptions -> `500`
+
+When the request accepts JSON, the handler emits a JSON error object. Internal
+exception messages are not exposed for unexpected server errors.
+
+`first_or_fail()` and `find_or_fail()` now throw `ModelNotFoundError` rather
+than a generic range exception. `ModelNotFoundError` still derives from
+`std::out_of_range` for native C++ compatibility.

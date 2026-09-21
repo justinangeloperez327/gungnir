@@ -1,5 +1,7 @@
 #include <gungnir/http/request.hpp>
 
+#include <gungnir/validation/validator.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
@@ -295,6 +297,16 @@ const Request::Input& Request::form() const noexcept {
     return form_;
 }
 
+bool Request::expects_json() const noexcept {
+    const auto accept = header("accept");
+
+    return
+        accept.find("application/json") !=
+            std::string_view::npos ||
+        accept.find("+json") !=
+            std::string_view::npos;
+}
+
 std::string Request::input(std::string_view name) const {
     parse_body_input();
 
@@ -380,6 +392,15 @@ Request::Input Request::except(
     }
 
     return values;
+}
+
+Request::Input Request::validate(
+    const validation::Rules& rules
+) const {
+    return validation::Validator::validate(
+        all(),
+        rules
+    );
 }
 
 void Request::parse_target() {

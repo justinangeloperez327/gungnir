@@ -137,6 +137,22 @@ concept JsonMap = requires(const T& value) {
     value.end();
 };
 
+template <typename T>
+concept JsonRange =
+    !JsonModel<T> &&
+    !JsonMap<T> &&
+    !std::same_as<std::remove_cvref_t<T>, String> &&
+    requires(const T& value) {
+        value.begin();
+        value.end();
+    };
+
+template <JsonMap T>
+[[nodiscard]] Json make_json(const T& value);
+
+template <JsonRange T>
+[[nodiscard]] Json make_json(const T& value);
+
 template <JsonMap T>
 [[nodiscard]] Json make_json(const T& value) {
     Json::Object object;
@@ -147,16 +163,6 @@ template <JsonMap T>
 
     return Json::object(std::move(object));
 }
-
-template <typename T>
-concept JsonRange =
-    !JsonModel<T> &&
-    !JsonMap<T> &&
-    !std::same_as<std::remove_cvref_t<T>, String> &&
-    requires(const T& value) {
-        value.begin();
-        value.end();
-    };
 
 template <JsonRange T>
 [[nodiscard]] Json make_json(const T& value) {

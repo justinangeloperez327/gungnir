@@ -10,4 +10,5 @@
 #include <gungnir/language/parser.hpp>
 #include <gungnir/language/token.hpp>
 #include <gungnir/language/transpiler.hpp>
+#include <gungnir/language/validation_lowering.hpp>
 #include <gungnir/language/view_lowering.hpp>
