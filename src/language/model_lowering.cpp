@@ -752,13 +752,8 @@ ModelLoweringResult ModelLowerer::lower(
             if (const auto scalar = cpp_scalar(token.lexeme)) {
                 auto next = next_significant(tokens, cursor);
                 bool nullable = false;
-                std::size_t type_end =
-                    token.offset + token.lexeme.size();
-
                 if (next && tokens[*next].lexeme == "?") {
                     nullable = true;
-                    type_end =
-                        tokens[*next].offset + tokens[*next].lexeme.size();
                     next = next_significant(tokens, *next);
                 }
 
@@ -1115,13 +1110,24 @@ ModelLoweringResult ModelLowerer::lower(
         const auto previous = previous_significant(tokens, index);
         const auto next = next_significant(tokens, index);
 
+        bool qualified_access = false;
+        if (previous) {
+            qualified_access = tokens[*previous].lexeme == ".";
+
+            if (tokens[*previous].lexeme == ":") {
+                const auto before_previous =
+                    previous_significant(tokens, *previous);
+
+                qualified_access =
+                    before_previous &&
+                    tokens[*before_previous].lexeme == ":";
+            }
+        }
+
         if (
             previous &&
             next &&
-            (
-                tokens[*previous].lexeme == "." ||
-                tokens[*previous].lexeme == "::"
-            ) &&
+            qualified_access &&
             tokens[*next].lexeme == "("
         ) {
             result.edits.push_back(SourceEdit{
