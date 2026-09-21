@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <initializer_list>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -27,6 +29,9 @@ class Query;
 
 template <typename ModelType>
 class Collection;
+
+template <typename ModelType>
+struct Page;
 }
 
 template <typename Derived>
@@ -43,12 +48,44 @@ public:
         model::AttributeValue value
     );
 
+    [[nodiscard]] static orm::Query<Derived> where_in(
+        String column,
+        std::vector<model::AttributeValue> values
+    );
+
+    [[nodiscard]] static orm::Query<Derived> where_not_in(
+        String column,
+        std::vector<model::AttributeValue> values
+    );
+
+    [[nodiscard]] static orm::Query<Derived> where_null(String column);
+    [[nodiscard]] static orm::Query<Derived> where_not_null(String column);
+
+    [[nodiscard]] static orm::Query<Derived> latest(
+        String column = "created_at"
+    );
+
+    [[nodiscard]] static orm::Query<Derived> oldest(
+        String column = "created_at"
+    );
+
     [[nodiscard]] static orm::Query<Derived> with(String relation);
+    [[nodiscard]] static orm::Query<Derived> with(
+        std::initializer_list<String> relations
+    );
 
     [[nodiscard]] static orm::Query<Derived> with_deleted();
     [[nodiscard]] static orm::Query<Derived> only_deleted();
 
     [[nodiscard]] static orm::Collection<Derived> all();
+    [[nodiscard]] static std::optional<Derived> first();
+    [[nodiscard]] static Derived first_or_fail();
+    [[nodiscard]] static std::size_t count();
+
+    [[nodiscard]] static orm::Page<Derived> paginate(
+        std::size_t page = 1,
+        std::size_t per_page = 15
+    );
 
     [[nodiscard]] static std::optional<Derived> find(
         model::AttributeValue key
@@ -83,6 +120,10 @@ public:
     bool remove();
     bool force_remove();
     bool restore();
+
+    [[nodiscard]] std::optional<Derived> fresh() const;
+    bool refresh();
+    [[nodiscard]] Derived replicate() const;
 
     [[nodiscard]] bool trashed() const noexcept {
         if constexpr (requires { Derived::soft_deletes.column(); }) {

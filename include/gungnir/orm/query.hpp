@@ -622,8 +622,51 @@ orm::Query<Derived> Model<Derived>::where(
 }
 
 template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_in(
+    String column,
+    std::vector<model::AttributeValue> values
+) {
+    return query().where_in(std::move(column), std::move(values));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_not_in(
+    String column,
+    std::vector<model::AttributeValue> values
+) {
+    return query().where_not_in(std::move(column), std::move(values));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_null(String column) {
+    return query().where_null(std::move(column));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_not_null(String column) {
+    return query().where_not_null(std::move(column));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::latest(String column) {
+    return query().latest(std::move(column));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::oldest(String column) {
+    return query().oldest(std::move(column));
+}
+
+template <typename Derived>
 orm::Query<Derived> Model<Derived>::with(String relation) {
     return query().with(std::move(relation));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::with(
+    std::initializer_list<String> relations
+) {
+    return query().with(relations);
 }
 
 template <typename Derived>

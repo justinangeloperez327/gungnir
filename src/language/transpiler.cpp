@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <concepts>
+#include <iterator>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -9,17 +10,12 @@
 
 #include <gungnir/language/ast.hpp>
 #include <gungnir/language/lexer.hpp>
+#include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
 
 namespace gungnir::language {
 
 namespace {
-
-struct Edit {
-    std::size_t begin{0};
-    std::size_t end{0};
-    std::string replacement;
-};
 
 std::string escape_line_file(std::string value) {
     std::string escaped;
@@ -70,8 +66,20 @@ TranspileResult Transpiler::transpile(
     Parser parser{lexer.tokenize(), source_name};
     auto parsed = parser.parse();
 
-    std::vector<Edit> edits;
-    edits.reserve(parsed.program.nodes.size());
+    ModelLowerer model_lowerer;
+    auto model_lowering = model_lowerer.lower(source, source_name);
+
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
+        model_lowering.diagnostics.begin(),
+        model_lowering.diagnostics.end()
+    );
+
+    std::vector<SourceEdit> edits;
+    edits.reserve(
+        parsed.program.nodes.size() +
+        model_lowering.edits.size()
+    );
 
     for (const auto& node : parsed.program.nodes) {
         std::visit(
@@ -79,13 +87,13 @@ TranspileResult Transpiler::transpile(
                 using NodeType = std::decay_t<decltype(value)>;
 
                 if constexpr (std::same_as<NodeType, InferredBinding>) {
-                    edits.push_back(Edit{
+                    edits.push_back(SourceEdit{
                         value.span.begin,
                         value.span.end,
                         value.immutable ? "const auto " : "auto "
                     });
                 } else if constexpr (std::same_as<NodeType, FrameworkBase>) {
-                    edits.push_back(Edit{
+                    edits.push_back(SourceEdit{
                         value.span.begin,
                         value.span.end,
                         framework_base(value)
@@ -96,10 +104,16 @@ TranspileResult Transpiler::transpile(
         );
     }
 
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(model_lowering.edits.begin()),
+        std::make_move_iterator(model_lowering.edits.end())
+    );
+
     std::sort(
         edits.begin(),
         edits.end(),
-        [](const Edit& left, const Edit& right) {
+        [](const SourceEdit& left, const SourceEdit& right) {
             if (left.begin != right.begin) {
                 return left.begin < right.begin;
             }

@@ -462,6 +462,29 @@ orm::Collection<Derived> Model<Derived>::all() {
 }
 
 template <typename Derived>
+std::optional<Derived> Model<Derived>::first() {
+    return query().first();
+}
+
+template <typename Derived>
+Derived Model<Derived>::first_or_fail() {
+    return query().first_or_fail();
+}
+
+template <typename Derived>
+std::size_t Model<Derived>::count() {
+    return query().count();
+}
+
+template <typename Derived>
+orm::Page<Derived> Model<Derived>::paginate(
+    std::size_t page,
+    std::size_t per_page
+) {
+    return query().paginate(page, per_page);
+}
+
+template <typename Derived>
 std::optional<Derived> Model<Derived>::find(
     model::AttributeValue key
 ) {
@@ -709,6 +732,51 @@ bool Model<Derived>::restore() {
 
     mark_soft_deleted(false);
     return true;
+}
+
+template <typename Derived>
+std::optional<Derived> Model<Derived>::fresh() const {
+    if (!exists()) {
+        return std::nullopt;
+    }
+
+    const auto key = primary_key_value();
+    if (!key) {
+        return std::nullopt;
+    }
+
+    auto builder = query();
+    if constexpr (uses_soft_deletes()) {
+        builder.with_deleted();
+    }
+
+    return builder.where_key(*key).first();
+}
+
+template <typename Derived>
+bool Model<Derived>::refresh() {
+    auto current = fresh();
+
+    if (!current) {
+        mark_missing();
+        return false;
+    }
+
+    force_fill(current->attributes());
+    clean();
+    mark_persisted(false);
+    mark_soft_deleted(current->trashed());
+    unload_relations();
+    return true;
+}
+
+template <typename Derived>
+Derived Model<Derived>::replicate() const {
+    Derived copy;
+    auto values = attributes();
+    values.erase(String{primary_key_name()});
+    copy.force_fill(values);
+    return copy;
 }
 
 } // namespace gungnir

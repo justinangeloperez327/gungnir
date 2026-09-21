@@ -39,6 +39,7 @@ add_library(gungnir::orm ALIAS gungnir-orm)
 
 add_library(gungnir-language
     src/language/lexer.cpp
+    src/language/model_lowering.cpp
     src/language/parser.cpp
     src/language/transpiler.cpp
 )
