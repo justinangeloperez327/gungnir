@@ -13,10 +13,16 @@ public:
     Field() = default;
 
     Field(const T& value)
-        : value_(value), original_(value), initialized_(true) {}
+        : value_(value),
+          original_(value),
+          initialized_(true),
+          original_initialized_(true) {}
 
     Field(T&& value)
-        : value_(std::move(value)), original_(value_), initialized_(true) {}
+        : value_(std::move(value)),
+          original_(value_),
+          initialized_(true),
+          original_initialized_(true) {}
 
     Field& operator=(const T& value) {
         value_ = value;
@@ -46,7 +52,15 @@ public:
         return initialized_;
     }
 
+    [[nodiscard]] bool original_initialized() const noexcept {
+        return original_initialized_;
+    }
+
     [[nodiscard]] bool dirty() const noexcept {
+        if (initialized_ != original_initialized_) {
+            return true;
+        }
+
         if (!initialized_) {
             return false;
         }
@@ -60,11 +74,18 @@ public:
 
     void sync_original() {
         original_ = value_;
-        initialized_ = true;
+        original_initialized_ = initialized_;
     }
 
     void reset() {
+        if (!original_initialized_) {
+            value_ = T{};
+            initialized_ = false;
+            return;
+        }
+
         value_ = original_;
+        initialized_ = true;
     }
 
     operator T&() noexcept {
@@ -79,6 +100,7 @@ private:
     T value_{};
     T original_{};
     bool initialized_{false};
+    bool original_initialized_{false};
 };
 
 } // namespace gungnir
