@@ -21,6 +21,25 @@ add_library(gungnir
 
 add_library(gungnir::gungnir ALIAS gungnir)
 
+add_library(gungnir-orm
+    src/orm/compiler.cpp
+)
+
+add_library(gungnir::orm ALIAS gungnir-orm)
+
+target_compile_features(gungnir-orm PUBLIC cxx_std_23)
+target_link_libraries(gungnir-orm PUBLIC gungnir::gungnir)
+target_include_directories(gungnir-orm
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+set_target_properties(gungnir-orm PROPERTIES
+    CXX_EXTENSIONS OFF
+    POSITION_INDEPENDENT_CODE ON
+)
+
 target_compile_features(gungnir PUBLIC cxx_std_23)
 target_include_directories(gungnir
     PUBLIC
@@ -35,8 +54,10 @@ set_target_properties(gungnir PROPERTIES
 
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
+    target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
 else()
     target_compile_options(gungnir PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+    target_compile_options(gungnir-orm PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 
 if(GUNGNIR_BUILD_TESTS)
@@ -76,4 +97,9 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_model_plumbing_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_model_plumbing_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.model_plumbing COMMAND gungnir_model_plumbing_test)
+
+    add_executable(gungnir_orm_test tests/orm.cpp)
+    target_link_libraries(gungnir_orm_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm COMMAND gungnir_orm_test)
 endif()
