@@ -264,7 +264,7 @@ int main() {
         std::string::npos
     );
     assert(
-        eloquent_names.code.find(".where_in(\"id\", ids)") !=
+        eloquent_names.code.find("User::where_in(\"id\", ids)") !=
         std::string::npos
     );
     assert(
