@@ -1,14 +1,17 @@
 #pragma once
 
+#include <gungnir/core/types.hpp>
+#include <gungnir/model/field.hpp>
+
 namespace gungnir {
 
-// ForeignKey intentionally carries only relation identity for now.
-// Its value type will be resolved from model metadata once the
-// PrimaryKey discovery mechanism is finalized.
-template <typename Related>
-class ForeignKey {
+template <typename Related, typename T = Integer>
+class ForeignKey : public Field<T> {
 public:
     using related_type = Related;
+    using value_type = T;
+    using Field<T>::Field;
+    using Field<T>::operator=;
 };
 
 } // namespace gungnir
