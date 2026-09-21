@@ -43,6 +43,20 @@ bool contains(const gungnir::String& value, std::string_view text) {
 int main() {
     using namespace gungnir;
 
+    const auto direct_order = User::order_by("name");
+    assert(direct_order.plan().orders.size() == 1);
+
+    const auto direct_between = User::where_between(
+        "age",
+        Int64{18},
+        Int64{65}
+    );
+    assert(direct_between.plan().predicates.size() == 1);
+
+    const auto direct_select = User::select({"id", "name"}).distinct();
+    assert(direct_select.plan().columns.size() == 2);
+    assert(direct_select.plan().distinct);
+
     auto compiled = User::query()
         .select({"users.id", "users.name"})
         .distinct()
@@ -293,9 +307,44 @@ int main() {
         Int64{2}
     });
     assert(many.size() == 2);
+    assert(many.count() == 2);
+    assert(many.last().id.get() == 2);
+    assert(many.find(Int64{1}).has_value());
+    assert(many.pluck("email").size() == 2);
 
-    const auto required = User::find_or_fail(Int64{1});
+    const auto active_many = many.filter([](const auto& user) {
+        return user.active.get();
+    });
+    assert(active_many.count() == 2);
+
+    assert(User::count() == 3);
+    assert(User::first().has_value());
+    assert(User::first_or_fail().exists());
+    assert(User::paginate(1, 2).total == 3);
+    assert(
+        User::where_in(
+            "id",
+            {Int64{1}, Int64{2}}
+        ).get().count() == 2
+    );
+    const auto latest = User::latest().limit(1);
+    assert(latest.plan().limit == 1);
+    assert(!latest.plan().orders.empty());
+
+    auto required = User::find_or_fail(Int64{1});
     assert(required.exists());
+    assert(required.fresh().has_value());
+
+    const auto replica = required.replicate();
+    assert(!replica.exists());
+    assert(!replica.primary_key_value().has_value());
+    assert(replica.email.get() == required.email.get());
+
+    required.name = "Changed locally";
+    assert(required.is_dirty("name"));
+    assert(required.refresh());
+    assert(!required.is_dirty("name"));
+    assert(required.name.get() == "A");
 
     database::runtime::clear();
     return 0;

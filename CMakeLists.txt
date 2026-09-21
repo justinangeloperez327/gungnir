@@ -39,6 +39,7 @@ add_library(gungnir::orm ALIAS gungnir-orm)
 
 add_library(gungnir-language
     src/language/lexer.cpp
+    src/language/model_lowering.cpp
     src/language/parser.cpp
     src/language/transpiler.cpp
 )
@@ -165,6 +166,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_orm_complete_test PRIVATE gungnir::orm)
     target_compile_features(gungnir_orm_complete_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.orm_complete COMMAND gungnir_orm_complete_test)
+
+    add_executable(gungnir_orm_timestamps_test tests/orm_timestamps.cpp)
+    target_link_libraries(gungnir_orm_timestamps_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_timestamps_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm_timestamps COMMAND gungnir_orm_timestamps_test)
 
     add_executable(gungnir_orm_soft_deletes_test tests/orm_soft_deletes.cpp)
     target_link_libraries(gungnir_orm_soft_deletes_test PRIVATE gungnir::orm)

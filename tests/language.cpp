@@ -138,5 +138,143 @@ int main() {
         )
     );
 
+    const auto model = transpiler.transpile(
+        "class User : Model {\n"
+        "    string name;\n"
+        "    string email;\n"
+        "    string? nickname;\n"
+        "    bool active = true;\n"
+        "\n"
+        "    posts() {\n"
+        "        return hasMany<Post>();\n"
+        "    }\n"
+        "}\n",
+        "user.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(model.success());
+    assert(
+        model.code.find(
+            "class User : public gungnir::Model<User>"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "inline static constexpr gungnir::Table table{\"users\"};"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "gungnir::PrimaryKey<gungnir::Integer> id;"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "gungnir::Field<gungnir::String> name;"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "gungnir::Field<std::optional<gungnir::String>> nickname;"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "gungnir::HasMany<Post> __gungnir_relation_posts{\"user_id\", \"id\"};"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "gungnir::model::attribute(\"name\", &User::name)"
+        ) != std::string::npos
+    );
+    assert(
+        model.code.find(
+            "gungnir::model::relation(\"posts\", &User::__gungnir_relation_posts)"
+        ) != std::string::npos
+    );
+
+    const auto belongs_to = transpiler.transpile(
+        "class Post : Model {\n"
+        "    int userId;\n"
+        "    string title;\n"
+        "    user() { return belongsTo<User>(); }\n"
+        "}\n",
+        "post.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(belongs_to.success());
+    assert(
+        belongs_to.code.find(
+            "gungnir::ForeignKey<User, gungnir::Integer> userId;"
+        ) != std::string::npos
+    );
+    assert(
+        belongs_to.code.find(
+            "gungnir::BelongsTo<User> __gungnir_relation_user{\"user_id\", \"id\"};"
+        ) != std::string::npos
+    );
+
+    const auto configured = transpiler.transpile(
+        "class AuditUser : Model {\n"
+        "    table = \"legacy_users\";\n"
+        "    connection = \"reporting\";\n"
+        "    timestamps = false;\n"
+        "    softDeletes = true;\n"
+        "    string name;\n"
+        "}\n",
+        "configured.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(configured.success());
+    assert(
+        configured.code.find(
+            "gungnir::Table table{\"legacy_users\"}"
+        ) != std::string::npos
+    );
+    assert(
+        configured.code.find(
+            "gungnir::Connection connection{\"reporting\"}"
+        ) != std::string::npos
+    );
+    assert(
+        configured.code.find(
+            "gungnir::SoftDeletes soft_deletes{\"deleted_at\"}"
+        ) != std::string::npos
+    );
+    assert(configured.code.find("createdAt") == std::string::npos);
+    assert(configured.code.find("updatedAt") == std::string::npos);
+
+    const auto eloquent_names = transpiler.transpile(
+        "void load() {\n"
+        "    const user = User::findOrFail(1);\n"
+        "    const users = User::whereIn(\"id\", ids).orderBy(\"name\").get();\n"
+        "    user.delete();\n"
+        "}\n",
+        "eloquent.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(eloquent_names.success());
+    assert(
+        eloquent_names.code.find("User::find_or_fail(1)") !=
+        std::string::npos
+    );
+    assert(
+        eloquent_names.code.find("User::where_in(\"id\", ids)") !=
+        std::string::npos
+    );
+    assert(
+        eloquent_names.code.find(".order_by(\"name\")") !=
+        std::string::npos
+    );
+    assert(
+        eloquent_names.code.find("user.remove()") !=
+        std::string::npos
+    );
+
     return 0;
 }

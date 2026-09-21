@@ -185,10 +185,12 @@ int main() {
     assert(post.remove());
     assert(post.trashed());
     assert(post.exists());
+    assert(post.deleted_at.get().has_value());
     assert(contains(statements.back(), "CURRENT_TIMESTAMP"));
 
     assert(post.restore());
     assert(!post.trashed());
+    assert(!post.deleted_at.get().has_value());
     assert(post.exists());
     assert(contains(statements.back(), "SET \"deleted_at\" = NULL"));
 
