@@ -94,7 +94,9 @@ public:
         const auto key = std::type_index{typeid(Service)};
 
         if (!contains(key)) {
-            if constexpr (std::default_initializable<Service>) {
+            if constexpr (std::constructible_from<Service, Container&>) {
+                return std::make_shared<Service>(*this);
+            } else if constexpr (std::default_initializable<Service>) {
                 return std::make_shared<Service>();
             }
 

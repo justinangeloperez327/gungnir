@@ -7,6 +7,7 @@
 #include <gungnir/database/database.hpp>
 #include <gungnir/migration/migration.hpp>
 #include <gungnir/model/model.hpp>
+#include <gungnir/routing/route.hpp>
 #include <gungnir/routing/router.hpp>
 
 namespace gungnir {

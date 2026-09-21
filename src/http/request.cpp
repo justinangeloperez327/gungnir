@@ -27,4 +27,29 @@ std::string_view Request::header(std::string_view name) const noexcept {
 
 const Request::Headers& Request::headers() const noexcept { return headers_; }
 
+std::string_view Request::parameter(std::string_view name) const noexcept {
+    const auto found = parameters_.find(std::string{name});
+    if (found == parameters_.end()) {
+        return {};
+    }
+
+    return found->second;
+}
+
+bool Request::has_parameter(std::string_view name) const noexcept {
+    return parameters_.contains(std::string{name});
+}
+
+const Request::Parameters& Request::parameters() const noexcept {
+    return parameters_;
+}
+
+void Request::clear_route_parameters() noexcept {
+    parameters_.clear();
+}
+
+void Request::set_route_parameter(std::string name, std::string value) {
+    parameters_.insert_or_assign(std::move(name), std::move(value));
+}
+
 } // namespace gungnir::http
