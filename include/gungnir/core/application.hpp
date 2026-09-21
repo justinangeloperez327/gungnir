@@ -6,6 +6,8 @@
 #include <memory>
 #include <utility>
 
+#include <gungnir/config/environment.hpp>
+#include <gungnir/config/repository.hpp>
 #include <gungnir/core/container.hpp>
 #include <gungnir/database/backend.hpp>
 #include <gungnir/database/driver.hpp>
@@ -18,6 +20,10 @@ namespace gungnir {
 
 class Application {
 public:
+    [[nodiscard]] static Application create(
+        std::filesystem::path base_path = {}
+    );
+
     Application();
     ~Application();
 
@@ -38,6 +44,23 @@ public:
 
     [[nodiscard]] view::Engine& views() noexcept;
     [[nodiscard]] const view::Engine& views() const noexcept;
+
+    [[nodiscard]] config::Repository& config() noexcept;
+    [[nodiscard]] const config::Repository& config() const noexcept;
+
+    [[nodiscard]] config::Environment& env() noexcept;
+    [[nodiscard]] const config::Environment& env() const noexcept;
+
+    [[nodiscard]] const std::filesystem::path& base_path()
+        const noexcept;
+
+    [[nodiscard]] String environment() const;
+    [[nodiscard]] bool debug() const;
+
+    Application& load_environment(
+        std::filesystem::path path = ".env",
+        bool optional = true
+    );
 
     Application& view_root(std::filesystem::path path);
 
@@ -96,6 +119,8 @@ public:
     void boot();
     void shutdown() noexcept;
     [[nodiscard]] bool is_booted() const noexcept;
+
+    void run();
 
     void listen(
         std::uint16_t port = 8000,

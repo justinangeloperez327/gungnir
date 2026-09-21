@@ -1,5 +1,6 @@
 #pragma once
 
+#include <gungnir/config/config.hpp>
 #include <gungnir/controller/controller.hpp>
 #include <gungnir/core/application.hpp>
 #include <gungnir/core/container.hpp>
@@ -22,6 +23,8 @@
 
 namespace gungnir {
 
+using Config = config::Repository;
+using Environment = config::Environment;
 using Json = http::Json;
 using Router = routing::Router;
 

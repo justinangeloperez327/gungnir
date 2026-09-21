@@ -556,3 +556,120 @@ exception messages are not exposed for unexpected server errors.
 `first_or_fail()` and `find_or_fail()` now throw `ModelNotFoundError` rather
 than a generic range exception. `ModelNotFoundError` still derives from
 `std::out_of_range` for native C++ compatibility.
+
+
+## Configuration, environment, and bootstrap
+
+`Application::create()` is the convention-first entry point for a Gungnir
+application. It establishes the application base path, loads `.env`, seeds
+framework configuration, registers configuration objects in the IoC container,
+and resolves the view root before routes begin handling requests.
+
+```gungnir
+app = Application::create();
+
+Route::get("/", HomeController::index);
+
+app.run();
+```
+
+The language frontend qualifies `Application` automatically, so normal Gungnir
+source does not need the native `gungnir::` namespace.
+
+The default `.env` keys are:
+
+- `APP_NAME`
+- `APP_ENV`
+- `APP_DEBUG`
+- `APP_HOST`
+- `APP_PORT`
+- `VIEW_PATH`
+- `DB_CONNECTION`
+- `DB_HOST`
+- `DB_PORT`
+- `DB_DATABASE`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+
+Process environment variables take precedence over values loaded from `.env`.
+Quoted strings, comments, `export KEY=value`, integers, and boolean values are
+supported.
+
+Configuration is accessible through the application:
+
+```gungnir
+const name = app.config().string("app.name");
+const port = app.config().integer("server.port");
+const debug = app.config().boolean("app.debug");
+```
+
+`app.run()` reads `server.host` and `server.port` from configuration and then
+starts the existing HTTP runtime. Existing explicit code such as
+`app.listen(8000, "127.0.0.1")` remains supported.
+
+Database environment values are loaded into configuration but do not create a
+database connection automatically yet. Gungnir currently exposes database
+driver abstractions without bundled native client drivers; pretending otherwise
+would make bootstrap appear more complete than the runtime actually is.
+
+
+## Gungnir CLI
+
+The `gungnir` command is the framework-facing tool. `gungnirc` remains the
+lower-level language compiler used by the framework and advanced tooling.
+
+Create an application:
+
+```text
+gungnir new my-app
+cd my-app
+gungnir run
+```
+
+A new project follows framework conventions without exposing CMake or generated
+C++ as normal application code:
+
+```text
+my-app/
+├── app/
+│   ├── controllers/
+│   ├── middleware/
+│   └── models/
+├── config/
+├── database/
+│   └── migrations/
+├── routes/
+│   └── web.gnr
+├── views/
+├── .env
+├── .env.example
+└── .gungnir-project
+```
+
+Generators:
+
+```text
+gungnir make:model User
+gungnir make:controller UserController
+gungnir make:middleware AuthMiddleware
+gungnir make:migration create_users_table
+```
+
+`gungnir build` scans application model, middleware, controller, and route
+sources, transpiles them through the Gungnir frontend, and assembles the hidden
+native translation unit under `.gungnir/`. It then builds the application
+against the installed Gungnir CMake package. `gungnir run` builds and starts
+the application from the project root. Use `--release` for release builds.
+
+The current assembler intentionally uses one generated application translation
+unit. This keeps route/controller visibility predictable without exposing C++
+header mechanics. A future module/import layer can split compilation for larger
+applications without changing the application directory conventions.
+
+Migration files are generated but are not linked into the web application
+binary. A dedicated `gungnir migrate` path belongs to the database-driver and
+migration CLI work.
+
+Gungnir now installs CMake package metadata and exported runtime, ORM, and
+language targets. Generated applications use `find_package(Gungnir)` internally
+instead of repository-relative library paths.
