@@ -1,8 +1,27 @@
 #include <gungnir/http/request.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace gungnir::http {
+
+namespace {
+
+std::string normalize_header_name(std::string_view name) {
+    std::string normalized{name};
+    std::transform(
+        normalized.begin(),
+        normalized.end(),
+        normalized.begin(),
+        [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        }
+    );
+    return normalized;
+}
+
+} // namespace
 
 Request::Request(Method method, std::string path, std::string body)
     : method_(method), path_(std::move(path)), body_(std::move(body)) {}
@@ -14,11 +33,14 @@ std::string_view Request::path() const noexcept { return path_; }
 std::string_view Request::body() const noexcept { return body_; }
 
 void Request::set_header(std::string name, std::string value) {
-    headers_.insert_or_assign(std::move(name), std::move(value));
+    headers_.insert_or_assign(
+        normalize_header_name(name),
+        std::move(value)
+    );
 }
 
 std::string_view Request::header(std::string_view name) const noexcept {
-    const auto it = headers_.find(std::string{name});
+    const auto it = headers_.find(normalize_header_name(name));
     if (it == headers_.end()) {
         return {};
     }

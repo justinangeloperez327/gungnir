@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <utility>
@@ -84,6 +85,13 @@ public:
     void boot();
     void shutdown() noexcept;
     [[nodiscard]] bool is_booted() const noexcept;
+
+    void listen(
+        std::uint16_t port = 8000,
+        String host = "127.0.0.1"
+    );
+    void stop() noexcept;
+    [[nodiscard]] bool is_running() const noexcept;
 
 private:
     class Impl;
