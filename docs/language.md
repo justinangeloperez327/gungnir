@@ -611,3 +611,65 @@ Database environment values are loaded into configuration but do not create a
 database connection automatically yet. Gungnir currently exposes database
 driver abstractions without bundled native client drivers; pretending otherwise
 would make bootstrap appear more complete than the runtime actually is.
+
+
+## Gungnir CLI
+
+The `gungnir` command is the framework-facing tool. `gungnirc` remains the
+lower-level language compiler used by the framework and advanced tooling.
+
+Create an application:
+
+```text
+gungnir new my-app
+cd my-app
+gungnir run
+```
+
+A new project follows framework conventions without exposing CMake or generated
+C++ as normal application code:
+
+```text
+my-app/
+├── app/
+│   ├── controllers/
+│   ├── middleware/
+│   └── models/
+├── config/
+├── database/
+│   └── migrations/
+├── routes/
+│   └── web.gnr
+├── views/
+├── .env
+├── .env.example
+└── .gungnir-project
+```
+
+Generators:
+
+```text
+gungnir make:model User
+gungnir make:controller UserController
+gungnir make:middleware AuthMiddleware
+gungnir make:migration create_users_table
+```
+
+`gungnir build` scans application model, middleware, controller, and route
+sources, transpiles them through the Gungnir frontend, and assembles the hidden
+native translation unit under `.gungnir/`. It then builds the application
+against the installed Gungnir CMake package. `gungnir run` builds and starts
+the application from the project root. Use `--release` for release builds.
+
+The current assembler intentionally uses one generated application translation
+unit. This keeps route/controller visibility predictable without exposing C++
+header mechanics. A future module/import layer can split compilation for larger
+applications without changing the application directory conventions.
+
+Migration files are generated but are not linked into the web application
+binary. A dedicated `gungnir migrate` path belongs to the database-driver and
+migration CLI work.
+
+Gungnir now installs CMake package metadata and exported runtime, ORM, and
+language targets. Generated applications use `find_package(Gungnir)` internally
+instead of repository-relative library paths.

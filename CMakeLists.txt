@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 
 project(gungnir VERSION 0.1.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 
@@ -75,6 +78,38 @@ target_include_directories(gungnir-language
 set_target_properties(gungnir-language PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME language
+)
+
+add_library(
+    gungnir-cli-support
+    STATIC
+        src/cli/project.cpp
+)
+
+target_link_libraries(
+    gungnir-cli-support
+    PUBLIC
+        gungnir::language
+)
+
+target_compile_features(
+    gungnir-cli-support
+    PUBLIC
+        cxx_std_23
+)
+
+target_include_directories(
+    gungnir-cli-support
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+
+set_target_properties(
+    gungnir-cli-support
+    PROPERTIES
+        CXX_EXTENSIONS OFF
+        POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_features(gungnir-orm PUBLIC cxx_std_23)
@@ -88,6 +123,7 @@ target_include_directories(gungnir-orm
 set_target_properties(gungnir-orm PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME orm
 )
 
 target_compile_features(gungnir PUBLIC cxx_std_23)
@@ -106,22 +142,42 @@ target_include_directories(gungnir
 set_target_properties(gungnir PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME gungnir
 )
 
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-language PRIVATE /W4 /permissive-)
+    target_compile_options(gungnir-cli-support PRIVATE /W4 /permissive-)
 else()
     target_compile_options(gungnir PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-orm PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-language PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+    target_compile_options(gungnir-cli-support PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 
 if(GUNGNIR_BUILD_TOOLS)
     add_executable(gungnirc tools/gungnirc.cpp)
     target_link_libraries(gungnirc PRIVATE gungnir::language)
     target_compile_features(gungnirc PRIVATE cxx_std_23)
+
+    add_executable(gungnir-cli tools/gungnir.cpp)
+    target_link_libraries(
+        gungnir-cli
+        PRIVATE
+            gungnir-cli-support
+    )
+    target_compile_features(
+        gungnir-cli
+        PRIVATE
+            cxx_std_23
+    )
+    set_target_properties(
+        gungnir-cli
+        PROPERTIES
+            OUTPUT_NAME gungnir
+    )
 endif()
 
 if(GUNGNIR_BUILD_TESTS)
@@ -213,6 +269,34 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 gungnir_language_view_generated_test
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/views"
+        )
+    endif()
+
+    add_executable(gungnir_cli_test tests/cli.cpp)
+    target_link_libraries(
+        gungnir_cli_test
+        PRIVATE
+            gungnir-cli-support
+    )
+    target_compile_features(
+        gungnir_cli_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.cli
+        COMMAND gungnir_cli_test
+    )
+
+    if(GUNGNIR_BUILD_TOOLS)
+        add_test(
+            NAME gungnir.cli_integration
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DGUNGNIR_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                -DGUNGNIR_CLI=$<TARGET_FILE:gungnir-cli>
+                -P
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_integration.cmake
         )
     endif()
 
@@ -340,4 +424,73 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_orm_transaction_test PRIVATE gungnir::orm)
     target_compile_features(gungnir_orm_transaction_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.orm_transaction COMMAND gungnir_orm_transaction_test)
+endif()
+
+
+install(
+    TARGETS
+        gungnir
+        gungnir-orm
+        gungnir-language
+    EXPORT
+        GungnirTargets
+    ARCHIVE DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION
+        ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION
+        ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    DIRECTORY
+        include/
+    DESTINATION
+        ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    EXPORT
+        GungnirTargets
+    FILE
+        GungnirTargets.cmake
+    NAMESPACE
+        gungnir::
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir
+)
+
+configure_package_config_file(
+    cmake/GungnirConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/GungnirConfig.cmake
+    INSTALL_DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir
+)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/GungnirConfigVersion.cmake
+    VERSION
+        ${PROJECT_VERSION}
+    COMPATIBILITY
+        SameMajorVersion
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/GungnirConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/GungnirConfigVersion.cmake
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir
+)
+
+if(GUNGNIR_BUILD_TOOLS)
+    install(
+        TARGETS
+            gungnirc
+            gungnir-cli
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+    )
 endif()
