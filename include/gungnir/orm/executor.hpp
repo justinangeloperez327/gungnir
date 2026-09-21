@@ -219,10 +219,10 @@ void load_relation(
             sample.related_pivot_key()
         };
         pivot_plan.predicates.push_back(Predicate{
-            .kind = PredicateKind::in,
+            .kind = PredicateKind::in_list,
             .connector = BooleanConnector::and_,
             .column = sample.foreign_pivot_key(),
-            .comparison = Operator::equal,
+            .comparison = Comparison::equal,
             .values = parent_keys
         });
 
@@ -440,7 +440,7 @@ template <typename Derived>
 std::optional<Derived> Model<Derived>::find(
     model::AttributeValue key
 ) {
-    return query().find(std::move(key)).first();
+    return query().where_key(std::move(key)).first();
 }
 
 template <typename Derived>
