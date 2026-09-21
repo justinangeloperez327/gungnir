@@ -180,6 +180,12 @@ int main() {
     const auto source =
         read(generated);
 
+    const auto migration_source =
+        read(
+            destination /
+            ".gungnir/generated/migrations.cpp"
+        );
+
     assert(
         source.find(
             "class User : public "
@@ -211,6 +217,24 @@ int main() {
     assert(
         source.find(
             "app.run();"
+        ) != std::string::npos
+    );
+
+    assert(
+        migration_source.find(
+            "CreateUsersTable migration_0"
+        ) != std::string::npos
+    );
+
+    assert(
+        migration_source.find(
+            "migrate:plan"
+        ) != std::string::npos
+    );
+
+    assert(
+        migration_source.find(
+            "gungnir::migration::Runner"
         ) != std::string::npos
     );
 

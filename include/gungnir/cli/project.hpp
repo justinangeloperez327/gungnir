@@ -44,9 +44,14 @@ public:
     );
 
     [[nodiscard]] std::filesystem::path assemble() const;
+    [[nodiscard]] std::filesystem::path assemble_migrations() const;
 
     int build(bool release = false) const;
     int run(bool release = false) const;
+    int migrate(
+        String command = "migrate",
+        bool release = false
+    ) const;
 
 private:
     std::filesystem::path root_;

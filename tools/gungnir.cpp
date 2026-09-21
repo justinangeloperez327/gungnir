@@ -24,6 +24,11 @@ void help() {
         << "  gungnir make:controller <name>\n"
         << "  gungnir make:middleware <name>\n"
         << "  gungnir make:migration <name>\n"
+        << "  gungnir migrate\n"
+        << "  gungnir migrate:rollback\n"
+        << "  gungnir migrate:reset\n"
+        << "  gungnir migrate:status\n"
+        << "  gungnir migrate:plan\n"
         << "  gungnir --version\n";
 }
 
@@ -133,6 +138,19 @@ int main(
 
         if (command == "run") {
             return project.run(
+                release_flag(arguments)
+            );
+        }
+
+        if (
+            command == "migrate" ||
+            command == "migrate:rollback" ||
+            command == "migrate:reset" ||
+            command == "migrate:status" ||
+            command == "migrate:plan"
+        ) {
+            return project.migrate(
+                command,
                 release_flag(arguments)
             );
         }

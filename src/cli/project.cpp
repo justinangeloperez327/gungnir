@@ -5,12 +5,14 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#include <gungnir/language/lexer.hpp>
 #include <gungnir/language/transpiler.hpp>
 
 namespace gungnir::cli {
@@ -381,6 +383,8 @@ Project Project::create(
         "VIEW_PATH=views\n"
         "\n"
         "DB_CONNECTION=\n"
+        "DB_NAME=default\n"
+        "DB_POOL_SIZE=1\n"
         "DB_HOST=127.0.0.1\n"
         "DB_PORT=\n"
         "DB_DATABASE=\n"
@@ -841,6 +845,279 @@ Project::make_migration(
     );
 }
 
+namespace {
+
+std::optional<std::size_t> next_significant(
+    const std::vector<language::Token>& tokens,
+    std::size_t index
+) {
+    for (auto cursor = index + 1; cursor < tokens.size(); ++cursor) {
+        if (!tokens[cursor].trivia() && tokens[cursor].kind != language::TokenKind::end) {
+            return cursor;
+        }
+    }
+
+    return std::nullopt;
+}
+
+String migration_class_name(
+    const std::filesystem::path& path
+) {
+    const auto source = read_file(path);
+    language::Lexer lexer{source};
+    const auto tokens = lexer.tokenize();
+
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        if (tokens[index].trivia() || tokens[index].lexeme != "class") {
+            continue;
+        }
+
+        const auto name = next_significant(tokens, index);
+        const auto colon = name ? next_significant(tokens, *name) : std::nullopt;
+        const auto base = colon ? next_significant(tokens, *colon) : std::nullopt;
+
+        if (
+            name &&
+            colon &&
+            base &&
+            tokens[*name].kind == language::TokenKind::identifier &&
+            tokens[*colon].lexeme == ":" &&
+            tokens[*base].lexeme == "Migration"
+        ) {
+            return tokens[*name].lexeme;
+        }
+    }
+
+    throw std::runtime_error(
+        "Migration file does not declare a Migration class: " +
+        path.string()
+    );
+}
+
+std::vector<String> configure_arguments(
+    const std::filesystem::path& root,
+    bool release
+) {
+    const auto source = root / ".gungnir";
+    const auto build = source / "build";
+
+    std::vector<String> arguments{
+        "cmake",
+        "-S",
+        source.string(),
+        "-B",
+        build.string(),
+        "-DCMAKE_BUILD_TYPE=" +
+            String{release ? "Release" : "Debug"}
+    };
+
+    if (const char* prefix = std::getenv("GUNGNIR_CMAKE_PREFIX")) {
+        arguments.push_back(
+            "-DCMAKE_PREFIX_PATH=" +
+            String{prefix}
+        );
+    }
+
+    return arguments;
+}
+
+int configure_generated(
+    const std::filesystem::path& root,
+    bool release
+) {
+    return execute(
+        configure_arguments(
+            root,
+            release
+        )
+    );
+}
+
+int build_generated(
+    const std::filesystem::path& root,
+    bool release,
+    std::string_view target = {}
+) {
+    std::vector<String> arguments{
+        "cmake",
+        "--build",
+        (root / ".gungnir" / "build").string(),
+        "--config",
+        release ? "Release" : "Debug"
+    };
+
+    if (!target.empty()) {
+        arguments.push_back("--target");
+        arguments.push_back(String{target});
+    }
+
+    return execute(arguments);
+}
+
+std::filesystem::path generated_executable(
+    const std::filesystem::path& root,
+    std::string_view name,
+    bool release
+) {
+    auto executable =
+        root /
+        ".gungnir" /
+        "build" /
+        String{name};
+
+#ifdef _WIN32
+    const auto configured =
+        root /
+        ".gungnir" /
+        "build" /
+        (release ? "Release" : "Debug") /
+        (String{name} + ".exe");
+
+    if (std::filesystem::exists(configured)) {
+        executable = configured;
+    } else {
+        executable += ".exe";
+    }
+#else
+    (void) release;
+#endif
+
+    return executable;
+}
+
+} // namespace
+
+std::filesystem::path
+Project::assemble_migrations() const {
+    const auto generated =
+        root_ /
+        ".gungnir" /
+        "generated";
+
+    std::filesystem::create_directories(
+        generated
+    );
+
+    const auto files =
+        source_files(
+            root_ /
+            "database" /
+            "migrations"
+        );
+
+    String output;
+
+    output += "#include <gungnir/gungnir.hpp>\n";
+    output += "#include <gungnir/database/database.hpp>\n";
+    output += "#include <gungnir/migration/runner.hpp>\n";
+    output += "#include <iostream>\n";
+    output += "#include <stdexcept>\n";
+    output += "#include <string>\n";
+    output += "#include <vector>\n\n";
+
+    std::vector<String> classes;
+    classes.reserve(files.size());
+
+    for (const auto& path : files) {
+        classes.push_back(
+            migration_class_name(path)
+        );
+
+        output += transpile_file(path);
+        output += "\n\n";
+    }
+
+    output +=
+        "int main(int argc, char** argv)\n"
+        "{\n"
+        "    try {\n"
+        "        auto app = gungnir::Application::create();\n\n";
+
+    for (std::size_t index = 0; index < files.size(); ++index) {
+        output +=
+            "        " +
+            classes[index] +
+            " migration_" +
+            std::to_string(index) +
+            ";\n";
+    }
+
+    output +=
+        "\n        const std::vector<gungnir::migration::Named> migrations{\n";
+
+    for (std::size_t index = 0; index < files.size(); ++index) {
+        output +=
+            "            {\"" +
+            files[index].stem().string() +
+            "\", &migration_" +
+            std::to_string(index) +
+            "}";
+
+        if (index + 1 < files.size()) {
+            output += ",";
+        }
+
+        output += "\n";
+    }
+
+    output +=
+        "        };\n\n"
+        "        const std::string command = argc > 1 ? argv[1] : \"migrate\";\n\n"
+        "        if (command == \"migrate:plan\") {\n"
+        "            const auto configured = app.config().string(\"database.default\");\n"
+        "            if (configured.empty()) {\n"
+        "                throw std::logic_error(\"DB_CONNECTION is required for migration planning\");\n"
+        "            }\n"
+        "            const auto backend = gungnir::database::parse_backend(configured);\n"
+        "            for (const auto& item : migrations) {\n"
+        "                std::cout << \"-- \" << item.name << '\\n';\n"
+        "                const auto compiled = gungnir::database::compile(item.migration->plan_up(), backend);\n"
+        "                for (const auto& statement : compiled.statements) {\n"
+        "                    std::cout << statement.text << '\\n';\n"
+        "                }\n"
+        "            }\n"
+        "            return 0;\n"
+        "        }\n\n"
+        "        app.boot();\n"
+        "        gungnir::migration::DatabaseRepository repository;\n"
+        "        gungnir::migration::Runner runner{repository};\n\n"
+        "        if (command == \"migrate\") {\n"
+        "            std::cout << runner.migrate(migrations) << \" migration(s) applied\\n\";\n"
+        "            return 0;\n"
+        "        }\n"
+        "        if (command == \"migrate:rollback\") {\n"
+        "            std::cout << runner.rollback(migrations) << \" migration(s) rolled back\\n\";\n"
+        "            return 0;\n"
+        "        }\n"
+        "        if (command == \"migrate:reset\") {\n"
+        "            std::cout << runner.reset(migrations) << \" migration(s) rolled back\\n\";\n"
+        "            return 0;\n"
+        "        }\n"
+        "        if (command == \"migrate:status\") {\n"
+        "            for (const auto& status : runner.status(migrations)) {\n"
+        "                std::cout << (status.applied ? \"[x] \" : \"[ ] \") << status.name;\n"
+        "                if (status.applied) {\n"
+        "                    std::cout << \"  batch \" << status.batch;\n"
+        "                }\n"
+        "                std::cout << '\\n';\n"
+        "            }\n"
+        "            return 0;\n"
+        "        }\n\n"
+        "        throw std::invalid_argument(\"Unknown migration command: \" + command);\n"
+        "    } catch (const std::exception& error) {\n"
+        "        std::cerr << \"gungnir migrations: error: \" << error.what() << '\\n';\n"
+        "        return 1;\n"
+        "    }\n"
+        "}\n";
+
+    const auto path =
+        generated /
+        "migrations.cpp";
+
+    write_file(path, output);
+    return path;
+}
+
 std::filesystem::path
 Project::assemble() const {
     const auto generated =
@@ -854,27 +1131,17 @@ Project::assemble() const {
 
     String output;
 
-    output +=
-        "#include <gungnir/gungnir.hpp>\n";
-    output +=
-        "#include <gungnir/orm/orm.hpp>\n\n";
+    output += "#include <gungnir/gungnir.hpp>\n";
+    output += "#include <gungnir/orm/orm.hpp>\n\n";
 
-    const std::vector<
-        std::filesystem::path
-    > source_directories{
+    const std::vector<std::filesystem::path> source_directories{
         root_ / "app" / "models",
         root_ / "app" / "middleware",
         root_ / "app" / "controllers"
     };
 
-    for (
-        const auto& directory :
-        source_directories
-    ) {
-        for (
-            const auto& path :
-            source_files(directory)
-        ) {
+    for (const auto& directory : source_directories) {
+        for (const auto& path : source_files(directory)) {
             output += transpile_file(path);
             output += "\n\n";
         }
@@ -883,37 +1150,24 @@ Project::assemble() const {
     output +=
         "int main()\n"
         "{\n"
-        "    auto app = "
-        "gungnir::Application::create();\n\n";
+        "    auto app = gungnir::Application::create();\n\n";
 
-    for (
-        const auto& path :
-        source_files(
-            root_ /
-            "routes"
-        )
-    ) {
-        const auto routes =
-            transpile_file(path);
-
+    for (const auto& path : source_files(root_ / "routes")) {
+        const auto routes = transpile_file(path);
         std::size_t start = 0;
 
         while (start < routes.size()) {
-            const auto end =
-                routes.find(
-                    '\n',
-                    start
-                );
-
+            const auto end = routes.find('\n', start);
             output += "    ";
+
             output.append(
                 routes,
                 start,
-                end ==
-                    String::npos
+                end == String::npos
                     ? String::npos
                     : end - start
             );
+
             output += '\n';
 
             if (end == String::npos) {
@@ -935,10 +1189,8 @@ Project::assemble() const {
         generated /
         "app.cpp";
 
-    write_file(
-        path,
-        output
-    );
+    write_file(path, output);
+    (void) assemble_migrations();
 
     write_file(
         root_ /
@@ -950,13 +1202,13 @@ Project::assemble() const {
         "find_package(Gungnir CONFIG REQUIRED)\n"
         "\n"
         "add_executable(app generated/app.cpp)\n"
+        "add_executable(migrations generated/migrations.cpp)\n"
+        "\n"
         "target_compile_features(app PRIVATE cxx_std_23)\n"
-        "target_link_libraries(\n"
-        "    app\n"
-        "    PRIVATE\n"
-        "        gungnir::gungnir\n"
-        "        gungnir::orm\n"
-        ")\n"
+        "target_compile_features(migrations PRIVATE cxx_std_23)\n"
+        "\n"
+        "target_link_libraries(app PRIVATE gungnir::gungnir gungnir::orm)\n"
+        "target_link_libraries(migrations PRIVATE gungnir::gungnir gungnir::orm)\n"
     );
 
     return path;
@@ -967,55 +1219,17 @@ int Project::build(
 ) const {
     (void) assemble();
 
-    const auto source =
-        root_ /
-        ".gungnir";
+    const int configured =
+        configure_generated(root_, release);
 
-    const auto build =
-        source /
-        "build";
-
-    std::vector<String> configure{
-        "cmake",
-        "-S",
-        source.string(),
-        "-B",
-        build.string(),
-        "-DCMAKE_BUILD_TYPE=" +
-            String{
-                release
-                    ? "Release"
-                    : "Debug"
-            }
-    };
-
-    if (
-        const char* prefix =
-            std::getenv(
-                "GUNGNIR_CMAKE_PREFIX"
-            )
-    ) {
-        configure.push_back(
-            "-DCMAKE_PREFIX_PATH=" +
-            String{prefix}
-        );
+    if (configured != 0) {
+        return configured;
     }
 
-    int code = execute(configure);
-
-    if (code != 0) {
-        return code;
-    }
-
-    return execute({
-        "cmake",
-        "--build",
-        build.string(),
-        "--config",
+    return build_generated(
+        root_,
         release
-            ? "Release"
-            : "Debug"
-    });
+    );
 }
 
 int Project::run(
@@ -1028,50 +1242,70 @@ int Project::run(
         return built;
     }
 
-    auto executable =
-        root_ /
-        ".gungnir" /
-        "build" /
-        "app";
-
-#ifdef _WIN32
-    const auto configured =
-        root_ /
-        ".gungnir" /
-        "build" /
-        (
+    const auto executable =
+        generated_executable(
+            root_,
+            "app",
             release
-                ? "Release"
-                : "Debug"
-        ) /
-        "app.exe";
-
-    if (
-        std::filesystem::exists(
-            configured
-        )
-    ) {
-        executable = configured;
-    } else {
-        executable += ".exe";
-    }
-#endif
+        );
 
     const auto original =
         std::filesystem::current_path();
 
-    std::filesystem::current_path(
-        root_
-    );
+    std::filesystem::current_path(root_);
 
-    const int code = execute({
-        executable.string()
-    });
+    const int code =
+        execute({
+            executable.string()
+        });
 
-    std::filesystem::current_path(
-        original
-    );
+    std::filesystem::current_path(original);
+    return code;
+}
 
+int Project::migrate(
+    String command,
+    bool release
+) const {
+    (void) assemble();
+
+    const int configured =
+        configure_generated(root_, release);
+
+    if (configured != 0) {
+        return configured;
+    }
+
+    const int built =
+        build_generated(
+            root_,
+            release,
+            "migrations"
+        );
+
+    if (built != 0) {
+        return built;
+    }
+
+    const auto executable =
+        generated_executable(
+            root_,
+            "migrations",
+            release
+        );
+
+    const auto original =
+        std::filesystem::current_path();
+
+    std::filesystem::current_path(root_);
+
+    const int code =
+        execute({
+            executable.string(),
+            command
+        });
+
+    std::filesystem::current_path(original);
     return code;
 }
 

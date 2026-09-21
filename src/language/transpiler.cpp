@@ -14,6 +14,7 @@
 #include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/middleware_lowering.hpp>
+#include <gungnir/language/migration_lowering.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
 #include <gungnir/language/validation_lowering.hpp>
@@ -100,6 +101,13 @@ TranspileResult Transpiler::transpile(
             source_name
         );
 
+    MigrationLowerer migration_lowerer;
+    auto migration_lowering =
+        migration_lowerer.lower(
+            source,
+            source_name
+        );
+
     ValidationLowerer validation_lowerer;
     auto validation_lowering =
         validation_lowerer.lower(
@@ -139,6 +147,12 @@ TranspileResult Transpiler::transpile(
 
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),
+        migration_lowering.diagnostics.begin(),
+        migration_lowering.diagnostics.end()
+    );
+
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
         validation_lowering.diagnostics.begin(),
         validation_lowering.diagnostics.end()
     );
@@ -152,6 +166,7 @@ TranspileResult Transpiler::transpile(
         async_lowering.edits.size() +
         view_lowering.edits.size() +
         middleware_lowering.edits.size() +
+        migration_lowering.edits.size() +
         validation_lowering.edits.size()
     );
 
@@ -212,6 +227,12 @@ TranspileResult Transpiler::transpile(
         edits.end(),
         std::make_move_iterator(middleware_lowering.edits.begin()),
         std::make_move_iterator(middleware_lowering.edits.end())
+    );
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(migration_lowering.edits.begin()),
+        std::make_move_iterator(migration_lowering.edits.end())
     );
 
     edits.insert(

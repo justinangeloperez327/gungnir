@@ -20,6 +20,12 @@ struct Named {
     Migration* migration{nullptr};
 };
 
+struct Status {
+    String name;
+    Boolean applied{false};
+    std::size_t batch{0};
+};
+
 class Repository {
 public:
     virtual ~Repository() = default;
@@ -80,6 +86,10 @@ public:
     );
 
     [[nodiscard]] std::size_t reset(
+        const std::vector<Named>& migrations
+    );
+
+    [[nodiscard]] std::vector<Status> status(
         const std::vector<Named>& migrations
     );
 

@@ -123,6 +123,20 @@ void apply_environment_defaults(
                 "DB_PASSWORD",
                 ""
             )
+        )
+        .set(
+            "database.name",
+            environment.get(
+                "DB_NAME",
+                "default"
+            )
+        )
+        .set(
+            "database.pool_size",
+            environment.integer(
+                "DB_POOL_SIZE",
+                1
+            )
         );
 
     if (environment.has("DB_PORT")) {
@@ -162,6 +176,9 @@ public:
     Container container;
     routing::Router router;
     database::Manager database;
+    std::shared_ptr<database::DriverRegistry> drivers{
+        std::make_shared<database::DriverRegistry>()
+    };
     view::Engine views;
     std::shared_ptr<config::Repository> config;
     std::shared_ptr<config::Environment> environment;
@@ -206,6 +223,10 @@ Application::Application()
     impl_->container.instance<
         config::Environment
     >(impl_->environment);
+
+    impl_->container.instance<
+        database::DriverRegistry
+    >(impl_->drivers);
 
     apply_environment_defaults(
         *impl_->config,
@@ -344,6 +365,16 @@ Application::database() const noexcept {
     return impl_->database;
 }
 
+database::DriverRegistry&
+Application::database_drivers() noexcept {
+    return *impl_->drivers;
+}
+
+const database::DriverRegistry&
+Application::database_drivers() const noexcept {
+    return *impl_->drivers;
+}
+
 view::Engine&
 Application::views() noexcept {
     return impl_->views;
@@ -463,12 +494,61 @@ Application& Application::database(
     return *this;
 }
 
+Application& Application::database_driver(
+    database::Backend backend,
+    database::ConfiguredDriverFactory factory
+) {
+    impl_->drivers->add(
+        backend,
+        std::move(factory)
+    );
+
+    return *this;
+}
+
+Application& Application::configure_database() {
+    const auto configured =
+        impl_->config->string(
+            "database.default"
+        );
+
+    if (configured.empty()) {
+        return *this;
+    }
+
+    const auto settings =
+        database::settings_from(
+            *impl_->config
+        );
+
+    if (
+        impl_->database.has(
+            settings.name
+        )
+    ) {
+        return *this;
+    }
+
+    impl_->database.add(
+        settings.name,
+        settings.backend,
+        impl_->drivers->bind(
+            settings
+        ),
+        settings.pool_size
+    );
+
+    return *this;
+}
+
 void Application::boot() {
     if (impl_->booted) {
         throw std::logic_error(
             "Gungnir application is already booted"
         );
     }
+
+    configure_database();
 
     database::runtime::use(
         impl_->database

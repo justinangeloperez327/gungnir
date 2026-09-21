@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -335,6 +336,60 @@ std::size_t Runner::reset(
     }
 
     return total;
+}
+
+std::vector<Status> Runner::status(
+    const std::vector<Named>& migrations
+) {
+    auto connection =
+        database::runtime::connection(
+            connection_
+        );
+
+    repository_.ensure(
+        *connection
+    );
+
+    const auto records =
+        repository_.applied(
+            *connection
+        );
+
+    std::unordered_map<
+        String,
+        std::size_t
+    > applied;
+
+    for (const auto& record : records) {
+        applied.insert_or_assign(
+            record.name,
+            record.batch
+        );
+    }
+
+    std::vector<Status> result;
+    result.reserve(
+        migrations.size()
+    );
+
+    for (const auto& item : migrations) {
+        const auto found =
+            applied.find(
+                item.name
+            );
+
+        result.push_back(Status{
+            .name = item.name,
+            .applied =
+                found != applied.end(),
+            .batch =
+                found == applied.end()
+                    ? 0
+                    : found->second
+        });
+    }
+
+    return result;
 }
 
 } // namespace gungnir::migration

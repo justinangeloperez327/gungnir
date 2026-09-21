@@ -6,6 +6,8 @@
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/manager.hpp>
 #include <gungnir/database/pool.hpp>
+#include <gungnir/database/registry.hpp>
 #include <gungnir/database/result.hpp>
+#include <gungnir/database/settings.hpp>
 #include <gungnir/database/runtime.hpp>
 #include <gungnir/database/transaction.hpp>

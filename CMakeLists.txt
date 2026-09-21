@@ -21,7 +21,9 @@ add_library(gungnir
     src/database/driver.cpp
     src/database/manager.cpp
     src/database/pool.cpp
+    src/database/registry.cpp
     src/database/runtime.cpp
+    src/database/settings.cpp
     src/database/transaction.cpp
     src/http/exception_handler.cpp
     src/http/json.cpp
@@ -59,6 +61,7 @@ add_library(gungnir-language
     src/language/controller_lowering.cpp
     src/language/lexer.cpp
     src/language/middleware_lowering.cpp
+    src/language/migration_lowering.cpp
     src/language/model_lowering.cpp
     src/language/parser.cpp
     src/language/transpiler.cpp
@@ -384,6 +387,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_orm_test PRIVATE gungnir::orm)
     target_compile_features(gungnir_orm_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.orm COMMAND gungnir_orm_test)
+
+    add_executable(
+        gungnir_database_bootstrap_test
+        tests/database_bootstrap.cpp
+    )
+    target_link_libraries(
+        gungnir_database_bootstrap_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_database_bootstrap_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.database_bootstrap
+        COMMAND gungnir_database_bootstrap_test
+    )
 
     add_executable(gungnir_database_runtime_test tests/database_runtime.cpp)
     target_link_libraries(gungnir_database_runtime_test PRIVATE gungnir::gungnir)
