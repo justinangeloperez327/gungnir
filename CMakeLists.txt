@@ -8,6 +8,7 @@ add_library(gungnir
     src/core/application.cpp
     src/core/container.cpp
     src/controller/controller.cpp
+    src/database/compiler.cpp
     src/http/request.cpp
     src/http/response.cpp
     src/migration/column.cpp
@@ -60,4 +61,9 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_migration_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_migration_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.migration COMMAND gungnir_migration_test)
+
+    add_executable(gungnir_database_test tests/database.cpp)
+    target_link_libraries(gungnir_database_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_database_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.database COMMAND gungnir_database_test)
 endif()
