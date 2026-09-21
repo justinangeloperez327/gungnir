@@ -31,13 +31,14 @@ Response Controller::view(
 }
 
 Response Controller::no_content() {
-    return Response{204};
+    return Response::no_content();
 }
 
 Response Controller::redirect(String location, Integer status) {
-    Response result{status};
-    result.header("location", std::move(location));
-    return result;
+    return Response::redirect(
+        std::move(location),
+        status
+    );
 }
 
 } // namespace gungnir

@@ -12,6 +12,7 @@
 #include <gungnir/language/async_lowering.hpp>
 #include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/lexer.hpp>
+#include <gungnir/language/middleware_lowering.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
 #include <gungnir/language/view_lowering.hpp>
@@ -43,6 +44,8 @@ std::string framework_base(const FrameworkBase& node) {
         return "public gungnir::Controller";
     case FrameworkBaseKind::migration:
         return "public gungnir::Migration";
+    case FrameworkBaseKind::middleware:
+        return "public gungnir::Middleware";
     }
 
     return {};
@@ -84,6 +87,13 @@ TranspileResult Transpiler::transpile(
     auto view_lowering =
         view_lowerer.lower(source, source_name);
 
+    MiddlewareLowerer middleware_lowerer;
+    auto middleware_lowering =
+        middleware_lowerer.lower(
+            source,
+            source_name
+        );
+
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),
         model_lowering.diagnostics.begin(),
@@ -108,13 +118,20 @@ TranspileResult Transpiler::transpile(
         view_lowering.diagnostics.end()
     );
 
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
+        middleware_lowering.diagnostics.begin(),
+        middleware_lowering.diagnostics.end()
+    );
+
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
         model_lowering.edits.size() +
         controller_lowering.edits.size() +
         async_lowering.edits.size() +
-        view_lowering.edits.size()
+        view_lowering.edits.size() +
+        middleware_lowering.edits.size()
     );
 
     for (const auto& node : parsed.program.nodes) {
@@ -162,6 +179,12 @@ TranspileResult Transpiler::transpile(
         edits.end(),
         std::make_move_iterator(view_lowering.edits.begin()),
         std::make_move_iterator(view_lowering.edits.end())
+    );
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(middleware_lowering.edits.begin()),
+        std::make_move_iterator(middleware_lowering.edits.end())
     );
 
     std::sort(

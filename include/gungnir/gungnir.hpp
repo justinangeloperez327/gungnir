@@ -5,6 +5,8 @@
 #include <gungnir/core/container.hpp>
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/database.hpp>
+#include <gungnir/http/json.hpp>
+#include <gungnir/http/middleware.hpp>
 #include <gungnir/migration/migration.hpp>
 #include <gungnir/model/model.hpp>
 #include <gungnir/routing/route.hpp>
@@ -15,6 +17,7 @@
 
 namespace gungnir {
 
+using Json = http::Json;
 using Router = routing::Router;
 
 } // namespace gungnir

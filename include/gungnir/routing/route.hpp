@@ -10,14 +10,22 @@
 
 #include <gungnir/controller/controller.hpp>
 #include <gungnir/core/container.hpp>
+#include <gungnir/http/middleware.hpp>
 #include <gungnir/routing/router.hpp>
 
 namespace gungnir::routing {
 
 namespace detail {
 
-void bind_route_runtime(Router& router, Container& container) noexcept;
-void unbind_route_runtime(Router& router, Container& container) noexcept;
+void bind_route_runtime(
+    Router& router,
+    Container& container
+) noexcept;
+
+void unbind_route_runtime(
+    Router& router,
+    Container& container
+) noexcept;
 
 [[nodiscard]] Router& route_router();
 [[nodiscard]] Container& route_container();
@@ -29,11 +37,18 @@ template <typename ControllerType, typename Method>
 [[nodiscard]] Handler controller_handler(Method method) {
     auto* container = &route_container();
 
-    return [container, method](http::Request& request) -> Task<http::Response> {
-        auto controller = container->template resolve<ControllerType>();
+    return [container, method](
+        http::Request& request
+    ) -> Task<http::Response> {
+        auto controller =
+            container->template resolve<ControllerType>();
 
         if constexpr (
-            std::invocable<Method, ControllerType&, http::Request&>
+            std::invocable<
+                Method,
+                ControllerType&,
+                http::Request&
+            >
         ) {
             using Result = std::invoke_result_t<
                 Method,
@@ -41,26 +56,59 @@ template <typename ControllerType, typename Method>
                 http::Request&
             >;
 
-            if constexpr (std::same_as<Result, http::Response>) {
-                co_return std::invoke(method, *controller, request);
-            } else if constexpr (std::same_as<Result, Task<http::Response>>) {
-                co_return co_await std::invoke(method, *controller, request);
+            if constexpr (
+                std::same_as<Result, http::Response>
+            ) {
+                co_return std::invoke(
+                    method,
+                    *controller,
+                    request
+                );
+            } else if constexpr (
+                std::same_as<
+                    Result,
+                    Task<http::Response>
+                >
+            ) {
+                co_return co_await std::invoke(
+                    method,
+                    *controller,
+                    request
+                );
             } else {
                 static_assert(
                     unsupported_controller_handler<Result>,
                     "Controller action must return Response or Task<Response>"
                 );
             }
-        } else if constexpr (std::invocable<Method, ControllerType&>) {
+        } else if constexpr (
+            std::invocable<
+                Method,
+                ControllerType&
+            >
+        ) {
             using Result = std::invoke_result_t<
                 Method,
                 ControllerType&
             >;
 
-            if constexpr (std::same_as<Result, http::Response>) {
-                co_return std::invoke(method, *controller);
-            } else if constexpr (std::same_as<Result, Task<http::Response>>) {
-                co_return co_await std::invoke(method, *controller);
+            if constexpr (
+                std::same_as<Result, http::Response>
+            ) {
+                co_return std::invoke(
+                    method,
+                    *controller
+                );
+            } else if constexpr (
+                std::same_as<
+                    Result,
+                    Task<http::Response>
+                >
+            ) {
+                co_return co_await std::invoke(
+                    method,
+                    *controller
+                );
             } else {
                 static_assert(
                     unsupported_controller_handler<Result>,
@@ -78,10 +126,22 @@ template <typename ControllerType, typename Method>
 
 } // namespace detail
 
+template <typename MiddlewareType>
+RouteRegistration& RouteRegistration::middleware() {
+    return middleware(
+        http::make_middleware<MiddlewareType>(
+            detail::route_container()
+        )
+    );
+}
+
 class Route {
 public:
     template <typename ControllerType, typename Method>
-    static Router& get(std::string path, Method method) {
+    static RouteRegistration get(
+        std::string path,
+        Method method
+    ) {
         return add<ControllerType>(
             http::Method::get,
             std::move(path),
@@ -90,7 +150,10 @@ public:
     }
 
     template <typename ControllerType, typename Method>
-    static Router& post(std::string path, Method method) {
+    static RouteRegistration post(
+        std::string path,
+        Method method
+    ) {
         return add<ControllerType>(
             http::Method::post,
             std::move(path),
@@ -99,7 +162,10 @@ public:
     }
 
     template <typename ControllerType, typename Method>
-    static Router& put(std::string path, Method method) {
+    static RouteRegistration put(
+        std::string path,
+        Method method
+    ) {
         return add<ControllerType>(
             http::Method::put,
             std::move(path),
@@ -108,7 +174,10 @@ public:
     }
 
     template <typename ControllerType, typename Method>
-    static Router& patch(std::string path, Method method) {
+    static RouteRegistration patch(
+        std::string path,
+        Method method
+    ) {
         return add<ControllerType>(
             http::Method::patch,
             std::move(path),
@@ -117,7 +186,10 @@ public:
     }
 
     template <typename ControllerType, typename Method>
-    static Router& remove(std::string path, Method method) {
+    static RouteRegistration remove(
+        std::string path,
+        Method method
+    ) {
         return add<ControllerType>(
             http::Method::delete_,
             std::move(path),
@@ -127,20 +199,25 @@ public:
 
 private:
     template <typename ControllerType, typename Method>
-    static Router& add(
+    static RouteRegistration add(
         http::Method verb,
         std::string path,
         Method method
     ) {
         static_assert(
-            std::derived_from<ControllerType, gungnir::Controller>,
+            std::derived_from<
+                ControllerType,
+                gungnir::Controller
+            >,
             "Gungnir controller routes require a Controller-derived type"
         );
 
         return detail::route_router().add(
             verb,
             std::move(path),
-            detail::controller_handler<ControllerType>(method)
+            detail::controller_handler<ControllerType>(
+                method
+            )
         );
     }
 };

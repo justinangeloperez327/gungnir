@@ -383,6 +383,38 @@ int main() {
         ) != std::string::npos
     );
 
+    const auto middleware = transpiler.transpile(
+        "class AuthMiddleware : Middleware {\n"
+        "    async Response handle(Request request, Next next) {\n"
+        "        if (request.header(\"authorization\").empty()) {\n"
+        "            return text(\"Unauthorized\", 401);\n"
+        "        }\n"
+        "        return await next(request);\n"
+        "    }\n"
+        "}\n"
+        "Route::get(\"/users\", UserController::index)"
+        ".middleware(AuthMiddleware);\n",
+        "middleware.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(middleware.success());
+    assert(
+        middleware.code.find(
+            "class AuthMiddleware : public gungnir::Middleware"
+        ) != std::string::npos
+    );
+    assert(
+        middleware.code.find(
+            "gungnir::Next next"
+        ) != std::string::npos
+    );
+    assert(
+        middleware.code.find(
+            ".middleware<AuthMiddleware>()"
+        ) != std::string::npos
+    );
+
     const auto invalid_await = transpiler.transpile(
         "void load() {\n"
         "    const value = await fetch();\n"

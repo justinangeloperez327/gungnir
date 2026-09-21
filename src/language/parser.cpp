@@ -181,6 +181,8 @@ ParseResult Parser::parse() {
                 kind = FrameworkBaseKind::controller;
             } else if (tokens_[*base].lexeme == "Migration") {
                 kind = FrameworkBaseKind::migration;
+            } else if (tokens_[*base].lexeme == "Middleware") {
+                kind = FrameworkBaseKind::middleware;
             } else {
                 framework_base = false;
             }
