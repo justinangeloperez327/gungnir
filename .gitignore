@@ -1,4 +1,5 @@
 /build/
 /build-*/
 /.cache/
+.gungnir/
 compile_commands.json

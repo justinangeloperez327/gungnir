@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(gungnir VERSION 0.1.0 LANGUAGES CXX)
 
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
+option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 
 add_library(gungnir
     src/core/application.cpp
@@ -36,6 +37,26 @@ add_library(gungnir-orm
 
 add_library(gungnir::orm ALIAS gungnir-orm)
 
+add_library(gungnir-language
+    src/language/lexer.cpp
+    src/language/parser.cpp
+    src/language/transpiler.cpp
+)
+
+add_library(gungnir::language ALIAS gungnir-language)
+
+target_compile_features(gungnir-language PUBLIC cxx_std_23)
+target_include_directories(gungnir-language
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+set_target_properties(gungnir-language PROPERTIES
+    CXX_EXTENSIONS OFF
+    POSITION_INDEPENDENT_CODE ON
+)
+
 target_compile_features(gungnir-orm PUBLIC cxx_std_23)
 target_link_libraries(gungnir-orm PUBLIC gungnir::gungnir)
 target_include_directories(gungnir-orm
@@ -64,13 +85,26 @@ set_target_properties(gungnir PROPERTIES
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
+    target_compile_options(gungnir-language PRIVATE /W4 /permissive-)
 else()
     target_compile_options(gungnir PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-orm PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+    target_compile_options(gungnir-language PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+
+if(GUNGNIR_BUILD_TOOLS)
+    add_executable(gungnirc tools/gungnirc.cpp)
+    target_link_libraries(gungnirc PRIVATE gungnir::language)
+    target_compile_features(gungnirc PRIVATE cxx_std_23)
 endif()
 
 if(GUNGNIR_BUILD_TESTS)
     enable_testing()
+
+    add_executable(gungnir_language_test tests/language.cpp)
+    target_link_libraries(gungnir_language_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_language_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.language COMMAND gungnir_language_test)
 
     add_executable(gungnir_plumbing_test tests/plumbing.cpp)
     target_link_libraries(gungnir_plumbing_test PRIVATE gungnir::gungnir)
