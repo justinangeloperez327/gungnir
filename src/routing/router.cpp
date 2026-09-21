@@ -219,7 +219,7 @@ Task<http::Response> Router::dispatch(http::Request& request) const {
         request.clear_route_parameters();
         for (auto& [name, value] : parameters) {
             request.set_route_parameter(
-                std::move(name),
+                name,
                 std::move(value)
             );
         }

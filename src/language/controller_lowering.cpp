@@ -41,25 +41,6 @@ std::optional<std::size_t> next_significant(
     return std::nullopt;
 }
 
-std::optional<std::size_t> previous_significant(
-    const std::vector<Token>& tokens,
-    std::size_t index
-) {
-    if (index == 0) {
-        return std::nullopt;
-    }
-
-    auto cursor = index;
-    while (cursor > 0) {
-        --cursor;
-        if (!tokens[cursor].trivia() && tokens[cursor].kind != TokenKind::end) {
-            return cursor;
-        }
-    }
-
-    return std::nullopt;
-}
-
 std::optional<std::size_t> matching_symbol(
     const std::vector<Token>& tokens,
     std::size_t opening,
@@ -441,14 +422,6 @@ ControllerLoweringResult ControllerLowerer::lower(
             tokens[index].offset + tokens[index].lexeme.size(),
             "gungnir::Route"
         });
-
-        if (tokens[*method].lexeme == "delete") {
-            result.edits.push_back(SourceEdit{
-                tokens[*method].offset,
-                tokens[*method].offset + tokens[*method].lexeme.size(),
-                "remove"
-            });
-        }
 
         result.edits.push_back(SourceEdit{
             tokens[*method].offset + tokens[*method].lexeme.size(),
