@@ -5,6 +5,7 @@
 
 #include <gungnir/database/runtime.hpp>
 #include <gungnir/routing/route.hpp>
+#include <gungnir/view/runtime.hpp>
 
 namespace gungnir {
 
@@ -13,6 +14,7 @@ public:
     Container container;
     routing::Router router;
     database::Manager database;
+    view::Engine views;
     bool booted{false};
 };
 
@@ -22,6 +24,7 @@ Application::Application()
         impl_->router,
         impl_->container
     );
+    view::runtime::use(impl_->views);
 }
 
 Application::~Application() {
@@ -30,6 +33,10 @@ Application::~Application() {
             impl_->router,
             impl_->container
         );
+
+        if (view::runtime::using_engine(impl_->views)) {
+            view::runtime::clear();
+        }
     }
 
     shutdown();
@@ -42,6 +49,7 @@ Application::Application(Application&& other) noexcept
             impl_->router,
             impl_->container
         );
+        view::runtime::use(impl_->views);
     }
 
     if (impl_ && impl_->booted) {
@@ -59,6 +67,10 @@ Application& Application::operator=(Application&& other) noexcept {
             impl_->router,
             impl_->container
         );
+
+        if (view::runtime::using_engine(impl_->views)) {
+            view::runtime::clear();
+        }
     }
 
     shutdown();
@@ -69,6 +81,7 @@ Application& Application::operator=(Application&& other) noexcept {
             impl_->router,
             impl_->container
         );
+        view::runtime::use(impl_->views);
     }
 
     if (impl_ && impl_->booted) {
@@ -100,6 +113,19 @@ database::Manager& Application::database() noexcept {
 
 const database::Manager& Application::database() const noexcept {
     return impl_->database;
+}
+
+view::Engine& Application::views() noexcept {
+    return impl_->views;
+}
+
+const view::Engine& Application::views() const noexcept {
+    return impl_->views;
+}
+
+Application& Application::view_root(std::filesystem::path path) {
+    impl_->views.root(std::move(path));
+    return *this;
 }
 
 Application& Application::database(

@@ -346,3 +346,62 @@ The test suite includes a real `.gnr` async controller fixture. CI runs
 `gungnirc`, compiles the generated C++, links it against the Gungnir runtime,
 and executes the resulting test binary. This verifies the full path from
 Gungnir source through transpilation to native controller dispatch.
+
+
+## Views and response rendering
+
+Gungnir controllers can return HTML views directly:
+
+```gungnir
+Response index()
+{
+    const users = User::all();
+
+    return view("users/index", {
+        "users": users,
+        "title": "Users"
+    });
+}
+```
+
+The object-style view data syntax is lowered to the native typed view-data
+container. Models and ORM collections are accepted directly; application code
+does not need `toView()`, `toMap()`, or another conversion layer.
+
+The runtime also exposes:
+
+```gungnir
+Response::view("users/index", {
+    "users": users
+});
+```
+
+Views default to the application's `views` directory. The root can be
+configured through the application runtime.
+
+### Template syntax
+
+View files are ordinary HTML files with lightweight expressions:
+
+```html
+<h1>{{ title }}</h1>
+
+<ul>
+{{#each users}}
+    <li>{{ name }}</li>
+{{/each}}
+</ul>
+```
+
+`{{ value }}` is HTML-escaped by default. Raw output is explicit with
+`{{{ value }}}`. Dot paths are supported for nested objects.
+
+Models are exposed to views through their generated attribute metadata and
+collections become arrays automatically. Loaded application data therefore
+keeps the same shape from ORM query to controller to view.
+
+### Safety
+
+View names are resolved underneath the configured view root and path traversal
+outside that root is rejected. Normal interpolation is escaped by default to
+reduce accidental HTML injection.

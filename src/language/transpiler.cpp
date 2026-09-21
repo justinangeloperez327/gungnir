@@ -14,6 +14,7 @@
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
+#include <gungnir/language/view_lowering.hpp>
 
 namespace gungnir::language {
 
@@ -79,6 +80,10 @@ TranspileResult Transpiler::transpile(
     auto async_lowering =
         async_lowerer.lower(source, source_name);
 
+    ViewLowerer view_lowerer;
+    auto view_lowering =
+        view_lowerer.lower(source, source_name);
+
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),
         model_lowering.diagnostics.begin(),
@@ -97,12 +102,19 @@ TranspileResult Transpiler::transpile(
         async_lowering.diagnostics.end()
     );
 
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
+        view_lowering.diagnostics.begin(),
+        view_lowering.diagnostics.end()
+    );
+
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
         model_lowering.edits.size() +
         controller_lowering.edits.size() +
-        async_lowering.edits.size()
+        async_lowering.edits.size() +
+        view_lowering.edits.size()
     );
 
     for (const auto& node : parsed.program.nodes) {
@@ -144,6 +156,12 @@ TranspileResult Transpiler::transpile(
         edits.end(),
         std::make_move_iterator(async_lowering.edits.begin()),
         std::make_move_iterator(async_lowering.edits.end())
+    );
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(view_lowering.edits.begin()),
+        std::make_move_iterator(view_lowering.edits.end())
     );
 
     std::sort(

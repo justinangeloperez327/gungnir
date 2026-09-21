@@ -1,0 +1,64 @@
+#include <cassert>
+#include <coroutine>
+#include <string>
+
+#include <gungnir/gungnir.hpp>
+
+template <typename T>
+T sync_wait(gungnir::Task<T> task) {
+    auto awaiter = task.operator co_await();
+
+    if (!awaiter.await_ready()) {
+        auto handle = awaiter.await_suspend(std::noop_coroutine());
+        if (handle && !handle.done()) {
+            handle.resume();
+        }
+    }
+
+    return awaiter.await_resume();
+}
+
+class PageController : Controller
+{
+    Response index()
+    {
+        const title = "Users";
+
+        return view("users/index", {
+            "title": title,
+            "users": std::vector<gungnir::view::Value>{},
+            "unsafe": "<b>safe</b>"
+        });
+    }
+}
+
+int main(int argc, char** argv)
+{
+    assert(argc == 2);
+
+    gungnir::Application app;
+    app.view_root(argv[1]);
+
+    Route::get("/users", PageController::index);
+
+    gungnir::http::Request request{
+        gungnir::http::Method::get,
+        "/users"
+    };
+
+    const auto response = sync_wait(
+        app.router().dispatch(request)
+    );
+
+    assert(response.status() == 200);
+    assert(
+        response.body().find("<h1>Users</h1>") !=
+        std::string::npos
+    );
+    assert(
+        response.body().find("&lt;b&gt;safe&lt;/b&gt;") !=
+        std::string::npos
+    );
+
+    return 0;
+}

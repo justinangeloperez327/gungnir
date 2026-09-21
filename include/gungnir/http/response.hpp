@@ -4,6 +4,8 @@
 #include <string_view>
 #include <unordered_map>
 
+#include <gungnir/view/data.hpp>
+
 namespace gungnir::http {
 
 class Response {
@@ -23,6 +25,11 @@ public:
     [[nodiscard]] const Headers& headers() const noexcept;
 
     [[nodiscard]] static Response text(std::string body, int status = 200);
+    [[nodiscard]] static Response view(
+        std::string name,
+        gungnir::view::Data data = {},
+        int status = 200
+    );
     [[nodiscard]] static Response not_found();
 
 private:
