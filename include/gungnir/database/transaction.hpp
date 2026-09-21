@@ -1,9 +1,14 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 #include <gungnir/database/connection.hpp>
+#include <gungnir/database/runtime.hpp>
 
 namespace gungnir::database {
 
@@ -23,6 +28,33 @@ public:
 
     void commit();
     void rollback();
+
+    template <typename Callback>
+    auto run(Callback&& callback) {
+        if (!active_) {
+            throw std::logic_error(
+                "Cannot run work on an inactive database transaction"
+            );
+        }
+
+        runtime::ConnectionScope scope{connection_};
+
+        try {
+            using Result = std::invoke_result_t<Callback&>;
+
+            if constexpr (std::is_void_v<Result>) {
+                std::invoke(callback);
+                commit();
+            } else {
+                auto result = std::invoke(callback);
+                commit();
+                return result;
+            }
+        } catch (...) {
+            rollback();
+            throw;
+        }
+    }
 
     [[nodiscard]] bool active() const noexcept;
 
