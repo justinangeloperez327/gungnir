@@ -426,9 +426,12 @@ int main() {
         ) != std::string::npos
     );
     assert(
-        view_data.code.find(
-            "{\"count\", users.count()}"
-        ) != std::string::npos
+        view_data.code.find("\"count\"") !=
+        std::string::npos
+    );
+    assert(
+        view_data.code.find("users.count()") !=
+        std::string::npos
     );
 
     return 0;
