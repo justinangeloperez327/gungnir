@@ -6,8 +6,14 @@ option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 
 add_library(gungnir
     src/core/application.cpp
+    src/controller/controller.cpp
     src/http/request.cpp
     src/http/response.cpp
+    src/migration/column.cpp
+    src/migration/context.cpp
+    src/migration/definition.cpp
+    src/migration/migration.cpp
+    src/migration/table.cpp
     src/routing/router.cpp
 )
 
@@ -37,6 +43,10 @@ if(GUNGNIR_BUILD_TESTS)
     add_executable(gungnir_plumbing_test tests/plumbing.cpp)
     target_link_libraries(gungnir_plumbing_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_plumbing_test PRIVATE cxx_std_23)
-
     add_test(NAME gungnir.plumbing COMMAND gungnir_plumbing_test)
+
+    add_executable(gungnir_style_test tests/style.cpp)
+    target_link_libraries(gungnir_style_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_style_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.style COMMAND gungnir_style_test)
 endif()
