@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include <gungnir/view/engine.hpp>
 #include <gungnir/view/runtime.hpp>
 
 namespace gungnir::http {
