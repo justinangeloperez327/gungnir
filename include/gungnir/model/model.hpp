@@ -24,6 +24,9 @@
 namespace gungnir {
 
 namespace orm {
+enum class Comparison;
+enum class SortDirection;
+
 template <typename ModelType>
 class Query;
 
@@ -43,9 +46,38 @@ public:
 
     [[nodiscard]] static orm::Query<Derived> query();
 
+    [[nodiscard]] static orm::Query<Derived> select(
+        std::initializer_list<String> columns
+    );
+
+    [[nodiscard]] static orm::Query<Derived> distinct(bool value = true);
+
     [[nodiscard]] static orm::Query<Derived> where(
         String column,
         model::AttributeValue value
+    );
+
+    [[nodiscard]] static orm::Query<Derived> where(
+        String column,
+        orm::Comparison comparison,
+        model::AttributeValue value
+    );
+
+    [[nodiscard]] static orm::Query<Derived> or_where(
+        String column,
+        model::AttributeValue value
+    );
+
+    [[nodiscard]] static orm::Query<Derived> or_where(
+        String column,
+        orm::Comparison comparison,
+        model::AttributeValue value
+    );
+
+    [[nodiscard]] static orm::Query<Derived> where_column(
+        String first,
+        orm::Comparison comparison,
+        String second
     );
 
     [[nodiscard]] static orm::Query<Derived> where_in(
@@ -58,8 +90,23 @@ public:
         std::vector<model::AttributeValue> values
     );
 
+    [[nodiscard]] static orm::Query<Derived> where_between(
+        String column,
+        model::AttributeValue lower,
+        model::AttributeValue upper
+    );
+
+    [[nodiscard]] static orm::Query<Derived> where_not_between(
+        String column,
+        model::AttributeValue lower,
+        model::AttributeValue upper
+    );
+
     [[nodiscard]] static orm::Query<Derived> where_null(String column);
     [[nodiscard]] static orm::Query<Derived> where_not_null(String column);
+
+    [[nodiscard]] static orm::Query<Derived> order_by(String column);
+    [[nodiscard]] static orm::Query<Derived> order_by_desc(String column);
 
     [[nodiscard]] static orm::Query<Derived> latest(
         String column = "created_at"
@@ -73,6 +120,11 @@ public:
     [[nodiscard]] static orm::Query<Derived> with(
         std::initializer_list<String> relations
     );
+
+    [[nodiscard]] static orm::Query<Derived> limit(std::size_t value);
+    [[nodiscard]] static orm::Query<Derived> take(std::size_t value);
+    [[nodiscard]] static orm::Query<Derived> offset(std::size_t value);
+    [[nodiscard]] static orm::Query<Derived> skip(std::size_t value);
 
     [[nodiscard]] static orm::Query<Derived> with_deleted();
     [[nodiscard]] static orm::Query<Derived> only_deleted();
@@ -120,6 +172,7 @@ public:
     bool remove();
     bool force_remove();
     bool restore();
+    bool touch();
 
     [[nodiscard]] std::optional<Derived> fresh() const;
     bool refresh();
@@ -150,6 +203,26 @@ public:
 
     [[nodiscard]] static constexpr bool uses_soft_deletes() noexcept {
         return requires { Derived::soft_deletes.column(); };
+    }
+
+    [[nodiscard]] static constexpr bool uses_timestamps() noexcept {
+        if constexpr (requires { Derived::timestamps; }) {
+            return Derived::timestamps;
+        }
+
+        return false;
+    }
+
+    [[nodiscard]] static constexpr bool has_attribute(
+        std::string_view attribute
+    ) noexcept {
+        bool found = false;
+
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            found = found || descriptor.name == attribute;
+        });
+
+        return found;
     }
 
     [[nodiscard]] static constexpr std::string_view
@@ -480,6 +553,14 @@ private:
         });
 
         return found;
+    }
+
+    void sync_attribute(std::string_view name) {
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            if (descriptor.name == name) {
+                (derived().*(descriptor.member)).sync_original();
+            }
+        });
     }
 
     void mark_soft_deleted(bool value) noexcept {

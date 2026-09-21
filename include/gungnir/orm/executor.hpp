@@ -9,6 +9,7 @@
 
 #include <gungnir/database/connection.hpp>
 #include <gungnir/database/runtime.hpp>
+#include <gungnir/model/timestamps.hpp>
 #include <gungnir/orm/collection.hpp>
 #include <gungnir/orm/hydrator.hpp>
 #include <gungnir/orm/mutation.hpp>
@@ -514,6 +515,25 @@ bool Model<Derived>::save() {
     const auto key_name = primary_key_name();
 
     if (!exists()) {
+        if constexpr (uses_timestamps()) {
+            const auto now = model::timestamp_now();
+
+            if (
+                has_attribute("created_at") &&
+                !attribute_value("created_at")
+            ) {
+                force_fill({
+                    {"created_at", now}
+                });
+            }
+
+            if (has_attribute("updated_at")) {
+                force_fill({
+                    {"updated_at", now}
+                });
+            }
+        }
+
         auto values = attributes();
 
         if (primary_key_incrementing()) {
@@ -557,8 +577,26 @@ bool Model<Derived>::save() {
         return true;
     }
 
+    std::optional<String> updated_timestamp;
+
+    if constexpr (uses_timestamps()) {
+        if (has_attribute("updated_at")) {
+            updated_timestamp = model::timestamp_now();
+            force_fill({
+                {"updated_at", *updated_timestamp}
+            });
+        }
+    }
+
     auto changes = dirty_attributes();
     changes.erase(String{key_name});
+
+    if (updated_timestamp) {
+        changes.insert_or_assign(
+            "updated_at",
+            *updated_timestamp
+        );
+    }
 
     if (changes.empty()) {
         clear_recently_created();
@@ -639,6 +677,16 @@ bool Model<Derived>::remove() {
 
         if (result.affected_rows == 0) {
             return false;
+        }
+
+        if (has_attribute(deleted_at_column())) {
+            force_fill({
+                {
+                    String{deleted_at_column()},
+                    model::timestamp_now()
+                }
+            });
+            sync_attribute(deleted_at_column());
         }
 
         mark_soft_deleted(true);
@@ -730,8 +778,32 @@ bool Model<Derived>::restore() {
         return false;
     }
 
+    if (has_attribute(deleted_at_column())) {
+        force_fill({
+            {String{deleted_at_column()}, nullptr}
+        });
+        sync_attribute(deleted_at_column());
+    }
+
     mark_soft_deleted(false);
     return true;
+}
+
+template <typename Derived>
+bool Model<Derived>::touch() {
+    if constexpr (!uses_timestamps()) {
+        return false;
+    }
+
+    if (!exists() || !has_attribute("updated_at")) {
+        return false;
+    }
+
+    force_fill({
+        {"updated_at", model::timestamp_now()}
+    });
+
+    return save();
 }
 
 template <typename Derived>

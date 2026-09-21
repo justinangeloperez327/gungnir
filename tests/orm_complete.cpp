@@ -43,6 +43,20 @@ bool contains(const gungnir::String& value, std::string_view text) {
 int main() {
     using namespace gungnir;
 
+    const auto direct_order = User::order_by("name");
+    assert(direct_order.plan().orders.size() == 1);
+
+    const auto direct_between = User::where_between(
+        "age",
+        Int64{18},
+        Int64{65}
+    );
+    assert(direct_between.plan().predicates.size() == 1);
+
+    const auto direct_select = User::select({"id", "name"}).distinct();
+    assert(direct_select.plan().columns.size() == 2);
+    assert(direct_select.plan().distinct);
+
     auto compiled = User::query()
         .select({"users.id", "users.name"})
         .distinct()

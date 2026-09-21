@@ -137,7 +137,7 @@ The frontend generates the native C++ model plumbing, including:
 - incrementing integer `id` primary key when no primary key is declared
 - `Field<T>` wrappers and nullable `std::optional<T>` fields
 - fillable metadata for application fields
-- `created_at` and `updated_at` model attributes by default
+- `created_at` and `updated_at` model attributes by default, maintained automatically on save
 - relationship state and generated model metadata
 
 Supported scalar field keywords are `string`, `int`/`integer`, `int64`,

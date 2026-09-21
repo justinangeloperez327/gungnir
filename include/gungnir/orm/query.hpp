@@ -611,6 +611,18 @@ orm::Query<Derived> Model<Derived>::query() {
 }
 
 template <typename Derived>
+orm::Query<Derived> Model<Derived>::select(
+    std::initializer_list<String> columns
+) {
+    return query().select(columns);
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::distinct(bool value) {
+    return query().distinct(value);
+}
+
+template <typename Derived>
 orm::Query<Derived> Model<Derived>::where(
     String column,
     model::AttributeValue value
@@ -618,6 +630,56 @@ orm::Query<Derived> Model<Derived>::where(
     return query().where(
         std::move(column),
         std::move(value)
+    );
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::where(
+    String column,
+    orm::Comparison comparison,
+    model::AttributeValue value
+) {
+    return query().where(
+        std::move(column),
+        comparison,
+        std::move(value)
+    );
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::or_where(
+    String column,
+    model::AttributeValue value
+) {
+    return query().or_where(
+        std::move(column),
+        std::move(value)
+    );
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::or_where(
+    String column,
+    orm::Comparison comparison,
+    model::AttributeValue value
+) {
+    return query().or_where(
+        std::move(column),
+        comparison,
+        std::move(value)
+    );
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_column(
+    String first,
+    orm::Comparison comparison,
+    String second
+) {
+    return query().where_column(
+        std::move(first),
+        comparison,
+        std::move(second)
     );
 }
 
@@ -638,6 +700,32 @@ orm::Query<Derived> Model<Derived>::where_not_in(
 }
 
 template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_between(
+    String column,
+    model::AttributeValue lower,
+    model::AttributeValue upper
+) {
+    return query().where_between(
+        std::move(column),
+        std::move(lower),
+        std::move(upper)
+    );
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::where_not_between(
+    String column,
+    model::AttributeValue lower,
+    model::AttributeValue upper
+) {
+    return query().where_not_between(
+        std::move(column),
+        std::move(lower),
+        std::move(upper)
+    );
+}
+
+template <typename Derived>
 orm::Query<Derived> Model<Derived>::where_null(String column) {
     return query().where_null(std::move(column));
 }
@@ -645,6 +733,16 @@ orm::Query<Derived> Model<Derived>::where_null(String column) {
 template <typename Derived>
 orm::Query<Derived> Model<Derived>::where_not_null(String column) {
     return query().where_not_null(std::move(column));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::order_by(String column) {
+    return query().order_by(std::move(column));
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::order_by_desc(String column) {
+    return query().order_by_desc(std::move(column));
 }
 
 template <typename Derived>
@@ -667,6 +765,26 @@ orm::Query<Derived> Model<Derived>::with(
     std::initializer_list<String> relations
 ) {
     return query().with(relations);
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::limit(std::size_t value) {
+    return query().limit(value);
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::take(std::size_t value) {
+    return query().take(value);
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::offset(std::size_t value) {
+    return query().offset(value);
+}
+
+template <typename Derived>
+orm::Query<Derived> Model<Derived>::skip(std::size_t value) {
+    return query().skip(value);
 }
 
 template <typename Derived>
