@@ -446,6 +446,27 @@ int main() {
         ) != std::string::npos
     );
 
+    const auto bootstrap = transpiler.transpile(
+        "int main() {\n"
+        "    app = Application::create();\n"
+        "    app.run();\n"
+        "}\n",
+        "main.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(bootstrap.success());
+    assert(
+        bootstrap.code.find(
+            "auto app = gungnir::Application::create();"
+        ) != std::string::npos
+    );
+    assert(
+        bootstrap.code.find(
+            "app.run();"
+        ) != std::string::npos
+    );
+
     const auto invalid_await = transpiler.transpile(
         "void load() {\n"
         "    const value = await fetch();\n"

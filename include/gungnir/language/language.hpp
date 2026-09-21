@@ -2,6 +2,7 @@
 
 #include <gungnir/language/ast.hpp>
 #include <gungnir/language/async_lowering.hpp>
+#include <gungnir/language/bootstrap_lowering.hpp>
 #include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/diagnostic.hpp>
 #include <gungnir/language/lexer.hpp>

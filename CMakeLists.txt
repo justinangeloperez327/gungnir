@@ -8,6 +8,8 @@ option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 find_package(Threads REQUIRED)
 
 add_library(gungnir
+    src/config/environment.cpp
+    src/config/repository.cpp
     src/core/application.cpp
     src/core/container.cpp
     src/controller/controller.cpp
@@ -50,6 +52,7 @@ add_library(gungnir::orm ALIAS gungnir-orm)
 
 add_library(gungnir-language
     src/language/async_lowering.cpp
+    src/language/bootstrap_lowering.cpp
     src/language/controller_lowering.cpp
     src/language/lexer.cpp
     src/language/middleware_lowering.cpp
@@ -212,6 +215,11 @@ if(GUNGNIR_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/views"
         )
     endif()
+
+    add_executable(gungnir_bootstrap_test tests/bootstrap.cpp)
+    target_link_libraries(gungnir_bootstrap_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_bootstrap_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.bootstrap COMMAND gungnir_bootstrap_test)
 
     add_executable(gungnir_plumbing_test tests/plumbing.cpp)
     target_link_libraries(gungnir_plumbing_test PRIVATE gungnir::gungnir)

@@ -3,3 +3,7 @@
 /.cache/
 .gungnir/
 compile_commands.json
+
+.env
+.env.*
+!.env.example

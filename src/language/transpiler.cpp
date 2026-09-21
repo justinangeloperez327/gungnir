@@ -10,6 +10,7 @@
 
 #include <gungnir/language/ast.hpp>
 #include <gungnir/language/async_lowering.hpp>
+#include <gungnir/language/bootstrap_lowering.hpp>
 #include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/middleware_lowering.hpp>
@@ -72,6 +73,10 @@ TranspileResult Transpiler::transpile(
     Lexer lexer{source};
     Parser parser{lexer.tokenize(), source_name};
     auto parsed = parser.parse();
+
+    BootstrapLowerer bootstrap_lowerer;
+    auto bootstrap_lowering =
+        bootstrap_lowerer.lower(source);
 
     ModelLowerer model_lowerer;
     auto model_lowering = model_lowerer.lower(source, source_name);
@@ -141,6 +146,7 @@ TranspileResult Transpiler::transpile(
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
+        bootstrap_lowering.edits.size() +
         model_lowering.edits.size() +
         controller_lowering.edits.size() +
         async_lowering.edits.size() +
@@ -171,6 +177,12 @@ TranspileResult Transpiler::transpile(
             node
         );
     }
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(bootstrap_lowering.edits.begin()),
+        std::make_move_iterator(bootstrap_lowering.edits.end())
+    );
 
     edits.insert(
         edits.end(),
