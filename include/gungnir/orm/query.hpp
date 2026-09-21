@@ -38,20 +38,20 @@ public:
         return *this;
     }
 
-    Query& where_(
+    Query& where(
         String column,
         model::AttributeValue value
     ) {
-        return where_(
+        return where(
             std::move(column),
-            Operator::equal,
+            Comparison::equal,
             std::move(value)
         );
     }
 
-    Query& where_(
+    Query& where(
         String column,
-        Operator comparison,
+        Comparison comparison,
         model::AttributeValue value
     ) {
         add_comparison(
@@ -69,14 +69,14 @@ public:
     ) {
         return or_where(
             std::move(column),
-            Operator::equal,
+            Comparison::equal,
             std::move(value)
         );
     }
 
     Query& or_where(
         String column,
-        Operator comparison,
+        Comparison comparison,
         model::AttributeValue value
     ) {
         add_comparison(
@@ -92,13 +92,11 @@ public:
         String column,
         std::vector<model::AttributeValue> values
     ) {
-        plan_.predicates.push_back(Predicate{
-            .kind = PredicateKind::in,
-            .connector = BooleanConnector::and_,
-            .column = std::move(column),
-            .comparison = Operator::equal,
-            .values = std::move(values)
-        });
+        add_list(
+            PredicateKind::in_list,
+            std::move(column),
+            std::move(values)
+        );
         return *this;
     }
 
@@ -106,37 +104,33 @@ public:
         String column,
         std::vector<model::AttributeValue> values
     ) {
-        plan_.predicates.push_back(Predicate{
-            .kind = PredicateKind::not_in,
-            .connector = BooleanConnector::and_,
-            .column = std::move(column),
-            .comparison = Operator::equal,
-            .values = std::move(values)
-        });
+        add_list(
+            PredicateKind::not_in_list,
+            std::move(column),
+            std::move(values)
+        );
         return *this;
     }
 
     Query& where_null(String column) {
-        plan_.predicates.push_back(Predicate{
-            .kind = PredicateKind::null_,
-            .connector = BooleanConnector::and_,
-            .column = std::move(column)
-        });
+        add_simple(
+            PredicateKind::is_null,
+            std::move(column)
+        );
         return *this;
     }
 
     Query& where_not_null(String column) {
-        plan_.predicates.push_back(Predicate{
-            .kind = PredicateKind::not_null,
-            .connector = BooleanConnector::and_,
-            .column = std::move(column)
-        });
+        add_simple(
+            PredicateKind::is_not_null,
+            std::move(column)
+        );
         return *this;
     }
 
     Query& order_by(
         String column,
-        Direction direction = Direction::asc
+        SortDirection direction = SortDirection::asc
     ) {
         plan_.orders.push_back(Order{
             .column = std::move(column),
@@ -190,8 +184,8 @@ public:
         return *this;
     }
 
-    Query& find(model::AttributeValue key) {
-        return where_(
+    Query& where_key(model::AttributeValue key) {
+        return where(
             String{ModelType::primary_key_name()},
             std::move(key)
         ).limit(1);
@@ -211,7 +205,7 @@ private:
     void add_comparison(
         BooleanConnector connector,
         String column,
-        Operator comparison,
+        Comparison comparison,
         model::AttributeValue value
     ) {
         plan_.predicates.push_back(Predicate{
@@ -220,6 +214,33 @@ private:
             .column = std::move(column),
             .comparison = comparison,
             .values = {std::move(value)}
+        });
+    }
+
+    void add_list(
+        PredicateKind kind,
+        String column,
+        std::vector<model::AttributeValue> values
+    ) {
+        plan_.predicates.push_back(Predicate{
+            .kind = kind,
+            .connector = BooleanConnector::and_,
+            .column = std::move(column),
+            .comparison = Comparison::equal,
+            .values = std::move(values)
+        });
+    }
+
+    void add_simple(
+        PredicateKind kind,
+        String column
+    ) {
+        plan_.predicates.push_back(Predicate{
+            .kind = kind,
+            .connector = BooleanConnector::and_,
+            .column = std::move(column),
+            .comparison = Comparison::equal,
+            .values = {}
         });
     }
 
@@ -236,11 +257,14 @@ orm::Query<Derived> Model<Derived>::query() {
 }
 
 template <typename Derived>
-orm::Query<Derived> Model<Derived>::where_(
+orm::Query<Derived> Model<Derived>::where(
     String column,
     model::AttributeValue value
 ) {
-    return query().where_(std::move(column), std::move(value));
+    return query().where(
+        std::move(column),
+        std::move(value)
+    );
 }
 
 template <typename Derived>

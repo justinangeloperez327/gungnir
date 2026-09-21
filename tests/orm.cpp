@@ -68,7 +68,7 @@ bool contains(const gungnir::String& value, std::string_view text) {
 int main() {
     auto query = User::query()
         .select({"id", "name", "email"})
-        .where_("active", true)
+        .where("active", true)
         .where_not_null("email")
         .order_by("name")
         .limit(25)
@@ -93,7 +93,7 @@ int main() {
     assert(postgres.bindings.size() == 1);
     assert(std::get<gungnir::Boolean>(postgres.bindings[0]));
 
-    const auto mysql = User::where_(
+    const auto mysql = User::where(
         "email",
         gungnir::String{"test@example.com"}
     ).compile(gungnir::database::Backend::mysql);
@@ -119,8 +119,8 @@ int main() {
     assert(mssql.bindings.size() == 3);
 
     const auto mongo = User::query()
-        .where_("active", true)
-        .order_by("name", gungnir::orm::Direction::desc)
+        .where("active", true)
+        .order_by("name", gungnir::orm::SortDirection::desc)
         .limit(5)
         .compile(gungnir::database::Backend::mongodb);
 
@@ -131,7 +131,7 @@ int main() {
     assert(mongo.bindings.size() == 1);
 
     const auto by_id = User::query()
-        .find(gungnir::Int64{7});
+        .where_key(gungnir::Int64{7});
 
     assert(by_id.plan().limit == 1);
     assert(by_id.plan().predicates.size() == 1);

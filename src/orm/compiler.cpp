@@ -19,15 +19,15 @@ String quote_identifier(database::Backend backend, const String& value) {
     return "\"" + value + "\"";
 }
 
-String sql_operator(Operator value) {
+String sql_operator(Comparison value) {
     switch (value) {
-        case Operator::equal: return "=";
-        case Operator::not_equal: return "<>";
-        case Operator::less: return "<";
-        case Operator::less_or_equal: return "<=";
-        case Operator::greater: return ">";
-        case Operator::greater_or_equal: return ">=";
-        case Operator::like: return "LIKE";
+        case Comparison::equal: return "=";
+        case Comparison::not_equal: return "<>";
+        case Comparison::less_than: return "<";
+        case Comparison::less_or_equal: return "<=";
+        case Comparison::greater_than: return ">";
+        case Comparison::greater_or_equal: return ">=";
+        case Comparison::like: return "LIKE";
     }
 
     return "=";
@@ -48,15 +48,15 @@ String placeholder(
     return "?";
 }
 
-String mongo_operator(Operator value) {
+String mongo_operator(Comparison value) {
     switch (value) {
-        case Operator::equal: return "$eq";
-        case Operator::not_equal: return "$ne";
-        case Operator::less: return "$lt";
-        case Operator::less_or_equal: return "$lte";
-        case Operator::greater: return "$gt";
-        case Operator::greater_or_equal: return "$gte";
-        case Operator::like: return "$regex";
+        case Comparison::equal: return "$eq";
+        case Comparison::not_equal: return "$ne";
+        case Comparison::less_than: return "$lt";
+        case Comparison::less_or_equal: return "$lte";
+        case Comparison::greater_than: return "$gt";
+        case Comparison::greater_or_equal: return "$gte";
+        case Comparison::like: return "$regex";
     }
 
     return "$eq";
@@ -76,9 +76,9 @@ void append_sql_predicate(
             result.bindings.push_back(predicate.values.front());
             break;
 
-        case PredicateKind::in:
-        case PredicateKind::not_in:
-            result.text += predicate.kind == PredicateKind::in
+        case PredicateKind::in_list:
+        case PredicateKind::not_in_list:
+            result.text += predicate.kind == PredicateKind::in_list
                 ? " IN ("
                 : " NOT IN (";
 
@@ -101,11 +101,11 @@ void append_sql_predicate(
             result.text += ")";
             break;
 
-        case PredicateKind::null_:
+        case PredicateKind::is_null:
             result.text += " IS NULL";
             break;
 
-        case PredicateKind::not_null:
+        case PredicateKind::is_not_null:
             result.text += " IS NOT NULL";
             break;
     }
@@ -165,7 +165,7 @@ CompiledQuery compile_sql(
                 plan.orders[index].column
             );
 
-            result.text += plan.orders[index].direction == Direction::asc
+            result.text += plan.orders[index].direction == SortDirection::asc
                 ? " ASC"
                 : " DESC";
         }
@@ -229,10 +229,10 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
                 result.bindings.push_back(predicate.values.front());
                 break;
 
-            case PredicateKind::in:
-            case PredicateKind::not_in: {
+            case PredicateKind::in_list:
+            case PredicateKind::not_in_list: {
                 result.text += "{\"";
-                result.text += predicate.kind == PredicateKind::in
+                result.text += predicate.kind == PredicateKind::in_list
                     ? "$in"
                     : "$nin";
                 result.text += "\":[";
@@ -258,11 +258,11 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
                 break;
             }
 
-            case PredicateKind::null_:
+            case PredicateKind::is_null:
                 result.text += "{\"$eq\":null}";
                 break;
 
-            case PredicateKind::not_null:
+            case PredicateKind::is_not_null:
                 result.text += "{\"$ne\":null}";
                 break;
         }
@@ -294,7 +294,7 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
 
             result.text += "\"" + plan.orders[index].column + "\":" +
                            (
-                               plan.orders[index].direction == Direction::asc
+                               plan.orders[index].direction == SortDirection::asc
                                ? "1"
                                : "-1"
                            );
@@ -321,9 +321,6 @@ CompiledQuery compile(
     const QueryPlan& plan,
     database::Backend backend
 ) {
-    if (plan.type != QueryType::select) {
-        throw std::logic_error("Unsupported Gungnir ORM query type");
-    }
 
     if (backend == database::Backend::mongodb) {
         return compile_mongodb(plan);

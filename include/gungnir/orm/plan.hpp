@@ -9,16 +9,12 @@
 
 namespace gungnir::orm {
 
-enum class QueryType {
-    select
-};
-
-enum class Operator {
+enum class Comparison {
     equal,
     not_equal,
-    less,
+    less_than,
     less_or_equal,
-    greater,
+    greater_than,
     greater_or_equal,
     like
 };
@@ -30,13 +26,13 @@ enum class BooleanConnector {
 
 enum class PredicateKind {
     comparison,
-    in,
-    not_in,
-    null_,
-    not_null
+    in_list,
+    not_in_list,
+    is_null,
+    is_not_null
 };
 
-enum class Direction {
+enum class SortDirection {
     asc,
     desc
 };
@@ -45,17 +41,16 @@ struct Predicate {
     PredicateKind kind{PredicateKind::comparison};
     BooleanConnector connector{BooleanConnector::and_};
     String column;
-    Operator comparison{Operator::equal};
+    Comparison comparison{Comparison::equal};
     std::vector<model::AttributeValue> values;
 };
 
 struct Order {
     String column;
-    Direction direction{Direction::asc};
+    SortDirection direction{SortDirection::asc};
 };
 
 struct QueryPlan {
-    QueryType type{QueryType::select};
     String table;
     String connection{"default"};
     std::vector<String> columns;

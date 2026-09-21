@@ -37,7 +37,7 @@ public:
 
     [[nodiscard]] static orm::Query<Derived> query();
 
-    [[nodiscard]] static orm::Query<Derived> where_(
+    [[nodiscard]] static orm::Query<Derived> where(
         String column,
         model::AttributeValue value
     );
