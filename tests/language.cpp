@@ -415,6 +415,37 @@ int main() {
         ) != std::string::npos
     );
 
+    const auto validation = transpiler.transpile(
+        "class UserController : Controller {\n"
+        "    Response store(Request request) {\n"
+        "        const data = request.validate({\n"
+        "            \"name\": \"required|string|max:80\",\n"
+        "            \"email\": \"required|email\"\n"
+        "        });\n"
+        "        return json(data);\n"
+        "    }\n"
+        "}\n",
+        "validation.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(validation.success());
+    assert(
+        validation.code.find(
+            "gungnir::validation::Rules{"
+        ) != std::string::npos
+    );
+    assert(
+        validation.code.find(
+            "{\"name\", \"required|string|max:80\"}"
+        ) != std::string::npos
+    );
+    assert(
+        validation.code.find(
+            "{\"email\", \"required|email\"}"
+        ) != std::string::npos
+    );
+
     const auto invalid_await = transpiler.transpile(
         "void load() {\n"
         "    const value = await fetch();\n"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <utility>
 
 #include <gungnir/core/types.hpp>
 
@@ -18,6 +19,22 @@ public:
         : std::logic_error(
             "Attribute '" + attribute + "' is not fillable"
         ) {}
+};
+
+class ModelNotFoundError : public std::out_of_range {
+public:
+    explicit ModelNotFoundError(String model)
+        : std::out_of_range(
+            "Gungnir ORM model was not found"
+        ),
+          model_(std::move(model)) {}
+
+    [[nodiscard]] const String& model() const noexcept {
+        return model_;
+    }
+
+private:
+    String model_;
 };
 
 } // namespace gungnir

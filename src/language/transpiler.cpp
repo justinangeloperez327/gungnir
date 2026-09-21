@@ -15,6 +15,7 @@
 #include <gungnir/language/middleware_lowering.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
+#include <gungnir/language/validation_lowering.hpp>
 #include <gungnir/language/view_lowering.hpp>
 
 namespace gungnir::language {
@@ -94,6 +95,13 @@ TranspileResult Transpiler::transpile(
             source_name
         );
 
+    ValidationLowerer validation_lowerer;
+    auto validation_lowering =
+        validation_lowerer.lower(
+            source,
+            source_name
+        );
+
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),
         model_lowering.diagnostics.begin(),
@@ -124,6 +132,12 @@ TranspileResult Transpiler::transpile(
         middleware_lowering.diagnostics.end()
     );
 
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
+        validation_lowering.diagnostics.begin(),
+        validation_lowering.diagnostics.end()
+    );
+
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
@@ -131,7 +145,8 @@ TranspileResult Transpiler::transpile(
         controller_lowering.edits.size() +
         async_lowering.edits.size() +
         view_lowering.edits.size() +
-        middleware_lowering.edits.size()
+        middleware_lowering.edits.size() +
+        validation_lowering.edits.size()
     );
 
     for (const auto& node : parsed.program.nodes) {
@@ -185,6 +200,12 @@ TranspileResult Transpiler::transpile(
         edits.end(),
         std::make_move_iterator(middleware_lowering.edits.begin()),
         std::make_move_iterator(middleware_lowering.edits.end())
+    );
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(validation_lowering.edits.begin()),
+        std::make_move_iterator(validation_lowering.edits.end())
     );
 
     std::sort(
