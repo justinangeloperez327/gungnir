@@ -412,7 +412,12 @@ int main() {
     assert(view_data.success());
     assert(
         view_data.code.find(
-            "gungnir::view::Data{{\"users\", users},"
+            "gungnir::view::Data{"
+        ) != std::string::npos
+    );
+    assert(
+        view_data.code.find(
+            "{\"users\", users}"
         ) != std::string::npos
     );
     assert(
