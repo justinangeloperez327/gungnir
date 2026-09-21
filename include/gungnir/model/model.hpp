@@ -23,6 +23,9 @@ namespace gungnir {
 namespace orm {
 template <typename ModelType>
 class Query;
+
+template <typename ModelType>
+class Collection;
 }
 
 template <typename Derived>
@@ -40,6 +43,18 @@ public:
     );
 
     [[nodiscard]] static orm::Query<Derived> with(String relation);
+
+    [[nodiscard]] static orm::Collection<Derived> all();
+
+    [[nodiscard]] static std::optional<Derived> find(
+        model::AttributeValue key
+    );
+
+    [[nodiscard]] static Derived create(const AttributeMap& values);
+
+    bool save();
+    bool update(const AttributeMap& values);
+    bool remove();
 
     [[nodiscard]] static constexpr std::string_view table_name() noexcept {
         if constexpr (requires { Derived::table.name(); }) {
@@ -185,6 +200,29 @@ public:
         });
 
         return result;
+    }
+
+    [[nodiscard]] std::optional<AttributeValue> attribute_value(
+        std::string_view attribute
+    ) const {
+        std::optional<AttributeValue> result;
+
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            if (descriptor.name != attribute) {
+                return;
+            }
+
+            const auto& member = derived().*(descriptor.member);
+            if (member.initialized()) {
+                result = model::to_value(member.get());
+            }
+        });
+
+        return result;
+    }
+
+    [[nodiscard]] std::optional<AttributeValue> primary_key_value() const {
+        return attribute_value(primary_key_name());
     }
 
     [[nodiscard]] AttributeMap dirty_attributes() const {

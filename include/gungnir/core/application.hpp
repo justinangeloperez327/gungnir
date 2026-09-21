@@ -1,9 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 
 #include <gungnir/core/container.hpp>
+#include <gungnir/database/backend.hpp>
+#include <gungnir/database/driver.hpp>
+#include <gungnir/database/manager.hpp>
 #include <gungnir/routing/router.hpp>
 
 namespace gungnir {
@@ -13,8 +17,8 @@ public:
     Application();
     ~Application();
 
-    Application(Application&&) noexcept;
-    Application& operator=(Application&&) noexcept;
+    Application(Application&& other) noexcept;
+    Application& operator=(Application&& other) noexcept;
 
     Application(const Application&) = delete;
     Application& operator=(const Application&) = delete;
@@ -24,6 +28,16 @@ public:
 
     [[nodiscard]] routing::Router& router() noexcept;
     [[nodiscard]] const routing::Router& router() const noexcept;
+
+    [[nodiscard]] database::Manager& database() noexcept;
+    [[nodiscard]] const database::Manager& database() const noexcept;
+
+    Application& database(
+        String name,
+        database::Backend backend,
+        database::DriverFactory factory,
+        std::size_t pool_size = 1
+    );
 
     template <typename Service, typename Implementation = Service>
     Application& bind() {
