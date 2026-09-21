@@ -31,6 +31,7 @@ add_library(gungnir::gungnir ALIAS gungnir)
 add_library(gungnir-orm
     src/orm/compiler.cpp
     src/orm/mutation.cpp
+    src/orm/advanced_mutation.cpp
 )
 
 add_library(gungnir::orm ALIAS gungnir-orm)
@@ -125,4 +126,24 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_migration_runner_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_migration_runner_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.migration_runner COMMAND gungnir_migration_runner_test)
+
+    add_executable(gungnir_orm_complete_test tests/orm_complete.cpp)
+    target_link_libraries(gungnir_orm_complete_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_complete_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm_complete COMMAND gungnir_orm_complete_test)
+
+    add_executable(gungnir_orm_soft_deletes_test tests/orm_soft_deletes.cpp)
+    target_link_libraries(gungnir_orm_soft_deletes_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_soft_deletes_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm_soft_deletes COMMAND gungnir_orm_soft_deletes_test)
+
+    add_executable(gungnir_orm_upsert_test tests/orm_upsert.cpp)
+    target_link_libraries(gungnir_orm_upsert_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_upsert_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm_upsert COMMAND gungnir_orm_upsert_test)
+
+    add_executable(gungnir_orm_transaction_test tests/orm_transaction.cpp)
+    target_link_libraries(gungnir_orm_transaction_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_transaction_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm_transaction COMMAND gungnir_orm_transaction_test)
 endif()

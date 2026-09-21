@@ -15,6 +15,7 @@
 #include <gungnir/model/metadata.hpp>
 #include <gungnir/model/primary_key.hpp>
 #include <gungnir/model/relation.hpp>
+#include <gungnir/model/soft_deletes.hpp>
 #include <gungnir/model/table.hpp>
 #include <gungnir/model/value.hpp>
 
@@ -44,6 +45,9 @@ public:
 
     [[nodiscard]] static orm::Query<Derived> with(String relation);
 
+    [[nodiscard]] static orm::Query<Derived> with_deleted();
+    [[nodiscard]] static orm::Query<Derived> only_deleted();
+
     [[nodiscard]] static orm::Collection<Derived> all();
 
     [[nodiscard]] static std::optional<Derived> find(
@@ -52,13 +56,65 @@ public:
 
     [[nodiscard]] static Derived create(const AttributeMap& values);
 
+    [[nodiscard]] static Derived find_or_fail(
+        model::AttributeValue key
+    );
+
+    [[nodiscard]] static orm::Collection<Derived> find_many(
+        std::vector<model::AttributeValue> keys
+    );
+
+    [[nodiscard]] static orm::Collection<Derived> create_many(
+        const std::vector<AttributeMap>& rows
+    );
+
+    [[nodiscard]] static Derived first_or_create(
+        const AttributeMap& search,
+        const AttributeMap& values = {}
+    );
+
+    [[nodiscard]] static Derived update_or_create(
+        const AttributeMap& search,
+        const AttributeMap& values
+    );
+
     bool save();
     bool update(const AttributeMap& values);
     bool remove();
+    bool force_remove();
+    bool restore();
+
+    [[nodiscard]] bool trashed() const noexcept {
+        if constexpr (requires { Derived::soft_deletes.column(); }) {
+            if (soft_deleted_) {
+                return true;
+            }
+
+            const auto value = attribute_value(deleted_at_column());
+            return value &&
+                   !std::holds_alternative<std::nullptr_t>(*value) &&
+                   !std::holds_alternative<std::monostate>(*value);
+        }
+
+        return false;
+    }
 
     [[nodiscard]] static constexpr std::string_view table_name() noexcept {
         if constexpr (requires { Derived::table.name(); }) {
             return Derived::table.name();
+        }
+
+        return {};
+    }
+
+    [[nodiscard]] static constexpr bool uses_soft_deletes() noexcept {
+        return requires { Derived::soft_deletes.column(); };
+    }
+
+    [[nodiscard]] static constexpr std::string_view
+    deleted_at_column() noexcept {
+        if constexpr (requires { Derived::soft_deletes.column(); }) {
+            return Derived::soft_deletes.column();
         }
 
         return {};
@@ -280,6 +336,18 @@ public:
         }
 
         instance.mark_persisted(false);
+
+        if constexpr (requires { Derived::soft_deletes.column(); }) {
+            const auto deleted = instance.attribute_value(
+                Derived::soft_deletes.column()
+            );
+
+            instance.soft_deleted_ =
+                deleted &&
+                !std::holds_alternative<std::nullptr_t>(*deleted) &&
+                !std::holds_alternative<std::monostate>(*deleted);
+        }
+
         return instance;
     }
 
@@ -373,8 +441,13 @@ private:
         return found;
     }
 
+    void mark_soft_deleted(bool value) noexcept {
+        soft_deleted_ = value;
+    }
+
     bool exists_{false};
     bool recently_created_{false};
+    bool soft_deleted_{false};
 };
 
 } // namespace gungnir

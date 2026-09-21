@@ -7,10 +7,12 @@
 #include <utility>
 #include <vector>
 
+#include <gungnir/database/connection.hpp>
 #include <gungnir/database/runtime.hpp>
 #include <gungnir/orm/collection.hpp>
 #include <gungnir/orm/hydrator.hpp>
 #include <gungnir/orm/mutation.hpp>
+#include <gungnir/orm/advanced_mutation.hpp>
 #include <gungnir/orm/query.hpp>
 
 namespace gungnir::orm {
@@ -99,7 +101,8 @@ std::vector<model::AttributeValue> collect_values(
 template <typename Parent, typename Descriptor>
 void load_relation(
     Collection<Parent>& parents,
-    const Descriptor& descriptor
+    const Descriptor& descriptor,
+    const String& nested = {}
 ) {
     if (parents.empty()) {
         return;
@@ -119,9 +122,12 @@ void load_relation(
             sample.local_key()
         );
 
-        auto related = Query<Related>{}
-            .where_in(sample.foreign_key(), parent_keys)
-            .get();
+        auto related_query = Query<Related>{}
+            .where_in(sample.foreign_key(), parent_keys);
+        if (!nested.empty()) {
+            related_query.with(nested);
+        }
+        auto related = related_query.get();
 
         for (auto& parent : parents) {
             std::vector<Related> matches;
@@ -146,9 +152,12 @@ void load_relation(
             sample.local_key()
         );
 
-        auto related = Query<Related>{}
-            .where_in(sample.foreign_key(), parent_keys)
-            .get();
+        auto related_query = Query<Related>{}
+            .where_in(sample.foreign_key(), parent_keys);
+        if (!nested.empty()) {
+            related_query.with(nested);
+        }
+        auto related = related_query.get();
 
         for (auto& parent : parents) {
             const auto parent_key = parent.attribute_value(sample.local_key());
@@ -177,9 +186,12 @@ void load_relation(
             sample.foreign_key()
         );
 
-        auto related = Query<Related>{}
-            .where_in(sample.owner_key(), foreign_keys)
-            .get();
+        auto related_query = Query<Related>{}
+            .where_in(sample.owner_key(), foreign_keys);
+        if (!nested.empty()) {
+            related_query.with(nested);
+        }
+        auto related = related_query.get();
 
         for (auto& parent : parents) {
             const auto foreign =
@@ -246,9 +258,12 @@ void load_relation(
             }
         }
 
-        auto related = Query<Related>{}
-            .where_in(sample.related_key(), related_keys)
-            .get();
+        auto related_query = Query<Related>{}
+            .where_in(sample.related_key(), related_keys);
+        if (!nested.empty()) {
+            related_query.with(nested);
+        }
+        auto related = related_query.get();
 
         for (auto& parent : parents) {
             std::vector<Related> matches;
@@ -303,9 +318,12 @@ void load_relation(
             sample.second_local_key()
         );
 
-        auto related = Query<Related>{}
-            .where_in(sample.second_key(), through_keys)
-            .get();
+        auto related_query = Query<Related>{}
+            .where_in(sample.second_key(), through_keys);
+        if (!nested.empty()) {
+            related_query.with(nested);
+        }
+        auto related = related_query.get();
 
         for (auto& parent : parents) {
             std::vector<Related> matches;
@@ -369,12 +387,19 @@ void eager_load(
 
     for (const auto& requested : relations) {
         bool found = false;
+        const auto dot = requested.find('.');
+        const auto root = dot == String::npos
+            ? requested
+            : requested.substr(0, dot);
+        const auto nested = dot == String::npos
+            ? String{}
+            : requested.substr(dot + 1);
 
         model::for_each_relation<ModelType>(
             [&](const auto& descriptor) {
-                if (descriptor.name == requested) {
+                if (descriptor.name == root) {
                     found = true;
-                    load_relation(models, descriptor);
+                    load_relation(models, descriptor, nested);
                 }
             }
         );
@@ -558,6 +583,54 @@ bool Model<Derived>::remove() {
         return false;
     }
 
+    if constexpr (uses_soft_deletes()) {
+        const auto key_value = primary_key_value();
+        if (!key_value) {
+            throw ModelMetadataError{
+                "Persisted model is missing its primary key"
+            };
+        }
+
+        orm::QueryPlan plan;
+        plan.table = String{table_name()};
+        plan.connection = String{connection_name()};
+        plan.predicates.push_back(orm::Predicate{
+            .kind = orm::PredicateKind::comparison,
+            .column = String{primary_key_name()},
+            .values = {*key_value}
+        });
+
+        auto connection = database::runtime::connection(
+            connection_name()
+        );
+        const auto compiled = orm::compile_soft_delete_where(
+            plan,
+            String{deleted_at_column()},
+            false,
+            connection->backend()
+        );
+        const auto result = connection->execute(
+            compiled.text,
+            compiled.bindings
+        );
+
+        if (result.affected_rows == 0) {
+            return false;
+        }
+
+        mark_soft_deleted(true);
+        return true;
+    }
+
+    return force_remove();
+}
+
+template <typename Derived>
+bool Model<Derived>::force_remove() {
+    if (!exists()) {
+        return false;
+    }
+
     const auto key_value = primary_key_value();
     if (!key_value) {
         throw ModelMetadataError{
@@ -586,6 +659,55 @@ bool Model<Derived>::remove() {
     }
 
     mark_missing();
+    mark_soft_deleted(false);
+    return true;
+}
+
+template <typename Derived>
+bool Model<Derived>::restore() {
+    if constexpr (!uses_soft_deletes()) {
+        return false;
+    }
+
+    if (!exists() || !trashed()) {
+        return false;
+    }
+
+    const auto key_value = primary_key_value();
+    if (!key_value) {
+        throw ModelMetadataError{
+            "Persisted model is missing its primary key"
+        };
+    }
+
+    orm::QueryPlan plan;
+    plan.table = String{table_name()};
+    plan.connection = String{connection_name()};
+    plan.predicates.push_back(orm::Predicate{
+        .kind = orm::PredicateKind::comparison,
+        .column = String{primary_key_name()},
+        .values = {*key_value}
+    });
+
+    auto connection = database::runtime::connection(
+        connection_name()
+    );
+    const auto compiled = orm::compile_soft_delete_where(
+        plan,
+        String{deleted_at_column()},
+        true,
+        connection->backend()
+    );
+    const auto result = connection->execute(
+        compiled.text,
+        compiled.bindings
+    );
+
+    if (result.affected_rows == 0) {
+        return false;
+    }
+
+    mark_soft_deleted(false);
     return true;
 }
 
