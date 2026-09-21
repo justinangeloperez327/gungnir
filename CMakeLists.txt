@@ -9,12 +9,19 @@ add_library(gungnir
     src/core/container.cpp
     src/controller/controller.cpp
     src/database/compiler.cpp
+    src/database/connection.cpp
+    src/database/driver.cpp
+    src/database/manager.cpp
+    src/database/pool.cpp
+    src/database/runtime.cpp
+    src/database/transaction.cpp
     src/http/request.cpp
     src/http/response.cpp
     src/migration/column.cpp
     src/migration/context.cpp
     src/migration/definition.cpp
     src/migration/migration.cpp
+    src/migration/runner.cpp
     src/migration/table.cpp
     src/routing/router.cpp
 )
@@ -23,6 +30,7 @@ add_library(gungnir::gungnir ALIAS gungnir)
 
 add_library(gungnir-orm
     src/orm/compiler.cpp
+    src/orm/mutation.cpp
 )
 
 add_library(gungnir::orm ALIAS gungnir-orm)
@@ -102,4 +110,19 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_orm_test PRIVATE gungnir::orm)
     target_compile_features(gungnir_orm_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.orm COMMAND gungnir_orm_test)
+
+    add_executable(gungnir_database_runtime_test tests/database_runtime.cpp)
+    target_link_libraries(gungnir_database_runtime_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_database_runtime_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.database_runtime COMMAND gungnir_database_runtime_test)
+
+    add_executable(gungnir_orm_runtime_test tests/orm_runtime.cpp)
+    target_link_libraries(gungnir_orm_runtime_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_orm_runtime_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.orm_runtime COMMAND gungnir_orm_runtime_test)
+
+    add_executable(gungnir_migration_runner_test tests/migration_runner.cpp)
+    target_link_libraries(gungnir_migration_runner_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_migration_runner_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.migration_runner COMMAND gungnir_migration_runner_test)
 endif()

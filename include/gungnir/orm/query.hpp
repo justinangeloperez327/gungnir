@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gungnir/model/model.hpp>
+#include <gungnir/orm/collection.hpp>
 #include <gungnir/orm/compiler.hpp>
 #include <gungnir/orm/plan.hpp>
 
@@ -200,6 +202,10 @@ public:
     ) const {
         return orm::compile(plan_, backend);
     }
+
+    [[nodiscard]] Collection<ModelType> get() const;
+    [[nodiscard]] std::optional<ModelType> first() const;
+    [[nodiscard]] ModelType first_or_fail() const;
 
 private:
     void add_comparison(
