@@ -5,6 +5,8 @@ project(gungnir VERSION 0.1.0 LANGUAGES CXX)
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 
+find_package(Threads REQUIRED)
+
 add_library(gungnir
     src/core/application.cpp
     src/core/container.cpp
@@ -16,8 +18,10 @@ add_library(gungnir
     src/database/pool.cpp
     src/database/runtime.cpp
     src/database/transaction.cpp
+    src/http/message.cpp
     src/http/request.cpp
     src/http/response.cpp
+    src/http/server.cpp
     src/migration/column.cpp
     src/migration/context.cpp
     src/migration/definition.cpp
@@ -79,6 +83,12 @@ set_target_properties(gungnir-orm PROPERTIES
 )
 
 target_compile_features(gungnir PUBLIC cxx_std_23)
+target_link_libraries(gungnir PRIVATE Threads::Threads)
+
+if(WIN32)
+    target_link_libraries(gungnir PRIVATE ws2_32)
+endif()
+
 target_include_directories(gungnir
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -207,6 +217,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_style_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_style_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.style COMMAND gungnir_style_test)
+
+    add_executable(gungnir_http_test tests/http.cpp)
+    target_link_libraries(gungnir_http_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_http_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.http COMMAND gungnir_http_test)
 
     add_executable(gungnir_view_test tests/view.cpp)
     target_link_libraries(gungnir_view_test PRIVATE gungnir::orm)

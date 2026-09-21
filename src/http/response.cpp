@@ -1,11 +1,30 @@
 #include <gungnir/http/response.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <utility>
 
 #include <gungnir/view/engine.hpp>
 #include <gungnir/view/runtime.hpp>
 
 namespace gungnir::http {
+
+namespace {
+
+std::string normalize_header_name(std::string_view name) {
+    std::string normalized{name};
+    std::transform(
+        normalized.begin(),
+        normalized.end(),
+        normalized.begin(),
+        [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        }
+    );
+    return normalized;
+}
+
+} // namespace
 
 Response::Response(int status, std::string body)
     : status_(status), body_(std::move(body)) {}
@@ -25,12 +44,15 @@ Response& Response::body(std::string value) {
 }
 
 Response& Response::header(std::string name, std::string value) {
-    headers_.insert_or_assign(std::move(name), std::move(value));
+    headers_.insert_or_assign(
+        normalize_header_name(name),
+        std::move(value)
+    );
     return *this;
 }
 
 std::string_view Response::header(std::string_view name) const noexcept {
-    const auto it = headers_.find(std::string{name});
+    const auto it = headers_.find(normalize_header_name(name));
     if (it == headers_.end()) {
         return {};
     }

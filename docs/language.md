@@ -405,3 +405,34 @@ keeps the same shape from ORM query to controller to view.
 View names are resolved underneath the configured view root and path traversal
 outside that root is rejected. Normal interpolation is escaped by default to
 reduce accidental HTML injection.
+
+
+## HTTP runtime
+
+Gungnir now owns the HTTP listener behind the application object. Normal
+application code does not construct or manage a server class.
+
+```gungnir
+Application app;
+
+Route::get("/", HomeController::index);
+
+app.listen(8000);
+```
+
+The default bind address is `127.0.0.1`. To accept external connections:
+
+```gungnir
+app.listen(8000, "0.0.0.0");
+```
+
+The current native backend provides HTTP/1.0 and HTTP/1.1 request parsing,
+case-insensitive headers, request bodies through `Content-Length`, fixed
+worker-thread dispatch, controller coroutine execution, response
+serialization, and clean application-level stop control.
+
+Transport mechanics remain framework plumbing. Application code only deals
+with routes, requests, responses, controllers, models, and views. The server
+currently closes each connection after one response; persistent connections
+and event-driven socket I/O belong to the next transport/runtime layer rather
+than being simulated as asynchronous behavior.

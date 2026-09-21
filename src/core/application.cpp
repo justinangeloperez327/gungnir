@@ -4,6 +4,7 @@
 #include <utility>
 
 #include <gungnir/database/runtime.hpp>
+#include <gungnir/http/server.hpp>
 #include <gungnir/routing/route.hpp>
 #include <gungnir/view/runtime.hpp>
 
@@ -11,10 +12,14 @@ namespace gungnir {
 
 class Application::Impl {
 public:
+    Impl()
+        : server(std::make_unique<http::detail::Server>(router)) {}
+
     Container container;
     routing::Router router;
     database::Manager database;
     view::Engine views;
+    std::unique_ptr<http::detail::Server> server;
     bool booted{false};
 };
 
@@ -28,6 +33,8 @@ Application::Application()
 }
 
 Application::~Application() {
+    stop();
+
     if (impl_) {
         routing::detail::unbind_route_runtime(
             impl_->router,
@@ -169,6 +176,32 @@ void Application::shutdown() noexcept {
 
 bool Application::is_booted() const noexcept {
     return impl_ && impl_->booted;
+}
+
+void Application::listen(std::uint16_t port, String host) {
+    if (!impl_) {
+        throw std::logic_error(
+            "Gungnir application is not initialized"
+        );
+    }
+
+    if (!impl_->booted) {
+        boot();
+    }
+
+    impl_->server->listen(std::move(host), port);
+}
+
+void Application::stop() noexcept {
+    if (!impl_ || !impl_->server) {
+        return;
+    }
+
+    impl_->server->stop();
+}
+
+bool Application::is_running() const noexcept {
+    return impl_ && impl_->server && impl_->server->running();
 }
 
 } // namespace gungnir
