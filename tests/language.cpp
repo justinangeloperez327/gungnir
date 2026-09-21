@@ -276,5 +276,53 @@ int main() {
         std::string::npos
     );
 
+    const auto controller = transpiler.transpile(
+        "class UserController : Controller {\n"
+        "    inject Clock clock;\n"
+        "\n"
+        "    Response index() {\n"
+        "        const name = clock.name();\n"
+        "        return text(name);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "Route::get(\"/users\", UserController::index);\n"
+        "Route::delete(\"/users/{id}\", UserController::index);\n",
+        "controller.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(controller.success());
+    assert(
+        controller.code.find(
+            "class UserController : public gungnir::Controller"
+        ) != std::string::npos
+    );
+    assert(
+        controller.code.find(
+            "explicit UserController(gungnir::Container& __gungnir_container)"
+        ) != std::string::npos
+    );
+    assert(
+        controller.code.find(
+            "std::shared_ptr<Clock> clock;"
+        ) != std::string::npos
+    );
+    assert(
+        controller.code.find(
+            "clock->name()"
+        ) != std::string::npos
+    );
+    assert(
+        controller.code.find(
+            "gungnir::Route::get<UserController>(\"/users\", &UserController::index)"
+        ) != std::string::npos
+    );
+    assert(
+        controller.code.find(
+            "gungnir::Route::remove<UserController>(\"/users/{id}\", &UserController::index)"
+        ) != std::string::npos
+    );
+
     return 0;
 }

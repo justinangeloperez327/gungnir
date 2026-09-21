@@ -212,3 +212,76 @@ user.delete();
 The generated C++ uses `find_or_fail`, `where_in`, `order_by`,
 `with_deleted`, and `remove`. The aliases exist only in the language
 frontend; the runtime remains ordinary C++.
+
+
+## Controllers and IoC
+
+Gungnir controllers are public application-facing classes by convention. The
+language frontend inserts the native C++ access and construction plumbing.
+
+```gungnir
+class UserController : Controller
+{
+    Response index()
+    {
+        const users = User::all();
+
+        return response("users");
+    }
+}
+```
+
+The generated class derives from `gungnir::Controller` and exposes its
+actions publicly without requiring C++ access-specifier boilerplate.
+
+### Injection
+
+A controller can declare a dependency with `inject`:
+
+```gungnir
+inject Logger logger;
+```
+
+The frontend generates a container-aware constructor and retains ownership of
+the resolved dependency. Application code can continue to use normal dot
+syntax; Gungnir lowers the access to the generated native representation.
+
+Controllers themselves do not need to be registered when they can be
+constructed automatically. The container now supports construction with
+`Container&`, allowing generated controller constructors to resolve their
+declared dependencies.
+
+### Controller routes
+
+Routes can point directly to controller actions:
+
+```gungnir
+Route::get("/users", UserController::index);
+Route::get("/users/{id}", UserController::show);
+Route::post("/users", UserController::store);
+Route::delete("/users/{id}", UserController::destroy);
+```
+
+The frontend generates typed native member-function pointers and controller
+resolution through the application container. `delete` is lowered to the
+native runtime's non-keyword route operation.
+
+Controller actions may currently accept no arguments or `Request&`, and may
+return `Response` or `Task<Response>`.
+
+### Route parameters
+
+Parameterized paths are matched by segment:
+
+```gungnir
+Route::get("/users/{id}", UserController::show);
+```
+
+The matched request exposes the value through:
+
+```gungnir
+request.parameter("id");
+```
+
+Route parameters are cleared and repopulated for every dispatch, so request
+state does not leak between route matches.

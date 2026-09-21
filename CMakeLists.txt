@@ -24,6 +24,7 @@ add_library(gungnir
     src/migration/migration.cpp
     src/migration/runner.cpp
     src/migration/table.cpp
+    src/routing/route.cpp
     src/routing/router.cpp
 )
 
@@ -38,6 +39,7 @@ add_library(gungnir-orm
 add_library(gungnir::orm ALIAS gungnir-orm)
 
 add_library(gungnir-language
+    src/language/controller_lowering.cpp
     src/language/lexer.cpp
     src/language/model_lowering.cpp
     src/language/parser.cpp
@@ -116,6 +118,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_style_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_style_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.style COMMAND gungnir_style_test)
+
+    add_executable(gungnir_controller_routing_test tests/controller_routing.cpp)
+    target_link_libraries(gungnir_controller_routing_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_controller_routing_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.controller_routing COMMAND gungnir_controller_routing_test)
 
     add_executable(gungnir_ioc_test tests/ioc.cpp)
     target_link_libraries(gungnir_ioc_test PRIVATE gungnir::gungnir)

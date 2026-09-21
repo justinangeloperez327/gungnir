@@ -9,6 +9,7 @@
 #include <variant>
 
 #include <gungnir/language/ast.hpp>
+#include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
@@ -69,16 +70,27 @@ TranspileResult Transpiler::transpile(
     ModelLowerer model_lowerer;
     auto model_lowering = model_lowerer.lower(source, source_name);
 
+    ControllerLowerer controller_lowerer;
+    auto controller_lowering =
+        controller_lowerer.lower(source, source_name);
+
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),
         model_lowering.diagnostics.begin(),
         model_lowering.diagnostics.end()
     );
 
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
+        controller_lowering.diagnostics.begin(),
+        controller_lowering.diagnostics.end()
+    );
+
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
-        model_lowering.edits.size()
+        model_lowering.edits.size() +
+        controller_lowering.edits.size()
     );
 
     for (const auto& node : parsed.program.nodes) {
@@ -108,6 +120,12 @@ TranspileResult Transpiler::transpile(
         edits.end(),
         std::make_move_iterator(model_lowering.edits.begin()),
         std::make_move_iterator(model_lowering.edits.end())
+    );
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(controller_lowering.edits.begin()),
+        std::make_move_iterator(controller_lowering.edits.end())
     );
 
     std::sort(

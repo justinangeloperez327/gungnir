@@ -4,6 +4,7 @@
 #include <utility>
 
 #include <gungnir/database/runtime.hpp>
+#include <gungnir/routing/route.hpp>
 
 namespace gungnir {
 
@@ -16,14 +17,33 @@ public:
 };
 
 Application::Application()
-    : impl_(std::make_unique<Impl>()) {}
+    : impl_(std::make_unique<Impl>()) {
+    routing::detail::bind_route_runtime(
+        impl_->router,
+        impl_->container
+    );
+}
 
 Application::~Application() {
+    if (impl_) {
+        routing::detail::unbind_route_runtime(
+            impl_->router,
+            impl_->container
+        );
+    }
+
     shutdown();
 }
 
 Application::Application(Application&& other) noexcept
     : impl_(std::move(other.impl_)) {
+    if (impl_) {
+        routing::detail::bind_route_runtime(
+            impl_->router,
+            impl_->container
+        );
+    }
+
     if (impl_ && impl_->booted) {
         database::runtime::use(impl_->database);
     }
@@ -34,8 +54,22 @@ Application& Application::operator=(Application&& other) noexcept {
         return *this;
     }
 
+    if (impl_) {
+        routing::detail::unbind_route_runtime(
+            impl_->router,
+            impl_->container
+        );
+    }
+
     shutdown();
     impl_ = std::move(other.impl_);
+
+    if (impl_) {
+        routing::detail::bind_route_runtime(
+            impl_->router,
+            impl_->container
+        );
+    }
 
     if (impl_ && impl_->booted) {
         database::runtime::use(impl_->database);

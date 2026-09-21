@@ -1,5 +1,7 @@
 #include <gungnir/routing/router.hpp>
 
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -22,6 +24,73 @@ Task<http::Response> sync_to_task(
 
 Task<http::Response> simple_to_task(SimpleHandler handler) {
     co_return handler();
+}
+
+std::vector<std::string_view> split_path(std::string_view path) {
+    std::vector<std::string_view> segments;
+
+    std::size_t start = 0;
+    while (start < path.size()) {
+        while (start < path.size() && path[start] == '/') {
+            ++start;
+        }
+
+        if (start >= path.size()) {
+            break;
+        }
+
+        const auto end = path.find('/', start);
+        if (end == std::string_view::npos) {
+            segments.push_back(path.substr(start));
+            break;
+        }
+
+        segments.push_back(path.substr(start, end - start));
+        start = end + 1;
+    }
+
+    return segments;
+}
+
+bool match_path(
+    std::string_view pattern,
+    std::string_view actual,
+    http::Request::Parameters& parameters
+) {
+    const auto pattern_segments = split_path(pattern);
+    const auto actual_segments = split_path(actual);
+
+    if (pattern_segments.size() != actual_segments.size()) {
+        return false;
+    }
+
+    for (std::size_t index = 0; index < pattern_segments.size(); ++index) {
+        const auto expected = pattern_segments[index];
+        const auto found = actual_segments[index];
+
+        if (
+            expected.size() >= 3 &&
+            expected.front() == '{' &&
+            expected.back() == '}'
+        ) {
+            const auto name = expected.substr(1, expected.size() - 2);
+            if (name.empty()) {
+                return false;
+            }
+
+            parameters.insert_or_assign(
+                std::string{name},
+                std::string{found}
+            );
+            continue;
+        }
+
+        if (expected != found) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 } // namespace
@@ -134,12 +203,31 @@ Router& Router::remove(std::string path, SimpleHandler handler) {
 }
 
 Task<http::Response> Router::dispatch(http::Request& request) const {
+    request.clear_route_parameters();
+
     for (const auto& route : impl_->routes) {
-        if (route.method == request.method() && route.path == request.path()) {
-            co_return co_await route.handler(request);
+        if (route.method != request.method()) {
+            continue;
         }
+
+        http::Request::Parameters parameters;
+
+        if (!match_path(route.path, request.path(), parameters)) {
+            continue;
+        }
+
+        request.clear_route_parameters();
+        for (auto& [name, value] : parameters) {
+            request.set_route_parameter(
+                std::move(name),
+                std::move(value)
+            );
+        }
+
+        co_return co_await route.handler(request);
     }
 
+    request.clear_route_parameters();
     co_return http::Response::not_found();
 }
 
