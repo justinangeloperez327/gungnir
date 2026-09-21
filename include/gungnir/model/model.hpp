@@ -20,12 +20,26 @@
 
 namespace gungnir {
 
+namespace orm {
+template <typename ModelType>
+class Query;
+}
+
 template <typename Derived>
 class Model {
 public:
     using model_type = Derived;
     using AttributeMap = model::AttributeMap;
     using AttributeValue = model::AttributeValue;
+
+    [[nodiscard]] static orm::Query<Derived> query();
+
+    [[nodiscard]] static orm::Query<Derived> where_(
+        String column,
+        model::AttributeValue value
+    );
+
+    [[nodiscard]] static orm::Query<Derived> with(String relation);
 
     [[nodiscard]] static constexpr std::string_view table_name() noexcept {
         if constexpr (requires { Derived::table.name(); }) {
