@@ -285,3 +285,64 @@ request.parameter("id");
 
 Route parameters are cleared and repopulated for every dispatch, so request
 state does not leak between route matches.
+
+
+## Async and await
+
+Gungnir exposes language-level `async` and `await` while keeping C++
+coroutine mechanics in generated code.
+
+```gungnir
+class UserController : Controller
+{
+    async Response index()
+    {
+        const result = await fetchResponse();
+
+        return result;
+    }
+}
+```
+
+The frontend lowers this to a native coroutine using
+`gungnir::Task<Response>`, `co_await`, and `co_return`. Application code
+does not need to name the coroutine task type or C++ coroutine keywords.
+
+`await` is only valid inside an `async` function. The frontend reports a
+Gungnir diagnostic before C++ compilation when it appears elsewhere.
+
+Async is semantic, not cosmetic. The frontend does not automatically wrap
+synchronous ORM/database operations in tasks. A synchronous operation remains
+synchronous until the database/ORM runtime provides a genuinely asynchronous
+implementation.
+
+### Cleaner request parameters
+
+Controller source can use:
+
+```gungnir
+Response show(Request request)
+{
+    return text(request.parameter("id"));
+}
+```
+
+or:
+
+```gungnir
+async Response show(Request request)
+{
+    return text(request.parameter("id"));
+}
+```
+
+The frontend generates the native `gungnir::Request&` parameter and qualifies
+framework response types. The reference marker is runtime plumbing and is not
+part of normal Gungnir application syntax.
+
+### Generated-source verification
+
+The test suite includes a real `.gnr` async controller fixture. CI runs
+`gungnirc`, compiles the generated C++, links it against the Gungnir runtime,
+and executes the resulting test binary. This verifies the full path from
+Gungnir source through transpilation to native controller dispatch.
