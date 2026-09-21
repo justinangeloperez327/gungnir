@@ -125,11 +125,6 @@ Request parse_request(std::string_view message) {
         throw std::invalid_argument("Unsupported HTTP request target");
     }
 
-    const auto query = target.find('?');
-    auto path = query == std::string_view::npos
-        ? target
-        : target.substr(0, query);
-
     std::vector<std::pair<std::string, std::string>> headers;
     std::optional<std::size_t> content_length;
 
@@ -202,7 +197,7 @@ Request parse_request(std::string_view message) {
 
     Request request{
         *method,
-        std::string{path.empty() ? std::string_view{"/"} : path},
+        std::string{target.empty() ? std::string_view{"/"} : target},
         std::string{body}
     };
 

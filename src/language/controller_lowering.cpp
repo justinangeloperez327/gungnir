@@ -435,6 +435,70 @@ ControllerLoweringResult ControllerLowerer::lower(
             "&"
         });
 
+        const auto route_dot =
+            next_significant(tokens, *close);
+        const auto middleware_name = route_dot
+            ? next_significant(tokens, *route_dot)
+            : std::nullopt;
+        const auto middleware_open = middleware_name
+            ? next_significant(tokens, *middleware_name)
+            : std::nullopt;
+
+        if (
+            route_dot &&
+            middleware_name &&
+            middleware_open &&
+            tokens[*route_dot].lexeme == "." &&
+            tokens[*middleware_name].lexeme == "middleware" &&
+            tokens[*middleware_open].lexeme == "("
+        ) {
+            const auto middleware_close =
+                matching_symbol(
+                    tokens,
+                    *middleware_open,
+                    "(",
+                    ")"
+                );
+
+            if (middleware_close) {
+                const auto middleware_type =
+                    next_significant(
+                        tokens,
+                        *middleware_open
+                    );
+
+                if (
+                    middleware_type &&
+                    *middleware_type < *middleware_close &&
+                    tokens[*middleware_type].kind ==
+                        TokenKind::identifier
+                ) {
+                    const auto after_type =
+                        next_significant(
+                            tokens,
+                            *middleware_type
+                        );
+
+                    if (
+                        !after_type ||
+                        *after_type == *middleware_close
+                    ) {
+                        result.edits.push_back(SourceEdit{
+                            tokens[*middleware_name].offset,
+                            tokens[*middleware_close].offset +
+                                tokens[*middleware_close].lexeme.size(),
+                            "middleware<" +
+                                tokens[*middleware_type].lexeme +
+                                ">()"
+                        });
+
+                        index = *middleware_close;
+                        continue;
+                    }
+                }
+            }
+        }
+
         index = *close;
     }
 

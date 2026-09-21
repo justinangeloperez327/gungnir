@@ -1,19 +1,51 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
 
 #include <gungnir/core/task.hpp>
 #include <gungnir/http/method.hpp>
+#include <gungnir/http/middleware.hpp>
 #include <gungnir/http/request.hpp>
 #include <gungnir/http/response.hpp>
 
 namespace gungnir::routing {
 
-using Handler = std::function<Task<http::Response>(http::Request&)>;
-using SyncHandler = std::function<http::Response(http::Request&)>;
-using SimpleHandler = std::function<http::Response()>;
+using Handler =
+    std::function<Task<http::Response>(http::Request&)>;
+using SyncHandler =
+    std::function<http::Response(http::Request&)>;
+using SimpleHandler =
+    std::function<http::Response()>;
+
+class Router;
+
+class RouteRegistration {
+public:
+    RouteRegistration() = default;
+
+    RouteRegistration& middleware(
+        http::MiddlewareHandler handler
+    );
+
+    template <typename MiddlewareType>
+    RouteRegistration& middleware();
+
+private:
+    friend class Router;
+
+    RouteRegistration(
+        Router* router,
+        std::size_t index
+    ) noexcept
+        : router_(router),
+          index_(index) {}
+
+    Router* router_{nullptr};
+    std::size_t index_{0};
+};
 
 class Router {
 public:
@@ -26,37 +58,116 @@ public:
     Router(const Router&) = delete;
     Router& operator=(const Router&) = delete;
 
-    Router& add(http::Method method, std::string path, Handler handler);
-    Router& add(http::Method method, std::string path, SyncHandler handler);
-    Router& add(http::Method method, std::string path, SimpleHandler handler);
+    RouteRegistration add(
+        http::Method method,
+        std::string path,
+        Handler handler
+    );
 
-    Router& get(std::string path, Handler handler);
-    Router& get(std::string path, SyncHandler handler);
-    Router& get(std::string path, SimpleHandler handler);
+    RouteRegistration add(
+        http::Method method,
+        std::string path,
+        SyncHandler handler
+    );
 
-    Router& post(std::string path, Handler handler);
-    Router& post(std::string path, SyncHandler handler);
-    Router& post(std::string path, SimpleHandler handler);
+    RouteRegistration add(
+        http::Method method,
+        std::string path,
+        SimpleHandler handler
+    );
 
-    Router& put(std::string path, Handler handler);
-    Router& put(std::string path, SyncHandler handler);
-    Router& put(std::string path, SimpleHandler handler);
+    RouteRegistration get(
+        std::string path,
+        Handler handler
+    );
+    RouteRegistration get(
+        std::string path,
+        SyncHandler handler
+    );
+    RouteRegistration get(
+        std::string path,
+        SimpleHandler handler
+    );
 
-    Router& patch(std::string path, Handler handler);
-    Router& patch(std::string path, SyncHandler handler);
-    Router& patch(std::string path, SimpleHandler handler);
+    RouteRegistration post(
+        std::string path,
+        Handler handler
+    );
+    RouteRegistration post(
+        std::string path,
+        SyncHandler handler
+    );
+    RouteRegistration post(
+        std::string path,
+        SimpleHandler handler
+    );
 
-    Router& delete_(std::string path, Handler handler);
-    Router& delete_(std::string path, SyncHandler handler);
-    Router& delete_(std::string path, SimpleHandler handler);
+    RouteRegistration put(
+        std::string path,
+        Handler handler
+    );
+    RouteRegistration put(
+        std::string path,
+        SyncHandler handler
+    );
+    RouteRegistration put(
+        std::string path,
+        SimpleHandler handler
+    );
 
-    Router& remove(std::string path, Handler handler);
-    Router& remove(std::string path, SyncHandler handler);
-    Router& remove(std::string path, SimpleHandler handler);
+    RouteRegistration patch(
+        std::string path,
+        Handler handler
+    );
+    RouteRegistration patch(
+        std::string path,
+        SyncHandler handler
+    );
+    RouteRegistration patch(
+        std::string path,
+        SimpleHandler handler
+    );
 
-    [[nodiscard]] Task<http::Response> dispatch(http::Request& request) const;
+    RouteRegistration delete_(
+        std::string path,
+        Handler handler
+    );
+    RouteRegistration delete_(
+        std::string path,
+        SyncHandler handler
+    );
+    RouteRegistration delete_(
+        std::string path,
+        SimpleHandler handler
+    );
+
+    RouteRegistration remove(
+        std::string path,
+        Handler handler
+    );
+    RouteRegistration remove(
+        std::string path,
+        SyncHandler handler
+    );
+    RouteRegistration remove(
+        std::string path,
+        SimpleHandler handler
+    );
+
+    Router& use(http::MiddlewareHandler middleware);
+
+    [[nodiscard]] Task<http::Response> dispatch(
+        http::Request& request
+    ) const;
 
 private:
+    friend class RouteRegistration;
+
+    void add_middleware(
+        std::size_t route,
+        http::MiddlewareHandler middleware
+    );
+
     class Impl;
     std::unique_ptr<Impl> impl_;
 };

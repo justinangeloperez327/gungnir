@@ -436,3 +436,69 @@ with routes, requests, responses, controllers, models, and views. The server
 currently closes each connection after one response; persistent connections
 and event-driven socket I/O belong to the next transport/runtime layer rather
 than being simulated as asynchronous behavior.
+
+
+## Request input
+
+The request object owns common HTTP input plumbing. Query strings,
+URL-encoded form bodies, JSON bodies, cookies, headers, and route parameters
+remain distinct internally but have a compact controller-facing API.
+
+\`\`\`gungnir
+Response store(Request request)
+{
+    const name = request.input("name");
+
+    if (!request.has("email")) {
+        return response("Email is required", 422);
+    }
+
+    const values = request.only(["name", "email"]);
+
+    return response(name);
+}
+\`\`\`
+
+Body input takes precedence over query input. JSON input remains typed through
+\`request.json()\` when nested values are needed. \`all()\`, \`only(...)\`,
+and \`except(...)\` provide flat scalar request input without exposing HTTP
+parser mechanics.
+
+JSON responses serialize scalar values, maps, ranges, models, and ORM
+collections directly:
+
+\`\`\`gungnir
+return json(user);
+\`\`\`
+
+## Middleware
+
+Middleware participates in the request lifecycle before controller dispatch.
+Global middleware is registered on the application and route middleware is
+attached to an individual route.
+
+\`\`\`gungnir
+class AuthMiddleware : Middleware
+{
+    async Response handle(Request request, Next next)
+    {
+        if (request.header("authorization").empty()) {
+            return text("Unauthorized", 401);
+        }
+
+        return await next(request);
+    }
+}
+
+Route::get("/dashboard", DashboardController::index)
+    .middleware(AuthMiddleware);
+\`\`\`
+
+Middleware instances are resolved through the application container, so
+constructor injection works without application code constructing middleware.
+Global middleware runs before route middleware. Middleware can short-circuit
+the request by returning a response without invoking \`next\`.
+
+The continuation is asynchronous by design. Gungnir does not disguise a
+possibly asynchronous downstream controller as a synchronous call, so
+middleware that continues the pipeline uses \`async\` and \`await\`.

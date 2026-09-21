@@ -23,7 +23,8 @@ struct InferredBinding {
 enum class FrameworkBaseKind {
     model,
     controller,
-    migration
+    migration,
+    middleware
 };
 
 struct FrameworkBase {

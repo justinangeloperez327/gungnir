@@ -10,6 +10,7 @@
 #include <gungnir/database/backend.hpp>
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/manager.hpp>
+#include <gungnir/http/middleware.hpp>
 #include <gungnir/routing/router.hpp>
 #include <gungnir/view/engine.hpp>
 
@@ -80,6 +81,16 @@ public:
     template <typename Service>
     [[nodiscard]] std::shared_ptr<Service> resolve() {
         return container().template resolve<Service>();
+    }
+
+    template <typename MiddlewareType>
+    Application& middleware() {
+        router().use(
+            http::make_middleware<MiddlewareType>(
+                container()
+            )
+        );
+        return *this;
     }
 
     void boot();
