@@ -1,0 +1,75 @@
+#include <cassert>
+#include <coroutine>
+
+#include <gungnir/gungnir.hpp>
+
+template <typename T>
+T sync_wait(gungnir::Task<T> task) {
+    auto awaiter = task.operator co_await();
+
+    if (!awaiter.await_ready()) {
+        auto handle = awaiter.await_suspend(std::noop_coroutine());
+        if (handle && !handle.done()) {
+            handle.resume();
+        }
+    }
+
+    return awaiter.await_resume();
+}
+
+gungnir::Task<gungnir::Response> load_response() {
+    co_return gungnir::Response::text("async");
+}
+
+class AsyncController : Controller
+{
+    async Response index()
+    {
+        const result = await load_response();
+        return result;
+    }
+
+    async Response show(Request request)
+    {
+        const id = request.parameter("id");
+
+        return text(
+            gungnir::String{"user:"} +
+            gungnir::String{id}
+        );
+    }
+}
+
+int main()
+{
+    gungnir::Application app;
+
+    Route::get("/async", AsyncController::index);
+    Route::get("/users/{id}", AsyncController::show);
+
+    gungnir::http::Request index_request{
+        gungnir::http::Method::get,
+        "/async"
+    };
+
+    const auto index_response = sync_wait(
+        app.router().dispatch(index_request)
+    );
+
+    assert(index_response.status() == 200);
+    assert(index_response.body() == "async");
+
+    gungnir::http::Request show_request{
+        gungnir::http::Method::get,
+        "/users/42"
+    };
+
+    const auto show_response = sync_wait(
+        app.router().dispatch(show_request)
+    );
+
+    assert(show_response.status() == 200);
+    assert(show_response.body() == "user:42");
+
+    return 0;
+}

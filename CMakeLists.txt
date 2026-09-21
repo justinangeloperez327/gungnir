@@ -39,6 +39,7 @@ add_library(gungnir-orm
 add_library(gungnir::orm ALIAS gungnir-orm)
 
 add_library(gungnir-language
+    src/language/async_lowering.cpp
     src/language/controller_lowering.cpp
     src/language/lexer.cpp
     src/language/model_lowering.cpp
@@ -108,6 +109,48 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_language_test PRIVATE gungnir::language)
     target_compile_features(gungnir_language_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.language COMMAND gungnir_language_test)
+
+    if(GUNGNIR_BUILD_TOOLS)
+        set(
+            GUNGNIR_GENERATED_ASYNC_TEST
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/async_controller.cpp"
+        )
+
+        add_custom_command(
+            OUTPUT "${GUNGNIR_GENERATED_ASYNC_TEST}"
+            COMMAND
+                ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_CURRENT_BINARY_DIR}/generated"
+            COMMAND
+                $<TARGET_FILE:gungnirc>
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/async_controller.gnr"
+                -o
+                "${GUNGNIR_GENERATED_ASYNC_TEST}"
+            DEPENDS
+                gungnirc
+                tests/fixtures/async_controller.gnr
+            VERBATIM
+        )
+
+        add_executable(
+            gungnir_language_async_generated_test
+            "${GUNGNIR_GENERATED_ASYNC_TEST}"
+        )
+        target_link_libraries(
+            gungnir_language_async_generated_test
+            PRIVATE
+                gungnir::gungnir
+        )
+        target_compile_features(
+            gungnir_language_async_generated_test
+            PRIVATE
+                cxx_std_23
+        )
+        add_test(
+            NAME gungnir.language_async_generated
+            COMMAND gungnir_language_async_generated_test
+        )
+    endif()
 
     add_executable(gungnir_plumbing_test tests/plumbing.cpp)
     target_link_libraries(gungnir_plumbing_test PRIVATE gungnir::gungnir)

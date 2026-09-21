@@ -9,6 +9,7 @@
 #include <variant>
 
 #include <gungnir/language/ast.hpp>
+#include <gungnir/language/async_lowering.hpp>
 #include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/model_lowering.hpp>
@@ -74,6 +75,10 @@ TranspileResult Transpiler::transpile(
     auto controller_lowering =
         controller_lowerer.lower(source, source_name);
 
+    AsyncLowerer async_lowerer;
+    auto async_lowering =
+        async_lowerer.lower(source, source_name);
+
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),
         model_lowering.diagnostics.begin(),
@@ -86,11 +91,18 @@ TranspileResult Transpiler::transpile(
         controller_lowering.diagnostics.end()
     );
 
+    parsed.diagnostics.insert(
+        parsed.diagnostics.end(),
+        async_lowering.diagnostics.begin(),
+        async_lowering.diagnostics.end()
+    );
+
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
         model_lowering.edits.size() +
-        controller_lowering.edits.size()
+        controller_lowering.edits.size() +
+        async_lowering.edits.size()
     );
 
     for (const auto& node : parsed.program.nodes) {
@@ -126,6 +138,12 @@ TranspileResult Transpiler::transpile(
         edits.end(),
         std::make_move_iterator(controller_lowering.edits.begin()),
         std::make_move_iterator(controller_lowering.edits.end())
+    );
+
+    edits.insert(
+        edits.end(),
+        std::make_move_iterator(async_lowering.edits.begin()),
+        std::make_move_iterator(async_lowering.edits.end())
     );
 
     std::sort(

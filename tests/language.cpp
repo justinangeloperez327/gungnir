@@ -324,5 +324,75 @@ int main() {
         ) != std::string::npos
     );
 
+    const auto async_controller = transpiler.transpile(
+        "class AsyncController : Controller {\n"
+        "    async Response index() {\n"
+        "        const result = await load_response();\n"
+        "        return result;\n"
+        "    }\n"
+        "\n"
+        "    async Response show(Request request) {\n"
+        "        return text(request.parameter(\"id\"));\n"
+        "    }\n"
+        "}\n",
+        "async_controller.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(async_controller.success());
+    assert(
+        async_controller.code.find(
+            "gungnir::Task<gungnir::Response> index()"
+        ) != std::string::npos
+    );
+    assert(
+        async_controller.code.find(
+            "const auto result = co_await load_response();"
+        ) != std::string::npos
+    );
+    assert(
+        async_controller.code.find(
+            "co_return result;"
+        ) != std::string::npos
+    );
+    assert(
+        async_controller.code.find(
+            "gungnir::Task<gungnir::Response> show(gungnir::Request& request)"
+        ) != std::string::npos
+    );
+    assert(
+        async_controller.code.find(
+            "co_return text(request.parameter(\"id\"));"
+        ) != std::string::npos
+    );
+
+    const auto sync_request = transpiler.transpile(
+        "class RequestController : Controller {\n"
+        "    Response show(Request request) {\n"
+        "        return text(request.parameter(\"id\"));\n"
+        "    }\n"
+        "}\n",
+        "request_controller.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(sync_request.success());
+    assert(
+        sync_request.code.find(
+            "gungnir::Response show(gungnir::Request& request)"
+        ) != std::string::npos
+    );
+
+    const auto invalid_await = transpiler.transpile(
+        "void load() {\n"
+        "    const value = await fetch();\n"
+        "}\n",
+        "invalid_await.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(!invalid_await.success());
+    assert(!invalid_await.diagnostics.empty());
+
     return 0;
 }
