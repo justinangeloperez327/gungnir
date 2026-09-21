@@ -6,6 +6,7 @@ option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 
 add_library(gungnir
     src/core/application.cpp
+    src/core/container.cpp
     src/controller/controller.cpp
     src/http/request.cpp
     src/http/response.cpp
@@ -49,4 +50,9 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_style_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_style_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.style COMMAND gungnir_style_test)
+
+    add_executable(gungnir_ioc_test tests/ioc.cpp)
+    target_link_libraries(gungnir_ioc_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_ioc_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.ioc COMMAND gungnir_ioc_test)
 endif()

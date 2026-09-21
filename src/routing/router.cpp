@@ -13,6 +13,17 @@ struct RouteEntry {
     Handler handler;
 };
 
+Task<http::Response> sync_to_task(
+    SyncHandler handler,
+    http::Request& request
+) {
+    co_return handler(request);
+}
+
+Task<http::Response> simple_to_task(SimpleHandler handler) {
+    co_return handler();
+}
+
 } // namespace
 
 class Router::Impl {
@@ -30,7 +41,35 @@ Router& Router::add(http::Method method, std::string path, Handler handler) {
     return *this;
 }
 
+Router& Router::add(http::Method method, std::string path, SyncHandler handler) {
+    return add(
+        method,
+        std::move(path),
+        [handler = std::move(handler)](http::Request& request) mutable {
+            return sync_to_task(handler, request);
+        }
+    );
+}
+
+Router& Router::add(http::Method method, std::string path, SimpleHandler handler) {
+    return add(
+        method,
+        std::move(path),
+        [handler = std::move(handler)](http::Request&) mutable {
+            return simple_to_task(handler);
+        }
+    );
+}
+
 Router& Router::get(std::string path, Handler handler) {
+    return add(http::Method::get, std::move(path), std::move(handler));
+}
+
+Router& Router::get(std::string path, SyncHandler handler) {
+    return add(http::Method::get, std::move(path), std::move(handler));
+}
+
+Router& Router::get(std::string path, SimpleHandler handler) {
     return add(http::Method::get, std::move(path), std::move(handler));
 }
 
@@ -38,7 +77,23 @@ Router& Router::post(std::string path, Handler handler) {
     return add(http::Method::post, std::move(path), std::move(handler));
 }
 
+Router& Router::post(std::string path, SyncHandler handler) {
+    return add(http::Method::post, std::move(path), std::move(handler));
+}
+
+Router& Router::post(std::string path, SimpleHandler handler) {
+    return add(http::Method::post, std::move(path), std::move(handler));
+}
+
 Router& Router::put(std::string path, Handler handler) {
+    return add(http::Method::put, std::move(path), std::move(handler));
+}
+
+Router& Router::put(std::string path, SyncHandler handler) {
+    return add(http::Method::put, std::move(path), std::move(handler));
+}
+
+Router& Router::put(std::string path, SimpleHandler handler) {
     return add(http::Method::put, std::move(path), std::move(handler));
 }
 
@@ -46,8 +101,36 @@ Router& Router::patch(std::string path, Handler handler) {
     return add(http::Method::patch, std::move(path), std::move(handler));
 }
 
-Router& Router::remove(std::string path, Handler handler) {
+Router& Router::patch(std::string path, SyncHandler handler) {
+    return add(http::Method::patch, std::move(path), std::move(handler));
+}
+
+Router& Router::patch(std::string path, SimpleHandler handler) {
+    return add(http::Method::patch, std::move(path), std::move(handler));
+}
+
+Router& Router::delete_(std::string path, Handler handler) {
     return add(http::Method::delete_, std::move(path), std::move(handler));
+}
+
+Router& Router::delete_(std::string path, SyncHandler handler) {
+    return add(http::Method::delete_, std::move(path), std::move(handler));
+}
+
+Router& Router::delete_(std::string path, SimpleHandler handler) {
+    return add(http::Method::delete_, std::move(path), std::move(handler));
+}
+
+Router& Router::remove(std::string path, Handler handler) {
+    return delete_(std::move(path), std::move(handler));
+}
+
+Router& Router::remove(std::string path, SyncHandler handler) {
+    return delete_(std::move(path), std::move(handler));
+}
+
+Router& Router::remove(std::string path, SimpleHandler handler) {
+    return delete_(std::move(path), std::move(handler));
 }
 
 Task<http::Response> Router::dispatch(http::Request& request) const {
