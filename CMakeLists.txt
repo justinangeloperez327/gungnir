@@ -26,6 +26,9 @@ add_library(gungnir
     src/migration/table.cpp
     src/routing/route.cpp
     src/routing/router.cpp
+    src/view/engine.cpp
+    src/view/runtime.cpp
+    src/view/value.cpp
 )
 
 add_library(gungnir::gungnir ALIAS gungnir)
@@ -45,6 +48,7 @@ add_library(gungnir-language
     src/language/model_lowering.cpp
     src/language/parser.cpp
     src/language/transpiler.cpp
+    src/language/view_lowering.cpp
 )
 
 add_library(gungnir::language ALIAS gungnir-language)
@@ -150,6 +154,48 @@ if(GUNGNIR_BUILD_TESTS)
             NAME gungnir.language_async_generated
             COMMAND gungnir_language_async_generated_test
         )
+
+        set(
+            GUNGNIR_GENERATED_VIEW_TEST
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/view_controller.cpp"
+        )
+
+        add_custom_command(
+            OUTPUT "${GUNGNIR_GENERATED_VIEW_TEST}"
+            COMMAND
+                ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_CURRENT_BINARY_DIR}/generated"
+            COMMAND
+                $<TARGET_FILE:gungnirc>
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/view_controller.gnr"
+                -o
+                "${GUNGNIR_GENERATED_VIEW_TEST}"
+            DEPENDS
+                gungnirc
+                tests/fixtures/view_controller.gnr
+            VERBATIM
+        )
+
+        add_executable(
+            gungnir_language_view_generated_test
+            "${GUNGNIR_GENERATED_VIEW_TEST}"
+        )
+        target_link_libraries(
+            gungnir_language_view_generated_test
+            PRIVATE
+                gungnir::gungnir
+        )
+        target_compile_features(
+            gungnir_language_view_generated_test
+            PRIVATE
+                cxx_std_23
+        )
+        add_test(
+            NAME gungnir.language_view_generated
+            COMMAND
+                gungnir_language_view_generated_test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/views"
+        )
     endif()
 
     add_executable(gungnir_plumbing_test tests/plumbing.cpp)
@@ -161,6 +207,16 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_style_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_style_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.style COMMAND gungnir_style_test)
+
+    add_executable(gungnir_view_test tests/view.cpp)
+    target_link_libraries(gungnir_view_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_view_test PRIVATE cxx_std_23)
+    target_compile_definitions(
+        gungnir_view_test
+        PRIVATE
+            GUNGNIR_TEST_VIEW_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/views"
+    )
+    add_test(NAME gungnir.view COMMAND gungnir_view_test)
 
     add_executable(gungnir_controller_routing_test tests/controller_routing.cpp)
     target_link_libraries(gungnir_controller_routing_test PRIVATE gungnir::gungnir)

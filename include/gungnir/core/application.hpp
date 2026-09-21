@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <memory>
 #include <utility>
 
@@ -9,6 +10,7 @@
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/manager.hpp>
 #include <gungnir/routing/router.hpp>
+#include <gungnir/view/engine.hpp>
 
 namespace gungnir {
 
@@ -31,6 +33,11 @@ public:
 
     [[nodiscard]] database::Manager& database() noexcept;
     [[nodiscard]] const database::Manager& database() const noexcept;
+
+    [[nodiscard]] view::Engine& views() noexcept;
+    [[nodiscard]] const view::Engine& views() const noexcept;
+
+    Application& view_root(std::filesystem::path path);
 
     Application& database(
         String name,

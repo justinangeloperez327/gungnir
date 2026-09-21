@@ -3,6 +3,7 @@
 #include <gungnir/core/types.hpp>
 #include <gungnir/http/request.hpp>
 #include <gungnir/http/response.hpp>
+#include <gungnir/view/data.hpp>
 
 namespace gungnir {
 
@@ -14,6 +15,11 @@ protected:
     [[nodiscard]] static Response response(String body = {}, Integer status = 200);
     [[nodiscard]] static Response text(String body, Integer status = 200);
     [[nodiscard]] static Response json(String body, Integer status = 200);
+    [[nodiscard]] static Response view(
+        String name,
+        gungnir::view::Data data = {},
+        Integer status = 200
+    );
     [[nodiscard]] static Response no_content();
     [[nodiscard]] static Response redirect(String location, Integer status = 302);
 };

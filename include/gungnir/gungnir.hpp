@@ -9,6 +9,9 @@
 #include <gungnir/model/model.hpp>
 #include <gungnir/routing/route.hpp>
 #include <gungnir/routing/router.hpp>
+#include <gungnir/view/data.hpp>
+#include <gungnir/view/engine.hpp>
+#include <gungnir/view/value.hpp>
 
 namespace gungnir {
 

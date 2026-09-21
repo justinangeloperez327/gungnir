@@ -18,6 +18,18 @@ Response Controller::json(String body, Integer status) {
     return result;
 }
 
+Response Controller::view(
+    String name,
+    gungnir::view::Data data,
+    Integer status
+) {
+    return Response::view(
+        std::move(name),
+        std::move(data),
+        status
+    );
+}
+
 Response Controller::no_content() {
     return Response{204};
 }

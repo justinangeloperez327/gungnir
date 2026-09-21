@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include <gungnir/view/runtime.hpp>
+
 namespace gungnir::http {
 
 Response::Response(int status, std::string body)
@@ -39,6 +41,19 @@ const Response::Headers& Response::headers() const noexcept { return headers_; }
 Response Response::text(std::string body, int status) {
     Response response{status, std::move(body)};
     response.header("content-type", "text/plain; charset=utf-8");
+    return response;
+}
+
+Response Response::view(
+    std::string name,
+    gungnir::view::Data data,
+    int status
+) {
+    Response response{
+        status,
+        gungnir::view::runtime::engine().render(name, data)
+    };
+    response.header("content-type", "text/html; charset=utf-8");
     return response;
 }
 

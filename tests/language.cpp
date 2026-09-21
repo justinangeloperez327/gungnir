@@ -394,5 +394,37 @@ int main() {
     assert(!invalid_await.success());
     assert(!invalid_await.diagnostics.empty());
 
+    const auto view_data = transpiler.transpile(
+        "class PageController : Controller {\n"
+        "    Response index() {\n"
+        "        const users = User::all();\n"
+        "        return view(\"users/index\", {\n"
+        "            \"users\": users,\n"
+        "            \"title\": \"Users\",\n"
+        "            \"count\": users.count()\n"
+        "        });\n"
+        "    }\n"
+        "}\n",
+        "view_controller.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(view_data.success());
+    assert(
+        view_data.code.find(
+            "gungnir::view::Data{{\"users\", users},"
+        ) != std::string::npos
+    );
+    assert(
+        view_data.code.find(
+            "{\"title\", \"Users\"}"
+        ) != std::string::npos
+    );
+    assert(
+        view_data.code.find(
+            "{\"count\", users.count()}"
+        ) != std::string::npos
+    );
+
     return 0;
 }
