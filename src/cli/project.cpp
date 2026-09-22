@@ -848,42 +848,19 @@ Project::make_migration(
 
 std::filesystem::path
 Project::make_request(
-    String name
+    String
 ) {
-    auto class_name = normalize_class_name(name);
-    constexpr std::string_view suffix{"Request"};
-    if (!class_name.ends_with(suffix)) class_name += suffix;
-
-    return create_source(
-        "app/requests",
-        snake_case(class_name) + ".gnr",
-        "class " + class_name + " : ValidatedRequest\n"
-        "{\n"
-        "    rules()\n"
-        "    {\n"
-        "        return {};\n"
-        "    }\n"
-        "}\n"
+    throw std::logic_error(
+        "make:request is not available until ValidatedRequest source-language lowering is implemented"
     );
 }
 
 std::filesystem::path
 Project::make_job(
-    String name
+    String
 ) {
-    auto class_name = normalize_class_name(name);
-    constexpr std::string_view suffix{"Job"};
-    if (!class_name.ends_with(suffix)) class_name += suffix;
-
-    return create_source(
-        "app/jobs",
-        snake_case(class_name) + ".gnr",
-        "class " + class_name + " : Job\n"
-        "{\n"
-        "    void handle()\n"
-        "    {\n"
-        "    }\n"
-        "}\n"
+    throw std::logic_error(
+        "make:job is not available until queue Job source-language lowering is implemented"
     );
 }
 
