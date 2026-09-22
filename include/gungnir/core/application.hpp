@@ -3,12 +3,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
+#include <vector>
 #include <utility>
 
 #include <gungnir/config/environment.hpp>
 #include <gungnir/config/repository.hpp>
 #include <gungnir/core/container.hpp>
+#include <gungnir/core/lifecycle.hpp>
+#include <gungnir/core/mode.hpp>
+#include <gungnir/core/provider.hpp>
 #include <gungnir/database/backend.hpp>
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/manager.hpp>
@@ -62,6 +67,20 @@ public:
 
     [[nodiscard]] String environment() const;
     [[nodiscard]] bool debug() const;
+    [[nodiscard]] ApplicationMode mode() const noexcept;
+    [[nodiscard]] bool is_production() const noexcept;
+    [[nodiscard]] LifecycleStage lifecycle_stage() const noexcept;
+
+    Application& provider(std::shared_ptr<Provider> value);
+
+    template <typename ProviderType, typename... Args>
+    Application& provider(Args&&... args) {
+        return provider(std::make_shared<ProviderType>(std::forward<Args>(args)...));
+    }
+
+    Application& on_boot(Lifecycle::Hook hook);
+    Application& on_ready(Lifecycle::Hook hook);
+    Application& on_shutdown(Lifecycle::Hook hook);
 
     Application& load_environment(
         std::filesystem::path path = ".env",
