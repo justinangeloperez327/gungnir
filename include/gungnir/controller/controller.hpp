@@ -13,6 +13,9 @@ using Request = http::Request;
 using Response = http::Response;
 
 class Controller {
+public:
+    virtual ~Controller() = default;
+
 protected:
     [[nodiscard]] static Response response(
         String body = {},
@@ -43,6 +46,18 @@ protected:
     [[nodiscard]] static Response view(
         String name,
         gungnir::view::Data data = {},
+        Integer status = 200
+    );
+
+    [[nodiscard]] static Response html(
+        String body,
+        Integer status = 200
+    );
+
+    [[nodiscard]] static Response download(
+        String body,
+        String filename,
+        String content_type = "application/octet-stream",
         Integer status = 200
     );
 
