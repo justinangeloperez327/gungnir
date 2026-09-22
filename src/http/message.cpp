@@ -25,13 +25,27 @@ std::string_view trim(std::string_view value) {
 }
 
 std::optional<Method> parse_method(std::string_view value) {
-    if (value == "GET") return Method::get;
-    if (value == "POST") return Method::post;
-    if (value == "PUT") return Method::put;
-    if (value == "PATCH") return Method::patch;
-    if (value == "DELETE") return Method::delete_;
-    if (value == "OPTIONS") return Method::options;
-    if (value == "HEAD") return Method::head;
+    if (value == "GET") {
+        return Method::get;
+    }
+    if (value == "POST") {
+        return Method::post;
+    }
+    if (value == "PUT") {
+        return Method::put;
+    }
+    if (value == "PATCH") {
+        return Method::patch;
+    }
+    if (value == "DELETE") {
+        return Method::delete_;
+    }
+    if (value == "OPTIONS") {
+        return Method::options;
+    }
+    if (value == "HEAD") {
+        return Method::head;
+    }
     return std::nullopt;
 }
 
@@ -244,7 +258,9 @@ std::string serialize_response(
     output += std::to_string(response.body().size());
     output += "\r\n";
     output += "connection: ";
-    output += connection == ConnectionDirective::keep_alive ? "keep-alive" : "close";
+    output += connection == ConnectionDirective::keep_alive
+        ? "keep-alive"
+        : "close";
     output += "\r\n";
     output += "\r\n";
 
@@ -257,7 +273,10 @@ std::string serialize_response(
 
 bool request_keep_alive(const Request& request) noexcept {
     const auto connection = request.header("connection");
-    if (connection == "close" || connection == "Close") return false;
+    if (connection == "close" || connection == "Close") {
+        return false;
+    }
+
     return true;
 }
 
