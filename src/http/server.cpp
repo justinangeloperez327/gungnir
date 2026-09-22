@@ -342,8 +342,8 @@ Response error_response(int status, std::string body) {
 
 class Server::Impl {
 public:
-    explicit Impl(routing::Router& value)
-        : router(value) {}
+    explicit Impl(routing::Router& value, RuntimeOptions value_options)
+        : router(value), options(std::move(value_options)) {}
 
     ~Impl() {
         stop();
@@ -496,6 +496,7 @@ public:
 
     SocketRuntime socket_runtime;
     routing::Router& router;
+    RuntimeOptions options;
     std::atomic_bool running{false};
     std::atomic<NativeSocket> listener{invalid_socket};
     std::mutex queue_mutex;
@@ -504,8 +505,8 @@ public:
     std::vector<std::thread> workers;
 };
 
-Server::Server(routing::Router& router)
-    : impl_(std::make_unique<Impl>(router)) {}
+Server::Server(routing::Router& router, RuntimeOptions options)
+    : impl_(std::make_unique<Impl>(router, std::move(options))) {}
 
 Server::~Server() = default;
 
@@ -519,6 +520,10 @@ void Server::stop() noexcept {
 
 bool Server::running() const noexcept {
     return impl_->running.load();
+}
+
+const RuntimeOptions& Server::options() const noexcept {
+    return impl_->options;
 }
 
 } // namespace gungnir::http::detail
