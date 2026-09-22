@@ -7,6 +7,7 @@
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/result.hpp>
+#include <gungnir/database/query.hpp>
 
 namespace gungnir::database {
 
@@ -23,6 +24,8 @@ public:
         const String& statement,
         const std::vector<model::AttributeValue>& bindings = {}
     );
+
+    Result execute(const Query& query);
 
     void begin();
     void commit();
