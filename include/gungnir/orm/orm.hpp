@@ -2,6 +2,8 @@
 
 #include <gungnir/orm/collection.hpp>
 #include <gungnir/orm/compiler.hpp>
+#include <gungnir/orm/error.hpp>
+#include <gungnir/orm/query_log.hpp>
 #include <gungnir/orm/hydrator.hpp>
 #include <gungnir/orm/mutation.hpp>
 #include <gungnir/orm/advanced_mutation.hpp>
