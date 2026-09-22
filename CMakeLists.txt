@@ -15,6 +15,7 @@ add_library(gungnir
     src/config/repository.cpp
     src/core/application.cpp
     src/core/container.cpp
+    src/core/executor.cpp
     src/controller/controller.cpp
     src/database/compiler.cpp
     src/database/connection.cpp
