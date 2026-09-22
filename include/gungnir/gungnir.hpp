@@ -39,6 +39,7 @@
 #include <gungnir/routing/route.hpp>
 #include <gungnir/routing/router.hpp>
 #include <gungnir/security/security.hpp>
+#include <gungnir/scheduler/scheduling.hpp>
 #include <gungnir/session/sessions.hpp>
 #include <gungnir/storage/storage.hpp>
 #include <gungnir/validation/exception.hpp>
