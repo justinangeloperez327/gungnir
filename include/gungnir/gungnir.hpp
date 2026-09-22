@@ -4,6 +4,9 @@
 #include <gungnir/controller/controller.hpp>
 #include <gungnir/core/application.hpp>
 #include <gungnir/core/container.hpp>
+#include <gungnir/core/lifecycle.hpp>
+#include <gungnir/core/mode.hpp>
+#include <gungnir/core/provider.hpp>
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/database.hpp>
 #include <gungnir/http/errors.hpp>
