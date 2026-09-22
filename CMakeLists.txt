@@ -42,6 +42,7 @@ add_library(gungnir
     src/migration/table.cpp
     src/routing/route.cpp
     src/routing/router.cpp
+    src/security/security.cpp
     src/validation/validator.cpp
     src/view/engine.cpp
     src/view/runtime.cpp
