@@ -130,6 +130,7 @@ public:
 
 private:
     friend class RouteRegistration;
+    friend class RouteGroup;
     void add_middleware(std::size_t route, http::MiddlewareHandler middleware);
     void add_middleware(std::size_t route, std::string alias);
     void set_name(std::size_t route, std::string name);
