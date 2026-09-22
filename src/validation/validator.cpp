@@ -477,9 +477,18 @@ Result Validator::check(
     return Result{std::move(validated), std::move(errors)};
 }
 
-Input Validator::validate(const Input& input, const Rules& rules) {
+Input Validator::validate(
+    const Input& input,
+    const Rules& rules
+) {
     auto result = check(input, rules);
-    if (!result.errors.empty()) throw ValidationException{std::move(result.errors)};
+
+    if (!result.errors.empty()) {
+        throw ValidationException{
+            std::move(result.errors)
+        };
+    }
+
     return std::move(result.values);
 }
 
