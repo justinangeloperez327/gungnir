@@ -61,6 +61,7 @@ int main(int argc, char** argv) {
     std::filesystem::path output_path;
     bool check_only = false;
     bool emit_line_directives = true;
+    bool format_only = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -77,6 +78,11 @@ int main(int argc, char** argv) {
 
         if (argument == "--check") {
             check_only = true;
+            continue;
+        }
+
+        if (argument == "--format") {
+            format_only = true;
             continue;
         }
 
@@ -105,6 +111,14 @@ int main(int argc, char** argv) {
 
     try {
         const auto source = read_file(input_path);
+
+        if (format_only) {
+            gungnir::language::Formatter formatter;
+            const auto formatted = formatter.format(source);
+            if (output_path.empty()) std::cout << formatted;
+            else write_file(output_path, formatted);
+            return 0;
+        }
 
         gungnir::language::Transpiler transpiler;
         const auto result = transpiler.transpile(
