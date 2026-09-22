@@ -12,6 +12,6 @@ enum class ApplicationMode { development, testing, staging, production };
     return ApplicationMode::development;
 }
 
-[[nodiscard]] inline bool production(ApplicationMode mode) noexcept { return mode == ApplicationMode::production; }
+[[nodiscard]] inline bool is_production(ApplicationMode mode) noexcept { return mode == ApplicationMode::production; }
 
 } // namespace gungnir
