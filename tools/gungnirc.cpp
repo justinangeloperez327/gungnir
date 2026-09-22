@@ -6,6 +6,7 @@
 #include <string>
 
 #include <gungnir/language/language.hpp>
+#include <gungnir/language/diagnostic_renderer.hpp>
 
 namespace {
 
@@ -131,11 +132,8 @@ int main(int argc, char** argv) {
 
         for (const auto& diagnostic : result.diagnostics) {
             std::cerr
-                << diagnostic.location.file << ':'
-                << diagnostic.location.line << ':'
-                << diagnostic.location.column << ": "
-                << level_name(diagnostic.level) << ": "
-                << diagnostic.message << '\n';
+                << gungnir::language::DiagnosticRenderer::render(diagnostic)
+                << '\n';
         }
 
         if (!result.success()) {
