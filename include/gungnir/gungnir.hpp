@@ -1,5 +1,6 @@
 #pragma once
 
+#include <gungnir/auth/authentication.hpp>
 #include <gungnir/config/config.hpp>
 #include <gungnir/controller/controller.hpp>
 #include <gungnir/controller/action.hpp>
