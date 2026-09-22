@@ -65,6 +65,7 @@ public:
     std::vector<RouteEntry> routes;
     std::vector<http::MiddlewareHandler> middleware;
     http::ExceptionHandler exceptions;
+    std::optional<Handler> fallback;
 };
 
 RouteRegistration& RouteRegistration::middleware(http::MiddlewareHandler handler) {
@@ -106,15 +107,22 @@ GUNGNIR_ROUTE(post,post)
 GUNGNIR_ROUTE(put,put)
 GUNGNIR_ROUTE(patch,patch)
 GUNGNIR_ROUTE(delete_,delete_)
+GUNGNIR_ROUTE(options,options)
+GUNGNIR_ROUTE(head,head)
 #undef GUNGNIR_ROUTE
 RouteRegistration Router::remove(std::string p, Handler h){return delete_(std::move(p),std::move(h));}
 RouteRegistration Router::remove(std::string p, SyncHandler h){return delete_(std::move(p),std::move(h));}
 RouteRegistration Router::remove(std::string p, SimpleHandler h){return delete_(std::move(p),std::move(h));}
 
 Router& Router::use(http::MiddlewareHandler m){impl_->middleware.push_back(std::move(m));return *this;}
+Router& Router::fallback(Handler h){impl_->fallback=std::move(h);return *this;}
+Router& Router::fallback(SyncHandler h){return fallback([h=std::move(h)](http::Request& r)->Task<http::Response>{co_return h(r);});}
+Router& Router::fallback(SimpleHandler h){return fallback([h=std::move(h)](http::Request&)->Task<http::Response>{co_return h();});}
+bool Router::has(std::string_view name)const noexcept{for(const auto& r:impl_->routes)if(r.name==name)return true;return false;}
+std::size_t Router::route_count()const noexcept{return impl_->routes.size();}
 RouteGroup Router::group(std::string prefix){return RouteGroup{*this,std::move(prefix)};}
 void Router::add_middleware(std::size_t i,http::MiddlewareHandler m){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");impl_->routes[i].middleware.push_back(std::move(m));}
-void Router::set_name(std::size_t i,std::string n){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");impl_->routes[i].name=std::move(n);}
+void Router::set_name(std::size_t i,std::string n){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");for(std::size_t x=0;x<impl_->routes.size();++x)if(x!=i&&!n.empty()&&impl_->routes[x].name==n)throw std::invalid_argument("Duplicate named route: "+n);impl_->routes[i].name=std::move(n);}
 void Router::set_constraint(std::size_t i,std::string p,std::string e){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");impl_->routes[i].constraints.insert_or_assign(std::move(p),std::regex{e});}
 
 std::string Router::url(std::string_view name,const std::unordered_map<std::string,std::string>& parameters) const {
@@ -131,7 +139,7 @@ Task<http::Response> Router::dispatch(http::Request& request) const {
     request.clear_route_parameters(); const RouteEntry* selected=nullptr;
     for(const auto& route:impl_->routes){if(route.method!=request.method())continue;http::Request::Parameters params;if(!match(route,request.path(),params))continue;for(auto& [k,v]:params)request.set_route_parameter(k,std::move(v));selected=&route;break;}
     std::vector<http::MiddlewareHandler> chain=impl_->middleware;
-    Handler terminal=[](http::Request&)->Task<http::Response>{co_return http::Response::not_found();};
+    Handler terminal=impl_->fallback.value_or(Handler{[](http::Request&)->Task<http::Response>{co_return http::Response::not_found();}});
     if(selected){chain.insert(chain.end(),selected->middleware.begin(),selected->middleware.end());terminal=selected->handler;}
     try{co_return co_await pipeline(chain,0,terminal,request);}catch(...){co_return impl_->exceptions.render(request,std::current_exception());}
 }
@@ -146,5 +154,17 @@ RouteRegistration RouteGroup::get(std::string p,SimpleHandler h){return apply(ro
 RouteRegistration RouteGroup::post(std::string p,Handler h){return apply(router_->post(path(p),std::move(h)));}
 RouteRegistration RouteGroup::post(std::string p,SyncHandler h){return apply(router_->post(path(p),std::move(h)));}
 RouteRegistration RouteGroup::post(std::string p,SimpleHandler h){return apply(router_->post(path(p),std::move(h)));}
+RouteRegistration RouteGroup::put(std::string p,Handler h){return apply(router_->put(path(p),std::move(h)));}
+RouteRegistration RouteGroup::put(std::string p,SyncHandler h){return apply(router_->put(path(p),std::move(h)));}
+RouteRegistration RouteGroup::put(std::string p,SimpleHandler h){return apply(router_->put(path(p),std::move(h)));}
+RouteRegistration RouteGroup::patch(std::string p,Handler h){return apply(router_->patch(path(p),std::move(h)));}
+RouteRegistration RouteGroup::patch(std::string p,SyncHandler h){return apply(router_->patch(path(p),std::move(h)));}
+RouteRegistration RouteGroup::patch(std::string p,SimpleHandler h){return apply(router_->patch(path(p),std::move(h)));}
+RouteRegistration RouteGroup::delete_(std::string p,Handler h){return apply(router_->delete_(path(p),std::move(h)));}
+RouteRegistration RouteGroup::delete_(std::string p,SyncHandler h){return apply(router_->delete_(path(p),std::move(h)));}
+RouteRegistration RouteGroup::delete_(std::string p,SimpleHandler h){return apply(router_->delete_(path(p),std::move(h)));}
+RouteRegistration RouteGroup::options(std::string p,Handler h){return apply(router_->options(path(p),std::move(h)));}
+RouteRegistration RouteGroup::head(std::string p,Handler h){return apply(router_->head(path(p),std::move(h)));}
+RouteGroup& RouteGroup::name(std::string prefix){name_prefix_=std::move(prefix);return *this;}
 
 } // namespace gungnir::routing
