@@ -721,3 +721,14 @@ The execution commands use the existing migration repository and transactional
 runner. They require a real registered driver and fail explicitly if one is
 not available. Backend-specific adapters can now be added independently without
 changing the migration CLI contract.
+
+
+## Language contract and compatibility
+
+Gungnir language version 1.0 defines the application-facing contract independently from generated C++23. Stable language features include inferred mutable and immutable bindings, framework classes, modules/imports, optional values, collection syntax, and async/await semantics.
+
+Canonical module names are dot-separated. For example, `app.models.user` maps to `app/models/user.gnr`. Imports may carry an alias. Resolution, dependency ordering, cycle diagnostics, and incremental compilation are compiler responsibilities rather than application-runtime behavior.
+
+The language reserves the concepts `module`, `import`, `as`, `interface`, `enum`, `async`, `await`, `const`, `true`, `false`, and `null` for Gungnir semantics. Syntax additions should be additive where practical. Stable syntax should receive a migration/deprecation path before removal.
+
+Gungnir exposes semantic value names for integer, decimal, boolean, string, optional, list, map, and null values. Their generated C++ representations are implementation details and may evolve without changing normal Gungnir source.
