@@ -43,6 +43,12 @@ public:
     [[nodiscard]] bool valid() const noexcept { return static_cast<bool>(handle_); }
     [[nodiscard]] bool done() const noexcept { return !handle_ || handle_.done(); }
 
+    void run_inline() {
+        while (handle_ && !handle_.done()) {
+            handle_.resume();
+        }
+    }
+
     struct Awaiter {
         handle_type handle;
 
