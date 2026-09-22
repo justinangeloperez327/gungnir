@@ -325,7 +325,10 @@ T complete_inline(Task<T> task) {
     auto awaiter = task.operator co_await();
 
     if (!awaiter.await_ready()) {
-        awaiter.await_suspend(std::noop_coroutine());
+        auto handle = awaiter.await_suspend(std::noop_coroutine());
+        if (handle && !handle.done()) {
+            handle.resume();
+        }
     }
 
     return awaiter.await_resume();
