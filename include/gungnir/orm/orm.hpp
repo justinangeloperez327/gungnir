@@ -10,6 +10,7 @@
 #include <gungnir/orm/page.hpp>
 #include <gungnir/orm/plan.hpp>
 #include <gungnir/orm/query.hpp>
+#include <gungnir/orm/relation_query.hpp>
 #include <gungnir/orm/executor.hpp>
 #include <gungnir/orm/advanced.hpp>
 

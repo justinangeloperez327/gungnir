@@ -71,6 +71,22 @@ public:
         return value_;
     }
 
+    [[nodiscard]] Related* operator->() {
+        return &get();
+    }
+
+    [[nodiscard]] const Related* operator->() const {
+        return &get();
+    }
+
+    [[nodiscard]] Related& operator*() {
+        return get();
+    }
+
+    [[nodiscard]] const Related& operator*() const {
+        return get();
+    }
+
 protected:
     void ensure_loaded() const {
         if (!loaded_) {
@@ -126,6 +142,38 @@ public:
     [[nodiscard]] const collection_type& get() const {
         ensure_loaded();
         return *values_;
+    }
+
+    [[nodiscard]] auto begin() {
+        return get().begin();
+    }
+
+    [[nodiscard]] auto end() {
+        return get().end();
+    }
+
+    [[nodiscard]] auto begin() const {
+        return get().begin();
+    }
+
+    [[nodiscard]] auto end() const {
+        return get().end();
+    }
+
+    [[nodiscard]] Related& first() {
+        auto& values = get();
+        if (values.empty()) {
+            throw std::out_of_range("Gungnir relation is empty");
+        }
+        return values.front();
+    }
+
+    [[nodiscard]] const Related& first() const {
+        const auto& values = get();
+        if (values.empty()) {
+            throw std::out_of_range("Gungnir relation is empty");
+        }
+        return values.front();
     }
 
 protected:
