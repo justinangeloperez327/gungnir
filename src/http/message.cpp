@@ -233,6 +233,12 @@ std::string serialize_response(
         output += "\r\n";
     }
 
+    for (const auto& cookie : response.cookies()) {
+        output += "set-cookie: ";
+        output += serialize_cookie(cookie);
+        output += "\r\n";
+    }
+
     output += "content-length: ";
     output += std::to_string(response.body().size());
     output += "\r\n";

@@ -307,6 +307,25 @@ bool Request::expects_json() const noexcept {
             std::string_view::npos;
 }
 
+bool Request::is_json() const noexcept {
+    return media_type_is(header("content-type"), "application/json");
+}
+
+bool Request::accepts(std::string_view media_type) const noexcept {
+    const auto accept = header("accept");
+    return accept.empty() || accept.find("*/*") != std::string_view::npos || accept.find(media_type) != std::string_view::npos;
+}
+
+std::string_view Request::content_type() const noexcept { return header("content-type"); }
+std::string_view Request::user_agent() const noexcept { return header("user-agent"); }
+std::string_view Request::host() const noexcept { return header("host"); }
+std::string_view Request::authorization() const noexcept { return header("authorization"); }
+bool Request::bearer_authenticated() const noexcept { return authorization().starts_with("Bearer "); }
+std::string_view Request::bearer_token() const noexcept {
+    const auto value = authorization();
+    return value.starts_with("Bearer ") ? value.substr(7) : std::string_view{};
+}
+
 std::string Request::input(std::string_view name) const {
     parse_body_input();
 
