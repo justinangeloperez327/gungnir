@@ -37,6 +37,7 @@
 #include <gungnir/mail/mail.hpp>
 #include <gungnir/logging/logging.hpp>
 #include <gungnir/notifications/notifications.hpp>
+#include <gungnir/production/production.hpp>
 #include <gungnir/model/model.hpp>
 #include <gungnir/routing/route.hpp>
 #include <gungnir/routing/router.hpp>
