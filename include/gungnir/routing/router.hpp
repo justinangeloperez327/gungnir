@@ -14,6 +14,7 @@
 #include <gungnir/http/exception_handler.hpp>
 #include <gungnir/http/method.hpp>
 #include <gungnir/http/middleware.hpp>
+#include <gungnir/http/middleware_registry.hpp>
 #include <gungnir/http/request.hpp>
 #include <gungnir/http/response.hpp>
 
@@ -29,6 +30,7 @@ class RouteRegistration {
 public:
     RouteRegistration() = default;
     RouteRegistration& middleware(http::MiddlewareHandler handler);
+    RouteRegistration& middleware(std::string alias);
     RouteRegistration& name(std::string value);
     RouteRegistration& where(std::string parameter, std::string expression);
     RouteRegistration& where_number(std::string parameter);
@@ -48,6 +50,8 @@ class RouteGroup {
 public:
     RouteGroup(Router& router, std::string prefix);
     RouteGroup& middleware(http::MiddlewareHandler handler);
+    RouteGroup& middleware(std::string alias);
+    RouteGroup& middleware_group(std::string group);
     RouteRegistration get(std::string path, Handler handler);
     RouteRegistration get(std::string path, SyncHandler handler);
     RouteRegistration get(std::string path, SimpleHandler handler);
@@ -69,6 +73,8 @@ private:
     Router* router_;
     std::string prefix_;
     std::vector<http::MiddlewareHandler> middleware_;
+    std::vector<std::string> middleware_aliases_;
+    std::vector<std::string> middleware_groups_;
     std::string path(std::string_view value) const;
     RouteRegistration apply(RouteRegistration registration);
 };
@@ -117,13 +123,16 @@ public:
     [[nodiscard]] std::size_t route_count() const noexcept;
 
     Router& use(http::MiddlewareHandler middleware);
+    Router& middleware_registry(http::MiddlewareRegistry& registry);
     [[nodiscard]] RouteGroup group(std::string prefix);
     [[nodiscard]] std::string url(std::string_view name, const std::unordered_map<std::string, std::string>& parameters = {}) const;
     [[nodiscard]] Task<http::Response> dispatch(http::Request& request) const;
 
 private:
     friend class RouteRegistration;
+    friend class RouteGroup;
     void add_middleware(std::size_t route, http::MiddlewareHandler middleware);
+    void add_middleware(std::size_t route, std::string alias);
     void set_name(std::size_t route, std::string name);
     void set_constraint(std::size_t route, std::string parameter, std::string expression);
     class Impl;

@@ -18,6 +18,8 @@
 #include <gungnir/http/exception_handler.hpp>
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/middleware.hpp>
+#include <gungnir/http/middleware_registry.hpp>
+#include <gungnir/http/terminable_middleware.hpp>
 #include <gungnir/routing/binding.hpp>
 #include <gungnir/http/websocket.hpp>
 #include <gungnir/http/transport.hpp>

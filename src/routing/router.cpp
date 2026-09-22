@@ -64,6 +64,7 @@ class Router::Impl {
 public:
     std::vector<RouteEntry> routes;
     std::vector<http::MiddlewareHandler> middleware;
+    http::MiddlewareRegistry* middleware_registry{nullptr};
     http::ExceptionHandler exceptions;
     std::optional<Handler> fallback;
 };
@@ -71,6 +72,10 @@ public:
 RouteRegistration& RouteRegistration::middleware(http::MiddlewareHandler handler) {
     if (!router_) throw std::logic_error("Route registration is not attached to a router");
     router_->add_middleware(index_, std::move(handler)); return *this;
+}
+RouteRegistration& RouteRegistration::middleware(std::string alias) {
+    if (!router_) throw std::logic_error("Route registration is not attached to a router");
+    router_->add_middleware(index_, std::move(alias)); return *this;
 }
 RouteRegistration& RouteRegistration::name(std::string value) {
     if (!router_) throw std::logic_error("Route registration is not attached to a router");
@@ -115,6 +120,7 @@ RouteRegistration Router::remove(std::string p, SyncHandler h){return delete_(st
 RouteRegistration Router::remove(std::string p, SimpleHandler h){return delete_(std::move(p),std::move(h));}
 
 Router& Router::use(http::MiddlewareHandler m){impl_->middleware.push_back(std::move(m));return *this;}
+Router& Router::middleware_registry(http::MiddlewareRegistry& registry){impl_->middleware_registry=&registry;return *this;}
 Router& Router::fallback(Handler h){impl_->fallback=std::move(h);return *this;}
 Router& Router::fallback(SyncHandler h){return fallback([h=std::move(h)](http::Request& r)->Task<http::Response>{co_return h(r);});}
 Router& Router::fallback(SimpleHandler h){return fallback([h=std::move(h)](http::Request&)->Task<http::Response>{co_return h();});}
@@ -122,6 +128,7 @@ bool Router::has(std::string_view name)const noexcept{for(const auto& r:impl_->r
 std::size_t Router::route_count()const noexcept{return impl_->routes.size();}
 RouteGroup Router::group(std::string prefix){return RouteGroup{*this,std::move(prefix)};}
 void Router::add_middleware(std::size_t i,http::MiddlewareHandler m){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");impl_->routes[i].middleware.push_back(std::move(m));}
+void Router::add_middleware(std::size_t i,std::string alias){if(!impl_->middleware_registry)throw std::logic_error("Middleware registry is not attached");add_middleware(i,impl_->middleware_registry->resolve(alias));}
 void Router::set_name(std::size_t i,std::string n){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");for(std::size_t x=0;x<impl_->routes.size();++x)if(x!=i&&!n.empty()&&impl_->routes[x].name==n)throw std::invalid_argument("Duplicate named route: "+n);impl_->routes[i].name=std::move(n);}
 void Router::set_constraint(std::size_t i,std::string p,std::string e){if(i>=impl_->routes.size())throw std::out_of_range("Invalid route");impl_->routes[i].constraints.insert_or_assign(std::move(p),std::regex{e});}
 
@@ -146,8 +153,18 @@ Task<http::Response> Router::dispatch(http::Request& request) const {
 
 RouteGroup::RouteGroup(Router& router,std::string prefix):router_(&router),prefix_(std::move(prefix)){}
 RouteGroup& RouteGroup::middleware(http::MiddlewareHandler handler){middleware_.push_back(std::move(handler));return *this;}
+RouteGroup& RouteGroup::middleware(std::string alias){middleware_aliases_.push_back(std::move(alias));return *this;}
+RouteGroup& RouteGroup::middleware_group(std::string group){middleware_groups_.push_back(std::move(group));return *this;}
 std::string RouteGroup::path(std::string_view value)const{return join(prefix_,value);}
-RouteRegistration RouteGroup::apply(RouteRegistration r){for(const auto& m:middleware_)r.middleware(m);return r;}
+RouteRegistration RouteGroup::apply(RouteRegistration r){
+    for(const auto& m:middleware_) r.middleware(m);
+    for(const auto& alias:middleware_aliases_) r.middleware(alias);
+    for(const auto& group:middleware_groups_) {
+        if(!router_->impl_->middleware_registry) throw std::logic_error("Middleware registry is not attached");
+        for(auto& handler:router_->impl_->middleware_registry->resolve_group(group)) r.middleware(std::move(handler));
+    }
+    return r;
+}
 RouteRegistration RouteGroup::get(std::string p,Handler h){return apply(router_->get(path(p),std::move(h)));}
 RouteRegistration RouteGroup::get(std::string p,SyncHandler h){return apply(router_->get(path(p),std::move(h)));}
 RouteRegistration RouteGroup::get(std::string p,SimpleHandler h){return apply(router_->get(path(p),std::move(h)));}
