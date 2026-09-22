@@ -19,6 +19,7 @@ struct Settings {
     String username;
     String password;
     std::size_t pool_size{1};
+    String options;
 };
 
 [[nodiscard]] Backend parse_backend(
