@@ -165,6 +165,5 @@ RouteRegistration RouteGroup::delete_(std::string p,SyncHandler h){return apply(
 RouteRegistration RouteGroup::delete_(std::string p,SimpleHandler h){return apply(router_->delete_(path(p),std::move(h)));}
 RouteRegistration RouteGroup::options(std::string p,Handler h){return apply(router_->options(path(p),std::move(h)));}
 RouteRegistration RouteGroup::head(std::string p,Handler h){return apply(router_->head(path(p),std::move(h)));}
-RouteGroup& RouteGroup::name(std::string prefix){name_prefix_=std::move(prefix);return *this;}
 
 } // namespace gungnir::routing

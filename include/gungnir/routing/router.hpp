@@ -65,12 +65,10 @@ public:
     RouteRegistration delete_(std::string path, SimpleHandler handler);
     RouteRegistration options(std::string path, Handler handler);
     RouteRegistration head(std::string path, Handler handler);
-    RouteGroup& name(std::string prefix);
 private:
     Router* router_;
     std::string prefix_;
     std::vector<http::MiddlewareHandler> middleware_;
-    std::string name_prefix_;
     std::string path(std::string_view value) const;
     RouteRegistration apply(RouteRegistration registration);
 };
