@@ -43,6 +43,14 @@ public:
         String name
     );
 
+    [[nodiscard]] std::filesystem::path make_request(
+        String name
+    );
+
+    [[nodiscard]] std::filesystem::path make_job(
+        String name
+    );
+
     [[nodiscard]] std::filesystem::path assemble() const;
     [[nodiscard]] std::filesystem::path assemble_migrations() const;
 
