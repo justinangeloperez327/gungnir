@@ -48,12 +48,9 @@ public:
 
         [[nodiscard]] bool await_ready() const noexcept { return !handle || handle.done(); }
 
-        void await_suspend(std::coroutine_handle<> continuation) noexcept {
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> continuation) noexcept {
             handle.promise().continuation = continuation;
-
-            while (handle && !handle.done()) {
-                handle.resume();
-            }
+            return handle;
         }
 
         T await_resume() {
@@ -148,12 +145,9 @@ public:
 
         [[nodiscard]] bool await_ready() const noexcept { return !handle || handle.done(); }
 
-        void await_suspend(std::coroutine_handle<> continuation) noexcept {
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> continuation) noexcept {
             handle.promise().continuation = continuation;
-
-            while (handle && !handle.done()) {
-                handle.resume();
-            }
+            return handle;
         }
 
         void await_resume() { handle.promise().result(); }
