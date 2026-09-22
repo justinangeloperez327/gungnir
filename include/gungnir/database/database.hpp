@@ -4,6 +4,8 @@
 #include <gungnir/database/compiler.hpp>
 #include <gungnir/database/connection.hpp>
 #include <gungnir/database/driver.hpp>
+#include <gungnir/database/error.hpp>
+#include <gungnir/database/query.hpp>
 #include <gungnir/database/manager.hpp>
 #include <gungnir/database/pool.hpp>
 #include <gungnir/database/registry.hpp>
