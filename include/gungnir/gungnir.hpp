@@ -17,6 +17,7 @@
 #include <gungnir/core/provider.hpp>
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/database.hpp>
+#include <gungnir/events/events.hpp>
 #include <gungnir/http/errors.hpp>
 #include <gungnir/http/exception_handler.hpp>
 #include <gungnir/http/json.hpp>
