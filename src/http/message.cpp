@@ -243,7 +243,9 @@ std::string serialize_response(
     output += "content-length: ";
     output += std::to_string(response.body().size());
     output += "\r\n";
-    output += "connection: close\r\n";
+    output += "connection: ";
+    output += connection == ConnectionDirective::keep_alive ? "keep-alive" : "close";
+    output += "\r\n";
     output += "\r\n";
 
     if (!omit_body) {
