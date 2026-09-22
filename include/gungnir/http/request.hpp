@@ -56,6 +56,14 @@ public:
     [[nodiscard]] const Json& json() const;
     [[nodiscard]] const Input& form() const noexcept;
     [[nodiscard]] bool expects_json() const noexcept;
+    [[nodiscard]] bool is_json() const noexcept;
+    [[nodiscard]] bool accepts(std::string_view media_type) const noexcept;
+    [[nodiscard]] std::string_view content_type() const noexcept;
+    [[nodiscard]] std::string_view user_agent() const noexcept;
+    [[nodiscard]] std::string_view host() const noexcept;
+    [[nodiscard]] std::string_view authorization() const noexcept;
+    [[nodiscard]] bool bearer_authenticated() const noexcept;
+    [[nodiscard]] std::string_view bearer_token() const noexcept;
 
     [[nodiscard]] std::string input(std::string_view name) const;
     [[nodiscard]] bool has(std::string_view name) const;
