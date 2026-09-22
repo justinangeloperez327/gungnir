@@ -357,6 +357,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_queue_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.queue COMMAND gungnir_queue_test)
 
+    add_executable(gungnir_scheduler_test tests/scheduler.cpp)
+    target_link_libraries(gungnir_scheduler_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_scheduler_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.scheduler COMMAND gungnir_scheduler_test)
+
     add_executable(gungnir_storage_test tests/storage.cpp)
     target_link_libraries(gungnir_storage_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_storage_test PRIVATE cxx_std_23)
