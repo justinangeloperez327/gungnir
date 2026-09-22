@@ -49,6 +49,12 @@ int main() {
     first->execute("SELECT 1");
     assert(calls.size() == 1);
 
+    first->execute(database::Query{
+        "SELECT * FROM users WHERE id = ?",
+        {model::AttributeValue{Int64{1}}}
+    });
+    assert(calls.size() == 2);
+
     {
         auto transaction = manager.transaction();
         assert(transaction.active());

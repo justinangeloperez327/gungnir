@@ -40,9 +40,9 @@ public:
         runtime::ConnectionScope scope{connection_};
 
         try {
-            using Result = std::invoke_result_t<Callback&>;
+            using CallbackResult = std::invoke_result_t<Callback&>;
 
-            if constexpr (std::is_void_v<Result>) {
+            if constexpr (std::is_void_v<CallbackResult>) {
                 std::invoke(callback);
                 commit();
             } else {

@@ -1,5 +1,7 @@
 #include <gungnir/database/connection.hpp>
 
+#include <gungnir/database/error.hpp>
+
 #include <stdexcept>
 #include <utility>
 
@@ -31,7 +33,22 @@ Result Connection::execute(
     const std::vector<model::AttributeValue>& bindings
 ) {
     std::lock_guard lock{mutex_};
-    return driver_->execute(statement, bindings);
+    try {
+        return driver_->execute(statement, bindings);
+    } catch (const Error&) {
+        throw;
+    } catch (const std::exception& error) {
+        throw Error{
+            "Database execution failed: " + String{error.what()},
+            backend(),
+            name_,
+            statement
+        };
+    }
+}
+
+Result Connection::execute(const Query& query) {
+    return execute(query.statement, query.bindings);
 }
 
 void Connection::begin() {
