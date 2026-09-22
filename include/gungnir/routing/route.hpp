@@ -9,6 +9,7 @@
 #include <utility>
 
 #include <gungnir/controller/controller.hpp>
+#include <gungnir/controller/action.hpp>
 #include <gungnir/core/container.hpp>
 #include <gungnir/http/middleware.hpp>
 #include <gungnir/routing/router.hpp>
@@ -56,31 +57,9 @@ template <typename ControllerType, typename Method>
                 http::Request&
             >;
 
-            if constexpr (
-                std::same_as<Result, http::Response>
-            ) {
-                co_return std::invoke(
-                    method,
-                    *controller,
-                    request
-                );
-            } else if constexpr (
-                std::same_as<
-                    Result,
-                    Task<http::Response>
-                >
-            ) {
-                co_return co_await std::invoke(
-                    method,
-                    *controller,
-                    request
-                );
-            } else {
-                static_assert(
-                    unsupported_controller_handler<Result>,
-                    "Controller action must return Response or Task<Response>"
-                );
-            }
+            co_return co_await controller::normalize(
+                std::invoke(method, *controller, request)
+            );
         } else if constexpr (
             std::invocable<
                 Method,
@@ -92,29 +71,9 @@ template <typename ControllerType, typename Method>
                 ControllerType&
             >;
 
-            if constexpr (
-                std::same_as<Result, http::Response>
-            ) {
-                co_return std::invoke(
-                    method,
-                    *controller
-                );
-            } else if constexpr (
-                std::same_as<
-                    Result,
-                    Task<http::Response>
-                >
-            ) {
-                co_return co_await std::invoke(
-                    method,
-                    *controller
-                );
-            } else {
-                static_assert(
-                    unsupported_controller_handler<Result>,
-                    "Controller action must return Response or Task<Response>"
-                );
-            }
+            co_return co_await controller::normalize(
+                std::invoke(method, *controller)
+            );
         } else {
             static_assert(
                 unsupported_controller_handler<Method>,

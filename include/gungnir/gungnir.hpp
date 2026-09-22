@@ -2,6 +2,7 @@
 
 #include <gungnir/config/config.hpp>
 #include <gungnir/controller/controller.hpp>
+#include <gungnir/controller/action.hpp>
 #include <gungnir/core/application.hpp>
 #include <gungnir/core/container.hpp>
 #include <gungnir/core/backpressure.hpp>

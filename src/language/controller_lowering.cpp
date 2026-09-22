@@ -118,7 +118,9 @@ bool route_method(std::string_view name) {
         name == "put" ||
         name == "patch" ||
         name == "delete" ||
-        name == "remove";
+        name == "remove" ||
+        name == "options" ||
+        name == "head";
 }
 
 } // namespace
