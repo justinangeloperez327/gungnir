@@ -1,4 +1,5 @@
 #include <gungnir/view/engine.hpp>
+#include <gungnir/view/error.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -197,9 +198,7 @@ String render_block(
 
         const auto header_end = working.find("}}", open);
         if (header_end == String::npos) {
-            throw std::runtime_error(
-                "Gungnir view each block is missing '}}'"
-            );
+            throw SyntaxError{"Gungnir view each block is missing '}}'"};
         }
 
         const auto path = trim(
@@ -215,9 +214,7 @@ String render_block(
         );
 
         if (close == String::npos) {
-            throw std::runtime_error(
-                "Gungnir view each block is missing '{{/each}}'"
-            );
+            throw SyntaxError{"Gungnir view each block is missing '{{/each}}'"};
         }
 
         const auto body_start = header_end + 2;
@@ -251,9 +248,7 @@ String render_block(
 
         const auto close = working.find("}}}", open + 3);
         if (close == String::npos) {
-            throw std::runtime_error(
-                "Gungnir raw view expression is missing '}}}'"
-            );
+            throw SyntaxError{"Gungnir raw view expression is missing '}}}'"};
         }
 
         const auto path = trim(
@@ -283,9 +278,7 @@ String render_block(
 
         const auto close = working.find("}}", open + 2);
         if (close == String::npos) {
-            throw std::runtime_error(
-                "Gungnir view expression is missing '}}'"
-            );
+            throw SyntaxError{"Gungnir view expression is missing '}}'"};
         }
 
         const auto path = trim(
@@ -353,9 +346,7 @@ String Engine::render(
 
     std::ifstream input{path, std::ios::binary};
     if (!input) {
-        throw std::runtime_error(
-            "Gungnir view not found: " + path.string()
-        );
+        throw NotFound{path.string()};
     }
 
     const String source{

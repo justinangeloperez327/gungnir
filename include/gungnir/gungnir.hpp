@@ -42,6 +42,7 @@
 #include <gungnir/validation/result.hpp>
 #include <gungnir/validation/request.hpp>
 #include <gungnir/validation/validator.hpp>
+#include <gungnir/view/views.hpp>
 #include <gungnir/view/data.hpp>
 #include <gungnir/view/engine.hpp>
 #include <gungnir/view/value.hpp>

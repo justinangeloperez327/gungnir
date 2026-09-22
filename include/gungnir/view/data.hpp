@@ -38,6 +38,31 @@ public:
         return &found->second;
     }
 
+    Data& with(String key, Value value) {
+        values_.insert_or_assign(std::move(key), std::move(value));
+        return *this;
+    }
+
+    template <typename T>
+    Data& with(String key, T&& value) {
+        values_.insert_or_assign(
+            std::move(key),
+            make_value(std::forward<T>(value))
+        );
+        return *this;
+    }
+
+    Data& merge(const Data& other) {
+        for (const auto& [key, value] : other.values_) {
+            values_.insert_or_assign(key, value);
+        }
+        return *this;
+    }
+
+    [[nodiscard]] bool has(std::string_view key) const {
+        return values_.contains(String{key});
+    }
+
     [[nodiscard]] const std::unordered_map<String, Value>& values() const noexcept {
         return values_;
     }
