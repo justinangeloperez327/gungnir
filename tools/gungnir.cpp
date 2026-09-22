@@ -20,6 +20,7 @@ void help() {
         << "  gungnir new <name> [path]\n"
         << "  gungnir build [--release]\n"
         << "  gungnir run [--release]\n"
+        << "  gungnir dev\n"
         << "  gungnir make:model <name>\n"
         << "  gungnir make:controller <name>\n"
         << "  gungnir make:middleware <name>\n"
@@ -134,6 +135,10 @@ int main(
             return project.build(
                 release_flag(arguments)
             );
+        }
+
+        if (command == "dev") {
+            return project.run(false);
         }
 
         if (command == "run") {
