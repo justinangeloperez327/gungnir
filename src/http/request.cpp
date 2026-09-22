@@ -422,6 +422,10 @@ Request::Input Request::validate(
     );
 }
 
+validation::Result Request::check(const validation::Rules& rules) const {
+    return validation::Validator::check(all(), rules);
+}
+
 void Request::parse_target() {
     const auto query = target_.find('?');
 
