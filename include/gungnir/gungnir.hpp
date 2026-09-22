@@ -35,6 +35,8 @@
 #include <gungnir/routing/router.hpp>
 #include <gungnir/validation/exception.hpp>
 #include <gungnir/validation/rules.hpp>
+#include <gungnir/validation/result.hpp>
+#include <gungnir/validation/request.hpp>
 #include <gungnir/validation/validator.hpp>
 #include <gungnir/view/data.hpp>
 #include <gungnir/view/engine.hpp>
