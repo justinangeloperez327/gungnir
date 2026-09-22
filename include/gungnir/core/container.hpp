@@ -7,11 +7,14 @@
 #include <typeindex>
 #include <type_traits>
 #include <utility>
+#include <string>
+#include <string_view>
 
 namespace gungnir {
 
 class Container {
 public:
+    enum class Lifetime { transient, singleton, scoped };
     Container();
     ~Container();
 
@@ -108,6 +111,33 @@ public:
         return std::static_pointer_cast<Service>(resolve_erased(key));
     }
 
+    template <typename Service, typename Implementation = Service>
+    void scoped() {
+        static_assert(std::same_as<Service, Implementation> || std::derived_from<Implementation, Service>);
+        register_factory(std::type_index{typeid(Service)}, [](Container&) -> std::shared_ptr<void> {
+            auto implementation = std::make_shared<Implementation>();
+            std::shared_ptr<Service> service = implementation;
+            return std::static_pointer_cast<void>(service);
+        }, Lifetime::scoped);
+    }
+
+    template <typename Service, typename Factory>
+    void scoped(Factory&& factory) {
+        register_factory(std::type_index{typeid(Service)}, make_factory<Service>(std::forward<Factory>(factory)), Lifetime::scoped);
+    }
+
+    template <typename Service, typename Target>
+    void alias() {
+        bind<Service>([](Container& container) { return container.template resolve<Target>(); });
+    }
+
+    template <typename Service>
+    void forget() { erase(std::type_index{typeid(Service)}); }
+
+    void begin_scope();
+    void end_scope() noexcept;
+    [[nodiscard]] bool in_scope() const noexcept;
+
     template <typename Service>
     [[nodiscard]] bool has() const noexcept {
         return contains(std::type_index{typeid(Service)});
@@ -119,10 +149,14 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 
-    void register_factory(std::type_index type, ErasedFactory factory, bool singleton);
+    void register_factory(std::type_index type, ErasedFactory factory, Lifetime lifetime);
+    void register_factory(std::type_index type, ErasedFactory factory, bool singleton) {
+        register_factory(type, std::move(factory), singleton ? Lifetime::singleton : Lifetime::transient);
+    }
     void register_instance(std::type_index type, std::shared_ptr<void> instance);
     [[nodiscard]] std::shared_ptr<void> resolve_erased(std::type_index type);
     [[nodiscard]] bool contains(std::type_index type) const noexcept;
+    void erase(std::type_index type);
 
     template <typename>
     static constexpr bool always_false = false;
