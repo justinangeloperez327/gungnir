@@ -147,14 +147,7 @@ Task<http::Response> Router::dispatch(http::Request& request) const {
 RouteGroup::RouteGroup(Router& router,std::string prefix):router_(&router),prefix_(std::move(prefix)){}
 RouteGroup& RouteGroup::middleware(http::MiddlewareHandler handler){middleware_.push_back(std::move(handler));return *this;}
 std::string RouteGroup::path(std::string_view value)const{return join(prefix_,value);}
-RouteRegistration RouteGroup::apply(RouteRegistration r){
-    for(const auto& m:middleware_) r.middleware(m);
-    if(!name_prefix_.empty()) {
-        // A group name prefix applies when a route is named after registration.
-        // RouteRegistration keeps ownership with Router; prefixing is handled by explicit names until a route metadata builder lands.
-    }
-    return r;
-}
+RouteRegistration RouteGroup::apply(RouteRegistration r){for(const auto& m:middleware_)r.middleware(m);return r;}
 RouteRegistration RouteGroup::get(std::string p,Handler h){return apply(router_->get(path(p),std::move(h)));}
 RouteRegistration RouteGroup::get(std::string p,SyncHandler h){return apply(router_->get(path(p),std::move(h)));}
 RouteRegistration RouteGroup::get(std::string p,SimpleHandler h){return apply(router_->get(path(p),std::move(h)));}
@@ -172,6 +165,5 @@ RouteRegistration RouteGroup::delete_(std::string p,SyncHandler h){return apply(
 RouteRegistration RouteGroup::delete_(std::string p,SimpleHandler h){return apply(router_->delete_(path(p),std::move(h)));}
 RouteRegistration RouteGroup::options(std::string p,Handler h){return apply(router_->options(path(p),std::move(h)));}
 RouteRegistration RouteGroup::head(std::string p,Handler h){return apply(router_->head(path(p),std::move(h)));}
-RouteGroup& RouteGroup::name(std::string prefix){name_prefix_=std::move(prefix);return *this;}
 
 } // namespace gungnir::routing
