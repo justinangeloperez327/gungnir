@@ -673,3 +673,51 @@ migration CLI work.
 Gungnir now installs CMake package metadata and exported runtime, ORM, and
 language targets. Generated applications use `find_package(Gungnir)` internally
 instead of repository-relative library paths.
+
+
+## Database bootstrap and migration commands
+
+Database environment configuration is now converted into a typed
+`database::Settings` object during application boot. A backend adapter registers
+a configured driver factory once, and the application can then create the
+default pooled connection from `.env` without controllers or models knowing
+about native client libraries.
+
+Supported backend identifiers at the framework contract level are PostgreSQL,
+MySQL/MariaDB, SQL Server, and MongoDB. Their default ports are 5432, 3306,
+1433, and 27017 respectively.
+
+Concrete network/client adapters are deliberately separate from this loop.
+If `DB_CONNECTION` names a backend whose adapter has not been registered,
+Gungnir raises `DriverUnavailableError` instead of silently using a mock or
+shell command.
+
+The application-level adapter hook is:
+
+```cpp
+app.database_driver(database::Backend::postgresql, factory);
+```
+
+`factory` receives the resolved host, port, database, username, password,
+connection name, and pool size.
+
+The CLI now assembles migration files into a separate hidden native migration
+binary and exposes:
+
+```text
+gungnir migrate
+gungnir migrate:rollback
+gungnir migrate:reset
+gungnir migrate:status
+gungnir migrate:plan
+```
+
+`migrate:plan` requires only `DB_CONNECTION`; it compiles every migration plan
+using the selected backend compiler and prints the statements without opening
+a database connection. This makes schema/backend verification usable before
+a concrete database adapter is installed.
+
+The execution commands use the existing migration repository and transactional
+runner. They require a real registered driver and fail explicitly if one is
+not available. Backend-specific adapters can now be added independently without
+changing the migration CLI contract.

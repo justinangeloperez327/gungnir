@@ -12,6 +12,8 @@
 #include <gungnir/database/backend.hpp>
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/manager.hpp>
+#include <gungnir/database/registry.hpp>
+#include <gungnir/database/settings.hpp>
 #include <gungnir/http/middleware.hpp>
 #include <gungnir/routing/router.hpp>
 #include <gungnir/view/engine.hpp>
@@ -42,6 +44,10 @@ public:
     [[nodiscard]] database::Manager& database() noexcept;
     [[nodiscard]] const database::Manager& database() const noexcept;
 
+    [[nodiscard]] database::DriverRegistry& database_drivers() noexcept;
+    [[nodiscard]] const database::DriverRegistry& database_drivers()
+        const noexcept;
+
     [[nodiscard]] view::Engine& views() noexcept;
     [[nodiscard]] const view::Engine& views() const noexcept;
 
@@ -70,6 +76,13 @@ public:
         database::DriverFactory factory,
         std::size_t pool_size = 1
     );
+
+    Application& database_driver(
+        database::Backend backend,
+        database::ConfiguredDriverFactory factory
+    );
+
+    Application& configure_database();
 
     template <typename Service, typename Implementation = Service>
     Application& bind() {

@@ -467,6 +467,32 @@ int main() {
         ) != std::string::npos
     );
 
+    const auto migration = transpiler.transpile(
+        "class CreateUsersTable : Migration {\n"
+        "    void up() {}\n"
+        "    void down() {}\n"
+        "}\n",
+        "migration.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(migration.success());
+    assert(
+        migration.code.find(
+            "class CreateUsersTable : public gungnir::Migration"
+        ) != std::string::npos
+    );
+    assert(
+        migration.code.find(
+            "public:"
+        ) != std::string::npos
+    );
+    assert(
+        migration.code.find(
+            "};"
+        ) != std::string::npos
+    );
+
     const auto invalid_await = transpiler.transpile(
         "void load() {\n"
         "    const value = await fetch();\n"
