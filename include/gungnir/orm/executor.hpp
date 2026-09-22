@@ -15,6 +15,7 @@
 #include <gungnir/orm/mutation.hpp>
 #include <gungnir/orm/advanced_mutation.hpp>
 #include <gungnir/orm/query.hpp>
+#include <gungnir/orm/query_log.hpp>
 
 namespace gungnir::orm {
 
@@ -419,6 +420,12 @@ template <typename ModelType>
 Collection<ModelType> Query<ModelType>::get() const {
     auto connection = database::runtime::connection(plan_.connection);
     const auto compiled = orm::compile(plan_, connection->backend());
+    report(QueryEvent{
+        .connection = plan_.connection,
+        .backend = connection->backend(),
+        .statement = compiled.text,
+        .binding_count = compiled.bindings.size()
+    });
     const auto result = connection->execute(
         compiled.text,
         compiled.bindings
