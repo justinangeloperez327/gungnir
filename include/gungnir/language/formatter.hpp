@@ -13,7 +13,7 @@ public:
         std::size_t indent = 0;
         bool line_start = true;
 
-        const auto write_indent = [&]() mutable {
+        auto write_indent = [&]() {
             if (line_start) {
                 out.append(indent * 4, ' ');
                 line_start = false;
