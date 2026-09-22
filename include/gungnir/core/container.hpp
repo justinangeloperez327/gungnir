@@ -94,6 +94,7 @@ public:
 
     template <typename Service>
     [[nodiscard]] std::shared_ptr<Service> resolve() {
+        ResolutionGuard guard{*this, std::type_index{typeid(Service)}};
         const auto key = std::type_index{typeid(Service)};
 
         if (!contains(key)) {
@@ -149,6 +150,17 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 
+    class ResolutionGuard {
+    public:
+        ResolutionGuard(Container& container, std::type_index type) : container_(container), type_(type) { container_.enter_resolution(type_); }
+        ~ResolutionGuard() { container_.leave_resolution(type_); }
+        ResolutionGuard(const ResolutionGuard&) = delete;
+        ResolutionGuard& operator=(const ResolutionGuard&) = delete;
+    private:
+        Container& container_;
+        std::type_index type_;
+    };
+
     void register_factory(std::type_index type, ErasedFactory factory, Lifetime lifetime);
     void register_factory(std::type_index type, ErasedFactory factory, bool singleton) {
         register_factory(type, std::move(factory), singleton ? Lifetime::singleton : Lifetime::transient);
@@ -157,6 +169,8 @@ private:
     [[nodiscard]] std::shared_ptr<void> resolve_erased(std::type_index type);
     [[nodiscard]] bool contains(std::type_index type) const noexcept;
     void erase(std::type_index type);
+    void enter_resolution(std::type_index type);
+    void leave_resolution(std::type_index type) noexcept;
 
     template <typename>
     static constexpr bool always_false = false;
