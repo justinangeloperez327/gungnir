@@ -35,6 +35,7 @@
 #include <gungnir/http/cookie.hpp>
 #include <gungnir/migration/migrations.hpp>
 #include <gungnir/mail/mail.hpp>
+#include <gungnir/logging/logging.hpp>
 #include <gungnir/notifications/notifications.hpp>
 #include <gungnir/model/model.hpp>
 #include <gungnir/routing/route.hpp>
