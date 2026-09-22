@@ -186,6 +186,7 @@ public:
     std::unique_ptr<http::detail::Server> server;
     bool booted{false};
     Lifecycle lifecycle;
+    http::MiddlewareRegistry middleware_registry;
     std::vector<std::shared_ptr<Provider>> providers;
 };
 
@@ -405,6 +406,10 @@ Application::env() noexcept {
 const config::Environment&
 Application::env() const noexcept {
     return *impl_->environment;
+}
+
+http::MiddlewareRegistry& Application::middleware_registry() noexcept {
+    return impl_->middleware_registry;
 }
 
 const std::filesystem::path&
