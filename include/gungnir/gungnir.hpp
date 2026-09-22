@@ -9,6 +9,9 @@
 #include <gungnir/core/executor.hpp>
 #include <gungnir/core/task.hpp>
 #include <gungnir/core/timer.hpp>
+#include <gungnir/core/lifecycle.hpp>
+#include <gungnir/core/mode.hpp>
+#include <gungnir/core/provider.hpp>
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/database.hpp>
 #include <gungnir/http/errors.hpp>

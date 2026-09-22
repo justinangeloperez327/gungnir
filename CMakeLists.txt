@@ -30,6 +30,7 @@ add_library(gungnir
     src/http/json.cpp
     src/http/message.cpp
     src/http/request.cpp
+    src/http/cookie.cpp
     src/http/response.cpp
     src/http/server.cpp
     src/http/security.cpp

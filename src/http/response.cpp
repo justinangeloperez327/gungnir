@@ -76,9 +76,14 @@ std::string_view Response::header(
     return found->second;
 }
 
-const Response::Headers& Response::headers() const noexcept {
-    return headers_;
+const Response::Headers& Response::headers() const noexcept { return headers_; }
+
+Response& Response::cookie(Cookie value) { cookies_.push_back(std::move(value)); return *this; }
+Response& Response::without_cookie(std::string name, std::string path) {
+    Cookie value{.name=std::move(name), .value="", .path=std::move(path), .max_age=std::chrono::seconds{0}};
+    cookies_.push_back(std::move(value)); return *this;
 }
+const Response::Cookies& Response::cookies() const noexcept { return cookies_; }
 
 Response Response::text(
     std::string body,
@@ -143,6 +148,19 @@ Response Response::redirect(
 
 Response Response::not_found() {
     return Response::text("Not Found", 404);
+}
+
+Response Response::html(std::string body, int status) {
+    Response response{status, std::move(body)};
+    response.header("content-type", "text/html; charset=utf-8");
+    return response;
+}
+
+Response Response::download(std::string body, std::string filename, std::string content_type, int status) {
+    Response response{status, std::move(body)};
+    response.header("content-type", std::move(content_type));
+    response.header("content-disposition", "attachment; filename=\"" + filename + "\"");
+    return response;
 }
 
 } // namespace gungnir::http

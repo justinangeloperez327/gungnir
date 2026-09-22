@@ -54,10 +54,23 @@ public:
     RouteRegistration post(std::string path, Handler handler);
     RouteRegistration post(std::string path, SyncHandler handler);
     RouteRegistration post(std::string path, SimpleHandler handler);
+    RouteRegistration put(std::string path, Handler handler);
+    RouteRegistration put(std::string path, SyncHandler handler);
+    RouteRegistration put(std::string path, SimpleHandler handler);
+    RouteRegistration patch(std::string path, Handler handler);
+    RouteRegistration patch(std::string path, SyncHandler handler);
+    RouteRegistration patch(std::string path, SimpleHandler handler);
+    RouteRegistration delete_(std::string path, Handler handler);
+    RouteRegistration delete_(std::string path, SyncHandler handler);
+    RouteRegistration delete_(std::string path, SimpleHandler handler);
+    RouteRegistration options(std::string path, Handler handler);
+    RouteRegistration head(std::string path, Handler handler);
+    RouteGroup& name(std::string prefix);
 private:
     Router* router_;
     std::string prefix_;
     std::vector<http::MiddlewareHandler> middleware_;
+    std::string name_prefix_;
     std::string path(std::string_view value) const;
     RouteRegistration apply(RouteRegistration registration);
 };
@@ -92,6 +105,18 @@ public:
     RouteRegistration remove(std::string path, Handler handler);
     RouteRegistration remove(std::string path, SyncHandler handler);
     RouteRegistration remove(std::string path, SimpleHandler handler);
+    RouteRegistration options(std::string path, Handler handler);
+    RouteRegistration options(std::string path, SyncHandler handler);
+    RouteRegistration options(std::string path, SimpleHandler handler);
+    RouteRegistration head(std::string path, Handler handler);
+    RouteRegistration head(std::string path, SyncHandler handler);
+    RouteRegistration head(std::string path, SimpleHandler handler);
+
+    Router& fallback(Handler handler);
+    Router& fallback(SyncHandler handler);
+    Router& fallback(SimpleHandler handler);
+    [[nodiscard]] bool has(std::string_view name) const noexcept;
+    [[nodiscard]] std::size_t route_count() const noexcept;
 
     Router& use(http::MiddlewareHandler middleware);
     [[nodiscard]] RouteGroup group(std::string prefix);
