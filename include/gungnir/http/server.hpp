@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <gungnir/http/runtime.hpp>
 
 namespace gungnir::routing {
 class Router;
@@ -13,7 +14,7 @@ namespace gungnir::http::detail {
 
 class Server {
 public:
-    explicit Server(routing::Router& router);
+    explicit Server(routing::Router& router, RuntimeOptions options = {});
     ~Server();
 
     Server(const Server&) = delete;
@@ -25,6 +26,7 @@ public:
     void stop() noexcept;
 
     [[nodiscard]] bool running() const noexcept;
+    [[nodiscard]] const RuntimeOptions& options() const noexcept;
 
 private:
     class Impl;

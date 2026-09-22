@@ -210,7 +210,8 @@ Request parse_request(std::string_view message) {
 
 std::string serialize_response(
     const Response& response,
-    bool omit_body
+    bool omit_body,
+    ConnectionDirective connection
 ) {
     std::string output;
     output.reserve(response.body().size() + 256);
@@ -250,6 +251,12 @@ std::string serialize_response(
     }
 
     return output;
+}
+
+bool request_keep_alive(const Request& request) noexcept {
+    const auto connection = request.header("connection");
+    if (connection == "close" || connection == "Close") return false;
+    return true;
 }
 
 } // namespace gungnir::http::wire
