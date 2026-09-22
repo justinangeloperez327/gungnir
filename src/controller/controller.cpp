@@ -30,6 +30,14 @@ Response Controller::view(
     );
 }
 
+Response Controller::html(String body, Integer status) {
+    return Response::html(std::move(body), status);
+}
+
+Response Controller::download(String body, String filename, String content_type, Integer status) {
+    return Response::download(std::move(body), std::move(filename), std::move(content_type), status);
+}
+
 Response Controller::no_content() {
     return Response::no_content();
 }
