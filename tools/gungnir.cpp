@@ -25,6 +25,8 @@ void help() {
         << "  gungnir make:controller <name>\n"
         << "  gungnir make:middleware <name>\n"
         << "  gungnir make:migration <name>\n"
+        << "  gungnir make:request <name>\n"
+        << "  gungnir make:job <name>\n"
         << "  gungnir migrate\n"
         << "  gungnir migrate:rollback\n"
         << "  gungnir migrate:reset\n"
@@ -164,7 +166,9 @@ int main(
             command == "make:model" ||
             command == "make:controller" ||
             command == "make:middleware" ||
-            command == "make:migration"
+            command == "make:migration" ||
+            command == "make:request" ||
+            command == "make:job"
         ) {
             if (argc < 3) {
                 throw std::invalid_argument(
@@ -196,9 +200,25 @@ int main(
                     project.make_middleware(
                         argv[2]
                     );
-            } else {
+            } else if (
+                command ==
+                "make:migration"
+            ) {
                 created =
                     project.make_migration(
+                        argv[2]
+                    );
+            } else if (
+                command ==
+                "make:request"
+            ) {
+                created =
+                    project.make_request(
+                        argv[2]
+                    );
+            } else {
+                created =
+                    project.make_job(
                         argv[2]
                     );
             }
