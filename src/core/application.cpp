@@ -185,6 +185,8 @@ public:
     std::filesystem::path base_path;
     std::unique_ptr<http::detail::Server> server;
     bool booted{false};
+    Lifecycle lifecycle;
+    std::vector<std::shared_ptr<Provider>> providers;
 };
 
 Application Application::create(
@@ -417,6 +419,29 @@ String Application::environment() const {
     );
 }
 
+ApplicationMode Application::mode() const noexcept {
+    return application_mode(environment());
+}
+
+bool Application::is_production() const noexcept {
+    return production(mode());
+}
+
+LifecycleStage Application::lifecycle_stage() const noexcept {
+    return impl_ ? impl_->lifecycle.stage() : LifecycleStage::stopped;
+}
+
+Application& Application::provider(std::shared_ptr<Provider> value) {
+    if (!value) throw std::invalid_argument("Gungnir provider cannot be null");
+    if (impl_->booted) throw std::logic_error("Providers must be registered before application boot");
+    impl_->providers.push_back(std::move(value));
+    return *this;
+}
+
+Application& Application::on_boot(Lifecycle::Hook hook) { impl_->lifecycle.on_boot(std::move(hook)); return *this; }
+Application& Application::on_ready(Lifecycle::Hook hook) { impl_->lifecycle.on_ready(std::move(hook)); return *this; }
+Application& Application::on_shutdown(Lifecycle::Hook hook) { impl_->lifecycle.on_shutdown(std::move(hook)); return *this; }
+
 bool Application::debug() const {
     return impl_->config->boolean(
         "app.debug",
@@ -548,13 +573,22 @@ void Application::boot() {
         );
     }
 
+    impl_->lifecycle.stage(LifecycleStage::registering);
+    for (auto& provider : impl_->providers) provider->register_services(*this);
+
+    impl_->lifecycle.stage(LifecycleStage::booting);
     configure_database();
+    for (auto& provider : impl_->providers) provider->boot(*this);
+    impl_->lifecycle.fire_boot(*this);
 
     database::runtime::use(
         impl_->database
     );
 
     impl_->booted = true;
+    impl_->lifecycle.stage(LifecycleStage::ready);
+    for (auto& provider : impl_->providers) provider->ready(*this);
+    impl_->lifecycle.fire_ready(*this);
 }
 
 void Application::shutdown() noexcept {
@@ -565,6 +599,10 @@ void Application::shutdown() noexcept {
         return;
     }
 
+    impl_->lifecycle.stage(LifecycleStage::stopping);
+    for (auto it = impl_->providers.rbegin(); it != impl_->providers.rend(); ++it) (*it)->shutdown(*this);
+    impl_->lifecycle.fire_shutdown(*this);
+
     if (
         database::runtime::using_manager(
             impl_->database
@@ -574,6 +612,7 @@ void Application::shutdown() noexcept {
     }
 
     impl_->booted = false;
+    impl_->lifecycle.stage(LifecycleStage::stopped);
 }
 
 bool Application::is_booted()
@@ -629,6 +668,7 @@ void Application::listen(
         boot();
     }
 
+    impl_->lifecycle.stage(LifecycleStage::running);
     impl_->server->listen(
         std::move(host),
         port
