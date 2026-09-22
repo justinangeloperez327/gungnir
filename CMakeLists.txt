@@ -347,6 +347,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_events_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.events COMMAND gungnir_events_test)
 
+    add_executable(gungnir_mail_notifications_test tests/mail_notifications.cpp)
+    target_link_libraries(gungnir_mail_notifications_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_mail_notifications_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.mail_notifications COMMAND gungnir_mail_notifications_test)
+
     add_executable(gungnir_queue_test tests/queue.cpp)
     target_link_libraries(gungnir_queue_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_queue_test PRIVATE cxx_std_23)
