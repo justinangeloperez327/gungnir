@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <gungnir/database/database.hpp>
-#include <gungnir/migration/runner.hpp>
+#include <gungnir/migration/migrations.hpp>
 
 class CreateUsers : public gungnir::Migration {
 public:
@@ -94,9 +94,10 @@ int main() {
     MemoryRepository repository;
     migration::Runner runner{repository};
 
-    const std::vector<migration::Named> migrations{
-        {"2026_09_21_create_users", &create_users}
-    };
+    migration::Registry registry;
+    registry.add("2026_09_21_create_users", create_users);
+    const auto& migrations = registry.all();
+    assert(registry.size() == 1);
 
     const auto pending =
         runner.status(migrations);
