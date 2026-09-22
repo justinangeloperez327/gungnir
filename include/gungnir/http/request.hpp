@@ -9,6 +9,7 @@
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/method.hpp>
 #include <gungnir/validation/rules.hpp>
+#include <gungnir/validation/result.hpp>
 
 namespace gungnir::routing {
 class Router;
@@ -76,6 +77,9 @@ public:
     ) const;
 
     [[nodiscard]] Input validate(
+        const validation::Rules& rules
+    ) const;
+    [[nodiscard]] validation::Result check(
         const validation::Rules& rules
     ) const;
 
