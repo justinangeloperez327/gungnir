@@ -47,7 +47,7 @@ public:
         const Identity& identity
     ) const {
         if (before_) {
-            const auto decision = before_(identity);
+            const auto decision = (*before_)(identity);
             if (decision.allowed) {
                 return decision;
             }
