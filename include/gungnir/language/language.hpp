@@ -9,8 +9,11 @@
 #include <gungnir/language/middleware_lowering.hpp>
 #include <gungnir/language/migration_lowering.hpp>
 #include <gungnir/language/model_lowering.hpp>
+#include <gungnir/language/module.hpp>
 #include <gungnir/language/parser.hpp>
+#include <gungnir/language/spec.hpp>
 #include <gungnir/language/token.hpp>
 #include <gungnir/language/transpiler.hpp>
+#include <gungnir/language/types.hpp>
 #include <gungnir/language/validation_lowering.hpp>
 #include <gungnir/language/view_lowering.hpp>
