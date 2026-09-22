@@ -31,6 +31,7 @@ add_library(gungnir
     src/http/request.cpp
     src/http/response.cpp
     src/http/server.cpp
+    src/http/security.cpp
     src/migration/column.cpp
     src/migration/context.cpp
     src/migration/definition.cpp
