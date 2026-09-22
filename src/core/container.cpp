@@ -10,12 +10,14 @@ class Container::Impl {
 public:
     struct Binding {
         ErasedFactory factory;
-        bool singleton{false};
+        Lifetime lifetime{Lifetime::transient};
         std::shared_ptr<void> instance;
     };
 
     mutable std::mutex mutex;
     std::unordered_map<std::type_index, Binding> bindings;
+    std::unordered_map<std::type_index, std::shared_ptr<void>> scoped_instances;
+    bool scope_active{false};
 };
 
 Container::Container() : impl_(std::make_unique<Impl>()) {}
@@ -26,7 +28,7 @@ Container& Container::operator=(Container&&) noexcept = default;
 void Container::register_factory(
     std::type_index type,
     ErasedFactory factory,
-    bool singleton
+    Lifetime lifetime
 ) {
     if (!factory) {
         throw std::invalid_argument("Gungnir container factory cannot be empty");
@@ -37,7 +39,7 @@ void Container::register_factory(
         type,
         Impl::Binding{
             .factory = std::move(factory),
-            .singleton = singleton,
+            .lifetime = lifetime,
             .instance = {}
         }
     );
@@ -52,7 +54,7 @@ void Container::register_instance(
         type,
         Impl::Binding{
             .factory = {},
-            .singleton = true,
+            .lifetime = Lifetime::singleton,
             .instance = std::move(instance)
         }
     );
@@ -60,7 +62,7 @@ void Container::register_instance(
 
 std::shared_ptr<void> Container::resolve_erased(std::type_index type) {
     ErasedFactory factory;
-    bool singleton = false;
+    Lifetime lifetime = Lifetime::transient;
 
     {
         std::lock_guard lock{impl_->mutex};
@@ -75,7 +77,12 @@ std::shared_ptr<void> Container::resolve_erased(std::type_index type) {
         }
 
         factory = found->second.factory;
-        singleton = found->second.singleton;
+        lifetime = found->second.lifetime;
+        if (lifetime == Lifetime::scoped) {
+            const auto scoped = impl_->scoped_instances.find(type);
+            if (scoped != impl_->scoped_instances.end()) return scoped->second;
+            if (!impl_->scope_active) throw std::logic_error("Scoped service resolved outside an active scope");
+        }
     }
 
     auto created = factory(*this);
@@ -83,18 +90,39 @@ std::shared_ptr<void> Container::resolve_erased(std::type_index type) {
         throw std::logic_error("Gungnir container factory returned null");
     }
 
-    if (!singleton) {
-        return created;
-    }
+    if (lifetime == Lifetime::transient) return created;
 
     std::lock_guard lock{impl_->mutex};
-    auto& binding = impl_->bindings.at(type);
-
-    if (!binding.instance) {
-        binding.instance = created;
+    if (lifetime == Lifetime::scoped) {
+        auto [it, inserted] = impl_->scoped_instances.emplace(type, created);
+        return it->second;
     }
-
+    auto& binding = impl_->bindings.at(type);
+    if (!binding.instance) binding.instance = created;
     return binding.instance;
+}
+
+void Container::begin_scope() {
+    std::lock_guard lock{impl_->mutex};
+    impl_->scoped_instances.clear();
+    impl_->scope_active = true;
+}
+
+void Container::end_scope() noexcept {
+    std::lock_guard lock{impl_->mutex};
+    impl_->scoped_instances.clear();
+    impl_->scope_active = false;
+}
+
+bool Container::in_scope() const noexcept {
+    std::lock_guard lock{impl_->mutex};
+    return impl_->scope_active;
+}
+
+void Container::erase(std::type_index type) {
+    std::lock_guard lock{impl_->mutex};
+    impl_->bindings.erase(type);
+    impl_->scoped_instances.erase(type);
 }
 
 bool Container::contains(std::type_index type) const noexcept {
