@@ -315,7 +315,7 @@ String message(
 
 } // namespace
 
-Input Validator::validate(
+Result Validator::check(
     const Input& input,
     const Rules& rules
 ) {
@@ -474,13 +474,13 @@ Input Validator::validate(
         }
     }
 
-    if (!errors.empty()) {
-        throw ValidationException{
-            std::move(errors)
-        };
-    }
+    return Result{std::move(validated), std::move(errors)};
+}
 
-    return validated;
+Input Validator::validate(const Input& input, const Rules& rules) {
+    auto result = check(input, rules);
+    if (!result.errors.empty()) throw ValidationException{std::move(result.errors)};
+    return std::move(result.values);
 }
 
 } // namespace gungnir::validation
