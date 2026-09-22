@@ -20,6 +20,7 @@
 #include <gungnir/database/registry.hpp>
 #include <gungnir/database/settings.hpp>
 #include <gungnir/http/middleware.hpp>
+#include <gungnir/http/middleware_registry.hpp>
 #include <gungnir/routing/router.hpp>
 #include <gungnir/view/engine.hpp>
 
@@ -61,6 +62,8 @@ public:
 
     [[nodiscard]] config::Environment& env() noexcept;
     [[nodiscard]] const config::Environment& env() const noexcept;
+
+    [[nodiscard]] http::MiddlewareRegistry& middleware_registry() noexcept;
 
     [[nodiscard]] const std::filesystem::path& base_path()
         const noexcept;
@@ -145,6 +148,22 @@ public:
                 container()
             )
         );
+        return *this;
+    }
+
+    template <typename MiddlewareType>
+    Application& middleware_alias(std::string name) {
+        middleware_registry().alias(std::move(name), http::make_middleware<MiddlewareType>(container()));
+        return *this;
+    }
+
+    Application& middleware_group(std::string name, std::vector<std::string> aliases) {
+        middleware_registry().group(std::move(name), std::move(aliases));
+        return *this;
+    }
+
+    Application& middleware_priority(std::vector<std::string> aliases) {
+        middleware_registry().priority(std::move(aliases));
         return *this;
     }
 
