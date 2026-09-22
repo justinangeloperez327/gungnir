@@ -8,7 +8,7 @@ namespace gungnir::language {
 
 class DiagnosticRenderer {
 public:
-    [[nodiscard]] std::string render(const Diagnostic& diagnostic, std::string_view source = {}) const {
+    [[nodiscard]] static std::string render(const Diagnostic& diagnostic, std::string_view source = {}) const {
         std::ostringstream out;
         out << diagnostic.location.file << ':' << diagnostic.location.line << ':' << diagnostic.location.column
             << ": " << (diagnostic.level == DiagnosticLevel::error ? "error" : "warning");
