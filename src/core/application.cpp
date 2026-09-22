@@ -430,7 +430,7 @@ ApplicationMode Application::mode() const noexcept {
 }
 
 bool Application::is_production() const noexcept {
-    return production(mode());
+    return is_production(mode());
 }
 
 LifecycleStage Application::lifecycle_stage() const noexcept {
