@@ -20,6 +20,8 @@ struct Diagnostic {
     DiagnosticLevel level{DiagnosticLevel::error};
     SourceLocation location;
     std::string message;
+    std::string code;
+    std::string hint;
 };
 
 } // namespace gungnir::language
