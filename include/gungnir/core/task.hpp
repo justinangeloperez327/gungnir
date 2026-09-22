@@ -44,7 +44,7 @@ public:
     [[nodiscard]] bool done() const noexcept { return !handle_ || handle_.done(); }
 
     void run_inline() {
-        while (handle_ && !handle_.done()) {
+        if (handle_ && !handle_.done()) {
             handle_.resume();
         }
     }
