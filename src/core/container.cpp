@@ -3,6 +3,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
+#include <algorithm>
 
 namespace gungnir {
 
@@ -18,6 +20,7 @@ public:
     std::unordered_map<std::type_index, Binding> bindings;
     std::unordered_map<std::type_index, std::shared_ptr<void>> scoped_instances;
     bool scope_active{false};
+    std::vector<std::type_index> resolving;
 };
 
 Container::Container() : impl_(std::make_unique<Impl>()) {}
@@ -123,6 +126,20 @@ void Container::erase(std::type_index type) {
     std::lock_guard lock{impl_->mutex};
     impl_->bindings.erase(type);
     impl_->scoped_instances.erase(type);
+}
+
+void Container::enter_resolution(std::type_index type) {
+    std::lock_guard lock{impl_->mutex};
+    if (std::find(impl_->resolving.begin(), impl_->resolving.end(), type) != impl_->resolving.end()) {
+        throw std::logic_error("Circular dependency detected while resolving Gungnir service");
+    }
+    impl_->resolving.push_back(type);
+}
+
+void Container::leave_resolution(std::type_index type) noexcept {
+    std::lock_guard lock{impl_->mutex};
+    const auto found = std::find(impl_->resolving.rbegin(), impl_->resolving.rend(), type);
+    if (found != impl_->resolving.rend()) impl_->resolving.erase(std::next(found).base());
 }
 
 bool Container::contains(std::type_index type) const noexcept {
