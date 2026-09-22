@@ -9,15 +9,8 @@ namespace {
 
 template <typename T>
 T sync_wait(gungnir::Task<T> task) {
+    task.run_inline();
     auto awaiter = task.operator co_await();
-
-    if (!awaiter.await_ready()) {
-        auto handle = awaiter.await_suspend(std::noop_coroutine());
-        if (handle && !handle.done()) {
-            handle.resume();
-        }
-    }
-
     return awaiter.await_resume();
 }
 
