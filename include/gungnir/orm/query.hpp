@@ -45,6 +45,15 @@ public:
         return plan_;
     }
 
+    [[nodiscard]] bool has_eager_loads() const noexcept {
+        return !plan_.eager_loads.empty();
+    }
+
+    Query& without_eager_loads() noexcept {
+        plan_.eager_loads.clear();
+        return *this;
+    }
+
     Query& select(std::initializer_list<String> columns) {
         plan_.columns.assign(columns.begin(), columns.end());
         return *this;

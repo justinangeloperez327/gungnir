@@ -151,7 +151,22 @@ int main() {
 
     database::runtime::use(manager);
 
-    auto users = User::with("posts").get();
+    std::size_t observed_queries = 0;
+    orm::listen([&](const orm::QueryEvent& event) {
+        ++observed_queries;
+        assert(event.connection == "default");
+        assert(event.backend == database::Backend::postgresql);
+        assert(!event.statement.empty());
+    });
+
+    auto eager_query = User::with("posts");
+    assert(eager_query.has_eager_loads());
+
+    auto plain_query = eager_query;
+    plain_query.without_eager_loads();
+    assert(!plain_query.has_eager_loads());
+
+    auto users = eager_query.get();
     assert(users.size() == 2);
     assert(users.first().posts.loaded());
     assert(users.first().posts.size() == 2);
@@ -184,6 +199,8 @@ int main() {
     assert(found.has_value());
     assert(found->id.get() == 1);
 
+    assert(observed_queries >= 1);
+    orm::stop_listening();
     database::runtime::clear();
     return 0;
 }
