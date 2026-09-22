@@ -186,6 +186,16 @@ public:
     }
 
     template <typename ControllerType, typename Method>
+    static RouteRegistration options(std::string path, Method method) {
+        return add<ControllerType>(http::Method::options, std::move(path), method);
+    }
+
+    template <typename ControllerType, typename Method>
+    static RouteRegistration head(std::string path, Method method) {
+        return add<ControllerType>(http::Method::head, std::move(path), method);
+    }
+
+    template <typename ControllerType, typename Method>
     static RouteRegistration remove(
         std::string path,
         Method method
