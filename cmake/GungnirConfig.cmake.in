@@ -13,6 +13,10 @@ if("@GUNGNIR_WITH_MYSQL@" STREQUAL "ON")
     find_dependency(MariaDB)
 endif()
 
+if("@GUNGNIR_WITH_SQLSERVER@" STREQUAL "ON")
+    find_dependency(ODBC)
+endif()
+
 if("@GUNGNIR_WITH_POSTGRESQL@" STREQUAL "ON")
     find_dependency(PostgreSQL)
 endif()
