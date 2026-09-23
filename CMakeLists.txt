@@ -29,6 +29,16 @@ option(
     "Build live MySQL integration tests"
     OFF
 )
+option(
+    GUNGNIR_WITH_SQLSERVER
+    "Build the ODBC SQL Server adapter"
+    OFF
+)
+option(
+    GUNGNIR_SQLSERVER_INTEGRATION_TESTS
+    "Build live SQL Server integration tests"
+    OFF
+)
 
 if(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
@@ -50,6 +60,16 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_SQLSERVER_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_SQLSERVER
+)
+    message(
+        FATAL_ERROR
+        "SQL Server integration tests require GUNGNIR_WITH_SQLSERVER=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
@@ -58,6 +78,10 @@ endif()
 
 if(GUNGNIR_WITH_MYSQL)
     find_package(MariaDB REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_SQLSERVER)
+    find_package(ODBC REQUIRED)
 endif()
 
 add_library(gungnir
@@ -284,6 +308,47 @@ if(GUNGNIR_WITH_MYSQL)
     )
 endif()
 
+if(GUNGNIR_WITH_SQLSERVER)
+    add_library(
+        gungnir-sqlserver
+        src/database/sqlserver.cpp
+    )
+
+    add_library(
+        gungnir::sqlserver
+        ALIAS
+        gungnir-sqlserver
+    )
+
+    target_compile_features(
+        gungnir-sqlserver
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-sqlserver
+        PUBLIC
+            gungnir::gungnir
+            ODBC::ODBC
+    )
+
+    target_include_directories(
+        gungnir-sqlserver
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-sqlserver
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME sqlserver
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
@@ -302,6 +367,15 @@ if(MSVC)
     if(GUNGNIR_WITH_MYSQL)
         target_compile_options(
             gungnir-mysql
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
+
+    if(GUNGNIR_WITH_SQLSERVER)
+        target_compile_options(
+            gungnir-sqlserver
             PRIVATE
                 /W4
                 /permissive-
@@ -328,6 +402,18 @@ else()
     if(GUNGNIR_WITH_MYSQL)
         target_compile_options(
             gungnir-mysql
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+
+    if(GUNGNIR_WITH_SQLSERVER)
+        target_compile_options(
+            gungnir-sqlserver
             PRIVATE
                 -Wall
                 -Wextra
@@ -722,6 +808,34 @@ if(GUNGNIR_BUILD_TESTS)
                 gungnir_mysql_integration_test
         )
     endif()
+
+    if(
+        GUNGNIR_WITH_SQLSERVER AND
+        GUNGNIR_SQLSERVER_INTEGRATION_TESTS
+    )
+        add_executable(
+            gungnir_sqlserver_integration_test
+            tests/sqlserver_integration.cpp
+        )
+
+        target_link_libraries(
+            gungnir_sqlserver_integration_test
+            PRIVATE
+                gungnir::sqlserver
+        )
+
+        target_compile_features(
+            gungnir_sqlserver_integration_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.sqlserver
+            COMMAND
+                gungnir_sqlserver_integration_test
+        )
+    endif()
 endif()
 
 
@@ -780,6 +894,23 @@ if(GUNGNIR_WITH_MYSQL)
             cmake/FindMariaDB.cmake
         DESTINATION
             ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir/modules
+    )
+endif()
+
+if(GUNGNIR_WITH_SQLSERVER)
+    install(
+        TARGETS
+            gungnir-sqlserver
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
     )
 endif()
 
