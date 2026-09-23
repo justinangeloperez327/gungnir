@@ -7,9 +7,30 @@
 
 #include <gungnir/database/database.hpp>
 #include <gungnir/database/sqlserver.hpp>
+#include <gungnir/migration/migrations.hpp>
 #include <gungnir/orm/compiler.hpp>
 
 namespace {
+
+class CreateSqlServerMigrationProbe :
+    public gungnir::Migration {
+public:
+    void up() override {
+        Table::create(
+            "gungnir_sqlserver_migration_probe",
+            [](Column& column) {
+                column.id();
+                column.string("name");
+            }
+        );
+    }
+
+    void down() override {
+        Table::drop_if_exists(
+            "gungnir_sqlserver_migration_probe"
+        );
+    }
+};
 
 gungnir::String env(
     const char* name,
@@ -301,6 +322,90 @@ int main() {
 
     connection->execute(
         "DROP TABLE dbo.gungnir_sqlserver_integration"
+    );
+
+    connection->execute(
+        "DROP TABLE IF EXISTS dbo.gungnir_sqlserver_migration_probe"
+    );
+    connection->execute(
+        "DROP TABLE IF EXISTS dbo.gungnir_migrations"
+    );
+
+    database::runtime::use(manager);
+
+    CreateSqlServerMigrationProbe migration_probe;
+    migration::Registry migration_registry;
+    migration_registry.add(
+        "2026_09_23_sqlserver_probe",
+        migration_probe
+    );
+
+    migration::DatabaseRepository migration_repository;
+    migration::Runner migration_runner{
+        migration_repository,
+        settings.name
+    };
+
+    const auto& migrations =
+        migration_registry.all();
+
+    assert(
+        migration_runner.migrate(
+            migrations
+        ) == 1
+    );
+
+    const auto migration_status =
+        migration_runner.status(
+            migrations
+        );
+
+    assert(migration_status.size() == 1);
+    assert(migration_status.front().applied);
+    assert(migration_status.front().batch == 1);
+
+    const auto table_exists =
+        connection->execute(
+            "SELECT COUNT_BIG(*) AS count "
+            "FROM sys.tables "
+            "WHERE name = ?",
+            {
+                String{
+                    "gungnir_sqlserver_migration_probe"
+                }
+            }
+        );
+
+    assert(
+        model::value_cast<Int64>(
+            table_exists.rows.front().at(
+                "count"
+            )
+        ) == 1
+    );
+
+    assert(
+        migration_runner.rollback(
+            migrations
+        ) == 1
+    );
+
+    const auto rolled_back_status =
+        migration_runner.status(
+            migrations
+        );
+
+    assert(
+        rolled_back_status.size() == 1
+    );
+    assert(
+        !rolled_back_status.front().applied
+    );
+
+    database::runtime::clear();
+
+    connection->execute(
+        "DROP TABLE IF EXISTS dbo.gungnir_migrations"
     );
 
     return 0;
