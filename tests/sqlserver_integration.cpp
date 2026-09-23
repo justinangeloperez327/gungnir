@@ -7,6 +7,7 @@
 
 #include <gungnir/database/database.hpp>
 #include <gungnir/database/sqlserver.hpp>
+#include <gungnir/orm/compiler.hpp>
 
 namespace {
 
@@ -156,6 +157,67 @@ int main() {
         >(
             first.at("note")
         )
+    );
+
+    orm::QueryPlan orm_plan;
+    orm_plan.table =
+        "dbo.gungnir_sqlserver_integration";
+    orm_plan.columns = {
+        "id",
+        "email",
+        "active",
+        "score",
+        "note"
+    };
+    orm_plan.predicates.push_back(
+        orm::Predicate{
+            .kind =
+                orm::PredicateKind::comparison,
+            .connector =
+                orm::BooleanConnector::and_,
+            .column = "email",
+            .comparison =
+                orm::Comparison::equal,
+            .other_column = {},
+            .values = {
+                String{"first@example.com"}
+            },
+            .automatic = false
+        }
+    );
+
+    const auto orm_query =
+        orm::compile(
+            orm_plan,
+            database::Backend::mssql
+        );
+
+    assert(
+        orm_query.text.find('?') !=
+        String::npos
+    );
+    assert(
+        orm_query.text.find("@p") ==
+        String::npos
+    );
+    assert(
+        orm_query.bindings.size() == 1
+    );
+
+    const auto orm_selected =
+        connection->execute(
+            orm_query.text,
+            orm_query.bindings
+        );
+
+    assert(orm_selected.rows.size() == 1);
+    assert(
+        model::value_cast<String>(
+            orm_selected.rows.front().at(
+                "email"
+            )
+        ) ==
+        "first@example.com"
     );
 
     connection->begin();
