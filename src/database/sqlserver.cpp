@@ -3,6 +3,7 @@
 #include <sql.h>
 #include <sqlext.h>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cerrno>
@@ -85,6 +86,38 @@ struct StatementHandle {
     StatementHandle& operator=(
         const StatementHandle&
     ) = delete;
+
+    StatementHandle(
+        StatementHandle&& other
+    ) noexcept
+        : value(
+            std::exchange(
+                other.value,
+                SQL_NULL_HSTMT
+            )
+          ) {}
+
+    StatementHandle& operator=(
+        StatementHandle&& other
+    ) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+
+        if (value != SQL_NULL_HSTMT) {
+            SQLFreeHandle(
+                SQL_HANDLE_STMT,
+                value
+            );
+        }
+
+        value = std::exchange(
+            other.value,
+            SQL_NULL_HSTMT
+        );
+
+        return *this;
+    }
 
     StatementHandle() = default;
 };
@@ -461,8 +494,11 @@ void bind_parameters(
             value_type = SQL_C_CHAR;
             parameter_type = SQL_VARCHAR;
             column_size =
-                static_cast<SQLULEN>(
-                    item.string.size()
+                std::max<SQLULEN>(
+                    1,
+                    static_cast<SQLULEN>(
+                        item.string.size()
+                    )
                 );
             pointer =
                 item.string.data();
@@ -557,7 +593,7 @@ void bind_parameters(
     }
 }
 
-Int64 read_integer(
+model::AttributeValue read_integer(
     SQLHSTMT statement_handle,
     SQLUSMALLINT column
 ) {
@@ -576,23 +612,22 @@ Int64 read_integer(
             &indicator
         );
 
-    if (
-        !succeeded(result) ||
-        indicator == SQL_NULL_DATA
-    ) {
-        if (!succeeded(result)) {
-            throw_odbc(
-                "Unable to read SQL Server integer",
-                SQL_HANDLE_STMT,
-                statement_handle
-            );
-        }
+    if (!succeeded(result)) {
+        throw_odbc(
+            "Unable to read SQL Server integer",
+            SQL_HANDLE_STMT,
+            statement_handle
+        );
+    }
+
+    if (indicator == SQL_NULL_DATA) {
+        return nullptr;
     }
 
     return value;
 }
 
-Double read_number(
+model::AttributeValue read_number(
     SQLHSTMT statement_handle,
     SQLUSMALLINT column
 ) {
@@ -619,10 +654,14 @@ Double read_number(
         );
     }
 
+    if (indicator == SQL_NULL_DATA) {
+        return nullptr;
+    }
+
     return value;
 }
 
-Boolean read_boolean(
+model::AttributeValue read_boolean(
     SQLHSTMT statement_handle,
     SQLUSMALLINT column
 ) {
@@ -649,10 +688,16 @@ Boolean read_boolean(
         );
     }
 
-    return value != 0;
+    if (indicator == SQL_NULL_DATA) {
+        return nullptr;
+    }
+
+    return Boolean{
+        value != 0
+    };
 }
 
-String read_string(
+model::AttributeValue read_string(
     SQLHSTMT statement_handle,
     SQLUSMALLINT column
 ) {
@@ -687,7 +732,7 @@ String read_string(
         }
 
         if (indicator == SQL_NULL_DATA) {
-            return {};
+            return nullptr;
         }
 
         std::size_t length = 0;
@@ -812,35 +857,6 @@ model::AttributeValue value_at(
     SQLUSMALLINT column,
     SQLSMALLINT type
 ) {
-    SQLLEN indicator = 0;
-
-    const auto null_check =
-        SQLGetData(
-            statement_handle,
-            column,
-            SQL_C_CHAR,
-            nullptr,
-            0,
-            &indicator
-        );
-
-    if (
-        indicator == SQL_NULL_DATA
-    ) {
-        return nullptr;
-    }
-
-    if (
-        !succeeded(null_check) &&
-        null_check != SQL_SUCCESS_WITH_INFO
-    ) {
-        throw_odbc(
-            "Unable to inspect SQL Server value",
-            SQL_HANDLE_STMT,
-            statement_handle
-        );
-    }
-
     switch (type) {
     case SQL_BIT:
         return read_boolean(
