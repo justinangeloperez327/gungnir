@@ -125,6 +125,13 @@ void apply_environment_defaults(
             )
         )
         .set(
+            "database.options",
+            environment.get(
+                "DB_OPTIONS",
+                ""
+            )
+        )
+        .set(
             "database.name",
             environment.get(
                 "DB_NAME",

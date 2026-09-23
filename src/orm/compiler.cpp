@@ -71,10 +71,6 @@ String placeholder(
         return "$" + std::to_string(index + 1);
     }
 
-    if (backend == database::Backend::mssql) {
-        return "@p" + std::to_string(index + 1);
-    }
-
     return "?";
 }
 

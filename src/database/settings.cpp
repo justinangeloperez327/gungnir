@@ -170,6 +170,11 @@ Settings settings_from(
             "database.password"
         );
 
+    settings.options =
+        config.string(
+            "database.options"
+        );
+
     settings.pool_size =
         checked_pool_size(
             config.integer(

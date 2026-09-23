@@ -27,9 +27,13 @@ PostgreSQL has an optional libpq adapter built with `GUNGNIR_WITH_POSTGRESQL=ON`
 
 MySQL has an optional native C-client adapter built with `GUNGNIR_WITH_MYSQL=ON`; it is exported as `gungnir::mysql` and registered with `database::register_mysql()`. The build accepts MariaDB Connector/C or a compatible MySQL client library.
 
-SQL Server and MongoDB still require concrete adapters before they are usable. MongoDB remains a document backend and should not be forced through relational SQL semantics.
+SQL Server has an optional ODBC adapter built with `GUNGNIR_WITH_SQLSERVER=ON`; it is exported as `gungnir::sqlserver` and registered with `database::register_sqlserver()`. It targets Microsoft ODBC Driver 18 for SQL Server at runtime.
 
-Raw SQL uses the placeholder syntax of the active backend. PostgreSQL uses `$1`, `$2`, and so on; MySQL uses `?`. ORM queries compile the correct backend placeholders automatically.
+MongoDB still requires a concrete adapter before it is usable and remains a document backend that should not be forced through relational SQL semantics.
+
+Raw SQL uses the placeholder syntax of the active backend. PostgreSQL uses `$1`, `$2`, and so on; MySQL and SQL Server use `?`. ORM queries compile the correct backend placeholders automatically.
+
+Vendor-specific connection attributes can be supplied through `DB_OPTIONS`. For SQL Server local development with a self-signed certificate, `TrustServerCertificate=yes` can be used; production deployments should validate the server certificate.
 
 ## Pooling
 

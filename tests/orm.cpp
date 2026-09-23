@@ -114,7 +114,7 @@ int main() {
         .limit(10)
         .compile(gungnir::database::Backend::mssql);
 
-    assert(contains(mssql.text, "[id] IN (@p1, @p2, @p3)"));
+    assert(contains(mssql.text, "[id] IN (?, ?, ?)"));
     assert(contains(mssql.text, "FETCH NEXT 10 ROWS ONLY"));
     assert(mssql.bindings.size() == 3);
 
