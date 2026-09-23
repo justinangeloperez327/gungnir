@@ -139,7 +139,13 @@ void apply_environment_defaults(
             )
         );
 
-    if (environment.has("DB_PORT")) {
+    const auto database_port =
+        environment.find("DB_PORT");
+
+    if (
+        database_port &&
+        !database_port->empty()
+    ) {
         repository.set(
             "database.port",
             environment.integer(
