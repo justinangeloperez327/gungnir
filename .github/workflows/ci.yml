@@ -200,3 +200,80 @@ jobs:
       - name: Run PostgreSQL package consumer
         run: ./build-postgresql-consumer/gungnir-postgresql-package-consumer
 
+  mysql:
+    name: MySQL adapter
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: gungnir
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pmysql"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-mysql-install
+      GUNGNIR_MYSQL_HOST: 127.0.0.1
+      GUNGNIR_MYSQL_PORT: "3306"
+      GUNGNIR_MYSQL_DATABASE: gungnir
+      GUNGNIR_MYSQL_USERNAME: root
+      GUNGNIR_MYSQL_PASSWORD: mysql
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install MySQL client development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmariadb-dev
+
+      - name: Configure MySQL adapter
+        run: >
+          cmake -S . -B build-mysql
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_MYSQL=ON
+          -DGUNGNIR_MYSQL_INTEGRATION_TESTS=ON
+
+      - name: Build MySQL adapter
+        run: >
+          cmake --build build-mysql
+          --target
+          gungnir
+          gungnir-orm
+          gungnir-language
+          gungnir-mysql
+          gungnir_mysql_integration_test
+          --parallel
+
+      - name: Test MySQL adapter
+        run: >
+          ctest --test-dir build-mysql
+          -R "^gungnir.mysql$"
+          --output-on-failure
+
+      - name: Install MySQL-enabled package
+        run: cmake --install build-mysql
+
+      - name: Configure MySQL package consumer
+        run: >
+          cmake
+          -S tests/mysql-package-consumer
+          -B build-mysql-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+
+      - name: Build MySQL package consumer
+        run: cmake --build build-mysql-consumer --parallel
+
+      - name: Run MySQL package consumer
+        run: ./build-mysql-consumer/gungnir-mysql-package-consumer
+

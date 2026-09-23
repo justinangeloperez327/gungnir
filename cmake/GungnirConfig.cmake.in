@@ -4,6 +4,15 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(Threads)
 
+if("@GUNGNIR_WITH_MYSQL@" STREQUAL "ON")
+    list(
+        PREPEND
+        CMAKE_MODULE_PATH
+        "${CMAKE_CURRENT_LIST_DIR}/modules"
+    )
+    find_dependency(MariaDB)
+endif()
+
 if("@GUNGNIR_WITH_POSTGRESQL@" STREQUAL "ON")
     find_dependency(PostgreSQL)
 endif()

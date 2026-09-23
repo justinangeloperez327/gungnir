@@ -8,7 +8,7 @@ The project includes a Gungnir-to-C++ transpiler, application lifecycle and depe
 
 Gungnir is under active development. The repository version is currently 0.1.0 and the public API is not yet declared stable.
 
-Several subsystems intentionally expose foundations rather than claiming production completeness. In particular, production database adapters beyond the optional PostgreSQL/libpq adapter, high-concurrency networking, full graceful draining, distributed queue/cache/session backends, complete relationship-query APIs, telemetry exporters and dynamic plugin loading require further work.
+Several subsystems intentionally expose foundations rather than claiming production completeness. In particular, production database adapters beyond the optional PostgreSQL/libpq and MySQL C-client adapters, high-concurrency networking, full graceful draining, distributed queue/cache/session backends, complete relationship-query APIs, telemetry exporters and dynamic plugin loading require further work.
 
 ## Language
 
