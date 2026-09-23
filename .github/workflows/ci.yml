@@ -121,3 +121,82 @@ jobs:
 
       - name: Run external consumer
         run: ./build-consumer/gungnir-package-consumer
+
+  postgresql:
+    name: PostgreSQL adapter
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gungnir
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gungnir"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-postgresql-install
+      GUNGNIR_POSTGRESQL_HOST: 127.0.0.1
+      GUNGNIR_POSTGRESQL_PORT: "5432"
+      GUNGNIR_POSTGRESQL_DATABASE: gungnir
+      GUNGNIR_POSTGRESQL_USERNAME: postgres
+      GUNGNIR_POSTGRESQL_PASSWORD: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install libpq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev
+
+      - name: Configure PostgreSQL adapter
+        run: >
+          cmake -S . -B build-postgresql
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_POSTGRESQL=ON
+          -DGUNGNIR_POSTGRESQL_INTEGRATION_TESTS=ON
+
+      - name: Build PostgreSQL adapter
+        run: >
+          cmake --build build-postgresql
+          --target
+          gungnir
+          gungnir-orm
+          gungnir-language
+          gungnir-postgresql
+          gungnir_postgresql_integration_test
+          --parallel
+
+      - name: Test PostgreSQL adapter
+        run: >
+          ctest --test-dir build-postgresql
+          -R "^gungnir.postgresql$"
+          --output-on-failure
+
+      - name: Install PostgreSQL-enabled package
+        run: cmake --install build-postgresql
+
+      - name: Configure PostgreSQL package consumer
+        run: >
+          cmake
+          -S tests/postgresql-package-consumer
+          -B build-postgresql-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+
+      - name: Build PostgreSQL package consumer
+        run: cmake --build build-postgresql-consumer --parallel
+
+      - name: Run PostgreSQL package consumer
+        run: ./build-postgresql-consumer/gungnir-postgresql-package-consumer
+
