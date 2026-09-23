@@ -7,8 +7,28 @@ include(CMakePackageConfigHelpers)
 
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
+option(GUNGNIR_WITH_POSTGRESQL "Build the libpq PostgreSQL adapter" OFF)
+option(
+    GUNGNIR_POSTGRESQL_INTEGRATION_TESTS
+    "Build live PostgreSQL integration tests"
+    OFF
+)
+
+if(
+    GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_POSTGRESQL
+)
+    message(
+        FATAL_ERROR
+        "PostgreSQL integration tests require GUNGNIR_WITH_POSTGRESQL=ON"
+    )
+endif()
 
 find_package(Threads REQUIRED)
+
+if(GUNGNIR_WITH_POSTGRESQL)
+    find_package(PostgreSQL REQUIRED)
+endif()
 
 add_library(gungnir
     src/config/environment.cpp
@@ -152,16 +172,78 @@ set_target_properties(gungnir PROPERTIES
     EXPORT_NAME gungnir
 )
 
+if(GUNGNIR_WITH_POSTGRESQL)
+    add_library(
+        gungnir-postgresql
+        src/database/postgresql.cpp
+    )
+
+    add_library(
+        gungnir::postgresql
+        ALIAS
+        gungnir-postgresql
+    )
+
+    target_compile_features(
+        gungnir-postgresql
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-postgresql
+        PUBLIC
+            gungnir::gungnir
+            PostgreSQL::PostgreSQL
+    )
+
+    target_include_directories(
+        gungnir-postgresql
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-postgresql
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME postgresql
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-language PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-cli-support PRIVATE /W4 /permissive-)
+
+    if(GUNGNIR_WITH_POSTGRESQL)
+        target_compile_options(
+            gungnir-postgresql
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
 else()
     target_compile_options(gungnir PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-orm PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-language PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-cli-support PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+
+    if(GUNGNIR_WITH_POSTGRESQL)
+        target_compile_options(
+            gungnir-postgresql
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
 endif()
 
 if(GUNGNIR_BUILD_TOOLS)
@@ -492,6 +574,34 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_orm_transaction_test PRIVATE gungnir::orm)
     target_compile_features(gungnir_orm_transaction_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.orm_transaction COMMAND gungnir_orm_transaction_test)
+
+    if(
+        GUNGNIR_WITH_POSTGRESQL AND
+        GUNGNIR_POSTGRESQL_INTEGRATION_TESTS
+    )
+        add_executable(
+            gungnir_postgresql_integration_test
+            tests/postgresql_integration.cpp
+        )
+
+        target_link_libraries(
+            gungnir_postgresql_integration_test
+            PRIVATE
+                gungnir::postgresql
+        )
+
+        target_compile_features(
+            gungnir_postgresql_integration_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.postgresql
+            COMMAND
+                gungnir_postgresql_integration_test
+        )
+    endif()
 endif()
 
 
@@ -511,6 +621,23 @@ install(
     INCLUDES DESTINATION
         ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+if(GUNGNIR_WITH_POSTGRESQL)
+    install(
+        TARGETS
+            gungnir-postgresql
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
 
 install(
     DIRECTORY
