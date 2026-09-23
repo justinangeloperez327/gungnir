@@ -822,6 +822,7 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir_sqlserver_integration_test
             PRIVATE
                 gungnir::sqlserver
+                gungnir::orm
         )
 
         target_compile_features(
