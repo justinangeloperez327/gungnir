@@ -78,8 +78,8 @@ jobs:
     name: Installed package consumer
     runs-on: ubuntu-latest
     env:
-      GUNGNIR_PREFIX: ${{ runner.temp }}/gungnir-install
-      GUNGNIR_GENERATED_SOURCE: ${{ runner.temp }}/gungnir-package-consumer.cpp
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-install
+      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-package-consumer.cpp
 
     steps:
       - name: Checkout
