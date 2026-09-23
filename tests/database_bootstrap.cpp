@@ -98,6 +98,48 @@ int main() {
 
     app.shutdown();
 
+    {
+        std::ofstream env{
+            root.path() / ".env",
+            std::ios::trunc
+        };
+
+        env
+            << "DB_CONNECTION=postgresql\n"
+            << "DB_NAME=default\n"
+            << "DB_POOL_SIZE=1\n"
+            << "DB_HOST=db.internal\n"
+            << "DB_PORT=\n"
+            << "DB_DATABASE=app\n"
+            << "DB_USERNAME=user\n"
+            << "DB_PASSWORD=secret\n";
+    }
+
+    auto defaulted = Application::create(root.path());
+    database::Settings defaulted_settings;
+
+    defaulted.database_driver(
+        database::Backend::postgresql,
+        [&](const database::Settings& settings) {
+            defaulted_settings = settings;
+
+            return std::make_shared<database::CallbackDriver>(
+                database::Backend::postgresql,
+                [](const String&, const auto&) {
+                    return database::Result{};
+                },
+                [] {},
+                [] {},
+                [] {},
+                [] { return true; }
+            );
+        }
+    );
+
+    defaulted.boot();
+    assert(defaulted_settings.port == 5432);
+    defaulted.shutdown();
+
     auto missing = Application::create(root.path());
     bool unavailable = false;
 
