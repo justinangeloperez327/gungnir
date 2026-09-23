@@ -303,6 +303,7 @@ if(GUNGNIR_BUILD_TESTS)
                 ${CMAKE_COMMAND}
                 -DGUNGNIR_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
                 -DGUNGNIR_CLI=$<TARGET_FILE:gungnir-cli>
+                -DGUNGNIR_BUILD_CONFIG=$<CONFIG>
                 -P
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_integration.cmake
         )
