@@ -277,3 +277,90 @@ jobs:
       - name: Run MySQL package consumer
         run: ./build-mysql-consumer/gungnir-mysql-package-consumer
 
+  sqlserver:
+    name: SQL Server adapter
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: "Gungnir_SQL_2026!"
+        ports:
+          - 1433:1433
+
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-sqlserver-install
+      GUNGNIR_SQLSERVER_HOST: 127.0.0.1
+      GUNGNIR_SQLSERVER_PORT: "1433"
+      GUNGNIR_SQLSERVER_DATABASE: master
+      GUNGNIR_SQLSERVER_USERNAME: sa
+      GUNGNIR_SQLSERVER_PASSWORD: "Gungnir_SQL_2026!"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Microsoft ODBC Driver 18
+        run: |
+          curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(. /etc/os-release && echo "$VERSION_ID")/packages-microsoft-prod.deb"
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
+
+      - name: Wait for SQL Server
+        run: |
+          for attempt in {1..30}; do
+            if /opt/mssql-tools18/bin/sqlcmd               -S 127.0.0.1,1433               -U sa               -P "$GUNGNIR_SQLSERVER_PASSWORD"               -C               -Q "SELECT 1" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "SQL Server did not become ready"
+          exit 1
+
+      - name: Configure SQL Server adapter
+        run: >
+          cmake -S . -B build-sqlserver
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_SQLSERVER=ON
+          -DGUNGNIR_SQLSERVER_INTEGRATION_TESTS=ON
+
+      - name: Build SQL Server adapter
+        run: >
+          cmake --build build-sqlserver
+          --target
+          gungnir
+          gungnir-orm
+          gungnir-language
+          gungnir-sqlserver
+          gungnir_sqlserver_integration_test
+          --parallel
+
+      - name: Test SQL Server adapter
+        run: >
+          ctest --test-dir build-sqlserver
+          -R "^gungnir.sqlserver$"
+          --output-on-failure
+
+      - name: Install SQL Server-enabled package
+        run: cmake --install build-sqlserver
+
+      - name: Configure SQL Server package consumer
+        run: >
+          cmake
+          -S tests/sqlserver-package-consumer
+          -B build-sqlserver-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+
+      - name: Build SQL Server package consumer
+        run: cmake --build build-sqlserver-consumer --parallel
+
+      - name: Run SQL Server package consumer
+        run: ./build-sqlserver-consumer/gungnir-sqlserver-package-consumer
+
