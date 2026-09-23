@@ -555,8 +555,11 @@ void bind_parameters(
                     ? SQL_LONGVARCHAR
                     : SQL_VARCHAR;
             column_size =
-                static_cast<SQLULEN>(
-                    item.string.size()
+                std::max<SQLULEN>(
+                    1,
+                    static_cast<SQLULEN>(
+                        item.string.size()
+                    )
                 );
             pointer =
                 item.string.data();
@@ -1098,6 +1101,34 @@ public:
                 "Unable to prepare SQL Server statement",
                 SQL_HANDLE_STMT,
                 prepared.value
+            );
+        }
+
+        SQLSMALLINT expected_parameters = 0;
+
+        if (
+            !succeeded(
+                SQLNumParams(
+                    prepared.value,
+                    &expected_parameters
+                )
+            )
+        ) {
+            throw_odbc(
+                "Unable to inspect SQL Server parameter count",
+                SQL_HANDLE_STMT,
+                prepared.value
+            );
+        }
+
+        if (
+            expected_parameters < 0 ||
+            static_cast<std::size_t>(
+                expected_parameters
+            ) != values.size()
+        ) {
+            throw std::invalid_argument(
+                "SQL Server binding count does not match statement parameter count"
             );
         }
 
