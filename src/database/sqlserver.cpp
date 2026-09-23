@@ -94,7 +94,7 @@ struct StatementHandle {
         : value(
             std::exchange(
                 other.value,
-                SQL_NULL_HSTMT
+                SQLHSTMT{}
             )
           ) {}
 
