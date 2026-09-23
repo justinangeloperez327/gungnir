@@ -50,9 +50,6 @@ String placeholder(database::Backend backend, std::size_t index) {
     if (backend == database::Backend::postgresql) {
         return "$" + std::to_string(index + 1);
     }
-    if (backend == database::Backend::mssql) {
-        return "@p" + std::to_string(index + 1);
-    }
     return "?";
 }
 
