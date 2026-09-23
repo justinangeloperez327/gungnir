@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include <gungnir/database/database.hpp>
 #include <gungnir/database/mysql.hpp>
