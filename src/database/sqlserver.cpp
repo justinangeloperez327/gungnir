@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace gungnir::database {
@@ -558,9 +559,7 @@ void bind_parameters(
                     item.string.size()
                 );
             pointer =
-                item.string.empty()
-                    ? nullptr
-                    : item.string.data();
+                item.string.data();
             buffer_length =
                 static_cast<SQLLEN>(
                     item.string.size()
