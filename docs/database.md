@@ -8,7 +8,7 @@ Applications configure named connections through `database::Manager`. A connecti
 
 ```cpp
 auto result = connection->execute(
-    "SELECT * FROM users WHERE email = ?",
+    "SELECT * FROM users WHERE email = $1",
     {email}
 );
 ```
@@ -21,9 +21,11 @@ A `database::Query` can also carry a statement and its bindings as one value.
 
 Gungnir separates the database contract from vendor adapters. `Driver` is the adapter boundary and `DriverRegistry` registers concrete drivers.
 
-The core recognizes PostgreSQL, MySQL, SQL Server, and MongoDB configuration, but recognizing a backend is not a claim that a production driver is bundled. A backend is usable only when its concrete adapter is registered.
+The core recognizes PostgreSQL, MySQL, SQL Server, and MongoDB configuration. PostgreSQL has an optional libpq adapter built with `GUNGNIR_WITH_POSTGRESQL=ON`; it is exported as `gungnir::postgresql` and registered with `database::register_postgresql()`.
 
-MongoDB remains a document backend and should not be forced through relational SQL semantics.
+MySQL, SQL Server, and MongoDB still require concrete adapters before they are usable. MongoDB remains a document backend and should not be forced through relational SQL semantics.
+
+Raw SQL uses the placeholder syntax of the active backend. PostgreSQL uses `$1`, `$2`, and so on. ORM queries compile the correct backend placeholders automatically.
 
 ## Pooling
 
