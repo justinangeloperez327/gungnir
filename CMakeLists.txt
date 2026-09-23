@@ -184,6 +184,7 @@ if(GUNGNIR_BUILD_TOOLS)
         gungnir-cli
         PROPERTIES
             OUTPUT_NAME gungnir
+            PDB_NAME gungnir-cli
     )
 endif()
 
