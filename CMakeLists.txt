@@ -5,12 +5,28 @@ project(gungnir VERSION 0.1.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+list(
+    APPEND
+    CMAKE_MODULE_PATH
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
+)
+
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 option(GUNGNIR_WITH_POSTGRESQL "Build the libpq PostgreSQL adapter" OFF)
 option(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS
     "Build live PostgreSQL integration tests"
+    OFF
+)
+option(
+    GUNGNIR_WITH_MYSQL
+    "Build the MySQL/MariaDB C client adapter"
+    OFF
+)
+option(
+    GUNGNIR_MYSQL_INTEGRATION_TESTS
+    "Build live MySQL integration tests"
     OFF
 )
 
@@ -24,10 +40,24 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_MYSQL_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_MYSQL
+)
+    message(
+        FATAL_ERROR
+        "MySQL integration tests require GUNGNIR_WITH_MYSQL=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
     find_package(PostgreSQL REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_MYSQL)
+    find_package(MariaDB REQUIRED)
 endif()
 
 add_library(gungnir
@@ -213,6 +243,47 @@ if(GUNGNIR_WITH_POSTGRESQL)
     )
 endif()
 
+if(GUNGNIR_WITH_MYSQL)
+    add_library(
+        gungnir-mysql
+        src/database/mysql.cpp
+    )
+
+    add_library(
+        gungnir::mysql
+        ALIAS
+        gungnir-mysql
+    )
+
+    target_compile_features(
+        gungnir-mysql
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-mysql
+        PUBLIC
+            gungnir::gungnir
+            MariaDB::MariaDB
+    )
+
+    target_include_directories(
+        gungnir-mysql
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-mysql
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME mysql
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
@@ -227,6 +298,15 @@ if(MSVC)
                 /permissive-
         )
     endif()
+
+    if(GUNGNIR_WITH_MYSQL)
+        target_compile_options(
+            gungnir-mysql
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
 else()
     target_compile_options(gungnir PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     target_compile_options(gungnir-orm PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
@@ -236,6 +316,18 @@ else()
     if(GUNGNIR_WITH_POSTGRESQL)
         target_compile_options(
             gungnir-postgresql
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+
+    if(GUNGNIR_WITH_MYSQL)
+        target_compile_options(
+            gungnir-mysql
             PRIVATE
                 -Wall
                 -Wextra
@@ -602,6 +694,34 @@ if(GUNGNIR_BUILD_TESTS)
                 gungnir_postgresql_integration_test
         )
     endif()
+
+    if(
+        GUNGNIR_WITH_MYSQL AND
+        GUNGNIR_MYSQL_INTEGRATION_TESTS
+    )
+        add_executable(
+            gungnir_mysql_integration_test
+            tests/mysql_integration.cpp
+        )
+
+        target_link_libraries(
+            gungnir_mysql_integration_test
+            PRIVATE
+                gungnir::mysql
+        )
+
+        target_compile_features(
+            gungnir_mysql_integration_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.mysql
+            COMMAND
+                gungnir_mysql_integration_test
+        )
+    endif()
 endif()
 
 
@@ -636,6 +756,30 @@ if(GUNGNIR_WITH_POSTGRESQL)
             ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION
             ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
+
+if(GUNGNIR_WITH_MYSQL)
+    install(
+        TARGETS
+            gungnir-mysql
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+
+    install(
+        FILES
+            cmake/FindMariaDB.cmake
+        DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir/modules
     )
 endif()
 
