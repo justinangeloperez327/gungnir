@@ -1,0 +1,8 @@
+#include <gungnir/gungnir.hpp>
+
+int main()
+{
+    gungnir::Application app;
+
+    return app.is_production() ? 1 : 0;
+}

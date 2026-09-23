@@ -12,6 +12,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#endif
+
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/transpiler.hpp>
 
@@ -109,24 +113,10 @@ bool identifier_character(
         character == ' ';
 }
 
+#ifndef _WIN32
 String quote_shell(
     std::string_view argument
 ) {
-#ifdef _WIN32
-    String value{argument};
-    String quoted{"\""};
-
-    for (const char character : value) {
-        if (character == '"') {
-            quoted += "\\\"";
-        } else {
-            quoted += character;
-        }
-    }
-
-    quoted += '"';
-    return quoted;
-#else
     const String value{argument};
     String quoted{"'"};
 
@@ -140,8 +130,8 @@ String quote_shell(
 
     quoted += '\'';
     return quoted;
-#endif
 }
+#endif
 
 int execute(
     const std::vector<String>& arguments
@@ -150,6 +140,26 @@ int execute(
         return 0;
     }
 
+#ifdef _WIN32
+    std::vector<const char*> argv;
+    argv.reserve(arguments.size() + 1);
+
+    for (const auto& argument : arguments) {
+        argv.push_back(argument.c_str());
+    }
+
+    argv.push_back(nullptr);
+
+    const auto result = _spawnvp(
+        _P_WAIT,
+        arguments.front().c_str(),
+        argv.data()
+    );
+
+    return result == -1
+        ? -1
+        : static_cast<int>(result);
+#else
     String command;
 
     for (
@@ -169,6 +179,7 @@ int execute(
     return std::system(
         command.c_str()
     );
+#endif
 }
 
 std::vector<std::filesystem::path>

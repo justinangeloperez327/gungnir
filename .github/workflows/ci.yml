@@ -2,21 +2,122 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GCC Debug
+            os: ubuntu-latest
+            build_type: Debug
+            compiler_args: -DCMAKE_CXX_COMPILER=g++
+          - name: Linux Clang Debug
+            os: ubuntu-latest
+            build_type: Debug
+            compiler_args: -DCMAKE_CXX_COMPILER=clang++
+          - name: Windows MSVC Debug
+            os: windows-latest
+            build_type: Debug
+            compiler_args: ""
+          - name: Linux GCC Release
+            os: ubuntu-latest
+            build_type: Release
+            compiler_args: -DCMAKE_CXX_COMPILER=g++
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build ${{ matrix.compiler_args }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+  build-options:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Tests disabled
+            tests: "OFF"
+            tools: "ON"
+          - name: Tools disabled
+            tests: "ON"
+            tools: "OFF"
+          - name: Tests and tools disabled
+            tests: "OFF"
+            tools: "OFF"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_BUILD_TESTS=${{ matrix.tests }}
+          -DGUNGNIR_BUILD_TOOLS=${{ matrix.tools }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+  package-consumer:
+    name: Installed package consumer
+    runs-on: ubuntu-latest
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-install
+      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-package-consumer.cpp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure Gungnir
+        run: >
+          cmake -S . -B build-package
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+
+      - name: Build Gungnir
+        run: cmake --build build-package --parallel
+
+      - name: Install Gungnir
+        run: cmake --install build-package
+
+      - name: Transpile external consumer
+        run: >
+          "$GUNGNIR_PREFIX/bin/gungnirc"
+          tests/package-consumer/app.gnr
+          -o "$GUNGNIR_GENERATED_SOURCE"
+
+      - name: Configure external consumer
+        run: >
+          cmake -S tests/package-consumer -B build-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
+
+      - name: Build external consumer
+        run: cmake --build build-consumer --parallel
+
+      - name: Run external consumer
+        run: ./build-consumer/gungnir-package-consumer
