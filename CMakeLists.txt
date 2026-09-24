@@ -769,6 +769,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_ioc_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.ioc COMMAND gungnir_ioc_test)
 
+    add_executable(gungnir_ioc_scope_test tests/ioc_scope.cpp)
+    target_link_libraries(gungnir_ioc_scope_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_ioc_scope_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.ioc_scope COMMAND gungnir_ioc_scope_test)
+
     add_executable(gungnir_migration_test tests/migration.cpp)
     target_link_libraries(gungnir_migration_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_migration_test PRIVATE cxx_std_23)
