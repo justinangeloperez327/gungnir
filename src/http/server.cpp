@@ -1327,11 +1327,22 @@ public:
                 continue;
             }
 
-            std::size_t offset = 0;
+            if (
+                (
+                    descriptors.front()
+                        .revents &
+                    poll_read_event
+                ) != 0
+            ) {
+                wakeup->drain();
+                complete_ready_handlers();
+            }
+
+            std::size_t offset = 1;
 
             if (poll_listener) {
                 const auto events =
-                    descriptors.front()
+                    descriptors[offset]
                         .revents;
 
                 if (
@@ -1343,7 +1354,7 @@ public:
                     accept_ready();
                 }
 
-                offset = 1;
+                ++offset;
             }
 
             const auto count =
