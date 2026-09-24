@@ -641,6 +641,28 @@ bool Application::is_booted()
         impl_->booted;
 }
 
+Application& Application::http_runtime(
+    http::RuntimeOptions options
+) {
+    if (!impl_) {
+        throw std::logic_error(
+            "Gungnir application is not initialized"
+        );
+    }
+
+    impl_->server->configure(
+        std::move(options)
+    );
+
+    return *this;
+}
+
+const http::RuntimeOptions&
+Application::http_runtime()
+    const noexcept {
+    return impl_->server->options();
+}
+
 void Application::run() {
     const auto configured_port =
         impl_->config->integer(
