@@ -1131,6 +1131,7 @@ public:
     ~Impl() {
         stop();
         close_all();
+        dispatches->wait();
         wakeup->shutdown();
     }
 
@@ -1177,6 +1178,7 @@ public:
             close_socket(socket);
             bound.store(0);
             close_all();
+            dispatches->wait();
             throw;
         }
 
@@ -1187,6 +1189,7 @@ public:
 
         close_socket(socket);
         close_all();
+        dispatches->wait();
         bound.store(0);
         running.store(false);
     }
