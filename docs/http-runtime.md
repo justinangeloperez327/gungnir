@@ -26,7 +26,7 @@ Read, write and idle phases are bounded by their corresponding runtime timeouts.
 
 Controller-facing Gungnir syntax does not expose C++ coroutine machinery. A route task may genuinely suspend while the connection retains owned request state. Completion on a timer or executor thread publishes the response and signals the reactor through an internal wake socket. The reactor remains responsible for response serialization and network writes.
 
-If a client disconnects or `request_timeout` expires, the route task can still finish safely without writing to the released connection.
+If a client disconnects or `request_timeout` expires, the route task can still finish safely without writing to the released connection. Started route tasks are retained until completion before the server releases request-runtime ownership; `shutdown_timeout` bounds connection draining, not forced destruction of live coroutine frames.
 
 ## Remaining transport work
 
