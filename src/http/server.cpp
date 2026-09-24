@@ -1198,22 +1198,6 @@ public:
                             received
                         );
 
-                    if (
-                        connection.input.size() >
-                        options.max_request_bytes -
-                            std::min(
-                                options.max_request_bytes,
-                                count
-                            )
-                    ) {
-                        queue_error(
-                            connection,
-                            413,
-                            "Payload Too Large"
-                        );
-                        return;
-                    }
-
                     const auto new_request =
                         connection.input.empty();
 
@@ -1232,6 +1216,15 @@ public:
 
                     connection.last_activity =
                         activity;
+
+                    if (
+                        request_size(
+                            connection.input,
+                            options
+                        )
+                    ) {
+                        break;
+                    }
 
                     continue;
                 }
