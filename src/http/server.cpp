@@ -6,7 +6,10 @@
 #include <chrono>
 #include <coroutine>
 #include <cstdint>
+#include <exception>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
