@@ -1,15 +1,31 @@
 # HTTP Runtime
 
-Group 6 defines the transport-facing HTTP runtime independently from routing and controller semantics.
+Gungnir's HTTP/1.1 socket backend uses a cross-platform non-blocking readiness reactor.
 
-`RuntimeOptions` centralizes request/header limits, connection limits, request limits per persistent connection, read/write/idle timeouts, and keep-alive policy.
+`RuntimeOptions` centralizes request/header limits, connection limits, request limits per persistent connection, read/write/idle timeouts, graceful-shutdown timeout, and keep-alive policy.
 
-HTTP/1.1 persistent connection policy is represented explicitly rather than hard-coded into response serialization. The wire layer can emit either `keep-alive` or `close`.
+## Connection reactor
 
-`Transport` is the boundary for plain TCP and future TLS-backed transports. TLS is intentionally represented as a boundary rather than embedding a specific TLS library into framework APIs.
+Listener and accepted sockets are non-blocking. The reactor waits for read/write readiness rather than assigning one blocking socket to a worker. It applies bounded connection admission, reads one request at a time per connection, buffers only within configured request limits, and writes responses incrementally when the socket is writable.
 
-`BodyStream` establishes producer-based streaming semantics for future response streaming and chunked transfer encoding.
+The reactor supports sequential HTTP/1.1 keep-alive requests and closes a connection when the client requests `close`, the server disables keep-alive, or `max_requests_per_connection` is reached. HTTP/1.0 remains close-by-default unless the client explicitly requests keep-alive.
 
-WebSocket upgrade detection is represented separately from ordinary HTTP routing so a later handshake/frame implementation can reuse the same server connection lifecycle.
+Header and request limits are enforced before routing. Oversized headers return 431; oversized requests return 413.
 
-The current socket backend remains blocking. These APIs are foundations for moving connection readiness onto the Group 5 asynchronous runtime; they do not claim HTTP/2, TLS, WebSocket frames, chunked parsing, or a non-blocking socket backend is complete.
+Read, write and idle phases are bounded by their corresponding runtime timeouts.
+
+## Shutdown
+
+`Server::stop()` stops accepting new connections. Existing connections are allowed to finish within `shutdown_timeout`; idle connections are closed immediately and any remaining connections are forcibly released when the drain deadline expires.
+
+## Bound port
+
+`Server::bound_port()` exposes the actual listener port. This is useful for tests and for deployments that intentionally bind port `0`.
+
+## Remaining transport work
+
+Controller-facing Gungnir syntax does not expose C++ coroutine machinery, but the current HTTP dispatcher still completes route tasks inline. A handler that genuinely suspends is therefore not yet scheduled by the socket reactor. Integrating coroutine continuation scheduling with the executor is the next runtime step.
+
+`Transport` remains the boundary for future TLS-backed transports. `BodyStream` remains the response-streaming foundation.
+
+This runtime does not yet claim HTTP/2, TLS termination, WebSocket frame handling, chunked request parsing, or asynchronous streaming responses.

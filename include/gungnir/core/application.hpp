@@ -21,6 +21,7 @@
 #include <gungnir/database/settings.hpp>
 #include <gungnir/http/middleware.hpp>
 #include <gungnir/http/middleware_registry.hpp>
+#include <gungnir/http/runtime.hpp>
 #include <gungnir/routing/router.hpp>
 #include <gungnir/view/engine.hpp>
 
@@ -170,6 +171,9 @@ public:
     void boot();
     void shutdown() noexcept;
     [[nodiscard]] bool is_booted() const noexcept;
+
+    Application& http_runtime(http::RuntimeOptions options);
+    [[nodiscard]] const http::RuntimeOptions& http_runtime() const noexcept;
 
     void run();
 
