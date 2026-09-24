@@ -953,14 +953,23 @@ Response error_response(
 }
 
 struct PendingDispatch {
-    explicit PendingDispatch(
-        Request value
+    PendingDispatch(
+        Request value,
+        CancellationSource source
     )
         : request(
             std::move(value)
+          ),
+          cancellation(
+            std::move(source)
           ) {}
 
+    void cancel() noexcept {
+        cancellation.cancel();
+    }
+
     Request request;
+    CancellationSource cancellation;
     std::optional<Response> response;
     std::exception_ptr exception;
     std::atomic_bool ready{false};
@@ -1101,6 +1110,10 @@ struct ConnectionState {
 void close_connection(
     ConnectionState& connection
 ) noexcept {
+    if (connection.pending) {
+        connection.pending->cancel();
+    }
+
     close_socket(
         connection.socket
     );
@@ -1261,6 +1274,10 @@ public:
                             connection
                         );
                     } else {
+                        if (connection.pending) {
+                            connection.pending->cancel();
+                        }
+
                         connection.close_after_write =
                             true;
                     }
@@ -1327,7 +1344,8 @@ public:
                 short events = 0;
 
                 if (connection.pending) {
-                    events = 0;
+                    events =
+                        poll_read_event;
                 } else if (
                     connection.output.empty()
                 ) {
@@ -1801,9 +1819,12 @@ public:
             *expected
         );
 
+        CancellationSource cancellation;
+
         auto request =
             wire::parse_request(
-                raw
+                raw,
+                cancellation.token()
             );
 
         ++connection.requests_served;
@@ -1812,7 +1833,8 @@ public:
             std::make_shared<
                 PendingDispatch
             >(
-                std::move(request)
+                std::move(request),
+                std::move(cancellation)
             );
 
         pending->keep_alive =
