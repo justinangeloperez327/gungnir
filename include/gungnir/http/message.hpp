@@ -9,7 +9,10 @@
 
 namespace gungnir::http::wire {
 
-[[nodiscard]] Request parse_request(std::string_view message);
+[[nodiscard]] Request parse_request(
+    std::string_view message,
+    CancellationToken cancellation = {}
+);
 
 [[nodiscard]] std::string serialize_response(
     const Response& response,

@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -143,7 +144,12 @@ public:
     }
 
     ~ClientSocket() {
+        close();
+    }
+
+    void close() noexcept {
         close_socket(socket_);
+        socket_ = invalid_socket;
     }
 
     ClientSocket(
@@ -416,6 +422,11 @@ int main() {
 
     routing::Router router;
 
+    std::atomic_bool disconnect_started{false};
+    std::atomic_int disconnect_result{0};
+    std::atomic_bool timeout_started{false};
+    std::atomic_int timeout_result{0};
+
     router.get(
         "/ping",
         [] {
@@ -439,6 +450,54 @@ int main() {
         }
     );
 
+    router.get(
+        "/cancel-disconnect",
+        [&](http::Request& request)
+            -> Task<http::Response> {
+            disconnect_started.store(
+                true
+            );
+
+            co_await sleep_for(
+                200ms
+            );
+
+            disconnect_result.store(
+                request.cancelled()
+                    ? 1
+                    : -1
+            );
+
+            co_return http::Response::text(
+                "late"
+            );
+        }
+    );
+
+    router.get(
+        "/cancel-timeout",
+        [&](http::Request& request)
+            -> Task<http::Response> {
+            timeout_started.store(
+                true
+            );
+
+            co_await sleep_for(
+                250ms
+            );
+
+            timeout_result.store(
+                request.cancelled()
+                    ? 1
+                    : -1
+            );
+
+            co_return http::Response::text(
+                "late"
+            );
+        }
+    );
+
     http::RuntimeOptions options;
     options.max_request_bytes = 1024;
     options.max_header_bytes = 256;
@@ -447,7 +506,7 @@ int main() {
     options.read_timeout = 2s;
     options.write_timeout = 2s;
     options.idle_timeout = 2s;
-    options.request_timeout = 2s;
+    options.request_timeout = 100ms;
     options.shutdown_timeout = 1s;
     options.keep_alive = true;
 
@@ -541,6 +600,99 @@ int main() {
             response.ends_with(
                 "\r\n\r\nasync"
             )
+        );
+    }
+
+    {
+        ClientSocket client{
+            server.port()
+        };
+
+        client.send(
+            "GET /cancel-disconnect HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 200 &&
+                !disconnect_started.load();
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            disconnect_started.load()
+        );
+
+        client.close();
+
+        for (
+            int attempt = 0;
+            attempt < 200 &&
+                disconnect_result.load() == 0;
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            disconnect_result.load() == 1
+        );
+    }
+
+    {
+        ClientSocket client{
+            server.port()
+        };
+
+        client.send(
+            "GET /cancel-timeout HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 200 &&
+                !timeout_started.load();
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            timeout_started.load()
+        );
+
+        const auto response =
+            client.receive_response();
+
+        assert(response.empty());
+
+        for (
+            int attempt = 0;
+            attempt < 200 &&
+                timeout_result.load() == 0;
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            timeout_result.load() == 1
         );
     }
 

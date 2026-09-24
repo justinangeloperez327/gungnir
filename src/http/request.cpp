@@ -164,11 +164,13 @@ bool media_type_is(
 Request::Request(
     Method method,
     std::string target,
-    std::string body
+    std::string body,
+    CancellationToken cancellation
 )
     : method_(method),
       target_(std::move(target)),
-      body_(std::move(body)) {
+      body_(std::move(body)),
+      cancellation_(std::move(cancellation)) {
     parse_target();
 }
 
@@ -186,6 +188,14 @@ std::string_view Request::path() const noexcept {
 
 std::string_view Request::body() const noexcept {
     return body_;
+}
+
+bool Request::cancelled() const noexcept {
+    return cancellation_.cancelled();
+}
+
+CancellationToken Request::cancellation() const noexcept {
+    return cancellation_;
 }
 
 void Request::set_header(std::string name, std::string value) {
