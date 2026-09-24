@@ -433,7 +433,7 @@ bool binding_sentinel(
 void append_resolved(
     bson_t* target,
     const char* key,
-    const bson_iter_t& iterator,
+    bson_iter_t iterator,
     const std::vector<
         model::AttributeValue
     >& bindings
@@ -530,7 +530,7 @@ void append_resolved_document(
 void append_resolved(
     bson_t* target,
     const char* key,
-    const bson_iter_t& iterator,
+    bson_iter_t iterator,
     const std::vector<
         model::AttributeValue
     >& bindings
