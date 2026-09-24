@@ -26,6 +26,7 @@ public:
     void stop() noexcept;
 
     [[nodiscard]] bool running() const noexcept;
+    [[nodiscard]] std::uint16_t bound_port() const noexcept;
     [[nodiscard]] const RuntimeOptions& options() const noexcept;
 
 private:
