@@ -1,5 +1,7 @@
 #include <gungnir/http/request.hpp>
 
+#include <gungnir/core/container.hpp>
+
 #include <gungnir/validation/validator.hpp>
 
 #include <algorithm>
@@ -196,6 +198,30 @@ bool Request::cancelled() const noexcept {
 
 CancellationToken Request::cancellation() const noexcept {
     return cancellation_;
+}
+
+bool Request::has_services() const noexcept {
+    return static_cast<bool>(services_);
+}
+
+ServiceScope& Request::services() {
+    if (!services_) {
+        throw std::logic_error(
+            "HTTP request is not attached to an application service scope"
+        );
+    }
+
+    return *services_;
+}
+
+const ServiceScope& Request::services() const {
+    if (!services_) {
+        throw std::logic_error(
+            "HTTP request is not attached to an application service scope"
+        );
+    }
+
+    return *services_;
 }
 
 void Request::set_header(std::string name, std::string value) {
@@ -525,6 +551,18 @@ void Request::parse_cookies() const {
 
         cursor = separator + 1;
     }
+}
+
+void Request::attach_services(
+    std::shared_ptr<ServiceScope> services
+) {
+    if (!services || !services->valid()) {
+        throw std::invalid_argument(
+            "HTTP request service scope is invalid"
+        );
+    }
+
+    services_ = std::move(services);
 }
 
 void Request::clear_route_parameters() noexcept {
