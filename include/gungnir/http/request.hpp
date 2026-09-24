@@ -1,6 +1,7 @@
 #pragma once
 
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -11,6 +12,10 @@
 #include <gungnir/http/method.hpp>
 #include <gungnir/validation/rules.hpp>
 #include <gungnir/validation/result.hpp>
+
+namespace gungnir {
+class ServiceScope;
+}
 
 namespace gungnir::routing {
 class Router;
@@ -37,6 +42,9 @@ public:
     [[nodiscard]] std::string_view body() const noexcept;
     [[nodiscard]] bool cancelled() const noexcept;
     [[nodiscard]] CancellationToken cancellation() const noexcept;
+    [[nodiscard]] bool has_services() const noexcept;
+    [[nodiscard]] ServiceScope& services();
+    [[nodiscard]] const ServiceScope& services() const;
 
     void set_header(std::string name, std::string value);
     [[nodiscard]] std::string_view header(
@@ -99,12 +107,14 @@ private:
     void parse_cookies() const;
     void clear_route_parameters() noexcept;
     void set_route_parameter(std::string name, std::string value);
+    void attach_services(std::shared_ptr<ServiceScope> services);
 
     Method method_;
     std::string target_;
     std::string path_;
     std::string body_;
     CancellationToken cancellation_;
+    std::shared_ptr<ServiceScope> services_;
     Headers headers_;
     Parameters parameters_;
     Input query_;
