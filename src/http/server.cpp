@@ -1948,6 +1948,20 @@ public:
                 continue;
             }
 
+            if (connection.pending) {
+                if (
+                    now -
+                        connection.phase_started >=
+                    options.request_timeout
+                ) {
+                    close_connection(
+                        connection
+                    );
+                }
+
+                continue;
+            }
+
             if (
                 !connection.output.empty()
             ) {
@@ -2069,6 +2083,7 @@ public:
             options.read_timeout.count() <= 0 ||
             options.write_timeout.count() <= 0 ||
             options.idle_timeout.count() <= 0 ||
+            options.request_timeout.count() <= 0 ||
             options.shutdown_timeout.count() <= 0
         ) {
             throw std::invalid_argument(
