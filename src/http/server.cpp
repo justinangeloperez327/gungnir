@@ -4,6 +4,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <condition_variable>
 #include <coroutine>
 #include <cstdint>
 #include <exception>
@@ -967,6 +968,59 @@ struct PendingDispatch {
     bool omit_body{false};
 };
 
+class DispatchTracker {
+public:
+    void begin() {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        ++active_;
+    }
+
+    void finish() noexcept {
+        {
+            std::lock_guard lock{
+                mutex_
+            };
+
+            if (active_ > 0) {
+                --active_;
+            }
+        }
+
+        ready_.notify_all();
+    }
+
+    void wait() {
+        std::unique_lock lock{
+            mutex_
+        };
+
+        ready_.wait(
+            lock,
+            [this] {
+                return active_ == 0;
+            }
+        );
+    }
+
+    [[nodiscard]]
+    std::size_t active()
+        const noexcept {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        return active_;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::condition_variable ready_;
+    std::size_t active_{0};
+};
+
 class DetachedTask {
 public:
     struct promise_type {
@@ -1004,8 +1058,11 @@ public:
 DetachedTask settle_dispatch(
     Task<Response> task,
     std::shared_ptr<PendingDispatch> pending,
-    std::shared_ptr<WakeState> wakeup
+    std::shared_ptr<WakeState> wakeup,
+    std::shared_ptr<DispatchTracker> dispatches
 ) {
+    dispatches->begin();
+
     try {
         pending->response.emplace(
             co_await task
@@ -1021,6 +1078,7 @@ DetachedTask settle_dispatch(
     );
 
     wakeup->notify();
+    dispatches->finish();
 }
 
 struct ConnectionState {
@@ -1778,7 +1836,8 @@ public:
                 pending->request
             ),
             std::move(pending),
-            wakeup
+            wakeup,
+            dispatches
         );
 
         complete_ready_handler(
@@ -2095,6 +2154,9 @@ public:
     SocketRuntime socket_runtime;
     std::shared_ptr<WakeState> wakeup{
         std::make_shared<WakeState>()
+    };
+    std::shared_ptr<DispatchTracker> dispatches{
+        std::make_shared<DispatchTracker>()
     };
     routing::Router& router;
     RuntimeOptions options;
