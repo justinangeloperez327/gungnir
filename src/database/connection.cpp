@@ -51,6 +51,14 @@ Result Connection::execute(const Query& query) {
     return execute(query.statement, query.bindings);
 }
 
+bool Connection::supports_transactions() const noexcept {
+    return driver_->supports_transactions();
+}
+
+bool Connection::supports_savepoints() const noexcept {
+    return driver_->supports_savepoints();
+}
+
 void Connection::begin() {
     std::lock_guard lock{mutex_};
 
