@@ -29,7 +29,7 @@ MySQL has an optional native C-client adapter built with `GUNGNIR_WITH_MYSQL=ON`
 
 SQL Server has an optional ODBC adapter built with `GUNGNIR_WITH_SQLSERVER=ON`; it is exported as `gungnir::sqlserver` and registered with `database::register_sqlserver()`. It targets Microsoft ODBC Driver 18 for SQL Server at runtime.
 
-MongoDB still requires a concrete adapter before it is usable and remains a document backend that should not be forced through relational SQL semantics.
+MongoDB has an optional `libmongoc` adapter built with `GUNGNIR_WITH_MONGODB=ON`; it is exported as `gungnir::mongodb` and registered with `database::register_mongodb()`. MongoDB remains document-native: ORM and migration plans compile to BSON-compatible command documents rather than SQL. Model `id` maps to MongoDB `_id`.
 
 Raw SQL uses the placeholder syntax of the active backend. PostgreSQL uses `$1`, `$2`, and so on; MySQL and SQL Server use `?`. ORM queries compile the correct backend placeholders automatically.
 
@@ -42,6 +42,8 @@ Vendor-specific connection attributes can be supplied through `DB_OPTIONS`. For 
 ## Transactions
 
 `Manager::transaction()` pins work to one connection. `Transaction::run()` commits on success and rolls back on exceptions. Nested transaction/savepoint semantics are explicit driver capabilities and are not emulated by the core.
+
+Connections expose `supports_transactions()` and `supports_savepoints()`. The migration runner honors these capabilities. The initial MongoDB adapter targets standalone deployments and reports transactions as unsupported instead of emulating them; replica-set transaction support is separate work.
 
 ## Errors
 
