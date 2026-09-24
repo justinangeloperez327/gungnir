@@ -623,67 +623,51 @@ private:
                         scope
                     )
                 );
-            }
-
-            if constexpr (
+            } else if constexpr (
                 std::invocable<
                     StoredFactory&,
                     ServiceScope&
                 >
             ) {
-                if (scope != nullptr) {
-                    return
-                        erase_result<
-                            Service
-                        >(
-                            std::invoke(
-                                factory,
-                                *scope
-                            )
-                        );
+                if (scope == nullptr) {
+                    throw std::logic_error(
+                        "Container factory requires a request service scope"
+                    );
                 }
-            }
 
-            if constexpr (
+                return erase_result<
+                    Service
+                >(
+                    std::invoke(
+                        factory,
+                        *scope
+                    )
+                );
+            } else if constexpr (
                 std::invocable<
                     StoredFactory&,
                     Container&
                 >
             ) {
-                return
-                    erase_result<
-                        Service
-                    >(
-                        std::invoke(
-                            factory,
-                            container
-                        )
-                    );
-            }
-
-            if constexpr (
+                return erase_result<
+                    Service
+                >(
+                    std::invoke(
+                        factory,
+                        container
+                    )
+                );
+            } else if constexpr (
                 std::invocable<
                     StoredFactory&
                 >
             ) {
-                return
-                    erase_result<
-                        Service
-                    >(
-                        std::invoke(
-                            factory
-                        )
-                    );
-            }
-
-            if constexpr (
-                std::invocable<
-                    StoredFactory&,
-                    ServiceScope&
-                >
-            ) {
-                throw std::logic_error(
-                    "Container factory requires a request service scope"
+                return erase_result<
+                    Service
+                >(
+                    std::invoke(
+                        factory
+                    )
                 );
             } else {
                 static_assert(
