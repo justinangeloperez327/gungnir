@@ -24,6 +24,7 @@ public:
 
     void listen(std::string host, std::uint16_t port);
     void stop() noexcept;
+    void configure(RuntimeOptions options);
 
     [[nodiscard]] bool running() const noexcept;
     [[nodiscard]] std::uint16_t bound_port() const noexcept;
