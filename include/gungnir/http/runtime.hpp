@@ -12,6 +12,7 @@ struct RuntimeOptions {
     std::chrono::milliseconds read_timeout{30000};
     std::chrono::milliseconds write_timeout{30000};
     std::chrono::milliseconds idle_timeout{15000};
+    std::chrono::milliseconds request_timeout{30000};
     std::chrono::milliseconds shutdown_timeout{5000};
     bool keep_alive{true};
 };

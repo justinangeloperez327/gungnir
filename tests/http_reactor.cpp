@@ -6,6 +6,7 @@
 #include <string_view>
 #include <thread>
 
+#include <gungnir/core/timer.hpp>
 #include <gungnir/http/server.hpp>
 #include <gungnir/routing/router.hpp>
 
@@ -424,6 +425,20 @@ int main() {
         }
     );
 
+    router.get(
+        "/async",
+        [](http::Request&)
+            -> Task<http::Response> {
+            co_await sleep_for(
+                25ms
+            );
+
+            co_return http::Response::text(
+                "async"
+            );
+        }
+    );
+
     http::RuntimeOptions options;
     options.max_request_bytes = 1024;
     options.max_header_bytes = 256;
@@ -432,6 +447,7 @@ int main() {
     options.read_timeout = 2s;
     options.write_timeout = 2s;
     options.idle_timeout = 2s;
+    options.request_timeout = 2s;
     options.shutdown_timeout = 1s;
     options.keep_alive = true;
 
@@ -497,6 +513,34 @@ int main() {
 
         assert(
             client.closed()
+        );
+    }
+
+    {
+        ClientSocket client{
+            server.port()
+        };
+
+        client.send(
+            "GET /async HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+        );
+
+        const auto response =
+            client.receive_response();
+
+        assert(
+            response.starts_with(
+                "HTTP/1.1 200 OK\r\n"
+            )
+        );
+
+        assert(
+            response.ends_with(
+                "\r\n\r\nasync"
+            )
         );
     }
 

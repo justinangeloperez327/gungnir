@@ -4,9 +4,13 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <condition_variable>
 #include <coroutine>
 #include <cstdint>
+#include <exception>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -209,6 +213,262 @@ int poll_sockets(
 
 class SocketRuntime {};
 #endif
+
+class WakeState {
+public:
+    WakeState() {
+        receiver_ = ::socket(
+            AF_INET,
+            SOCK_DGRAM,
+            IPPROTO_UDP
+        );
+
+        if (
+            receiver_ ==
+            invalid_socket
+        ) {
+            throw std::runtime_error(
+                "Unable to create HTTP reactor wake receiver"
+            );
+        }
+
+        sender_ = ::socket(
+            AF_INET,
+            SOCK_DGRAM,
+            IPPROTO_UDP
+        );
+
+        if (
+            sender_ ==
+            invalid_socket
+        ) {
+            close_socket(receiver_);
+            receiver_ = invalid_socket;
+
+            throw std::runtime_error(
+                "Unable to create HTTP reactor wake sender"
+            );
+        }
+
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr =
+            htonl(INADDR_LOOPBACK);
+        address.sin_port = 0;
+
+        if (
+            ::bind(
+                receiver_,
+                reinterpret_cast<
+                    const sockaddr*
+                >(&address),
+#ifdef _WIN32
+                static_cast<int>(
+                    sizeof(address)
+                )
+#else
+                static_cast<socklen_t>(
+                    sizeof(address)
+                )
+#endif
+            ) != 0
+        ) {
+            fail(
+                "Unable to bind HTTP reactor wake receiver"
+            );
+        }
+
+#ifdef _WIN32
+        int length =
+            static_cast<int>(
+                sizeof(address)
+            );
+#else
+        socklen_t length =
+            static_cast<socklen_t>(
+                sizeof(address)
+            );
+#endif
+
+        if (
+            getsockname(
+                receiver_,
+                reinterpret_cast<
+                    sockaddr*
+                >(&address),
+                &length
+            ) != 0
+        ) {
+            fail(
+                "Unable to inspect HTTP reactor wake receiver"
+            );
+        }
+
+        if (
+            ::connect(
+                sender_,
+                reinterpret_cast<
+                    const sockaddr*
+                >(&address),
+#ifdef _WIN32
+                static_cast<int>(
+                    sizeof(address)
+                )
+#else
+                static_cast<socklen_t>(
+                    sizeof(address)
+                )
+#endif
+            ) != 0
+        ) {
+            fail(
+                "Unable to connect HTTP reactor wake sender"
+            );
+        }
+
+        if (
+            !set_non_blocking(receiver_) ||
+            !set_non_blocking(sender_)
+        ) {
+            fail(
+                "Unable to configure HTTP reactor wake sockets"
+            );
+        }
+
+        active_ = true;
+    }
+
+    ~WakeState() {
+        shutdown();
+    }
+
+    WakeState(const WakeState&) = delete;
+    WakeState& operator=(const WakeState&) = delete;
+
+    [[nodiscard]]
+    NativeSocket reader()
+        const noexcept {
+        return receiver_;
+    }
+
+    void notify() noexcept {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        if (!active_) {
+            return;
+        }
+
+        constexpr char value = 1;
+
+#ifdef _WIN32
+        static_cast<void>(
+            ::send(
+                sender_,
+                &value,
+                1,
+                0
+            )
+        );
+#else
+        static_cast<void>(
+            ::send(
+                sender_,
+                &value,
+                1,
+                0
+            )
+        );
+#endif
+    }
+
+    void drain() noexcept {
+        char buffer[64];
+
+        while (true) {
+#ifdef _WIN32
+            const auto received =
+                ::recv(
+                    receiver_,
+                    buffer,
+                    static_cast<int>(
+                        sizeof(buffer)
+                    ),
+                    0
+                );
+#else
+            const auto received =
+                ::recv(
+                    receiver_,
+                    buffer,
+                    sizeof(buffer),
+                    0
+                );
+#endif
+
+            if (received > 0) {
+                continue;
+            }
+
+            if (received == 0) {
+                return;
+            }
+
+            const auto error =
+                socket_error();
+
+            if (interrupted(error)) {
+                continue;
+            }
+
+            return;
+        }
+    }
+
+    void shutdown() noexcept {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        if (!active_) {
+            return;
+        }
+
+        active_ = false;
+
+        close_socket(receiver_);
+        close_socket(sender_);
+
+        receiver_ = invalid_socket;
+        sender_ = invalid_socket;
+    }
+
+private:
+    [[noreturn]]
+    void fail(
+        const char* message
+    ) {
+        close_socket(receiver_);
+        close_socket(sender_);
+
+        receiver_ = invalid_socket;
+        sender_ = invalid_socket;
+
+        throw std::runtime_error(
+            message
+        );
+    }
+
+    std::mutex mutex_;
+    NativeSocket receiver_{
+        invalid_socket
+    };
+    NativeSocket sender_{
+        invalid_socket
+    };
+    bool active_{false};
+};
 
 using Clock =
     std::chrono::steady_clock;
@@ -682,24 +942,6 @@ std::uint16_t socket_port(
     );
 }
 
-template <typename T>
-T complete_inline(
-    Task<T> task
-) {
-    task.run_inline();
-
-    if (!task.done()) {
-        throw std::logic_error(
-            "HTTP handler suspended; asynchronous dispatch integration is not active yet"
-        );
-    }
-
-    auto awaiter =
-        task.operator co_await();
-
-    return awaiter.await_resume();
-}
-
 Response error_response(
     int status,
     std::string body
@@ -708,6 +950,135 @@ Response error_response(
         std::move(body),
         status
     );
+}
+
+struct PendingDispatch {
+    explicit PendingDispatch(
+        Request value
+    )
+        : request(
+            std::move(value)
+          ) {}
+
+    Request request;
+    std::optional<Response> response;
+    std::exception_ptr exception;
+    std::atomic_bool ready{false};
+    bool keep_alive{false};
+    bool omit_body{false};
+};
+
+class DispatchTracker {
+public:
+    void begin() {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        ++active_;
+    }
+
+    void finish() noexcept {
+        {
+            std::lock_guard lock{
+                mutex_
+            };
+
+            if (active_ > 0) {
+                --active_;
+            }
+        }
+
+        ready_.notify_all();
+    }
+
+    void wait() {
+        std::unique_lock lock{
+            mutex_
+        };
+
+        ready_.wait(
+            lock,
+            [this] {
+                return active_ == 0;
+            }
+        );
+    }
+
+    [[nodiscard]]
+    std::size_t active()
+        const noexcept {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        return active_;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::condition_variable ready_;
+    std::size_t active_{0};
+};
+
+class DetachedTask {
+public:
+    struct promise_type {
+        [[nodiscard]]
+        DetachedTask
+        get_return_object()
+            const noexcept {
+            return {};
+        }
+
+        [[nodiscard]]
+        std::suspend_never
+        initial_suspend()
+            const noexcept {
+            return {};
+        }
+
+        [[nodiscard]]
+        std::suspend_never
+        final_suspend()
+            const noexcept {
+            return {};
+        }
+
+        void return_void()
+            const noexcept {}
+
+        void unhandled_exception()
+            const noexcept {
+            std::terminate();
+        }
+    };
+};
+
+DetachedTask settle_dispatch(
+    Task<Response> task,
+    std::shared_ptr<PendingDispatch> pending,
+    std::shared_ptr<WakeState> wakeup,
+    std::shared_ptr<DispatchTracker> dispatches
+) {
+    dispatches->begin();
+
+    try {
+        pending->response.emplace(
+            co_await task
+        );
+    } catch (...) {
+        pending->exception =
+            std::current_exception();
+    }
+
+    pending->ready.store(
+        true,
+        std::memory_order_release
+    );
+
+    wakeup->notify();
+    dispatches->finish();
 }
 
 struct ConnectionState {
@@ -722,6 +1093,7 @@ struct ConnectionState {
     Clock::time_point last_activity{
         Clock::now()
     };
+    std::shared_ptr<PendingDispatch> pending;
     bool close_after_write{false};
     bool closing{false};
 };
@@ -759,6 +1131,8 @@ public:
     ~Impl() {
         stop();
         close_all();
+        dispatches->wait();
+        wakeup->shutdown();
     }
 
     void listen(
@@ -804,6 +1178,7 @@ public:
             close_socket(socket);
             bound.store(0);
             close_all();
+            dispatches->wait();
             throw;
         }
 
@@ -814,12 +1189,14 @@ public:
 
         close_socket(socket);
         close_all();
+        dispatches->wait();
         bound.store(0);
         running.store(false);
     }
 
     void stop() noexcept {
         running.store(false);
+        wakeup->notify();
     }
 
     void configure(
@@ -851,6 +1228,8 @@ public:
         > drain_deadline;
 
         while (true) {
+            complete_ready_handlers();
+
             const auto now =
                 Clock::now();
 
@@ -875,7 +1254,8 @@ public:
                 ) {
                     if (
                         connection.output.empty() &&
-                        connection.input.empty()
+                        connection.input.empty() &&
+                        !connection.pending
                     ) {
                         close_connection(
                             connection
@@ -909,7 +1289,15 @@ public:
 
             std::vector<PollFd> descriptors;
             descriptors.reserve(
-                connections.size() + 1
+                connections.size() + 2
+            );
+
+            descriptors.push_back(
+                PollFd{
+                    wakeup->reader(),
+                    poll_read_event,
+                    0
+                }
             );
 
             const auto active_listener =
@@ -938,7 +1326,9 @@ public:
             ) {
                 short events = 0;
 
-                if (
+                if (connection.pending) {
+                    events = 0;
+                } else if (
                     connection.output.empty()
                 ) {
                     events =
@@ -998,11 +1388,22 @@ public:
                 continue;
             }
 
-            std::size_t offset = 0;
+            if (
+                (
+                    descriptors.front()
+                        .revents &
+                    poll_read_event
+                ) != 0
+            ) {
+                wakeup->drain();
+                complete_ready_handlers();
+            }
+
+            std::size_t offset = 1;
 
             if (poll_listener) {
                 const auto events =
-                    descriptors.front()
+                    descriptors[offset]
                         .revents;
 
                 if (
@@ -1014,7 +1415,7 @@ public:
                     accept_ready();
                 }
 
-                offset = 1;
+                ++offset;
             }
 
             const auto count =
@@ -1293,11 +1694,88 @@ public:
         }
     }
 
+    void complete_ready_handler(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.pending ||
+            !connection.pending->ready.load(
+                std::memory_order_acquire
+            )
+        ) {
+            return;
+        }
+
+        auto pending =
+            std::move(
+                connection.pending
+            );
+
+        try {
+            const auto failed =
+                pending->exception ||
+                !pending->response;
+
+            auto response =
+                failed
+                ? error_response(
+                    500,
+                    "Internal Server Error"
+                  )
+                : std::move(
+                    *pending->response
+                  );
+
+            const auto keep_alive =
+                !failed &&
+                running.load() &&
+                pending->keep_alive &&
+                !connection.close_after_write;
+
+            connection.output =
+                wire::serialize_response(
+                    response,
+                    pending->omit_body,
+                    keep_alive
+                        ? ConnectionDirective::
+                            keep_alive
+                        : ConnectionDirective::
+                            close
+                );
+
+            connection.output_offset = 0;
+            connection.close_after_write =
+                !keep_alive;
+            connection.phase_started =
+                Clock::now();
+        } catch (...) {
+            queue_error(
+                connection,
+                500,
+                "Internal Server Error"
+            );
+        }
+    }
+
+    void complete_ready_handlers()
+        noexcept {
+        for (
+            auto& connection :
+            connections
+        ) {
+            complete_ready_handler(
+                connection
+            );
+        }
+    }
+
     void prepare_response(
         ConnectionState& connection
     ) {
         if (
-            !connection.output.empty()
+            !connection.output.empty() ||
+            connection.pending
         ) {
             return;
         }
@@ -1328,41 +1806,49 @@ public:
                 raw
             );
 
-        auto response =
-            complete_inline(
-                router.dispatch(
-                    request
-                )
-            );
-
         ++connection.requests_served;
 
-        const auto keep_alive =
+        auto pending =
+            std::make_shared<
+                PendingDispatch
+            >(
+                std::move(request)
+            );
+
+        pending->keep_alive =
             running.load() &&
             keep_alive_for(
                 raw,
-                request,
+                pending->request,
                 options,
                 connection.requests_served
             );
 
-        connection.output =
-            wire::serialize_response(
-                response,
-                request.method() ==
-                    Method::head,
-                keep_alive
-                    ? ConnectionDirective::
-                        keep_alive
-                    : ConnectionDirective::
-                        close
-            );
+        pending->omit_body =
+            pending->request.method() ==
+            Method::head;
 
-        connection.output_offset = 0;
-        connection.close_after_write =
-            !keep_alive;
+        connection.pending =
+            pending;
+
         connection.phase_started =
             Clock::now();
+
+        auto task =
+            router.dispatch(
+                pending->request
+            );
+
+        settle_dispatch(
+            std::move(task),
+            pending,
+            wakeup,
+            dispatches
+        );
+
+        complete_ready_handler(
+            connection
+        );
     }
 
     void write_ready(
@@ -1502,6 +1988,7 @@ public:
                         close
                 );
 
+            connection.pending.reset();
             connection.output_offset = 0;
             connection.close_after_write =
                 true;
@@ -1523,6 +2010,20 @@ public:
             connections
         ) {
             if (connection.closing) {
+                continue;
+            }
+
+            if (connection.pending) {
+                if (
+                    now -
+                        connection.phase_started >=
+                    options.request_timeout
+                ) {
+                    close_connection(
+                        connection
+                    );
+                }
+
                 continue;
             }
 
@@ -1647,6 +2148,7 @@ public:
             options.read_timeout.count() <= 0 ||
             options.write_timeout.count() <= 0 ||
             options.idle_timeout.count() <= 0 ||
+            options.request_timeout.count() <= 0 ||
             options.shutdown_timeout.count() <= 0
         ) {
             throw std::invalid_argument(
@@ -1656,6 +2158,12 @@ public:
     }
 
     SocketRuntime socket_runtime;
+    std::shared_ptr<WakeState> wakeup{
+        std::make_shared<WakeState>()
+    };
+    std::shared_ptr<DispatchTracker> dispatches{
+        std::make_shared<DispatchTracker>()
+    };
     routing::Router& router;
     RuntimeOptions options;
     std::atomic_bool running{false};

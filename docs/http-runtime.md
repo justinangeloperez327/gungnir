@@ -12,7 +12,7 @@ The reactor supports sequential HTTP/1.1 keep-alive requests and closes a connec
 
 Header and request limits are enforced before routing. Oversized headers return 431; oversized requests return 413.
 
-Read, write and idle phases are bounded by their corresponding runtime timeouts.
+Read, write and idle phases are bounded by their corresponding runtime timeouts. Suspended route handlers are additionally bounded by `request_timeout`.
 
 ## Shutdown
 
@@ -22,10 +22,14 @@ Read, write and idle phases are bounded by their corresponding runtime timeouts.
 
 `Server::bound_port()` exposes the actual listener port. This is useful for tests and for deployments that intentionally bind port `0`.
 
+## Asynchronous route completion
+
+Controller-facing Gungnir syntax does not expose C++ coroutine machinery. A route task may genuinely suspend while the connection retains owned request state. Completion on a timer or executor thread publishes the response and signals the reactor through an internal wake socket. The reactor remains responsible for response serialization and network writes.
+
+If a client disconnects or `request_timeout` expires, the route task can still finish safely without writing to the released connection. Started route tasks are retained until completion before the server releases request-runtime ownership; `shutdown_timeout` bounds connection draining, not forced destruction of live coroutine frames.
+
 ## Remaining transport work
 
-Controller-facing Gungnir syntax does not expose C++ coroutine machinery, but the current HTTP dispatcher still completes route tasks inline. A handler that genuinely suspends is therefore not yet scheduled by the socket reactor. Integrating coroutine continuation scheduling with the executor is the next runtime step.
-
-`Transport` remains the boundary for future TLS-backed transports. `BodyStream` remains the response-streaming foundation.
+`Transport` remains the boundary for future TLS-backed transports. `BodyStream` remains the response-streaming foundation. The timer implementation and executor are not yet unified with the socket reactor into one scheduler.
 
 This runtime does not yet claim HTTP/2, TLS termination, WebSocket frame handling, chunked request parsing, or asynchronous streaming responses.
