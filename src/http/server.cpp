@@ -1633,11 +1633,88 @@ public:
         }
     }
 
+    void complete_ready_handler(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.pending ||
+            !connection.pending->ready.load(
+                std::memory_order_acquire
+            )
+        ) {
+            return;
+        }
+
+        auto pending =
+            std::move(
+                connection.pending
+            );
+
+        try {
+            const auto failed =
+                pending->exception ||
+                !pending->response;
+
+            auto response =
+                failed
+                ? error_response(
+                    500,
+                    "Internal Server Error"
+                  )
+                : std::move(
+                    *pending->response
+                  );
+
+            const auto keep_alive =
+                !failed &&
+                running.load() &&
+                pending->keep_alive &&
+                !connection.close_after_write;
+
+            connection.output =
+                wire::serialize_response(
+                    response,
+                    pending->omit_body,
+                    keep_alive
+                        ? ConnectionDirective::
+                            keep_alive
+                        : ConnectionDirective::
+                            close
+                );
+
+            connection.output_offset = 0;
+            connection.close_after_write =
+                !keep_alive;
+            connection.phase_started =
+                Clock::now();
+        } catch (...) {
+            queue_error(
+                connection,
+                500,
+                "Internal Server Error"
+            );
+        }
+    }
+
+    void complete_ready_handlers()
+        noexcept {
+        for (
+            auto& connection :
+            connections
+        ) {
+            complete_ready_handler(
+                connection
+            );
+        }
+    }
+
     void prepare_response(
         ConnectionState& connection
     ) {
         if (
-            !connection.output.empty()
+            !connection.output.empty() ||
+            connection.pending
         ) {
             return;
         }
@@ -1668,41 +1745,45 @@ public:
                 raw
             );
 
-        auto response =
-            complete_inline(
-                router.dispatch(
-                    request
-                )
-            );
-
         ++connection.requests_served;
 
-        const auto keep_alive =
+        auto pending =
+            std::make_shared<
+                PendingDispatch
+            >(
+                std::move(request)
+            );
+
+        pending->keep_alive =
             running.load() &&
             keep_alive_for(
                 raw,
-                request,
+                pending->request,
                 options,
                 connection.requests_served
             );
 
-        connection.output =
-            wire::serialize_response(
-                response,
-                request.method() ==
-                    Method::head,
-                keep_alive
-                    ? ConnectionDirective::
-                        keep_alive
-                    : ConnectionDirective::
-                        close
-            );
+        pending->omit_body =
+            pending->request.method() ==
+            Method::head;
 
-        connection.output_offset = 0;
-        connection.close_after_write =
-            !keep_alive;
+        connection.pending =
+            pending;
+
         connection.phase_started =
             Clock::now();
+
+        settle_dispatch(
+            router.dispatch(
+                pending->request
+            ),
+            std::move(pending),
+            wakeup
+        );
+
+        complete_ready_handler(
+            connection
+        );
     }
 
     void write_ready(
@@ -1842,6 +1923,7 @@ public:
                         close
                 );
 
+            connection.pending.reset();
             connection.output_offset = 0;
             connection.close_after_write =
                 true;
