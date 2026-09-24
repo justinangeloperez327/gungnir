@@ -64,6 +64,38 @@ public:
             );
         }
 
+#ifdef _WIN32
+        const DWORD timeout = 3000;
+        static_cast<void>(
+            setsockopt(
+                socket_,
+                SOL_SOCKET,
+                SO_RCVTIMEO,
+                reinterpret_cast<
+                    const char*
+                >(&timeout),
+                static_cast<int>(
+                    sizeof(timeout)
+                )
+            )
+        );
+#else
+        timeval timeout{};
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+        static_cast<void>(
+            setsockopt(
+                socket_,
+                SOL_SOCKET,
+                SO_RCVTIMEO,
+                &timeout,
+                static_cast<socklen_t>(
+                    sizeof(timeout)
+                )
+            )
+        );
+#endif
+
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_port = htons(port);
