@@ -213,6 +213,262 @@ int poll_sockets(
 class SocketRuntime {};
 #endif
 
+class WakeState {
+public:
+    WakeState() {
+        receiver_ = ::socket(
+            AF_INET,
+            SOCK_DGRAM,
+            IPPROTO_UDP
+        );
+
+        if (
+            receiver_ ==
+            invalid_socket
+        ) {
+            throw std::runtime_error(
+                "Unable to create HTTP reactor wake receiver"
+            );
+        }
+
+        sender_ = ::socket(
+            AF_INET,
+            SOCK_DGRAM,
+            IPPROTO_UDP
+        );
+
+        if (
+            sender_ ==
+            invalid_socket
+        ) {
+            close_socket(receiver_);
+            receiver_ = invalid_socket;
+
+            throw std::runtime_error(
+                "Unable to create HTTP reactor wake sender"
+            );
+        }
+
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr =
+            htonl(INADDR_LOOPBACK);
+        address.sin_port = 0;
+
+        if (
+            ::bind(
+                receiver_,
+                reinterpret_cast<
+                    const sockaddr*
+                >(&address),
+#ifdef _WIN32
+                static_cast<int>(
+                    sizeof(address)
+                )
+#else
+                static_cast<socklen_t>(
+                    sizeof(address)
+                )
+#endif
+            ) != 0
+        ) {
+            fail(
+                "Unable to bind HTTP reactor wake receiver"
+            );
+        }
+
+#ifdef _WIN32
+        int length =
+            static_cast<int>(
+                sizeof(address)
+            );
+#else
+        socklen_t length =
+            static_cast<socklen_t>(
+                sizeof(address)
+            );
+#endif
+
+        if (
+            getsockname(
+                receiver_,
+                reinterpret_cast<
+                    sockaddr*
+                >(&address),
+                &length
+            ) != 0
+        ) {
+            fail(
+                "Unable to inspect HTTP reactor wake receiver"
+            );
+        }
+
+        if (
+            ::connect(
+                sender_,
+                reinterpret_cast<
+                    const sockaddr*
+                >(&address),
+#ifdef _WIN32
+                static_cast<int>(
+                    sizeof(address)
+                )
+#else
+                static_cast<socklen_t>(
+                    sizeof(address)
+                )
+#endif
+            ) != 0
+        ) {
+            fail(
+                "Unable to connect HTTP reactor wake sender"
+            );
+        }
+
+        if (
+            !set_non_blocking(receiver_) ||
+            !set_non_blocking(sender_)
+        ) {
+            fail(
+                "Unable to configure HTTP reactor wake sockets"
+            );
+        }
+
+        active_ = true;
+    }
+
+    ~WakeState() {
+        shutdown();
+    }
+
+    WakeState(const WakeState&) = delete;
+    WakeState& operator=(const WakeState&) = delete;
+
+    [[nodiscard]]
+    NativeSocket reader()
+        const noexcept {
+        return receiver_;
+    }
+
+    void notify() noexcept {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        if (!active_) {
+            return;
+        }
+
+        constexpr char value = 1;
+
+#ifdef _WIN32
+        static_cast<void>(
+            ::send(
+                sender_,
+                &value,
+                1,
+                0
+            )
+        );
+#else
+        static_cast<void>(
+            ::send(
+                sender_,
+                &value,
+                1,
+                0
+            )
+        );
+#endif
+    }
+
+    void drain() noexcept {
+        char buffer[64];
+
+        while (true) {
+#ifdef _WIN32
+            const auto received =
+                ::recv(
+                    receiver_,
+                    buffer,
+                    static_cast<int>(
+                        sizeof(buffer)
+                    ),
+                    0
+                );
+#else
+            const auto received =
+                ::recv(
+                    receiver_,
+                    buffer,
+                    sizeof(buffer),
+                    0
+                );
+#endif
+
+            if (received > 0) {
+                continue;
+            }
+
+            if (received == 0) {
+                return;
+            }
+
+            const auto error =
+                socket_error();
+
+            if (interrupted(error)) {
+                continue;
+            }
+
+            return;
+        }
+    }
+
+    void shutdown() noexcept {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        if (!active_) {
+            return;
+        }
+
+        active_ = false;
+
+        close_socket(receiver_);
+        close_socket(sender_);
+
+        receiver_ = invalid_socket;
+        sender_ = invalid_socket;
+    }
+
+private:
+    [[noreturn]]
+    void fail(
+        const char* message
+    ) {
+        close_socket(receiver_);
+        close_socket(sender_);
+
+        receiver_ = invalid_socket;
+        sender_ = invalid_socket;
+
+        throw std::runtime_error(
+            message
+        );
+    }
+
+    std::mutex mutex_;
+    NativeSocket receiver_{
+        invalid_socket
+    };
+    NativeSocket sender_{
+        invalid_socket
+    };
+    bool active_{false};
+};
+
 using Clock =
     std::chrono::steady_clock;
 
