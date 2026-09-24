@@ -822,6 +822,29 @@ public:
         running.store(false);
     }
 
+    void configure(
+        RuntimeOptions value
+    ) {
+        if (running.load()) {
+            throw std::logic_error(
+                "HTTP runtime options cannot change while the server is running"
+            );
+        }
+
+        const auto previous =
+            options;
+
+        options =
+            std::move(value);
+
+        try {
+            validate_options();
+        } catch (...) {
+            options = previous;
+            throw;
+        }
+    }
+
     void reactor_loop() {
         std::optional<
             Clock::time_point
@@ -1675,6 +1698,14 @@ void Server::listen(
 
 void Server::stop() noexcept {
     impl_->stop();
+}
+
+void Server::configure(
+    RuntimeOptions options
+) {
+    impl_->configure(
+        std::move(options)
+    );
 }
 
 bool Server::running()
