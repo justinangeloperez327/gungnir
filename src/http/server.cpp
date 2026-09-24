@@ -1834,11 +1834,14 @@ public:
         connection.phase_started =
             Clock::now();
 
-        settle_dispatch(
+        auto task =
             router.dispatch(
                 pending->request
-            ),
-            std::move(pending),
+            );
+
+        settle_dispatch(
+            std::move(task),
+            pending,
             wakeup,
             dispatches
         );
