@@ -941,24 +941,6 @@ std::uint16_t socket_port(
     );
 }
 
-template <typename T>
-T complete_inline(
-    Task<T> task
-) {
-    task.run_inline();
-
-    if (!task.done()) {
-        throw std::logic_error(
-            "HTTP handler suspended; asynchronous dispatch integration is not active yet"
-        );
-    }
-
-    auto awaiter =
-        task.operator co_await();
-
-    return awaiter.await_resume();
-}
-
 Response error_response(
     int status,
     std::string body
@@ -967,6 +949,78 @@ Response error_response(
         std::move(body),
         status
     );
+}
+
+struct PendingDispatch {
+    explicit PendingDispatch(
+        Request value
+    )
+        : request(
+            std::move(value)
+          ) {}
+
+    Request request;
+    std::optional<Response> response;
+    std::exception_ptr exception;
+    std::atomic_bool ready{false};
+    bool keep_alive{false};
+    bool omit_body{false};
+};
+
+class DetachedTask {
+public:
+    struct promise_type {
+        [[nodiscard]]
+        DetachedTask
+        get_return_object()
+            const noexcept {
+            return {};
+        }
+
+        [[nodiscard]]
+        std::suspend_never
+        initial_suspend()
+            const noexcept {
+            return {};
+        }
+
+        [[nodiscard]]
+        std::suspend_never
+        final_suspend()
+            const noexcept {
+            return {};
+        }
+
+        void return_void()
+            const noexcept {}
+
+        void unhandled_exception()
+            const noexcept {
+            std::terminate();
+        }
+    };
+};
+
+DetachedTask settle_dispatch(
+    Task<Response> task,
+    std::shared_ptr<PendingDispatch> pending,
+    std::shared_ptr<WakeState> wakeup
+) {
+    try {
+        pending->response.emplace(
+            co_await task
+        );
+    } catch (...) {
+        pending->exception =
+            std::current_exception();
+    }
+
+    pending->ready.store(
+        true,
+        std::memory_order_release
+    );
+
+    wakeup->notify();
 }
 
 struct ConnectionState {
@@ -981,6 +1035,7 @@ struct ConnectionState {
     Clock::time_point last_activity{
         Clock::now()
     };
+    std::shared_ptr<PendingDispatch> pending;
     bool close_after_write{false};
     bool closing{false};
 };
