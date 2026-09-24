@@ -18,6 +18,10 @@
 #include <gungnir/http/request.hpp>
 #include <gungnir/http/response.hpp>
 
+namespace gungnir {
+class Container;
+}
+
 namespace gungnir::routing {
 
 using Handler = std::function<Task<http::Response>(http::Request&)>;
@@ -124,6 +128,7 @@ public:
 
     Router& use(http::MiddlewareHandler middleware);
     Router& middleware_registry(http::MiddlewareRegistry& registry);
+    Router& service_container(Container& container) noexcept;
     [[nodiscard]] RouteGroup group(std::string prefix);
     [[nodiscard]] std::string url(std::string_view name, const std::unordered_map<std::string, std::string>& parameters = {}) const;
     [[nodiscard]] Task<http::Response> dispatch(http::Request& request) const;
