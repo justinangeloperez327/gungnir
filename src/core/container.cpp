@@ -1,6 +1,7 @@
 #include <gungnir/core/container.hpp>
 
 #include <algorithm>
+#include <iterator>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
