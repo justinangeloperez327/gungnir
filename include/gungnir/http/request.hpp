@@ -6,6 +6,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/method.hpp>
 #include <gungnir/validation/rules.hpp>
@@ -23,12 +24,19 @@ public:
     using Parameters = std::unordered_map<std::string, std::string>;
     using Input = std::unordered_map<std::string, std::string>;
 
-    Request(Method method, std::string target, std::string body = {});
+    Request(
+        Method method,
+        std::string target,
+        std::string body = {},
+        CancellationToken cancellation = {}
+    );
 
     [[nodiscard]] Method method() const noexcept;
     [[nodiscard]] std::string_view target() const noexcept;
     [[nodiscard]] std::string_view path() const noexcept;
     [[nodiscard]] std::string_view body() const noexcept;
+    [[nodiscard]] bool cancelled() const noexcept;
+    [[nodiscard]] CancellationToken cancellation() const noexcept;
 
     void set_header(std::string name, std::string value);
     [[nodiscard]] std::string_view header(
@@ -96,6 +104,7 @@ private:
     std::string target_;
     std::string path_;
     std::string body_;
+    CancellationToken cancellation_;
     Headers headers_;
     Parameters parameters_;
     Input query_;
