@@ -75,7 +75,14 @@ template <typename MiddlewareType>
         Next next
     ) -> Task<Response> {
         auto middleware =
-            container.template resolve<MiddlewareType>();
+            request.has_services()
+            ? request.services()
+                  .template resolve<
+                      MiddlewareType
+                  >()
+            : container.template resolve<
+                  MiddlewareType
+              >();
 
         if constexpr (
             requires(
