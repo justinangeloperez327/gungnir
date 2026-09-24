@@ -22,7 +22,7 @@ Application code should use Gungnir `async` and `await`, not `co_await` or `Task
 
 A coroutine suspension must represent real asynchronous work. Synchronous database or filesystem calls are not relabeled asynchronous merely for API appearance.
 
-Cancellation is cooperative. Components should check cancellation before expensive work and at suspension boundaries.
+Cancellation is request-aware and cooperative. HTTP requests receive a token automatically, and the server cancels it on client disconnect, request timeout, or shutdown. Application code can check `request.cancelled()` or retain `request.cancellation()`; cancellation-aware framework operations should check the token before expensive work and at suspension boundaries.
 
 Backpressure belongs at resource boundaries such as accepted connections, queued work, streams and database operations. Unbounded queues are not an acceptable production runtime design.
 
