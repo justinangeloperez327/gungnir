@@ -12,7 +12,9 @@ Group 5 introduces the runtime primitives used to move away from inline coroutin
 
 The HTTP/1.1 listener uses a non-blocking readiness reactor for listener/client sockets, connection state, limits, timeouts, keep-alive, and graceful draining. Route tasks may genuinely suspend: their request state remains owned for the coroutine lifetime, and completion from timer/executor threads signals a reactor wake socket before the response is serialized and written by the reactor thread.
 
-The executor, timer implementation and socket reactor are still separate scheduling components. In particular, `sleep_for` currently uses a detached timer thread rather than an event-loop timer queue. Unifying those schedulers can improve efficiency without changing controller-facing Gungnir syntax.
+`sleep_for` now submits deadlines to one shared timer scheduler instead of creating a detached OS thread per suspension. The timer thread only tracks deadlines; due coroutine handles are handed to a bounded `Executor` worker pool so user continuations do not block timer bookkeeping.
+
+The timer scheduler and socket reactor are still separate readiness systems. A later runtime can unify deadline and socket readiness under one platform event loop without changing controller-facing Gungnir syntax.
 
 ## Runtime rules
 

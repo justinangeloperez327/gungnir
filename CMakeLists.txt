@@ -114,6 +114,7 @@ add_library(gungnir
     src/core/application.cpp
     src/core/container.cpp
     src/core/executor.cpp
+    src/core/timer.cpp
     src/controller/controller.cpp
     src/database/compiler.cpp
     src/database/connection.cpp
