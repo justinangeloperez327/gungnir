@@ -1073,6 +1073,7 @@ public:
     ~Impl() {
         stop();
         close_all();
+        wakeup->shutdown();
     }
 
     void listen(
@@ -1134,6 +1135,7 @@ public:
 
     void stop() noexcept {
         running.store(false);
+        wakeup->notify();
     }
 
     void configure(
@@ -1165,6 +1167,8 @@ public:
         > drain_deadline;
 
         while (true) {
+            complete_ready_handlers();
+
             const auto now =
                 Clock::now();
 
@@ -1189,7 +1193,8 @@ public:
                 ) {
                     if (
                         connection.output.empty() &&
-                        connection.input.empty()
+                        connection.input.empty() &&
+                        !connection.pending
                     ) {
                         close_connection(
                             connection
@@ -1223,7 +1228,15 @@ public:
 
             std::vector<PollFd> descriptors;
             descriptors.reserve(
-                connections.size() + 1
+                connections.size() + 2
+            );
+
+            descriptors.push_back(
+                PollFd{
+                    wakeup->reader(),
+                    poll_read_event,
+                    0
+                }
             );
 
             const auto active_listener =
@@ -1252,7 +1265,9 @@ public:
             ) {
                 short events = 0;
 
-                if (
+                if (connection.pending) {
+                    events = 0;
+                } else if (
                     connection.output.empty()
                 ) {
                     events =
@@ -1970,6 +1985,9 @@ public:
     }
 
     SocketRuntime socket_runtime;
+    std::shared_ptr<WakeState> wakeup{
+        std::make_shared<WakeState>()
+    };
     routing::Router& router;
     RuntimeOptions options;
     std::atomic_bool running{false};
