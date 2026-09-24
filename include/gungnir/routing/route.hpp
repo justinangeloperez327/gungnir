@@ -42,7 +42,14 @@ template <typename ControllerType, typename Method>
         http::Request& request
     ) -> Task<http::Response> {
         auto controller =
-            container->template resolve<ControllerType>();
+            request.has_services()
+            ? request.services()
+                  .template resolve<
+                      ControllerType
+                  >()
+            : container->template resolve<
+                  ControllerType
+              >();
 
         if constexpr (
             std::invocable<
