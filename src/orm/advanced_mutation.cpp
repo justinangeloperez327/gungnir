@@ -183,6 +183,12 @@ void append_where_sql(
     }
 }
 
+String mongo_field(std::string_view value) {
+    return value == "id"
+        ? String{"_id"}
+        : String{value};
+}
+
 String mongo_bind(
     CompiledQuery& result,
     const model::AttributeValue& value
@@ -211,15 +217,15 @@ String mongo_predicate(
 
     if (predicate.kind == PredicateKind::column_comparison) {
         return "{\"$expr\":{\"" + op + "\":[\"$" +
-               predicate.column + "\",\"$" +
-               predicate.other_column + "\"]}}";
+               mongo_field(predicate.column) + "\",\"$" +
+               mongo_field(predicate.other_column) + "\"]}}";
     }
 
     if (
         predicate.kind == PredicateKind::is_null ||
         predicate.kind == PredicateKind::is_not_null
     ) {
-        return "{\"" + predicate.column + "\":{\"" +
+        return "{\"" + mongo_field(predicate.column) + "\":{\"" +
                (predicate.kind == PredicateKind::is_null ? "$eq" : "$ne") +
                "\":null}}";
     }
@@ -236,7 +242,7 @@ String mongo_predicate(
             values += mongo_bind(result, predicate.values[index]);
         }
         values += "]";
-        return "{\"" + predicate.column + "\":{\"" +
+        return "{\"" + mongo_field(predicate.column) + "\":{\"" +
                (predicate.kind == PredicateKind::in_list ? "$in" : "$nin") +
                "\":" + values + "}}";
     }
@@ -257,14 +263,14 @@ String mongo_predicate(
                            mongo_bind(result, predicate.values[1]) + "}";
 
         if (predicate.kind == PredicateKind::not_between) {
-            return "{\"" + predicate.column +
+            return "{\"" + mongo_field(predicate.column) +
                    "\":{\"$not\":" + range + "}}";
         }
 
-        return "{\"" + predicate.column + "\":" + range + "}";
+        return "{\"" + mongo_field(predicate.column) + "\":" + range + "}";
     }
 
-    return "{\"" + predicate.column + "\":{\"" + op + "\":" +
+    return "{\"" + mongo_field(predicate.column) + "\":{\"" + op + "\":" +
            mongo_bind(result, predicate.values.front()) + "}}";
 }
 
@@ -334,7 +340,7 @@ CompiledQuery compile_update_where(
             if (index != 0) {
                 result.text += ",";
             }
-            result.text += "\"" + keys[index] + "\":" +
+            result.text += "\"" + mongo_field(keys[index]) + "\":" +
                            mongo_bind(result, values.at(keys[index]));
         }
 
@@ -450,7 +456,7 @@ CompiledQuery compile_insert_many(
                 if (key_index != 0) {
                     result.text += ",";
                 }
-                result.text += "\"" + keys[key_index] + "\":" +
+                result.text += "\"" + mongo_field(keys[key_index]) + "\":" +
                                mongo_bind(
                                    result,
                                    rows[row_index].at(keys[key_index])
@@ -572,7 +578,7 @@ CompiledQuery compile_upsert(
                 }
 
                 const auto& key = unique_by[key_index];
-                result.text += "\"" + key + "\":" +
+                result.text += "\"" + mongo_field(key) + "\":" +
                                mongo_bind(result, rows[row_index].at(key));
             }
             result.text += ignore_conflicts
@@ -585,7 +591,7 @@ CompiledQuery compile_upsert(
                 }
 
                 const auto& key = keys[key_index];
-                result.text += "\"" + key + "\":" +
+                result.text += "\"" + mongo_field(key) + "\":" +
                                mongo_bind(result, rows[row_index].at(key));
             }
 
