@@ -26,6 +26,7 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -1309,6 +1310,7 @@ public:
         ++connection.requests_served;
 
         const auto keep_alive =
+            running.load() &&
             keep_alive_for(
                 raw,
                 request,
