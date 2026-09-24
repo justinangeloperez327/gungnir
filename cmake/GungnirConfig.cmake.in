@@ -21,6 +21,10 @@ if("@GUNGNIR_WITH_POSTGRESQL@" STREQUAL "ON")
     find_dependency(PostgreSQL)
 endif()
 
+if("@GUNGNIR_WITH_MONGODB@" STREQUAL "ON")
+    find_dependency(mongoc 2.5.4 CONFIG)
+endif()
+
 include(
     "${CMAKE_CURRENT_LIST_DIR}/GungnirTargets.cmake"
 )
