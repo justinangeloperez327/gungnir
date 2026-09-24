@@ -341,6 +341,12 @@ CompiledQuery compile_sql(
     return result;
 }
 
+String mongo_field(std::string_view value) {
+    return value == "id"
+        ? String{"_id"}
+        : String{value};
+}
+
 String mongo_operator(Comparison value) {
     switch (value) {
         case Comparison::equal: return "$eq";
@@ -381,7 +387,7 @@ String mongo_predicate(
         }
         values += "]";
 
-        return "{\"" + predicate.column + "\":{\"" +
+        return "{\"" + mongo_field(predicate.column) + "\":{\"" +
                (predicate.kind == PredicateKind::in_list ? "$in" : "$nin") +
                "\":" + values + "}}";
     }
@@ -402,25 +408,25 @@ String mongo_predicate(
                            ",\"$lte\":" + upper + "}";
 
         if (predicate.kind == PredicateKind::not_between) {
-            return "{\"" + predicate.column +
+            return "{\"" + mongo_field(predicate.column) +
                    "\":{\"$not\":" + range + "}}";
         }
 
-        return "{\"" + predicate.column + "\":" + range + "}";
+        return "{\"" + mongo_field(predicate.column) + "\":" + range + "}";
     }
 
     if (predicate.kind == PredicateKind::is_null) {
-        return "{\"" + predicate.column + "\":{\"$eq\":null}}";
+        return "{\"" + mongo_field(predicate.column) + "\":{\"$eq\":null}}";
     }
 
     if (predicate.kind == PredicateKind::is_not_null) {
-        return "{\"" + predicate.column + "\":{\"$ne\":null}}";
+        return "{\"" + mongo_field(predicate.column) + "\":{\"$ne\":null}}";
     }
 
     if (predicate.kind == PredicateKind::column_comparison) {
         return "{\"$expr\":{\"" + mongo_operator(predicate.comparison) +
-               "\":[\"$" + predicate.column + "\",\"$" +
-               predicate.other_column + "\"]}}";
+               "\":[\"$" + mongo_field(predicate.column) + "\",\"$" +
+               mongo_field(predicate.other_column) + "\"]}}";
     }
 
     if (predicate.values.empty()) {
@@ -429,7 +435,7 @@ String mongo_predicate(
         );
     }
 
-    return "{\"" + predicate.column + "\":{\"" +
+    return "{\"" + mongo_field(predicate.column) + "\":{\"" +
            mongo_operator(predicate.comparison) + "\":" +
            mongo_bind(bindings, predicate.values.front()) + "}}";
 }
@@ -496,19 +502,19 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
                 break;
             case AggregateFunction::sum:
                 accumulator = "{\"$sum\":\"$" +
-                              plan.aggregate->column + "\"}";
+                              mongo_field(plan.aggregate->column) + "\"}";
                 break;
             case AggregateFunction::average:
                 accumulator = "{\"$avg\":\"$" +
-                              plan.aggregate->column + "\"}";
+                              mongo_field(plan.aggregate->column) + "\"}";
                 break;
             case AggregateFunction::minimum:
                 accumulator = "{\"$min\":\"$" +
-                              plan.aggregate->column + "\"}";
+                              mongo_field(plan.aggregate->column) + "\"}";
                 break;
             case AggregateFunction::maximum:
                 accumulator = "{\"$max\":\"$" +
-                              plan.aggregate->column + "\"}";
+                              mongo_field(plan.aggregate->column) + "\"}";
                 break;
         }
 
@@ -530,7 +536,7 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
                 result.text += ",";
             }
 
-            result.text += "\"" + plan.columns[index] + "\":1";
+            result.text += "\"" + mongo_field(plan.columns[index]) + "\":1";
         }
 
         result.text += "}";
@@ -544,7 +550,7 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
                 result.text += ",";
             }
 
-            result.text += "\"" + plan.orders[index].column + "\":" +
+            result.text += "\"" + mongo_field(plan.orders[index].column) + "\":" +
                            (
                                plan.orders[index].direction ==
                                        SortDirection::asc
