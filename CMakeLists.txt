@@ -39,6 +39,16 @@ option(
     "Build live SQL Server integration tests"
     OFF
 )
+option(
+    GUNGNIR_WITH_MONGODB
+    "Build the libmongoc MongoDB adapter"
+    OFF
+)
+option(
+    GUNGNIR_MONGODB_INTEGRATION_TESTS
+    "Build live MongoDB integration tests"
+    OFF
+)
 
 if(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
@@ -70,6 +80,16 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_MONGODB_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_MONGODB
+)
+    message(
+        FATAL_ERROR
+        "MongoDB integration tests require GUNGNIR_WITH_MONGODB=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
@@ -82,6 +102,10 @@ endif()
 
 if(GUNGNIR_WITH_SQLSERVER)
     find_package(ODBC REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_MONGODB)
+    find_package(mongoc 2.5.4 CONFIG REQUIRED)
 endif()
 
 add_library(gungnir
@@ -349,6 +373,47 @@ if(GUNGNIR_WITH_SQLSERVER)
     )
 endif()
 
+if(GUNGNIR_WITH_MONGODB)
+    add_library(
+        gungnir-mongodb
+        src/database/mongodb.cpp
+    )
+
+    add_library(
+        gungnir::mongodb
+        ALIAS
+        gungnir-mongodb
+    )
+
+    target_compile_features(
+        gungnir-mongodb
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-mongodb
+        PUBLIC
+            gungnir::gungnir
+            mongoc::mongoc
+    )
+
+    target_include_directories(
+        gungnir-mongodb
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-mongodb
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME mongodb
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
@@ -376,6 +441,15 @@ if(MSVC)
     if(GUNGNIR_WITH_SQLSERVER)
         target_compile_options(
             gungnir-sqlserver
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
+
+    if(GUNGNIR_WITH_MONGODB)
+        target_compile_options(
+            gungnir-mongodb
             PRIVATE
                 /W4
                 /permissive-
@@ -414,6 +488,18 @@ else()
     if(GUNGNIR_WITH_SQLSERVER)
         target_compile_options(
             gungnir-sqlserver
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+
+    if(GUNGNIR_WITH_MONGODB)
+        target_compile_options(
+            gungnir-mongodb
             PRIVATE
                 -Wall
                 -Wextra
@@ -837,6 +923,35 @@ if(GUNGNIR_BUILD_TESTS)
                 gungnir_sqlserver_integration_test
         )
     endif()
+
+    if(
+        GUNGNIR_WITH_MONGODB AND
+        GUNGNIR_MONGODB_INTEGRATION_TESTS
+    )
+        add_executable(
+            gungnir_mongodb_integration_test
+            tests/mongodb_integration.cpp
+        )
+
+        target_link_libraries(
+            gungnir_mongodb_integration_test
+            PRIVATE
+                gungnir::mongodb
+                gungnir::orm
+        )
+
+        target_compile_features(
+            gungnir_mongodb_integration_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.mongodb
+            COMMAND
+                gungnir_mongodb_integration_test
+        )
+    endif()
 endif()
 
 
@@ -902,6 +1017,23 @@ if(GUNGNIR_WITH_SQLSERVER)
     install(
         TARGETS
             gungnir-sqlserver
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
+
+if(GUNGNIR_WITH_MONGODB)
+    install(
+        TARGETS
+            gungnir-mongodb
         EXPORT
             GungnirTargets
         ARCHIVE DESTINATION
