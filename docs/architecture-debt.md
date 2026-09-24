@@ -3,7 +3,7 @@
 This document records known limitations that should remain visible before a stable release.
 
 - Dependency-injection scoped state and resolution tracking need coroutine-safe ownership.
-- HTTP socket readiness is non-blocking, but handler coroutine continuations are not yet unified with the executor/timer/network event loop.
+- Suspended route handlers safely return through the HTTP reactor wake path, but the executor, detached-thread timer implementation and socket reactor are not yet a unified event loop.
 - The HTTP server does not yet establish production-grade HTTP/2, TLS, WebSocket or asynchronous streaming guarantees.
 - Database runtime state must avoid unsafe global or thread-local assumptions when coroutines can migrate threads.
 - PostgreSQL, MySQL, SQL Server, and MongoDB have concrete client-library adapters. MongoDB replica-set transaction/session support remains incomplete.
