@@ -2010,6 +2010,10 @@ public:
                         close
                 );
 
+            if (connection.pending) {
+                connection.pending->cancel();
+            }
+
             connection.pending.reset();
             connection.output_offset = 0;
             connection.close_after_write =
