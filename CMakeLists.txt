@@ -675,6 +675,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_http_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.http COMMAND gungnir_http_test)
 
+    add_executable(gungnir_http_server_test tests/http_server.cpp)
+    target_link_libraries(gungnir_http_server_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_http_server_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.http_server COMMAND gungnir_http_server_test)
+
     add_executable(gungnir_request_test tests/request.cpp)
     target_link_libraries(gungnir_request_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_request_test PRIVATE cxx_std_23)
