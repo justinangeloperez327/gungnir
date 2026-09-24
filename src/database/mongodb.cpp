@@ -1182,14 +1182,19 @@ Result cursor_result(
     return result;
 }
 
-bson_t command_options(
+NativeBson command_options(
     const bson_t& command,
     std::initializer_list<
         std::string_view
     > excluded
 ) {
-    bson_t result;
-    bson_init(&result);
+    NativeBson result{
+        bson_new()
+    };
+
+    if (!result) {
+        throw std::bad_alloc{};
+    }
 
     bson_iter_t iterator{};
 
@@ -1227,7 +1232,7 @@ bson_t command_options(
 
         if (
             !bson_append_value(
-                &result,
+                result.get(),
                 key.data(),
                 static_cast<int>(
                     key.size()
@@ -1237,8 +1242,6 @@ bson_t command_options(
                 )
             )
         ) {
-            bson_destroy(&result);
-
             throw std::runtime_error(
                 "Unable to construct MongoDB cursor options"
             );
@@ -1515,12 +1518,11 @@ private:
                 has_filter
                     ? &filter_static
                     : &empty,
-                &options,
+                options.get(),
                 nullptr
             )
         };
 
-        bson_destroy(&options);
         bson_destroy(&empty);
 
         if (!cursor) {
@@ -1586,12 +1588,11 @@ private:
                 collection.get(),
                 MONGOC_QUERY_NONE,
                 &pipeline,
-                &options,
+                options.get(),
                 nullptr
             )
         };
 
-        bson_destroy(&options);
 
         if (!cursor) {
             throw std::runtime_error(
