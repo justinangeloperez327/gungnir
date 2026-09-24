@@ -10,7 +10,7 @@ Group 5 introduces the runtime primitives used to move away from inline coroutin
 - `sleep_for` provides an awaitable timer foundation.
 - `Backpressure` provides admission accounting for bounded runtime resources.
 
-The existing HTTP listener still uses its established socket worker implementation. It must not be described as non-blocking or event-driven yet. The next transport integration can move socket readiness, connection state, timeouts and response streaming onto runtime primitives without changing controller-facing Gungnir syntax.
+The HTTP/1.1 listener now uses a non-blocking readiness reactor for listener/client sockets, connection state, limits, timeouts, keep-alive, and graceful draining. Route tasks are still completed inline only when they do not genuinely suspend. The next transport/runtime integration must schedule suspended handler continuations without returning to blocking socket workers or exposing coroutine machinery to application code.
 
 ## Runtime rules
 
