@@ -228,6 +228,7 @@ Application::Application()
         impl_->container
     );
     impl_->router.middleware_registry(impl_->middleware_registry);
+    impl_->router.service_container(impl_->container);
 
     view::runtime::use(
         impl_->views
