@@ -6,7 +6,7 @@ This document records known limitations that should remain visible before a stab
 - The executor/timer/network runtime is not yet a unified event loop.
 - The HTTP server does not yet establish production-grade HTTP/2, TLS, WebSocket, streaming or high-concurrency guarantees.
 - Database runtime state must avoid unsafe global or thread-local assumptions when coroutines can migrate threads.
-- PostgreSQL, MySQL, and SQL Server have concrete client-library adapters; a production MongoDB adapter remains separate from backend/compiler declarations.
+- PostgreSQL, MySQL, SQL Server, and MongoDB have concrete client-library adapters. MongoDB replica-set transaction/session support remains incomplete.
 - ORM query observation and relationship querying need stronger concurrency and execution coverage.
 - Session lifecycle/cookie integration, secure identifiers and regeneration cleanup remain incomplete.
 - Cache, queue, mail and notification production adapters are not supplied by their in-memory contracts.

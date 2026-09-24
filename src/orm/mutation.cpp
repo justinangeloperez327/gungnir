@@ -27,6 +27,12 @@ String placeholder(database::Backend backend, std::size_t index) {
     return "?";
 }
 
+String mongo_field(std::string_view value) {
+    return value == "id"
+        ? String{"_id"}
+        : String{value};
+}
+
 std::vector<String> sorted_keys(const model::AttributeMap& attributes) {
     std::vector<String> keys;
     keys.reserve(attributes.size());
@@ -56,7 +62,7 @@ CompiledQuery compile_mongo_insert(
             result.text += ",";
         }
 
-        result.text += "\"" + keys[index] + "\":{\"$bind\":" +
+        result.text += "\"" + mongo_field(keys[index]) + "\":{\"$bind\":" +
                        std::to_string(result.bindings.size()) + "}";
         result.bindings.push_back(attributes.at(keys[index]));
     }
@@ -76,7 +82,7 @@ CompiledQuery compile_mongo_update(
     const auto keys = sorted_keys(attributes);
 
     result.text = "{\"update\":\"" + String{table} +
-                  "\",\"updates\":[{\"q\":{\"" + String{key} +
+                  "\",\"updates\":[{\"q\":{\"" + mongo_field(key) +
                   "\":{\"$bind\":0}},\"u\":{\"$set\":{";
 
     result.bindings.push_back(std::move(key_value));
@@ -86,7 +92,7 @@ CompiledQuery compile_mongo_update(
             result.text += ",";
         }
 
-        result.text += "\"" + keys[index] + "\":{\"$bind\":" +
+        result.text += "\"" + mongo_field(keys[index]) + "\":{\"$bind\":" +
                        std::to_string(result.bindings.size()) + "}";
         result.bindings.push_back(attributes.at(keys[index]));
     }
@@ -103,7 +109,7 @@ CompiledQuery compile_mongo_delete(
     CompiledQuery result;
     result.kind = CompiledQueryKind::mongodb;
     result.text = "{\"delete\":\"" + String{table} +
-                  "\",\"deletes\":[{\"q\":{\"" + String{key} +
+                  "\",\"deletes\":[{\"q\":{\"" + mongo_field(key) +
                   "\":{\"$bind\":0}},\"limit\":1}]}";
     result.bindings.push_back(std::move(key_value));
     return result;

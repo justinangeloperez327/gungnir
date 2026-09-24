@@ -242,19 +242,32 @@ std::size_t Runner::migrate(
             continue;
         }
 
-        database::Transaction transaction{connection};
+        if (connection->supports_transactions()) {
+            database::Transaction transaction{connection};
 
-        execute_plan(
-            transaction.connection(),
-            item.migration->plan_up()
-        );
+            execute_plan(
+                transaction.connection(),
+                item.migration->plan_up()
+            );
 
-        repository_.record(
-            transaction.connection(),
-            Record{item.name, batch}
-        );
+            repository_.record(
+                transaction.connection(),
+                Record{item.name, batch}
+            );
 
-        transaction.commit();
+            transaction.commit();
+        } else {
+            execute_plan(
+                *connection,
+                item.migration->plan_up()
+            );
+
+            repository_.record(
+                *connection,
+                Record{item.name, batch}
+            );
+        }
+
         ++count;
     }
 
@@ -298,19 +311,32 @@ std::size_t Runner::rollback(
             );
         }
 
-        database::Transaction transaction{connection};
+        if (connection->supports_transactions()) {
+            database::Transaction transaction{connection};
 
-        execute_plan(
-            transaction.connection(),
-            migration->migration->plan_down()
-        );
+            execute_plan(
+                transaction.connection(),
+                migration->migration->plan_down()
+            );
 
-        repository_.remove(
-            transaction.connection(),
-            record->name
-        );
+            repository_.remove(
+                transaction.connection(),
+                record->name
+            );
 
-        transaction.commit();
+            transaction.commit();
+        } else {
+            execute_plan(
+                *connection,
+                migration->migration->plan_down()
+            );
+
+            repository_.remove(
+                *connection,
+                record->name
+            );
+        }
+
         ++count;
     }
 

@@ -27,6 +27,9 @@ public:
 
     Result execute(const Query& query);
 
+    [[nodiscard]] bool supports_transactions() const noexcept;
+    [[nodiscard]] bool supports_savepoints() const noexcept;
+
     void begin();
     void commit();
     void rollback();

@@ -778,7 +778,7 @@ String mongo_bson_type(ColumnType type) {
         case ColumnType::date_time:
         case ColumnType::timestamp:
         case ColumnType::timestamp_tz:
-            return "date";
+            return "string";
 
         case ColumnType::fixed_string:
         case ColumnType::string:

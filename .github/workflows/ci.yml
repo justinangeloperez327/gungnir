@@ -364,3 +364,79 @@ jobs:
       - name: Run SQL Server package consumer
         run: ./build-sqlserver-consumer/gungnir-sqlserver-package-consumer
 
+  mongodb:
+    name: MongoDB adapter
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:8.3.11
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 2)'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-mongodb-install
+      MONGOC_PREFIX: ${{ github.workspace }}/.mongo-c-driver-install
+      GUNGNIR_MONGODB_HOST: 127.0.0.1
+      GUNGNIR_MONGODB_PORT: "27017"
+      GUNGNIR_MONGODB_DATABASE: gungnir
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build MongoDB C Driver 2.5.4
+        run: |
+          git clone             --depth 1             --branch 2.5.4             https://github.com/mongodb/mongo-c-driver.git             mongo-c-driver
+          cmake             -S mongo-c-driver             -B mongo-c-driver-build             -DCMAKE_BUILD_TYPE=Release             -DBUILD_VERSION=2.5.4             -DENABLE_MONGOC=ON             -DENABLE_TESTS=OFF             -DENABLE_EXAMPLES=OFF             -DCMAKE_INSTALL_PREFIX="$MONGOC_PREFIX"
+          cmake --build mongo-c-driver-build --parallel 2
+          cmake --install mongo-c-driver-build
+
+      - name: Configure MongoDB adapter
+        run: >
+          cmake -S . -B build-mongodb
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DCMAKE_PREFIX_PATH="$MONGOC_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_MONGODB=ON
+          -DGUNGNIR_MONGODB_INTEGRATION_TESTS=ON
+
+      - name: Build MongoDB adapter
+        run: >
+          cmake --build build-mongodb
+          --target
+          gungnir
+          gungnir-orm
+          gungnir-language
+          gungnir-mongodb
+          gungnir_mongodb_integration_test
+          --parallel
+
+      - name: Test MongoDB adapter
+        run: >
+          ctest --test-dir build-mongodb
+          -R "^gungnir.mongodb$"
+          --output-on-failure
+
+      - name: Install MongoDB-enabled package
+        run: cmake --install build-mongodb
+
+      - name: Configure MongoDB package consumer
+        run: >
+          cmake
+          -S tests/mongodb-package-consumer
+          -B build-mongodb-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          "-DCMAKE_PREFIX_PATH=$GUNGNIR_PREFIX;$MONGOC_PREFIX"
+
+      - name: Build MongoDB package consumer
+        run: cmake --build build-mongodb-consumer --parallel
+
+      - name: Run MongoDB package consumer
+        run: ./build-mongodb-consumer/gungnir-mongodb-package-consumer
+
