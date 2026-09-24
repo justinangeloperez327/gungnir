@@ -814,6 +814,7 @@ public:
 
         close_socket(socket);
         close_all();
+        bound.store(0);
         running.store(false);
     }
 
@@ -1190,13 +1191,24 @@ public:
                         return;
                     }
 
+                    const auto new_request =
+                        connection.input.empty();
+
                     connection.input.append(
                         buffer,
                         count
                     );
 
-                    connection.last_activity =
+                    const auto activity =
                         Clock::now();
+
+                    if (new_request) {
+                        connection.phase_started =
+                            activity;
+                    }
+
+                    connection.last_activity =
+                        activity;
 
                     continue;
                 }
