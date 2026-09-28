@@ -1111,6 +1111,25 @@ if(GUNGNIR_BUILD_TESTS)
     )
     add_test(NAME gungnir.view COMMAND gungnir_view_test)
 
+    add_executable(
+        gungnir_view_runtime_test
+        tests/view_runtime.cpp
+    )
+    target_link_libraries(
+        gungnir_view_runtime_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_view_runtime_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.view_runtime
+        COMMAND gungnir_view_runtime_test
+    )
+
     add_executable(gungnir_controller_routing_test tests/controller_routing.cpp)
     target_link_libraries(gungnir_controller_routing_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_controller_routing_test PRIVATE cxx_std_23)
