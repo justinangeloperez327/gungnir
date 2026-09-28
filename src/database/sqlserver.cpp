@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -1080,86 +1081,105 @@ public:
             );
         }
 
-        if (
-            !succeeded(
-                SQLPrepareA(
-                    prepared.value,
-                    reinterpret_cast<
-                        SQLCHAR*
-                    >(
-                        const_cast<char*>(
-                            sql.c_str()
+        set_active_statement(
+            prepared.value
+        );
+
+        try {
+            if (
+                !succeeded(
+                    SQLPrepareA(
+                        prepared.value,
+                        reinterpret_cast<
+                            SQLCHAR*
+                        >(
+                            const_cast<char*>(
+                                sql.c_str()
+                            )
+                        ),
+                        static_cast<SQLINTEGER>(
+                            sql.size()
                         )
-                    ),
-                    static_cast<SQLINTEGER>(
-                        sql.size()
                     )
                 )
-            )
-        ) {
-            throw_odbc(
-                "Unable to prepare SQL Server statement",
-                SQL_HANDLE_STMT,
-                prepared.value
-            );
-        }
-
-        SQLSMALLINT expected_parameters = 0;
-
-        if (
-            !succeeded(
-                SQLNumParams(
-                    prepared.value,
-                    &expected_parameters
-                )
-            )
-        ) {
-            throw_odbc(
-                "Unable to inspect SQL Server parameter count",
-                SQL_HANDLE_STMT,
-                prepared.value
-            );
-        }
-
-        if (
-            expected_parameters < 0 ||
-            static_cast<std::size_t>(
-                expected_parameters
-            ) != values.size()
-        ) {
-            throw std::invalid_argument(
-                "SQL Server binding count does not match statement parameter count"
-            );
-        }
-
-        std::vector<
-            ParameterStorage
-        > storage;
-
-        bind_parameters(
-            prepared.value,
-            values,
-            storage
-        );
-
-        if (
-            !succeeded(
-                SQLExecute(
+            ) {
+                throw_odbc(
+                    "Unable to prepare SQL Server statement",
+                    SQL_HANDLE_STMT,
                     prepared.value
+                );
+            }
+
+            SQLSMALLINT expected_parameters = 0;
+
+            if (
+                !succeeded(
+                    SQLNumParams(
+                        prepared.value,
+                        &expected_parameters
+                    )
                 )
-            )
-        ) {
-            throw_odbc(
-                "SQL Server execution failed",
-                SQL_HANDLE_STMT,
+            ) {
+                throw_odbc(
+                    "Unable to inspect SQL Server parameter count",
+                    SQL_HANDLE_STMT,
+                    prepared.value
+                );
+            }
+
+            if (
+                expected_parameters < 0 ||
+                static_cast<std::size_t>(
+                    expected_parameters
+                ) != values.size()
+            ) {
+                throw std::invalid_argument(
+                    "SQL Server binding count does not match statement parameter count"
+                );
+            }
+
+            std::vector<
+                ParameterStorage
+            > storage;
+
+            bind_parameters(
+                prepared.value,
+                values,
+                storage
+            );
+
+            if (
+                !succeeded(
+                    SQLExecute(
+                        prepared.value
+                    )
+                )
+            ) {
+                throw_odbc(
+                    "SQL Server execution failed",
+                    SQL_HANDLE_STMT,
+                    prepared.value
+                );
+            }
+
+            auto result =
+                read_result(
+                    prepared.value,
+                    sql
+                );
+
+            clear_active_statement(
                 prepared.value
             );
-        }
 
-        return read_result(
-            prepared.value,
-            sql
-        );
+            return result;
+        } catch (...) {
+            clear_active_statement(
+                prepared.value
+            );
+
+            throw;
+        }
     }
 
     void begin() override {
@@ -1175,6 +1195,26 @@ public:
     void rollback() override {
         finish_transaction(
             SQL_ROLLBACK
+        );
+    }
+
+    void cancel() noexcept override {
+        std::lock_guard lock{
+            cancel_mutex_
+        };
+
+        if (
+            active_statement_ ==
+            SQLHSTMT{}
+        ) {
+            return;
+        }
+
+        static_cast<void>(
+            SQLCancelHandle(
+                SQL_HANDLE_STMT,
+                active_statement_
+            )
         );
     }
 
@@ -1208,6 +1248,33 @@ public:
     }
 
 private:
+    void set_active_statement(
+        SQLHSTMT statement_handle
+    ) noexcept {
+        std::lock_guard lock{
+            cancel_mutex_
+        };
+
+        active_statement_ =
+            statement_handle;
+    }
+
+    void clear_active_statement(
+        SQLHSTMT statement_handle
+    ) noexcept {
+        std::lock_guard lock{
+            cancel_mutex_
+        };
+
+        if (
+            active_statement_ ==
+            statement_handle
+        ) {
+            active_statement_ =
+                SQLHSTMT{};
+        }
+    }
+
     void set_autocommit(
         bool enabled
     ) {
@@ -1261,6 +1328,10 @@ private:
     Settings settings_;
     EnvironmentHandle environment_;
     ConnectionHandle connection_;
+    std::mutex cancel_mutex_;
+    SQLHSTMT active_statement_{
+        SQLHSTMT{}
+    };
 };
 
 } // namespace
