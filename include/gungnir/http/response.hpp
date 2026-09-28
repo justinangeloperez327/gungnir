@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include <gungnir/http/json.hpp>
+#include <gungnir/http/stream.hpp>
 #include <gungnir/http/cookie.hpp>
 #include <gungnir/view/data.hpp>
 
@@ -24,6 +26,15 @@ public:
 
     [[nodiscard]] int status() const noexcept;
     [[nodiscard]] std::string_view body() const noexcept;
+
+    [[nodiscard]]
+    bool streaming()
+        const noexcept;
+
+    [[nodiscard]]
+    std::shared_ptr<BodyStream>
+    body_stream()
+        const noexcept;
 
     Response& status(int value) noexcept;
     Response& body(std::string value);
@@ -65,6 +76,14 @@ public:
         int status = 200
     );
 
+    [[nodiscard]]
+    static Response stream(
+        BodyStream stream,
+        std::string content_type =
+            "application/octet-stream",
+        int status = 200
+    );
+
     [[nodiscard]] static Response no_content();
 
     [[nodiscard]] static Response redirect(
@@ -79,6 +98,8 @@ public:
 private:
     int status_;
     std::string body_;
+    std::shared_ptr<BodyStream>
+        stream_;
     Headers headers_;
     Cookies cookies_;
 };

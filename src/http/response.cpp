@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 #include <utility>
 
 #include <gungnir/view/engine.hpp>
@@ -40,6 +41,20 @@ std::string_view Response::body() const noexcept {
     return body_;
 }
 
+bool Response::streaming()
+    const noexcept {
+    return
+        static_cast<bool>(
+            stream_
+        );
+}
+
+std::shared_ptr<BodyStream>
+Response::body_stream()
+    const noexcept {
+    return stream_;
+}
+
 Response& Response::status(int value) noexcept {
     status_ = value;
     return *this;
@@ -47,6 +62,7 @@ Response& Response::status(int value) noexcept {
 
 Response& Response::body(std::string value) {
     body_ = std::move(value);
+    stream_.reset();
     return *this;
 }
 
@@ -125,6 +141,32 @@ Response Response::view(
     response.header(
         "content-type",
         "text/html; charset=utf-8"
+    );
+
+    return response;
+}
+
+Response Response::stream(
+    BodyStream stream,
+    std::string content_type,
+    int status
+) {
+    if (!stream.valid()) {
+        throw std::invalid_argument(
+            "Streaming response requires a producer"
+        );
+    }
+
+    Response response{status};
+
+    response.stream_ =
+        std::make_shared<BodyStream>(
+            std::move(stream)
+        );
+
+    response.header(
+        "content-type",
+        std::move(content_type)
     );
 
     return response;

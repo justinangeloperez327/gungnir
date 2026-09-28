@@ -28,10 +28,12 @@ struct RuntimeOptions {
     std::size_t max_header_bytes{64U * 1024U};
     std::size_t max_connections{4096};
     std::size_t max_requests_per_connection{100};
+    std::size_t max_stream_chunk_bytes{64U * 1024U};
     std::chrono::milliseconds read_timeout{30000};
     std::chrono::milliseconds write_timeout{30000};
     std::chrono::milliseconds idle_timeout{15000};
     std::chrono::milliseconds request_timeout{30000};
+    std::chrono::milliseconds stream_chunk_timeout{30000};
     std::chrono::milliseconds shutdown_timeout{5000};
     bool keep_alive{true};
     std::optional<TlsOptions> tls;

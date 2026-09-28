@@ -46,9 +46,19 @@ The server requires TLS 1.2 or newer, disables TLS-level compression, supports p
 
 Normal HTTP connection closure attempts a nonblocking TLS `close_notify`. Error, cancellation and timeout paths close immediately so a faulty peer cannot extend the framework's shutdown deadline.
 
+## Streaming and backpressure
+
+`http::BodyStream` is a coroutine-aware response producer. `Response::stream(...)` sends HTTP/1.1 chunked responses without materializing the complete body.
+
+The reactor enforces one-chunk-at-a-time backpressure. It does not request the next producer chunk until the previous encoded chunk has drained from the connection's output buffer. `RuntimeOptions::max_stream_chunk_bytes` bounds an individual producer result (64 KiB by default), and `stream_chunk_timeout` bounds how long one asynchronous producer step may remain pending.
+
+Stream producers may suspend with normal Gungnir coroutine primitives such as `sleep_for`. Producer continuations are tracked by the HTTP dispatch tracker so shutdown does not silently abandon framework-owned stream work. Disconnects and server shutdown cancel the retained request context so a producer that observes the request cancellation token can stop promptly.
+
+The server owns response framing. User-provided `Content-Length`, `Transfer-Encoding`, and `Connection` headers cannot override the framing chosen by the runtime. Streaming responses use `Transfer-Encoding: chunked`; ordinary responses use framework-generated `Content-Length`. Keep-alive remains valid after a completed stream, including pipelined input already buffered on the connection.
+
 ## Current runtime limitation
 
-The core server now provides production HTTPS/TLS termination for HTTP/1.1 when the optional OpenSSL transport is enabled. HTTP/2, WebSocket data-plane handling, and asynchronous streaming/backpressure are addressed by later Group 48 transport layers. Deployments should still validate connection limits and throughput under representative load.
+The core server provides production HTTPS/TLS termination for HTTP/1.1 and coroutine response streaming with bounded write-side backpressure. HTTP/2 and WebSocket data-plane handling remain incomplete. Incoming request-body streaming is not yet implemented; request bodies are still bounded and buffered according to `max_request_bytes`. Deployments should validate connection limits and throughput under representative load.
 
 ## Deployment responsibility
 

@@ -2,6 +2,7 @@
 
 #include <charconv>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -244,7 +245,11 @@ std::string serialize_response(
     output += "\r\n";
 
     for (const auto& [name, value] : response.headers()) {
-        if (name == "content-length" || name == "connection") {
+        if (
+            name == "content-length" ||
+            name == "connection" ||
+            name == "transfer-encoding"
+        ) {
             continue;
         }
 
@@ -276,6 +281,107 @@ std::string serialize_response(
     }
 
     return output;
+}
+
+std::string serialize_stream_headers(
+    const Response& response,
+    bool omit_body,
+    ConnectionDirective connection
+) {
+    std::string output;
+    output.reserve(256);
+
+    output += "HTTP/1.1 ";
+    output +=
+        std::to_string(
+            response.status()
+        );
+    output += ' ';
+    output +=
+        reason_phrase(
+            response.status()
+        );
+    output += "\r\n";
+
+    for (
+        const auto& [name, value] :
+        response.headers()
+    ) {
+        if (
+            name == "content-length" ||
+            name == "connection" ||
+            name == "transfer-encoding"
+        ) {
+            continue;
+        }
+
+        validate_header(
+            name,
+            value
+        );
+
+        output += name;
+        output += ": ";
+        output += value;
+        output += "\r\n";
+    }
+
+    for (
+        const auto& cookie :
+        response.cookies()
+    ) {
+        output += "set-cookie: ";
+        output +=
+            serialize_cookie(cookie);
+        output += "\r\n";
+    }
+
+    if (!omit_body) {
+        output +=
+            "transfer-encoding: chunked\r\n";
+    }
+
+    output += "connection: ";
+
+    output +=
+        connection ==
+            ConnectionDirective::
+                keep_alive
+        ? "keep-alive"
+        : "close";
+
+    output += "\r\n\r\n";
+
+    return output;
+}
+
+std::string serialize_chunk(
+    std::string_view chunk
+) {
+    if (chunk.empty()) {
+        return {};
+    }
+
+    std::ostringstream output;
+    output << std::hex <<
+        chunk.size() <<
+        "\r\n";
+
+    auto result =
+        output.str();
+
+    result.append(
+        chunk.data(),
+        chunk.size()
+    );
+
+    result += "\r\n";
+
+    return result;
+}
+
+std::string serialize_chunk_end() {
+    return "0\r\n\r\n";
 }
 
 bool request_keep_alive(const Request& request) noexcept {

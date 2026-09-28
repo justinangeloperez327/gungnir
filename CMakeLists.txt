@@ -993,6 +993,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_http_server_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.http_server COMMAND gungnir_http_server_test)
 
+    add_executable(
+        gungnir_http_streaming_test
+        tests/http_streaming.cpp
+    )
+    target_link_libraries(
+        gungnir_http_streaming_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_http_streaming_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.http_streaming
+        COMMAND gungnir_http_streaming_test
+    )
+
     if(GUNGNIR_WITH_TLS)
         add_executable(
             gungnir_tls_server_test
