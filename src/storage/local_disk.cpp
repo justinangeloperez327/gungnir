@@ -5,7 +5,9 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <cwctype>
 #include <limits>
 #include <memory>
