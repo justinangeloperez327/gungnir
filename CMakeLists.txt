@@ -216,6 +216,7 @@ add_library(gungnir
     src/migration/table.cpp
     src/production/runtime_adapters.cpp
     src/production/runtime_host.cpp
+    src/production/signal_watcher.cpp
     src/routing/route.cpp
     src/routing/router.cpp
     src/security/security.cpp
