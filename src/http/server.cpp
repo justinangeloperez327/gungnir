@@ -21,6 +21,7 @@
 
 #include <gungnir/core/timer.hpp>
 #include <gungnir/http/message.hpp>
+#include <gungnir/observability/trace.hpp>
 #include <gungnir/routing/router.hpp>
 
 #ifdef _WIN32
@@ -975,6 +976,29 @@ struct PendingDispatch {
           ),
           cancellation(
             std::move(source)
+          ),
+          span(
+            observability::
+                global_tracer()
+                ->start_span(
+                    "http.server.request",
+                    {
+                        {
+                            "http.request.method",
+                            std::string{
+                                to_string(
+                                    request.method()
+                                )
+                            }
+                        },
+                        {
+                            "url.path",
+                            std::string{
+                                request.path()
+                            }
+                        }
+                    }
+                )
           ) {}
 
     void cancel() noexcept {
@@ -983,6 +1007,7 @@ struct PendingDispatch {
 
     Request request;
     CancellationSource cancellation;
+    observability::Span span;
     std::optional<Response> response;
     std::exception_ptr exception;
     std::atomic_bool ready{false};
@@ -1085,14 +1110,53 @@ DetachedTask settle_dispatch(
 ) {
     dispatches->begin();
 
+    auto scope =
+        pending->span.valid()
+            ? pending->span.scope()
+            : observability::Scope{};
+
     try {
         pending->response.emplace(
             co_await task
         );
+
+        const auto status =
+            pending->response->status();
+
+        pending->span.attribute(
+            "http.response.status_code",
+            std::to_string(status)
+        );
+
+        if (status >= 500) {
+            pending->span.error(
+                "HTTP server error response"
+            );
+        } else {
+            pending->span.status(
+                observability::
+                    SpanStatus::ok
+            );
+        }
+    } catch (
+        const std::exception& error
+    ) {
+        pending->span.error(
+            error.what()
+        );
+
+        pending->exception =
+            std::current_exception();
     } catch (...) {
+        pending->span.error(
+            "Unknown HTTP dispatch exception"
+        );
+
         pending->exception =
             std::current_exception();
     }
+
+    pending->span.end();
 
     pending->ready.store(
         true,
