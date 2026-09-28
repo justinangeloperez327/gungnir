@@ -71,3 +71,29 @@ Framework metrics currently include:
 - `mail.send.count`, `mail.send.duration`, and `mail.recipient.count`.
 
 High-cardinality or sensitive values such as SQL bindings, request query strings, mail addresses, subjects, bodies and queue payloads are not emitted by the built-in metrics.
+
+
+## OTLP / OpenTelemetry export
+
+Production OTLP export is optional. Build Gungnir with `GUNGNIR_WITH_OTLP=ON` to add the `gungnir::otlp` target and `OtlpHttpExporter`. The normal Gungnir runtime does not depend on libcurl or a telemetry SDK when this option is disabled.
+
+`OtlpHttpExporter` implements both `SpanSink` and `MetricSink`. A single exporter instance can therefore be attached to both the global tracer and global meter.
+
+The exporter uses OTLP/HTTP JSON and sends traces to `/v1/traces` and metrics to `/v1/metrics` relative to the configured collector endpoint. The default endpoint is `http://127.0.0.1:4318`.
+
+Configuration includes:
+
+- service name, service version, deployment environment and additional resource attributes;
+- custom HTTP headers for collector authentication;
+- request timeout;
+- batch delay, maximum batch size and bounded queue size;
+- TLS peer and hostname verification, enabled by default; and
+- custom traces/metrics paths when a collector exposes non-default routes.
+
+Telemetry delivery is asynchronous and bounded. `export_span()` / `export_metric()` enqueue data without performing network I/O on application threads. When the queue reaches its configured bound, additional points are dropped and reflected by `dropped()`.
+
+`flush()` waits until queued telemetry has been attempted. `shutdown()` drains pending batches and joins the exporter worker. Network or collector errors are retained by `last_error()` and do not throw through request, database, queue, scheduler or mail execution.
+
+The OTLP encoder emits 32-hex-character trace IDs and 16-hex-character span IDs, nanosecond epoch timestamps, resource/scope metadata, span status and attributes, delta counters, gauges, single-observation delta histograms, and trace-correlated exemplars when metric points were emitted inside an active span.
+
+Applications should call tracer/meter flush or shutdown during their process shutdown sequence before terminating the collector connection.
