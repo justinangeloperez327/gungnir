@@ -53,22 +53,34 @@ gungnir::queue::Worker worker{
 };
 ```
 
-The Redis driver does not treat a queue as a disposable list. Each active job is stored separately from its ready-state entry. `pop()` atomically assigns a visibility lease and a driver-owned reservation token. `acknowledge()`, `release()`, and `fail()` only mutate the job when that reservation token still owns the lease.
+The Redis driver does not treat a queue as a disposable list. Each active job is stored separately from its ready-state entry. `pop()` atomically assigns a visibility lease and a driver-owned reservation token. `acknowledge()`, `release()`, `release_after()`, `renew()`, and `fail()` only mutate the job when that reservation token still owns the lease.
 
 If a worker exits without acknowledging a job, a later `pop()` recovers expired leases back to the ready queue. A worker that finishes after its old lease expired cannot acknowledge a job that has already been leased again to another worker.
 
-The queue uses Redis server time when calculating visibility deadlines, avoiding correctness dependence on worker-machine clock synchronization.
+The queue uses Redis server time when calculating visibility and delayed-delivery deadlines, avoiding correctness dependence on worker-machine clock synchronization.
+
+### Delayed jobs
+
+`push_later(job, delay)` stores the job immediately but keeps it out of the ready list until its Redis-server-time deadline. `release_after(job, delay)` applies the same mechanism when a worker wants to retry later. Due delayed jobs are promoted atomically during reservation.
+
+### Lease renewal
+
+Long-running handlers can enable `WorkerOptions::lease_renewal_interval`. While the handler is running, the worker periodically calls `Driver::renew()`. Redis renews the visibility deadline only when the reservation token still owns the lease, so a stale worker cannot extend a lease after another worker has recovered the job.
+
+The renewal interval should be comfortably shorter than `RedisSettings::visibility_timeout`.
 
 Current Redis queue guarantees:
 
 - durable ready-job state as far as the configured Redis persistence policy provides;
 - atomic reservation;
 - configurable visibility timeout;
+- delayed enqueue and delayed release;
 - expired-lease recovery;
 - stale-reservation protection;
-- retry state persisted through `release()`;
+- lease renewal for long-running handlers;
+- retry state persisted through `release()` / `release_after()`;
 - failed-job retention;
 - binary-safe payload storage; and
 - duplicate active/failed job-ID rejection.
 
-Delayed dispatch, lease renewal for very long-running handlers, Redis Cluster/Sentinel/TLS support, and a long-running worker supervisor remain separate runtime work.
+Retry backoff policy, failed-job administration, Redis Cluster/Sentinel/TLS support, and multi-process worker supervision remain separate runtime work.
