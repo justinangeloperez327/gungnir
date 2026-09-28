@@ -5,6 +5,8 @@
 #include <cctype>
 #include <fstream>
 #include <iterator>
+#include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 #include <string>
 
@@ -310,12 +312,25 @@ String render_block(
 Engine::Engine(std::filesystem::path root)
     : root_(std::move(root)) {}
 
-Engine& Engine::root(std::filesystem::path value) {
-    root_ = std::move(value);
+Engine& Engine::root(
+    std::filesystem::path value
+) {
+    std::unique_lock lock{
+        mutex_
+    };
+
+    root_ =
+        std::move(value);
+
     return *this;
 }
 
-const std::filesystem::path& Engine::root() const noexcept {
+std::filesystem::path
+Engine::root() const {
+    std::shared_lock lock{
+        mutex_
+    };
+
     return root_;
 }
 
@@ -338,7 +353,11 @@ String Engine::render(
         );
     }
 
-    auto path = root_ / relative;
+    const auto root =
+        this->root();
+
+    auto path =
+        root / relative;
 
     if (!path.has_extension()) {
         path += ".html";
