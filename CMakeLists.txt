@@ -809,6 +809,25 @@ if(GUNGNIR_BUILD_TESTS)
         COMMAND gungnir_database_cancellation_test
     )
 
+    add_executable(
+        gungnir_database_scope_safety_test
+        tests/database_scope_safety.cpp
+    )
+    target_link_libraries(
+        gungnir_database_scope_safety_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_database_scope_safety_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.database_scope_safety
+        COMMAND gungnir_database_scope_safety_test
+    )
+
     add_executable(gungnir_model_test tests/model.cpp)
     target_link_libraries(gungnir_model_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_model_test PRIVATE cxx_std_23)

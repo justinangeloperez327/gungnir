@@ -22,6 +22,8 @@ Application code should use Gungnir `async` and `await`, not `co_await` or `Task
 
 A coroutine suspension must represent real asynchronous work. Synchronous database or filesystem calls are not relabeled asynchronous merely for API appearance.
 
+Database transaction closures are deliberately synchronous and thread-affine at this stage. A `Transaction::run()` callback cannot return `Task<T>`; async transaction support will be introduced only when transaction ownership can be carried by coroutine-local execution context rather than thread-local state.
+
 Cancellation is request-aware and cooperative. HTTP requests receive a token automatically, and the server cancels it on client disconnect, request timeout, or shutdown. Application code can check `request.cancelled()` or retain `request.cancellation()`. Cancellation tokens support scoped callbacks, allowing lower-level operations to register interruption hooks only for the lifetime of the active work. Database connections now expose cancellation-aware execution and translate cancelled calls to `OperationCancelled`.
 
 Backpressure belongs at resource boundaries such as accepted connections, queued work, streams and database operations. Unbounded queues are not an acceptable production runtime design.
