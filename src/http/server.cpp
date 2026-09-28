@@ -2148,6 +2148,30 @@ public:
             ) {
                 short events = 0;
 
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    connection.tls &&
+                    !connection
+                        .tls_handshake_complete
+                ) {
+                    if (
+                        connection
+                            .tls_want_write
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+
+                    if (
+                        connection
+                            .tls_want_read ||
+                        events == 0
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+                } else
+#endif
                 if (connection.pending) {
                     events =
                         poll_read_event;
@@ -2160,6 +2184,30 @@ public:
                     events =
                         poll_write_event;
                 }
+
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    connection.tls &&
+                    connection
+                        .tls_handshake_complete
+                ) {
+                    if (
+                        connection
+                            .tls_want_read
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+
+                    if (
+                        connection
+                            .tls_want_write
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+                }
+#endif
 
                 descriptors.push_back(
                     PollFd{
@@ -2291,6 +2339,32 @@ public:
                     continue;
                 }
 
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    connection.tls &&
+                    !connection
+                        .tls_handshake_complete &&
+                    (
+                        (
+                            events &
+                            poll_read_event
+                        ) != 0 ||
+                        (
+                            events &
+                            poll_write_event
+                        ) != 0
+                    )
+                ) {
+                    if (
+                        !tls_handshake_ready(
+                            connection
+                        )
+                    ) {
+                        continue;
+                    }
+                }
+#endif
+
                 if (
                     connection.output.empty() &&
                     (
@@ -2315,6 +2389,44 @@ public:
                         connection
                     );
                 }
+
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    !connection.closing &&
+                    connection.tls &&
+                    connection
+                        .tls_handshake_complete &&
+                    connection
+                        .tls_want_write &&
+                    (
+                        events &
+                        poll_write_event
+                    ) != 0 &&
+                    connection.output.empty()
+                ) {
+                    read_ready(
+                        connection
+                    );
+                }
+
+                if (
+                    !connection.closing &&
+                    connection.tls &&
+                    connection
+                        .tls_handshake_complete &&
+                    connection
+                        .tls_want_read &&
+                    (
+                        events &
+                        poll_read_event
+                    ) != 0 &&
+                    !connection.output.empty()
+                ) {
+                    write_ready(
+                        connection
+                    );
+                }
+#endif
             }
 
             remove_closed();
