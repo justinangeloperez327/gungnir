@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <gungnir/core/executor.hpp>
+#include <gungnir/observability/trace.hpp>
 
 namespace gungnir {
 
@@ -64,7 +65,8 @@ public:
 
     void schedule(
         std::chrono::milliseconds duration,
-        std::coroutine_handle<> handle
+        std::coroutine_handle<> handle,
+        observability::TraceContext context
     ) {
         if (!handle) {
             return;
@@ -94,7 +96,9 @@ public:
                     .sequence =
                         sequence_++,
                     .handle =
-                        handle
+                        handle,
+                    .context =
+                        std::move(context)
                 }
             );
 
@@ -254,9 +258,7 @@ public:
     }
 
     void dispatch_due() noexcept {
-        std::vector<
-            std::coroutine_handle<>
-        > due;
+        std::vector<Entry> due;
 
         {
             std::lock_guard lock{
@@ -288,6 +290,8 @@ private:
         Clock::time_point deadline;
         std::uint64_t sequence;
         std::coroutine_handle<> handle;
+        observability::TraceContext
+            context;
     };
 
     struct Later {
@@ -312,9 +316,7 @@ private:
     };
 
     void collect_due_locked(
-        std::vector<
-            std::coroutine_handle<>
-        >& due,
+        std::vector<Entry>& due,
         Clock::time_point now
     ) {
         while (
@@ -324,7 +326,6 @@ private:
         ) {
             due.push_back(
                 timers_.top()
-                    .handle
             );
 
             timers_.pop();
@@ -332,31 +333,34 @@ private:
     }
 
     void dispatch(
-        const std::vector<
-            std::coroutine_handle<>
-        >& due
+        const std::vector<Entry>& due
     ) noexcept {
         for (
-            const auto handle :
+            const auto& entry :
             due
         ) {
             if (
-                !handle ||
-                handle.done()
+                !entry.handle ||
+                entry.handle.done()
             ) {
                 continue;
             }
 
+            auto scope =
+                observability::activate(
+                    entry.context
+                );
+
             try {
                 executor_.schedule(
-                    handle
+                    entry.handle
                 );
             } catch (...) {
                 if (
-                    handle &&
-                    !handle.done()
+                    entry.handle &&
+                    !entry.handle.done()
                 ) {
-                    handle.resume();
+                    entry.handle.resume();
                 }
             }
         }
@@ -415,9 +419,7 @@ private:
                 continue;
             }
 
-            std::vector<
-                std::coroutine_handle<>
-            > due;
+            std::vector<Entry> due;
 
             collect_due_locked(
                 due,
@@ -466,8 +468,13 @@ void SleepAwaiter::await_suspend(
 ) const {
     timer_scheduler().schedule(
         duration_,
-        handle
+        handle,
+        observability::
+            current_context()
     );
+
+    observability::
+        clear_current_context();
 }
 
 namespace detail {
