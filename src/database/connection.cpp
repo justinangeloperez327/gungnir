@@ -369,6 +369,14 @@ Result Connection::execute(
             );
 
             span.end();
+
+            record_database_metrics(
+                *this,
+                statement,
+                metrics_started,
+                "cancelled"
+            );
+
             throw OperationCancelled{};
         }
 
