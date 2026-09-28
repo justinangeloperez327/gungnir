@@ -43,3 +43,16 @@ The current HTTP runtime is not presented as a production-grade HTTP/2, TLS, Web
 ## Deployment responsibility
 
 Container images, service managers, TLS termination, log shipping, metrics exporters, process supervision and zero-downtime orchestration are deployment concerns. Gungnir should provide integration points without pretending to replace those systems.
+
+
+## Process signals
+
+`production::SignalWatcher` provides an opt-in bridge from `SIGINT` and `SIGTERM` into normal Gungnir shutdown code.
+
+The asynchronous signal handler itself performs only one signal-safe operation: it stores the signal number in a `sig_atomic_t`. A dedicated watcher thread observes that value and invokes the configured callback from normal thread context. Framework mutexes, allocations, logging, cancellation and runtime stop methods are therefore never called directly from asynchronous signal context.
+
+Only one Gungnir signal watcher may own the process handlers at a time. The watcher restores the handlers that were installed before it was created when it stops or is destroyed. Ownership is tracked so an older, already-stopped watcher cannot restore handlers belonging to a newer watcher.
+
+`RuntimeHost::run_with_signals()` installs a watcher that maps `SIGINT` / `SIGTERM` to `RuntimeHost::request_stop()`, then runs the normal application/runtime lifecycle. This provides a convenient service-manager entry point while keeping signal handling opt-in.
+
+A second signal does not forcibly terminate worker threads or request handlers. If cooperative shutdown exceeds the configured process deadline, `ShutdownResult` identifies the still-running runtimes and the deployment/service manager remains responsible for any hard process termination policy.
