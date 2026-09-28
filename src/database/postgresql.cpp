@@ -472,6 +472,11 @@ public:
           ),
           connection_(
             connect(settings_)
+          ),
+          backend_pid_(
+            PQbackendPID(
+                connection_.get()
+            )
           ) {}
 
     [[nodiscard]]
@@ -561,6 +566,44 @@ public:
         execute_control("ROLLBACK");
     }
 
+    void cancel() noexcept override {
+        if (backend_pid_ <= 0) {
+            return;
+        }
+
+        try {
+            auto cancellation_connection =
+                connect(settings_);
+
+            const auto pid =
+                std::to_string(
+                    backend_pid_
+                );
+
+            const char* values[] = {
+                pid.c_str()
+            };
+
+            NativeResult result{
+                PQexecParams(
+                    cancellation_connection.get(),
+                    "SELECT pg_cancel_backend($1::integer)",
+                    1,
+                    nullptr,
+                    values,
+                    nullptr,
+                    nullptr,
+                    0
+                )
+            };
+
+            static_cast<void>(
+                result
+            );
+        } catch (...) {
+        }
+    }
+
     [[nodiscard]]
     bool ping() override {
         if (
@@ -621,6 +664,7 @@ private:
 
     Settings settings_;
     NativeConnection connection_;
+    int backend_pid_{0};
 };
 
 } // namespace
