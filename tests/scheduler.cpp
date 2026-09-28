@@ -715,5 +715,180 @@ int main() {
         )
     );
 
+    gungnir::scheduler::SystemClock
+        runner_clock;
+
+    Scheduler runner{
+        runner_clock
+    };
+
+    int runner_runs = 0;
+
+    runner.every(
+        "runner-tick",
+        30ms,
+        [&] {
+            ++runner_runs;
+
+            if (runner_runs == 2) {
+                runner.request_stop();
+            }
+        }
+    );
+
+    gungnir::scheduler::RunnerOptions
+        runner_options;
+
+    runner_options.maximum_sleep =
+        100ms;
+
+    const auto runner_started =
+        std::chrono::steady_clock::now();
+
+    const auto runner_executed =
+        runner.run(
+            runner_options
+        );
+
+    const auto runner_elapsed =
+        std::chrono::steady_clock::now() -
+        runner_started;
+
+    assert(runner_executed == 2);
+    assert(runner_runs == 2);
+    assert(!runner.running());
+    assert(
+        runner_elapsed <
+        2s
+    );
+
+    Scheduler idle_runner{
+        runner_clock
+    };
+
+    gungnir::CancellationSource
+        idle_cancel;
+
+    std::size_t idle_executed = 1;
+
+    std::thread idle_thread{
+        [&] {
+            idle_executed =
+                idle_runner.run(
+                    runner_options,
+                    idle_cancel.token()
+                );
+        }
+    };
+
+    for (
+        int attempt = 0;
+        attempt < 200 &&
+            !idle_runner.running();
+        ++attempt
+    ) {
+        std::this_thread::sleep_for(
+            1ms
+        );
+    }
+
+    assert(idle_runner.running());
+
+    idle_cancel.cancel();
+    idle_thread.join();
+
+    assert(idle_executed == 0);
+    assert(!idle_runner.running());
+
+    Scheduler drain_runner{
+        runner_clock
+    };
+
+    gungnir::CancellationSource
+        drain_cancel;
+
+    std::mutex drain_mutex;
+    std::condition_variable
+        drain_ready;
+
+    bool first_started = false;
+    bool release_first = false;
+    bool first_finished = false;
+    int second_runs = 0;
+    std::size_t drain_executed = 0;
+
+    drain_runner.every(
+        "first-active",
+        10s,
+        [&] {
+            std::unique_lock lock{
+                drain_mutex
+            };
+
+            first_started = true;
+            drain_ready.notify_all();
+
+            drain_ready.wait(
+                lock,
+                [&] {
+                    return
+                        release_first;
+                }
+            );
+
+            first_finished = true;
+        }
+    );
+
+    drain_runner.every(
+        "must-not-start",
+        10s,
+        [&] {
+            ++second_runs;
+        }
+    );
+
+    std::thread drain_thread{
+        [&] {
+            drain_executed =
+                drain_runner.run(
+                    runner_options,
+                    drain_cancel.token()
+                );
+        }
+    };
+
+    {
+        std::unique_lock lock{
+            drain_mutex
+        };
+
+        drain_ready.wait(
+            lock,
+            [&] {
+                return
+                    first_started;
+            }
+        );
+    }
+
+    drain_cancel.cancel();
+
+    {
+        std::lock_guard lock{
+            drain_mutex
+        };
+
+        release_first = true;
+    }
+
+    drain_ready.notify_all();
+    drain_thread.join();
+
+    assert(first_finished);
+    assert(second_runs == 0);
+    assert(drain_executed == 1);
+    assert(!drain_runner.running());
+
     return 0;
 }

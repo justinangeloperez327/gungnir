@@ -14,7 +14,9 @@ The HTTP server performs cooperative graceful draining when `stop()` is requeste
 
 `RuntimeOptions::shutdown_timeout` is the drain deadline. When the deadline expires, remaining request cancellation tokens are signaled and their client sockets are closed. Request handlers that perform cancellable work should observe the request cancellation token so shutdown can complete promptly after the deadline.
 
-This guarantee is currently scoped to the HTTP server. Gungnir does not yet coordinate one process-wide drain across queue workers, scheduler callbacks and arbitrary application coroutines.
+HTTP, queue workers and the scheduler each expose cooperative shutdown primitives. Queue workers finish the active job before exiting; the scheduler finishes the active synchronous task and refuses to start another task after stop/cancellation is observed.
+
+Gungnir does not yet provide one process-wide supervisor that automatically coordinates all HTTP, queue, scheduler and arbitrary application coroutines. Hosting code should fan a shared cancellation source into the participating runtimes and apply its own overall shutdown deadline.
 
 ## Reverse proxies
 

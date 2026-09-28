@@ -19,7 +19,7 @@ public:
 
     Task(
         std::string name,
-        std::chrono::seconds interval,
+        std::chrono::milliseconds interval,
         Action action
     )
         : name_(
@@ -68,7 +68,7 @@ public:
 
     [[nodiscard]]
     std::optional<
-        std::chrono::seconds
+        std::chrono::milliseconds
     > interval()
         const noexcept {
         return interval_;
@@ -353,9 +353,9 @@ private:
                     local.minute
                 );
         } else if (interval_) {
-            const auto seconds =
+            const auto milliseconds =
                 std::chrono::duration_cast<
-                    std::chrono::seconds
+                    std::chrono::milliseconds
                 >(
                     now.time_since_epoch()
                 ).count();
@@ -366,8 +366,8 @@ private:
             slot =
                 std::to_string(
                     width > 0
-                        ? seconds / width
-                        : seconds
+                        ? milliseconds / width
+                        : milliseconds
                 );
         } else {
             slot =
@@ -390,7 +390,7 @@ private:
 
     std::string name_;
     std::optional<
-        std::chrono::seconds
+        std::chrono::milliseconds
     > interval_;
     std::optional<
         CronExpression
