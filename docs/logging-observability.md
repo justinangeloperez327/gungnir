@@ -50,3 +50,24 @@ When a global tracer with a sink is configured, Gungnir instruments the major ru
 Queue envelopes carry trace ID and parent span ID metadata separately from the application payload. Memory and Redis drivers capture that metadata at enqueue time, and workers continue the originating trace even when processing occurs later or in another process. Redis decoding remains compatible with queue envelopes persisted before trace metadata existed.
 
 HTTP route coroutine context is suspended and restored across Gungnir executor yields and timer sleeps. Framework-owned async boundaries must preserve trace context; custom application awaiters that move execution to another thread should capture `current_context()` and reactivate it when resuming.
+
+
+## Metrics
+
+Gungnir provides dependency-free `Counter`, `Gauge`, and `Histogram` instruments through `observability::Meter`. A meter without a `MetricSink` is a no-op. Metric sink failures are isolated from application execution.
+
+Each emitted `MetricPoint` contains the instrument kind, name, numeric value, structured attributes, timestamp, and—when a trace span is active—the current trace/span IDs for exemplar-style correlation.
+
+`MemoryMetricSink` stores points for deterministic tests.
+
+Framework metrics currently include:
+
+- `http.server.request.count` and `http.server.request.duration`, with method, normalized path, status and outcome;
+- `http.server.connection.active` gauge;
+- `db.client.operation.count` and `db.client.operation.duration`, with database system, connection, operation and outcome;
+- `messaging.process.count`, `messaging.process.duration`, `messaging.process.failures`, and `messaging.worker.active`;
+- `scheduler.task.executions`, `scheduler.task.duration`, and `scheduler.task.failures`;
+- `cache.request.count` with hit/miss result;
+- `mail.send.count`, `mail.send.duration`, and `mail.recipient.count`.
+
+High-cardinality or sensitive values such as SQL bindings, request query strings, mail addresses, subjects, bodies and queue payloads are not emitted by the built-in metrics.
