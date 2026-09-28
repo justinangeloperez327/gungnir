@@ -58,7 +58,7 @@ The server owns response framing. User-provided `Content-Length`, `Transfer-Enco
 
 ## Current runtime limitation
 
-The core server provides production HTTPS/TLS termination for HTTP/1.1 and coroutine response streaming with bounded write-side backpressure. HTTP/2 and WebSocket data-plane handling remain incomplete. Incoming request-body streaming is not yet implemented; request bodies are still bounded and buffered according to `max_request_bytes`. Deployments should validate connection limits and throughput under representative load.
+The core server provides production HTTPS/TLS termination for HTTP/1.1, coroutine response streaming with bounded write-side backpressure, and WebSocket upgrade/data-plane handling on the same nonblocking reactor. WebSockets enforce client masking, control-frame rules, fragmentation, UTF-8 text validity, bounded message sizes, coroutine message-handler deadlines, ping/pong, close handshakes and coordinated shutdown. HTTP/2 and incoming request-body streaming remain incomplete; ordinary request bodies are still bounded and buffered according to `max_request_bytes`. Deployments should validate connection limits and throughput under representative load.
 
 ## Deployment responsibility
 

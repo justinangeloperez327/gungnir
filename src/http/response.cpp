@@ -55,6 +55,26 @@ Response::body_stream()
     return stream_;
 }
 
+bool Response::websocket_upgrade()
+    const noexcept {
+    return
+        static_cast<bool>(
+            websocket_
+        );
+}
+
+std::shared_ptr<WebSocketSession>
+Response::websocket_session()
+    const noexcept {
+    return websocket_;
+}
+
+std::string_view
+Response::websocket_protocol()
+    const noexcept {
+    return websocket_protocol_;
+}
+
 Response& Response::status(int value) noexcept {
     status_ = value;
     return *this;
@@ -63,6 +83,8 @@ Response& Response::status(int value) noexcept {
 Response& Response::body(std::string value) {
     body_ = std::move(value);
     stream_.reset();
+    websocket_.reset();
+    websocket_protocol_.clear();
     return *this;
 }
 
@@ -168,6 +190,31 @@ Response Response::stream(
         "content-type",
         std::move(content_type)
     );
+
+    return response;
+}
+
+Response Response::websocket(
+    WebSocketSession session,
+    std::string protocol
+) {
+    if (!session.valid()) {
+        throw std::invalid_argument(
+            "WebSocket response requires a message handler"
+        );
+    }
+
+    Response response{101};
+
+    response.websocket_ =
+        std::make_shared<
+            WebSocketSession
+        >(
+            std::move(session)
+        );
+
+    response.websocket_protocol_ =
+        std::move(protocol);
 
     return response;
 }

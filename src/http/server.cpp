@@ -24,6 +24,7 @@
 
 #include <gungnir/core/timer.hpp>
 #include <gungnir/http/message.hpp>
+#include <gungnir/http/websocket.hpp>
 #include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/view/runtime.hpp>
@@ -1415,6 +1416,24 @@ struct PendingStreamChunk {
     std::atomic_bool ready{false};
 };
 
+struct PendingWebSocketMessage {
+    explicit PendingWebSocketMessage(
+        std::shared_ptr<WebSocketSession>
+            value_session
+    )
+        : session(
+            std::move(
+                value_session
+            )
+          ) {}
+
+    std::shared_ptr<WebSocketSession>
+        session;
+    WebSocketSession::Reply reply;
+    std::exception_ptr exception;
+    std::atomic_bool ready{false};
+};
+
 class DispatchTracker {
 public:
     void begin() {
@@ -1664,6 +1683,34 @@ DetachedTask settle_stream_chunk(
     dispatches->finish();
 }
 
+DetachedTask settle_websocket_message(
+    Task<WebSocketSession::Reply> task,
+    std::shared_ptr<
+        PendingWebSocketMessage
+    > pending,
+    std::shared_ptr<WakeState> wakeup,
+    std::shared_ptr<DispatchTracker>
+        dispatches
+) {
+    dispatches->begin();
+
+    try {
+        pending->reply =
+            co_await task;
+    } catch (...) {
+        pending->exception =
+            std::current_exception();
+    }
+
+    pending->ready.store(
+        true,
+        std::memory_order_release
+    );
+
+    wakeup->notify();
+    dispatches->finish();
+}
+
 struct ConnectionState {
     NativeSocket socket{invalid_socket};
     std::string input;
@@ -1684,6 +1731,18 @@ struct ConnectionState {
     std::shared_ptr<PendingStreamChunk>
         pending_stream;
     bool stream_terminal_queued{false};
+
+    std::shared_ptr<PendingDispatch>
+        websocket_request;
+    std::shared_ptr<WebSocketSession>
+        websocket;
+    std::shared_ptr<PendingWebSocketMessage>
+        pending_websocket;
+    std::optional<WebSocketOpcode>
+        websocket_fragment_opcode;
+    std::string websocket_fragment;
+    bool websocket_close_sent{false};
+    bool websocket_close_received{false};
 
 #ifdef GUNGNIR_WITH_TLS
     SslConnection tls{
@@ -1710,6 +1769,12 @@ void close_connection(
     if (connection.stream_request) {
         connection
             .stream_request
+            ->cancel();
+    }
+
+    if (connection.websocket_request) {
+        connection
+            .websocket_request
             ->cancel();
     }
 
@@ -2560,6 +2625,792 @@ public:
         }
     }
 
+    [[nodiscard]]
+    static std::string websocket_upgrade_response(
+        const WebSocketHandshake& handshake
+    ) {
+        std::string response =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "upgrade: websocket\r\n"
+            "connection: Upgrade\r\n"
+            "sec-websocket-accept: ";
+
+        response += handshake.accept;
+        response += "\r\n";
+
+        if (!handshake.protocol.empty()) {
+            response +=
+                "sec-websocket-protocol: ";
+
+            response +=
+                handshake.protocol;
+
+            response += "\r\n";
+        }
+
+        response += "\r\n";
+
+        return response;
+    }
+
+    [[nodiscard]]
+    static std::string websocket_close_payload(
+        std::uint16_t code,
+        std::string_view reason = {}
+    ) {
+        if (
+            !websocket::wire::
+                valid_close_code(code)
+        ) {
+            throw std::invalid_argument(
+                "Invalid WebSocket close code"
+            );
+        }
+
+        if (
+            reason.size() > 123 ||
+            !websocket::wire::
+                valid_utf8(reason)
+        ) {
+            throw std::invalid_argument(
+                "Invalid WebSocket close reason"
+            );
+        }
+
+        std::string payload;
+        payload.reserve(
+            reason.size() + 2
+        );
+
+        payload.push_back(
+            static_cast<char>(
+                (code >> 8) &
+                0xff
+            )
+        );
+
+        payload.push_back(
+            static_cast<char>(
+                code &
+                0xff
+            )
+        );
+
+        payload.append(
+            reason.data(),
+            reason.size()
+        );
+
+        return payload;
+    }
+
+    void websocket_fail(
+        ConnectionState& connection,
+        std::uint16_t code,
+        std::string_view reason
+    ) noexcept {
+        if (
+            connection.closing ||
+            connection.websocket_close_sent
+        ) {
+            close_connection(
+                connection
+            );
+
+            return;
+        }
+
+        try {
+            if (connection.websocket_request) {
+                connection
+                    .websocket_request
+                    ->cancel();
+            }
+
+            connection.pending_websocket.reset();
+            connection.websocket_fragment.clear();
+            connection
+                .websocket_fragment_opcode
+                .reset();
+            connection.input.clear();
+
+            connection.output =
+                websocket::wire::
+                    serialize_server_frame(
+                        WebSocketOpcode::close,
+                        websocket_close_payload(
+                            code,
+                            reason
+                        )
+                    );
+
+            connection.output_offset = 0;
+            connection.close_after_write =
+                true;
+            connection.websocket_close_sent =
+                true;
+            connection.phase_started =
+                Clock::now();
+
+            observability::
+                global_meter()
+                ->counter(
+                    "http.server.websocket.failures"
+                )
+                .add(
+                    1.0,
+                    {
+                        {
+                            "close.code",
+                            std::to_string(code)
+                        }
+                    }
+                );
+        } catch (...) {
+            close_connection(
+                connection
+            );
+        }
+    }
+
+    void dispatch_websocket_message(
+        ConnectionState& connection,
+        WebSocketMessage message
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.websocket ||
+            connection.pending_websocket ||
+            !connection.output.empty()
+        ) {
+            return;
+        }
+
+        if (
+            message.payload.size() >
+            options
+                .max_websocket_message_bytes
+        ) {
+            websocket_fail(
+                connection,
+                1009,
+                "Message too large"
+            );
+
+            return;
+        }
+
+        if (
+            message.opcode ==
+                WebSocketOpcode::text &&
+            !websocket::wire::
+                valid_utf8(
+                    message.payload
+                )
+        ) {
+            websocket_fail(
+                connection,
+                1007,
+                "Invalid UTF-8"
+            );
+
+            return;
+        }
+
+        try {
+            const auto payload_size =
+                message.payload.size();
+
+            auto pending =
+                std::make_shared<
+                    PendingWebSocketMessage
+                >(
+                    connection.websocket
+                );
+
+            auto task =
+                connection.websocket
+                    ->receive(
+                        std::move(message)
+                    );
+
+            connection.pending_websocket =
+                pending;
+
+            connection.phase_started =
+                Clock::now();
+
+            auto meter =
+                observability::
+                    global_meter();
+
+            meter->counter(
+                "http.server.websocket.message.count"
+            ).add(
+                1.0,
+                {
+                    {
+                        "direction",
+                        "received"
+                    }
+                }
+            );
+
+            meter->counter(
+                "http.server.websocket.bytes"
+            ).add(
+                static_cast<double>(
+                    payload_size
+                ),
+                {
+                    {
+                        "direction",
+                        "received"
+                    }
+                }
+            );
+
+            settle_websocket_message(
+                std::move(task),
+                pending,
+                wakeup,
+                dispatches
+            );
+        } catch (...) {
+            websocket_fail(
+                connection,
+                1011,
+                "Message handler failed"
+            );
+        }
+    }
+
+    void process_websocket_buffer(
+        ConnectionState& connection
+    ) noexcept {
+        while (
+            !connection.closing &&
+            connection.websocket &&
+            !connection.pending_websocket &&
+            connection.output.empty()
+        ) {
+            try {
+                const auto parsed =
+                    websocket::wire::
+                        parse_client_frame(
+                            connection.input,
+                            options
+                                .max_websocket_message_bytes
+                        );
+
+                if (!parsed.frame) {
+                    if (
+                        connection.input.size() >
+                        options
+                            .max_websocket_message_bytes +
+                        14
+                    ) {
+                        websocket_fail(
+                            connection,
+                            1009,
+                            "Message too large"
+                        );
+                    }
+
+                    return;
+                }
+
+                auto frame =
+                    std::move(
+                        *parsed.frame
+                    );
+
+                connection.input.erase(
+                    0,
+                    parsed.consumed
+                );
+
+                switch (frame.opcode) {
+                    case WebSocketOpcode::ping:
+                        connection.output =
+                            websocket::wire::
+                                serialize_server_frame(
+                                    WebSocketOpcode::pong,
+                                    frame.payload
+                                );
+
+                        connection.output_offset = 0;
+                        connection.phase_started =
+                            Clock::now();
+
+                        return;
+
+                    case WebSocketOpcode::pong:
+                        continue;
+
+                    case WebSocketOpcode::close: {
+                        if (
+                            frame.payload.size() ==
+                            1
+                        ) {
+                            websocket_fail(
+                                connection,
+                                1002,
+                                "Invalid close payload"
+                            );
+
+                            return;
+                        }
+
+                        if (
+                            frame.payload.size() >=
+                            2
+                        ) {
+                            const auto code =
+                                static_cast<
+                                    std::uint16_t
+                                >(
+                                    (
+                                        static_cast<
+                                            std::uint8_t
+                                        >(
+                                            frame.payload[0]
+                                        ) << 8
+                                    ) |
+                                    static_cast<
+                                        std::uint8_t
+                                    >(
+                                        frame.payload[1]
+                                    )
+                                );
+
+                            const std::string_view
+                                reason{
+                                    frame.payload
+                                        .data() + 2,
+                                    frame.payload
+                                        .size() - 2
+                                };
+
+                            if (
+                                !websocket::wire::
+                                    valid_close_code(
+                                        code
+                                    ) ||
+                                !websocket::wire::
+                                    valid_utf8(
+                                        reason
+                                    )
+                            ) {
+                                websocket_fail(
+                                    connection,
+                                    1002,
+                                    "Invalid close frame"
+                                );
+
+                                return;
+                            }
+                        }
+
+                        connection
+                            .websocket_close_received =
+                            true;
+
+                        connection.output =
+                            websocket::wire::
+                                serialize_server_frame(
+                                    WebSocketOpcode::close,
+                                    frame.payload.empty()
+                                        ? websocket_close_payload(
+                                            1000
+                                          )
+                                        : frame.payload
+                                );
+
+                        connection.output_offset = 0;
+                        connection.close_after_write =
+                            true;
+                        connection
+                            .websocket_close_sent =
+                            true;
+                        connection.phase_started =
+                            Clock::now();
+
+                        if (
+                            connection
+                                .websocket_request
+                        ) {
+                            connection
+                                .websocket_request
+                                ->cancel();
+                        }
+
+                        return;
+                    }
+
+                    case WebSocketOpcode::
+                        continuation: {
+                        if (
+                            !connection
+                                .websocket_fragment_opcode
+                        ) {
+                            websocket_fail(
+                                connection,
+                                1002,
+                                "Unexpected continuation"
+                            );
+
+                            return;
+                        }
+
+                        if (
+                            frame.payload.size() >
+                            options
+                                .max_websocket_message_bytes -
+                            std::min(
+                                connection
+                                    .websocket_fragment
+                                    .size(),
+                                options
+                                    .max_websocket_message_bytes
+                            )
+                        ) {
+                            websocket_fail(
+                                connection,
+                                1009,
+                                "Message too large"
+                            );
+
+                            return;
+                        }
+
+                        connection
+                            .websocket_fragment +=
+                            frame.payload;
+
+                        if (!frame.final) {
+                            continue;
+                        }
+
+                        WebSocketMessage message{
+                            *connection
+                                .websocket_fragment_opcode,
+                            std::move(
+                                connection
+                                    .websocket_fragment
+                            )
+                        };
+
+                        connection
+                            .websocket_fragment =
+                            {};
+
+                        connection
+                            .websocket_fragment_opcode
+                            .reset();
+
+                        dispatch_websocket_message(
+                            connection,
+                            std::move(message)
+                        );
+
+                        return;
+                    }
+
+                    case WebSocketOpcode::text:
+                    case WebSocketOpcode::binary:
+                        if (
+                            connection
+                                .websocket_fragment_opcode
+                        ) {
+                            websocket_fail(
+                                connection,
+                                1002,
+                                "New data frame before fragmented message completed"
+                            );
+
+                            return;
+                        }
+
+                        if (frame.final) {
+                            dispatch_websocket_message(
+                                connection,
+                                {
+                                    frame.opcode,
+                                    std::move(
+                                        frame.payload
+                                    )
+                                }
+                            );
+
+                            return;
+                        }
+
+                        connection
+                            .websocket_fragment_opcode =
+                            frame.opcode;
+
+                        connection
+                            .websocket_fragment =
+                            std::move(
+                                frame.payload
+                            );
+
+                        continue;
+
+                    default:
+                        websocket_fail(
+                            connection,
+                            1002,
+                            "Unsupported frame"
+                        );
+
+                        return;
+                }
+            } catch (
+                const std::length_error&
+            ) {
+                websocket_fail(
+                    connection,
+                    1009,
+                    "Message too large"
+                );
+
+                return;
+            } catch (
+                const std::invalid_argument&
+            ) {
+                websocket_fail(
+                    connection,
+                    1002,
+                    "Protocol error"
+                );
+
+                return;
+            } catch (...) {
+                websocket_fail(
+                    connection,
+                    1011,
+                    "WebSocket processing error"
+                );
+
+                return;
+            }
+        }
+    }
+
+    void websocket_read_ready(
+        ConnectionState& connection
+    ) noexcept {
+        try {
+            char buffer[8192];
+
+            while (
+                !connection.closing &&
+                !connection.pending_websocket &&
+                connection.output.empty()
+            ) {
+                const auto received =
+                    receive_bytes(
+                        connection,
+                        buffer,
+                        sizeof(buffer)
+                    );
+
+                if (
+                    received.state ==
+                    IoState::progress
+                ) {
+                    connection.input.append(
+                        buffer,
+                        received.count
+                    );
+
+                    connection.last_activity =
+                        Clock::now();
+
+                    process_websocket_buffer(
+                        connection
+                    );
+
+                    continue;
+                }
+
+                if (
+                    received.state ==
+                    IoState::would_block
+                ) {
+                    return;
+                }
+
+                close_connection(
+                    connection
+                );
+
+                return;
+            }
+        } catch (...) {
+            websocket_fail(
+                connection,
+                1011,
+                "WebSocket read failure"
+            );
+        }
+    }
+
+    void complete_ready_websocket(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.pending_websocket ||
+            !connection
+                .pending_websocket
+                ->ready.load(
+                    std::memory_order_acquire
+                )
+        ) {
+            return;
+        }
+
+        auto pending =
+            std::move(
+                connection.pending_websocket
+            );
+
+        if (pending->exception) {
+            websocket_fail(
+                connection,
+                1011,
+                "Message handler failed"
+            );
+
+            return;
+        }
+
+        if (!pending->reply) {
+            process_websocket_buffer(
+                connection
+            );
+
+            return;
+        }
+
+        auto reply =
+            std::move(
+                *pending->reply
+            );
+
+        if (
+            reply.payload.size() >
+            options
+                .max_websocket_message_bytes
+        ) {
+            websocket_fail(
+                connection,
+                1009,
+                "Reply too large"
+            );
+
+            return;
+        }
+
+        if (
+            reply.opcode ==
+                WebSocketOpcode::
+                    continuation
+        ) {
+            websocket_fail(
+                connection,
+                1011,
+                "Invalid application reply opcode"
+            );
+
+            return;
+        }
+
+        if (
+            reply.opcode ==
+                WebSocketOpcode::text &&
+            !websocket::wire::
+                valid_utf8(
+                    reply.payload
+                )
+        ) {
+            websocket_fail(
+                connection,
+                1011,
+                "Application returned invalid UTF-8"
+            );
+
+            return;
+        }
+
+        try {
+            const auto payload_size =
+                reply.payload.size();
+
+            connection.output =
+                websocket::wire::
+                    serialize_server_frame(
+                        reply.opcode,
+                        reply.payload
+                    );
+
+            connection.output_offset = 0;
+            connection.phase_started =
+                Clock::now();
+
+            if (
+                reply.opcode ==
+                WebSocketOpcode::close
+            ) {
+                connection
+                    .websocket_close_sent =
+                    true;
+
+                connection.close_after_write =
+                    true;
+            }
+
+            auto meter =
+                observability::
+                    global_meter();
+
+            meter->counter(
+                "http.server.websocket.message.count"
+            ).add(
+                1.0,
+                {
+                    {
+                        "direction",
+                        "sent"
+                    }
+                }
+            );
+
+            meter->counter(
+                "http.server.websocket.bytes"
+            ).add(
+                static_cast<double>(
+                    payload_size
+                ),
+                {
+                    {
+                        "direction",
+                        "sent"
+                    }
+                }
+            );
+        } catch (...) {
+            websocket_fail(
+                connection,
+                1011,
+                "Unable to serialize WebSocket reply"
+            );
+        }
+    }
+
     void reactor_loop() {
         std::optional<
             Clock::time_point
@@ -2593,8 +3444,56 @@ public:
                     auto& connection :
                     connections
                 ) {
+                    if (connection.websocket) {
+                        if (
+                            connection
+                                .websocket_request
+                        ) {
+                            connection
+                                .websocket_request
+                                ->cancel();
+                        }
+
+                        connection.input.clear();
+
+                        if (
+                            connection.output.empty() &&
+                            !connection
+                                .websocket_close_sent
+                        ) {
+                            try {
+                                connection.output =
+                                    websocket::wire::
+                                        serialize_server_frame(
+                                            WebSocketOpcode::close,
+                                            websocket_close_payload(
+                                                1001,
+                                                "Server shutdown"
+                                            )
+                                        );
+
+                                connection.output_offset = 0;
+                                connection
+                                    .websocket_close_sent =
+                                    true;
+                            } catch (...) {
+                                close_connection(
+                                    connection
+                                );
+
+                                continue;
+                            }
+                        }
+
+                        connection.close_after_write =
+                            true;
+
+                        continue;
+                    }
+
                     const auto has_in_flight_work =
                         connection.pending ||
+                        connection.pending_stream ||
                         !connection.output.empty();
 
                     if (!has_in_flight_work) {
@@ -2629,6 +3528,24 @@ public:
                 ) {
                     if (connection.pending) {
                         connection.pending->cancel();
+                    }
+
+                    if (
+                        connection
+                            .stream_request
+                    ) {
+                        connection
+                            .stream_request
+                            ->cancel();
+                    }
+
+                    if (
+                        connection
+                            .websocket_request
+                    ) {
+                        connection
+                            .websocket_request
+                            ->cancel();
                     }
                 }
 
@@ -2749,7 +3666,25 @@ public:
                     }
                 } else
 #endif
-                if (connection.pending) {
+                if (connection.websocket) {
+                    if (
+                        connection
+                            .pending_websocket
+                    ) {
+                        events = 0;
+                    } else if (
+                        connection
+                            .output.empty()
+                    ) {
+                        events =
+                            poll_read_event;
+                    } else {
+                        events =
+                            poll_write_event;
+                    }
+                } else if (
+                    connection.pending
+                ) {
                     events =
                         poll_read_event;
                 } else if (
@@ -3113,6 +4048,14 @@ public:
     void read_ready(
         ConnectionState& connection
     ) noexcept {
+        if (connection.websocket) {
+            websocket_read_ready(
+                connection
+            );
+
+            return;
+        }
+
         try {
             char buffer[8192];
 
@@ -3442,6 +4385,79 @@ public:
 
             if (
                 !failed &&
+                response.websocket_upgrade()
+            ) {
+                const auto handshake =
+                    websocket::wire::
+                        handshake(
+                            pending->request,
+                            response
+                                .websocket_protocol()
+                        );
+
+                if (!handshake) {
+                    observability::
+                        global_meter()
+                        ->counter(
+                            "http.server.websocket.upgrade.count"
+                        )
+                        .add(
+                            1.0,
+                            {
+                                {
+                                    "outcome",
+                                    "rejected"
+                                }
+                            }
+                        );
+
+                    queue_error(
+                        connection,
+                        400,
+                        "Invalid WebSocket upgrade"
+                    );
+
+                    return;
+                }
+
+                connection.output =
+                    websocket_upgrade_response(
+                        *handshake
+                    );
+
+                connection.websocket =
+                    response
+                        .websocket_session();
+
+                connection.websocket_request =
+                    pending;
+
+                connection.output_offset = 0;
+                connection.close_after_write =
+                    false;
+                connection.phase_started =
+                    Clock::now();
+
+                observability::
+                    global_meter()
+                    ->counter(
+                        "http.server.websocket.upgrade.count"
+                    )
+                    .add(
+                        1.0,
+                        {
+                            {
+                                "outcome",
+                                "accepted"
+                            }
+                        }
+                    );
+
+                return;
+            }
+
+            if (
+                !failed &&
                 response.streaming()
             ) {
                 connection.output =
@@ -3495,6 +4511,10 @@ public:
             complete_ready_stream(
                 connection
             );
+
+            complete_ready_websocket(
+                connection
+            );
         }
     }
 
@@ -3506,7 +4526,9 @@ public:
             connection.pending ||
             connection.stream ||
             connection.pending_stream ||
-            connection.stream_terminal_queued
+            connection.stream_terminal_queued ||
+            connection.websocket ||
+            connection.pending_websocket
         ) {
             return;
         }
@@ -3661,6 +4683,25 @@ public:
             connection.phase_started =
                 Clock::now();
 
+            if (connection.websocket) {
+                connection.close_after_write =
+                    false;
+
+                if (close) {
+                    graceful_close(
+                        connection
+                    );
+
+                    return;
+                }
+
+                process_websocket_buffer(
+                    connection
+                );
+
+                return;
+            }
+
             if (stream_continues) {
                 request_stream_chunk(
                     connection
@@ -3744,6 +4785,29 @@ public:
             connection
                 .stream_terminal_queued =
                 false;
+
+            if (
+                connection
+                    .websocket_request
+            ) {
+                connection
+                    .websocket_request
+                    ->cancel();
+            }
+
+            connection
+                .pending_websocket
+                .reset();
+            connection.websocket.reset();
+            connection
+                .websocket_request
+                .reset();
+            connection
+                .websocket_fragment_opcode
+                .reset();
+            connection
+                .websocket_fragment
+                .clear();
             connection.output_offset = 0;
             connection.close_after_write =
                 true;
@@ -3774,6 +4838,32 @@ public:
                         connection.phase_started >=
                     options.request_timeout
                 ) {
+                    close_connection(
+                        connection
+                    );
+                }
+
+                continue;
+            }
+
+            if (
+                connection.pending_websocket
+            ) {
+                if (
+                    now -
+                        connection.phase_started >=
+                    options
+                        .websocket_message_timeout
+                ) {
+                    if (
+                        connection
+                            .websocket_request
+                    ) {
+                        connection
+                            .websocket_request
+                            ->cancel();
+                    }
+
                     close_connection(
                         connection
                     );
@@ -3946,11 +5036,21 @@ public:
         }
 
         if (
+            options.max_websocket_message_bytes ==
+            0
+        ) {
+            throw std::invalid_argument(
+                "HTTP max_websocket_message_bytes must be greater than zero"
+            );
+        }
+
+        if (
             options.read_timeout.count() <= 0 ||
             options.write_timeout.count() <= 0 ||
             options.idle_timeout.count() <= 0 ||
             options.request_timeout.count() <= 0 ||
             options.stream_chunk_timeout.count() <= 0 ||
+            options.websocket_message_timeout.count() <= 0 ||
             options.shutdown_timeout.count() <= 0
         ) {
             throw std::invalid_argument(

@@ -218,6 +218,7 @@ add_library(gungnir
     src/http/response.cpp
     src/http/server.cpp
     src/http/security.cpp
+    src/http/websocket.cpp
     src/migration/column.cpp
     src/migration/context.cpp
     src/migration/definition.cpp
@@ -1010,6 +1011,25 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(
         NAME gungnir.http_streaming
         COMMAND gungnir_http_streaming_test
+    )
+
+    add_executable(
+        gungnir_websocket_test
+        tests/websocket.cpp
+    )
+    target_link_libraries(
+        gungnir_websocket_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_websocket_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.websocket
+        COMMAND gungnir_websocket_test
     )
 
     if(GUNGNIR_WITH_TLS)
