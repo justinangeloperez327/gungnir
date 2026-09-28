@@ -91,11 +91,14 @@ public:
                 job->attempts <
                 job->max_attempts
             ) {
-                driver_->release_after(
-                    std::move(*job),
+                const auto delay =
                     retry_delay(
                         job->attempts
-                    )
+                    );
+
+                driver_->release_after(
+                    std::move(*job),
+                    delay
                 );
             } else {
                 driver_->fail(*job);
