@@ -1445,6 +1445,18 @@ struct PendingHttp2Dispatch {
     std::shared_ptr<PendingDispatch>
         pending;
 };
+
+struct PendingHttp2Stream {
+    std::int32_t stream_id{0};
+    std::shared_ptr<PendingDispatch>
+        request;
+    std::shared_ptr<BodyStream>
+        stream;
+    std::shared_ptr<PendingStreamChunk>
+        pending;
+    bool waiting_for_drain{false};
+    bool finished{false};
+};
 #endif
 
 class DispatchTracker {
@@ -1762,6 +1774,8 @@ struct ConnectionState {
         http2;
     std::vector<PendingHttp2Dispatch>
         pending_http2;
+    std::vector<PendingHttp2Stream>
+        http2_streams;
     bool http2_going_away{false};
 #endif
 
@@ -1810,6 +1824,17 @@ void close_connection(
     }
 
     connection.pending_http2.clear();
+
+    for (
+        auto& stream :
+        connection.http2_streams
+    ) {
+        if (stream.request) {
+            stream.request->cancel();
+        }
+    }
+
+    connection.http2_streams.clear();
     connection.http2.reset();
 #endif
 
