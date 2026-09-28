@@ -1,5 +1,6 @@
 #include <gungnir/core/executor.hpp>
 #include <gungnir/observability/trace.hpp>
+#include <gungnir/view/runtime.hpp>
 #include <algorithm>
 #include <stdexcept>
 
@@ -37,17 +38,26 @@ void Executor::post(
         return;
     }
 
-    const auto context =
+    const auto trace_context =
         observability::current_context();
+
+    const auto view_context =
+        view::runtime::current();
 
     auto wrapped =
         [
-            context,
+            trace_context,
+            view_context,
             work = std::move(work)
         ]() mutable {
-            auto scope =
+            auto trace_scope =
                 observability::activate(
-                    context
+                    trace_context
+                );
+
+            auto view_scope =
+                view::runtime::activate(
+                    view_context
                 );
 
             work();
