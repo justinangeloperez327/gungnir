@@ -10,6 +10,8 @@
 #include <gungnir/cache/repository.hpp>
 #include <gungnir/queue/redis_driver.hpp>
 #include <gungnir/queue/worker.hpp>
+#include <gungnir/session/redis_store.hpp>
+#include <gungnir/security/random.hpp>
 
 namespace {
 
@@ -435,6 +437,167 @@ int main() {
     assert(queue.pending() == 0);
     assert(queue.reserved() == 0);
     assert(queue.failed() == 0);
+
+    session::RedisSessionSettings
+        session_settings;
+
+    session_settings.redis.host =
+        env(
+            "GUNGNIR_REDIS_HOST",
+            "127.0.0.1"
+        );
+
+    session_settings.redis.port =
+        redis_port();
+
+    session_settings.redis.database =
+        13;
+
+    session_settings.redis.prefix =
+        "gungnir:session:test:";
+
+    session_settings.lifetime =
+        std::chrono::seconds{1};
+
+    session::RedisStore sessions{
+        session_settings
+    };
+
+    assert(sessions.ping());
+
+    sessions.flush();
+
+    const auto persisted_id =
+        security::random_token();
+
+    session::Session persisted{
+        persisted_id
+    };
+
+    const std::string
+        session_binary{
+            "x\0y",
+            3
+        };
+
+    persisted.put(
+        "user_id",
+        "42"
+    );
+
+    persisted.put(
+        "binary",
+        session_binary
+    );
+
+    persisted.flash(
+        "current",
+        "visible-now"
+    );
+
+    persisted.age_flash();
+
+    persisted.flash(
+        "next",
+        "visible-next"
+    );
+
+    sessions.save(
+        persisted
+    );
+
+    auto loaded_session =
+        sessions.load(
+            persisted_id
+        );
+
+    assert(loaded_session);
+
+    assert(
+        loaded_session->get(
+            "user_id"
+        ) == "42"
+    );
+
+    assert(
+        loaded_session->get(
+            "binary"
+        ) == session_binary
+    );
+
+    assert(
+        loaded_session->flashed(
+            "current"
+        ) == "visible-now"
+    );
+
+    assert(
+        loaded_session->flashed(
+            "next"
+        ).empty()
+    );
+
+    loaded_session->age_flash();
+
+    assert(
+        loaded_session->flashed(
+            "current"
+        ).empty()
+    );
+
+    assert(
+        loaded_session->flashed(
+            "next"
+        ) == "visible-next"
+    );
+
+    sessions.save(
+        *loaded_session
+    );
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            1250
+        }
+    );
+
+    assert(
+        !sessions.load(
+            persisted_id
+        )
+    );
+
+    const auto erase_id =
+        security::random_token();
+
+    session::Session erased{
+        erase_id
+    };
+
+    erased.put(
+        "value",
+        "present"
+    );
+
+    sessions.save(erased);
+
+    assert(
+        sessions.load(
+            erase_id
+        )
+    );
+
+    sessions.erase(
+        erase_id
+    );
+
+    assert(
+        !sessions.load(
+            erase_id
+        )
+    );
+
+    sessions.flush();
 
     return 0;
 }
