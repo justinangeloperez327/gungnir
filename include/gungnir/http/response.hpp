@@ -11,6 +11,7 @@
 
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/stream.hpp>
+#include <gungnir/http/websocket.hpp>
 #include <gungnir/http/cookie.hpp>
 #include <gungnir/view/data.hpp>
 
@@ -34,6 +35,19 @@ public:
     [[nodiscard]]
     std::shared_ptr<BodyStream>
     body_stream()
+        const noexcept;
+
+    [[nodiscard]]
+    bool websocket_upgrade()
+        const noexcept;
+
+    [[nodiscard]]
+    std::shared_ptr<WebSocketSession>
+    websocket_session()
+        const noexcept;
+
+    [[nodiscard]]
+    std::string_view websocket_protocol()
         const noexcept;
 
     Response& status(int value) noexcept;
@@ -84,6 +98,12 @@ public:
         int status = 200
     );
 
+    [[nodiscard]]
+    static Response websocket(
+        WebSocketSession session,
+        std::string protocol = {}
+    );
+
     [[nodiscard]] static Response no_content();
 
     [[nodiscard]] static Response redirect(
@@ -100,6 +120,9 @@ private:
     std::string body_;
     std::shared_ptr<BodyStream>
         stream_;
+    std::shared_ptr<WebSocketSession>
+        websocket_;
+    std::string websocket_protocol_;
     Headers headers_;
     Cookies cookies_;
 };
