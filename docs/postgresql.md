@@ -62,3 +62,7 @@ cmake -S . -B build \
 ```
 
 The integration test expects a PostgreSQL server and reads the `GUNGNIR_POSTGRESQL_HOST`, `GUNGNIR_POSTGRESQL_PORT`, `GUNGNIR_POSTGRESQL_DATABASE`, `GUNGNIR_POSTGRESQL_USERNAME` and `GUNGNIR_POSTGRESQL_PASSWORD` environment variables.
+
+## Cancellation
+
+Cancellation-aware connection execution interrupts an active PostgreSQL statement by opening a short-lived connection with the same settings and calling `pg_cancel_backend` for the active backend PID. This avoids manipulating the busy `PGconn` from another thread and preserves the configured authentication/TLS path.
