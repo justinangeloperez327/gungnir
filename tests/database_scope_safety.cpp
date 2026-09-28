@@ -30,13 +30,19 @@ static_assert(
     >
 );
 
-static_assert(
-    !requires(
+template <typename Work>
+concept TransactionRunnable =
+    requires(
         gungnir::database::Transaction& transaction,
-        AsyncTransactionWork work
+        Work work
     ) {
         transaction.run(work);
-    }
+    };
+
+static_assert(
+    !TransactionRunnable<
+        AsyncTransactionWork
+    >
 );
 
 } // namespace
