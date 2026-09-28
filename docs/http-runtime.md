@@ -32,6 +32,6 @@ Cancellation is cooperative: Gungnir does not forcibly destroy a live coroutine 
 
 ## Remaining transport work
 
-`Transport` remains the boundary for future TLS-backed transports. `BodyStream` remains the response-streaming foundation. The timer implementation and executor are not yet unified with the socket reactor into one scheduler.
+`Transport` remains the boundary for future TLS-backed transports. `BodyStream` remains the response-streaming foundation. Timer deadlines are now integrated into the HTTP readiness loop; continuation execution remains intentionally delegated to the bounded executor rather than running user code inside socket readiness bookkeeping.
 
 This runtime does not yet claim HTTP/2, TLS termination, WebSocket frame handling, chunked request parsing, or asynchronous streaming responses.
