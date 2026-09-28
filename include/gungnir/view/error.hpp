@@ -17,6 +17,17 @@ public:
         : Error("Gungnir view not found: " + std::move(name)) {}
 };
 
+class InvalidPath final : public Error {
+public:
+    explicit InvalidPath(
+        std::string name
+    )
+        : Error(
+            "Gungnir view path is invalid or escapes the configured root: " +
+            std::move(name)
+          ) {}
+};
+
 class SyntaxError final : public Error {
 public:
     explicit SyntaxError(std::string message) : Error(std::move(message)) {}
