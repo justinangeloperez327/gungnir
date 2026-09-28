@@ -14,7 +14,7 @@ This document records known limitations that should remain visible before a stab
 - Events currently use named polymorphic events rather than a fully typed dispatch surface.
 - Queue visibility leasing, delayed delivery/release, crash recovery, reservation-token lease renewal, retry backoff and failed-job lookup/retry/delete are implemented. The generic worker has a long-running loop with cooperative stop/cancellation, idle polling, bounded-run options and optional lease heartbeats. Multi-process supervision remains incomplete.
 - Scheduler provides interval and standard five-field cron execution, explicit fixed/recurring timezones, DST gap handling, repeated-wall-minute suppression, in-memory overlap locking, Redis owner-token distributed locks, and a deadline-aware production runner with cooperative cancellation/draining. A full external IANA timezone database adapter and process-wide runtime supervision remain incomplete.
-- Logging provides structured records and sinks, not tracing/metrics exporters.
+- Logging provides structured records and sinks. A dependency-free tracing core now provides spans, parent/child context, executor propagation and exporter lifecycle hooks. Framework instrumentation, metrics instruments and production exporters remain incomplete.
 - Plugin compatibility expressions are not yet parsed or enforced.
 - Generated CLI scaffolding must remain synchronized with source-language lowering and runtime contracts.
 
