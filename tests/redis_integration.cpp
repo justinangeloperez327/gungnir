@@ -7,6 +7,8 @@
 
 #include <gungnir/cache/redis_store.hpp>
 #include <gungnir/cache/repository.hpp>
+#include <gungnir/queue/redis_driver.hpp>
+#include <gungnir/queue/worker.hpp>
 
 namespace {
 
@@ -266,6 +268,172 @@ int main() {
     outside.forget(
         "outside"
     );
+
+    queue::RedisSettings
+        queue_settings;
+
+    queue_settings.host =
+        env(
+            "GUNGNIR_REDIS_HOST",
+            "127.0.0.1"
+        );
+
+    queue_settings.port =
+        redis_port();
+
+    queue_settings.database = 14;
+    queue_settings.prefix =
+        "gungnir:queue:test:";
+
+    queue_settings.queue =
+        "default";
+
+    queue_settings.visibility_timeout =
+        std::chrono::milliseconds{
+            120
+        };
+
+    queue::RedisDriver queue{
+        queue_settings
+    };
+
+    assert(queue.ping());
+
+    queue.flush();
+
+    queue.push({
+        "job-1",
+        "mail.send",
+        std::string{
+            "a\0b",
+            3
+        },
+        0,
+        3
+    });
+
+    assert(queue.pending() == 1);
+    assert(queue.reserved() == 0);
+
+    auto first_lease =
+        queue.pop();
+
+    assert(first_lease);
+    assert(
+        first_lease->id ==
+        "job-1"
+    );
+
+    assert(
+        first_lease->payload ==
+        std::string{
+            "a\0b",
+            3
+        }
+    );
+
+    assert(
+        !first_lease
+            ->reservation
+            .empty()
+    );
+
+    const auto stale =
+        *first_lease;
+
+    assert(queue.pending() == 0);
+    assert(queue.reserved() == 1);
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            180
+        }
+    );
+
+    auto recovered =
+        queue.pop();
+
+    assert(recovered);
+
+    assert(
+        recovered->id ==
+        "job-1"
+    );
+
+    assert(
+        recovered->reservation !=
+        stale.reservation
+    );
+
+    queue.acknowledge(
+        stale
+    );
+
+    assert(queue.reserved() == 1);
+
+    queue.acknowledge(
+        *recovered
+    );
+
+    assert(queue.pending() == 0);
+    assert(queue.reserved() == 0);
+
+    bool duplicate_rejected = false;
+
+    queue.push({
+        "job-2",
+        "retry",
+        "payload",
+        0,
+        2
+    });
+
+    try {
+        queue.push({
+            "job-2",
+            "retry",
+            "other",
+            0,
+            2
+        });
+    } catch (
+        const std::logic_error&
+    ) {
+        duplicate_rejected = true;
+    }
+
+    assert(duplicate_rejected);
+
+    queue::Worker worker{
+        queue
+    };
+
+    worker.handle(
+        "retry",
+        [](
+            std::string_view
+        ) {
+            throw std::runtime_error{
+                "failure"
+            };
+        }
+    );
+
+    assert(worker.run_one());
+    assert(queue.pending() == 1);
+    assert(queue.reserved() == 0);
+    assert(queue.failed() == 0);
+
+    assert(worker.run_one());
+    assert(queue.pending() == 0);
+    assert(queue.reserved() == 0);
+    assert(queue.failed() == 1);
+
+    queue.flush();
+
+    assert(queue.pending() == 0);
+    assert(queue.reserved() == 0);
+    assert(queue.failed() == 0);
 
     return 0;
 }
