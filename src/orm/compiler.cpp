@@ -37,7 +37,13 @@ String quote_path(database::Backend backend, const String& value) {
             result += ".";
         }
 
-        result += quote_segment(backend, segment);
+        result +=
+            segment == "*"
+                ? "*"
+                : quote_segment(
+                    backend,
+                    segment
+                );
 
         if (dot == String::npos) {
             break;
