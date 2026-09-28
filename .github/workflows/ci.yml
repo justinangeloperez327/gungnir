@@ -511,3 +511,82 @@ jobs:
 
       - name: Run Redis package consumer
         run: ./build-redis-consumer/gungnir-redis-package-consumer
+
+
+  smtp:
+    name: SMTP mail adapter
+    runs-on: ubuntu-latest
+    services:
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports:
+          - 1025:1025
+          - 8025:8025
+
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-smtp-install
+      GUNGNIR_SMTP_HOST: 127.0.0.1
+      GUNGNIR_SMTP_PORT: "1025"
+      GUNGNIR_MAILPIT_HOST: 127.0.0.1
+      GUNGNIR_MAILPIT_PORT: "8025"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install libcurl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Wait for Mailpit
+        run: |
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8025/readyz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Mailpit did not become ready"
+          exit 1
+
+      - name: Configure SMTP adapter
+        run: >
+          cmake -S . -B build-smtp
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_SMTP=ON
+          -DGUNGNIR_SMTP_INTEGRATION_TESTS=ON
+
+      - name: Build SMTP adapter
+        run: >
+          cmake --build build-smtp
+          --target
+          gungnir
+          gungnir-smtp
+          gungnir_smtp_integration_test
+          --parallel
+
+      - name: Test SMTP adapter
+        run: >
+          ctest --test-dir build-smtp
+          -R "^gungnir.smtp$"
+          --output-on-failure
+
+      - name: Install SMTP-enabled package
+        run: cmake --install build-smtp
+
+      - name: Configure SMTP package consumer
+        run: >
+          cmake
+          -S tests/smtp-package-consumer
+          -B build-smtp-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+
+      - name: Build SMTP package consumer
+        run: cmake --build build-smtp-consumer --parallel
+
+      - name: Run SMTP package consumer
+        run: ./build-smtp-consumer/gungnir-smtp-package-consumer
