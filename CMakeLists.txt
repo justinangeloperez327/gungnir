@@ -61,6 +61,17 @@ option(
     OFF
 )
 
+option(
+    GUNGNIR_WITH_SMTP
+    "Build the libcurl SMTP mail adapter"
+    OFF
+)
+option(
+    GUNGNIR_SMTP_INTEGRATION_TESTS
+    "Build live SMTP integration tests"
+    OFF
+)
+
 if(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
     NOT GUNGNIR_WITH_POSTGRESQL
@@ -111,6 +122,16 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_SMTP_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_SMTP
+)
+    message(
+        FATAL_ERROR
+        "SMTP integration tests require GUNGNIR_WITH_SMTP=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
@@ -131,6 +152,10 @@ endif()
 
 if(GUNGNIR_WITH_REDIS)
     find_package(Hiredis REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_SMTP)
+    find_package(CURL 7.56 REQUIRED)
 endif()
 
 add_library(gungnir
@@ -491,6 +516,47 @@ if(GUNGNIR_WITH_REDIS)
     )
 endif()
 
+if(GUNGNIR_WITH_SMTP)
+    add_library(
+        gungnir-smtp
+        src/mail/smtp_transport.cpp
+    )
+
+    add_library(
+        gungnir::smtp
+        ALIAS
+        gungnir-smtp
+    )
+
+    target_compile_features(
+        gungnir-smtp
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-smtp
+        PUBLIC
+            gungnir::gungnir
+            CURL::libcurl
+    )
+
+    target_include_directories(
+        gungnir-smtp
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-smtp
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME smtp
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
@@ -536,6 +602,15 @@ if(MSVC)
     if(GUNGNIR_WITH_REDIS)
         target_compile_options(
             gungnir-redis
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
+
+    if(GUNGNIR_WITH_SMTP)
+        target_compile_options(
+            gungnir-smtp
             PRIVATE
                 /W4
                 /permissive-
@@ -598,6 +673,18 @@ else()
     if(GUNGNIR_WITH_REDIS)
         target_compile_options(
             gungnir-redis
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+
+    if(GUNGNIR_WITH_SMTP)
+        target_compile_options(
+            gungnir-smtp
             PRIVATE
                 -Wall
                 -Wextra
@@ -1179,6 +1266,34 @@ if(GUNGNIR_BUILD_TESTS)
     endif()
 
     if(
+        GUNGNIR_WITH_SMTP AND
+        GUNGNIR_SMTP_INTEGRATION_TESTS
+    )
+        add_executable(
+            gungnir_smtp_integration_test
+            tests/smtp_integration.cpp
+        )
+
+        target_link_libraries(
+            gungnir_smtp_integration_test
+            PRIVATE
+                gungnir::smtp
+        )
+
+        target_compile_features(
+            gungnir_smtp_integration_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.smtp
+            COMMAND
+                gungnir_smtp_integration_test
+        )
+    endif()
+
+    if(
         GUNGNIR_WITH_MONGODB AND
         GUNGNIR_MONGODB_INTEGRATION_TESTS
     )
@@ -1316,6 +1431,23 @@ if(GUNGNIR_WITH_MONGODB)
     install(
         TARGETS
             gungnir-mongodb
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
+
+if(GUNGNIR_WITH_SMTP)
+    install(
+        TARGETS
+            gungnir-smtp
         EXPORT
             GungnirTargets
         ARCHIVE DESTINATION
