@@ -72,6 +72,17 @@ option(
     OFF
 )
 
+option(
+    GUNGNIR_WITH_OTLP
+    "Build the libcurl OTLP/HTTP observability exporter"
+    OFF
+)
+option(
+    GUNGNIR_OTLP_INTEGRATION_TESTS
+    "Build live OTLP HTTP integration tests"
+    OFF
+)
+
 if(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
     NOT GUNGNIR_WITH_POSTGRESQL
@@ -132,6 +143,16 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_OTLP_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_OTLP
+)
+    message(
+        FATAL_ERROR
+        "OTLP integration tests require GUNGNIR_WITH_OTLP=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
@@ -154,7 +175,10 @@ if(GUNGNIR_WITH_REDIS)
     find_package(Hiredis REQUIRED)
 endif()
 
-if(GUNGNIR_WITH_SMTP)
+if(
+    GUNGNIR_WITH_SMTP OR
+    GUNGNIR_WITH_OTLP
+)
     find_package(CURL 7.56 REQUIRED)
 endif()
 
@@ -558,6 +582,47 @@ if(GUNGNIR_WITH_SMTP)
     )
 endif()
 
+if(GUNGNIR_WITH_OTLP)
+    add_library(
+        gungnir-otlp
+        src/observability/otlp_http_exporter.cpp
+    )
+
+    add_library(
+        gungnir::otlp
+        ALIAS
+        gungnir-otlp
+    )
+
+    target_compile_features(
+        gungnir-otlp
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-otlp
+        PUBLIC
+            gungnir::gungnir
+            CURL::libcurl
+    )
+
+    target_include_directories(
+        gungnir-otlp
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-otlp
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME otlp
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
@@ -612,6 +677,15 @@ if(MSVC)
     if(GUNGNIR_WITH_SMTP)
         target_compile_options(
             gungnir-smtp
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
+
+    if(GUNGNIR_WITH_OTLP)
+        target_compile_options(
+            gungnir-otlp
             PRIVATE
                 /W4
                 /permissive-
@@ -686,6 +760,18 @@ else()
     if(GUNGNIR_WITH_SMTP)
         target_compile_options(
             gungnir-smtp
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+
+    if(GUNGNIR_WITH_OTLP)
+        target_compile_options(
+            gungnir-otlp
             PRIVATE
                 -Wall
                 -Wextra
@@ -1313,6 +1399,31 @@ if(GUNGNIR_BUILD_TESTS)
         )
     endif()
 
+    if(GUNGNIR_WITH_OTLP)
+        add_executable(
+            gungnir_otlp_test
+            tests/otlp.cpp
+        )
+
+        target_link_libraries(
+            gungnir_otlp_test
+            PRIVATE
+                gungnir::otlp
+        )
+
+        target_compile_features(
+            gungnir_otlp_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.otlp
+            COMMAND
+                gungnir_otlp_test
+        )
+    endif()
+
     if(
         GUNGNIR_WITH_MONGODB AND
         GUNGNIR_MONGODB_INTEGRATION_TESTS
@@ -1468,6 +1579,23 @@ if(GUNGNIR_WITH_SMTP)
     install(
         TARGETS
             gungnir-smtp
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
+
+if(GUNGNIR_WITH_OTLP)
+    install(
+        TARGETS
+            gungnir-otlp
         EXPORT
             GungnirTargets
         ARCHIVE DESTINATION
