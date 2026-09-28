@@ -2878,38 +2878,23 @@ public:
             char buffer[8192];
 
             while (true) {
-#ifdef _WIN32
                 const auto received =
-                    ::recv(
-                        connection.socket,
+                    receive_bytes(
+                        connection,
                         buffer,
-                        static_cast<int>(
-                            sizeof(buffer)
-                        ),
-                        0
+                        sizeof(buffer)
                     );
-#else
-                const auto received =
-                    ::recv(
-                        connection.socket,
-                        buffer,
-                        sizeof(buffer),
-                        0
-                    );
-#endif
 
-                if (received > 0) {
-                    const auto count =
-                        static_cast<std::size_t>(
-                            received
-                        );
-
+                if (
+                    received.state ==
+                    IoState::progress
+                ) {
                     const auto new_request =
                         connection.input.empty();
 
                     connection.input.append(
                         buffer,
-                        count
+                        received.count
                     );
 
                     const auto activity =
@@ -2935,24 +2920,9 @@ public:
                     continue;
                 }
 
-                if (received == 0) {
-                    close_connection(
-                        connection
-                    );
-                    return;
-                }
-
-                const auto error =
-                    socket_error();
-
                 if (
-                    interrupted(error)
-                ) {
-                    continue;
-                }
-
-                if (
-                    would_block(error)
+                    received.state ==
+                    IoState::would_block
                 ) {
                     break;
                 }
@@ -2960,6 +2930,7 @@ public:
                 close_connection(
                     connection
                 );
+
                 return;
             }
 
@@ -3173,48 +3144,20 @@ public:
                     connection.output.size() -
                     connection.output_offset;
 
-#ifdef _WIN32
-                const auto chunk =
-                    std::min<std::size_t>(
-                        remaining,
-                        static_cast<std::size_t>(
-                            std::numeric_limits<int>::
-                                max()
-                        )
-                    );
-
                 const auto written =
-                    ::send(
-                        connection.socket,
+                    send_bytes(
+                        connection,
                         connection.output.data() +
                             connection.output_offset,
-                        static_cast<int>(
-                            chunk
-                        ),
-                        0
+                        remaining
                     );
-#else
-                int flags = 0;
 
-#ifdef MSG_NOSIGNAL
-                flags = MSG_NOSIGNAL;
-#endif
-
-                const auto written =
-                    ::send(
-                        connection.socket,
-                        connection.output.data() +
-                            connection.output_offset,
-                        remaining,
-                        flags
-                    );
-#endif
-
-                if (written > 0) {
+                if (
+                    written.state ==
+                    IoState::progress
+                ) {
                     connection.output_offset +=
-                        static_cast<std::size_t>(
-                            written
-                        );
+                        written.count;
 
                     connection.last_activity =
                         Clock::now();
@@ -3222,24 +3165,9 @@ public:
                     continue;
                 }
 
-                if (written == 0) {
-                    close_connection(
-                        connection
-                    );
-                    return;
-                }
-
-                const auto error =
-                    socket_error();
-
                 if (
-                    interrupted(error)
-                ) {
-                    continue;
-                }
-
-                if (
-                    would_block(error)
+                    written.state ==
+                    IoState::would_block
                 ) {
                     return;
                 }
@@ -3247,6 +3175,7 @@ public:
                 close_connection(
                     connection
                 );
+
                 return;
             }
 
