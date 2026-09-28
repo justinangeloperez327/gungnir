@@ -690,6 +690,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-tls-install
+      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-tls-consumer.cpp
 
     steps:
       - name: Checkout
@@ -705,7 +706,7 @@ jobs:
           cmake -S . -B build-tls
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
           -DGUNGNIR_WITH_TLS=ON
 
       - name: Build TLS server and installable targets
@@ -715,6 +716,7 @@ jobs:
           gungnir
           gungnir-orm
           gungnir-language
+          gungnirc
           gungnir_tls_server_test
           --parallel
 
@@ -727,6 +729,12 @@ jobs:
       - name: Install TLS-enabled package
         run: cmake --install build-tls
 
+      - name: Transpile TLS package consumer
+        run: >
+          "$GUNGNIR_PREFIX/bin/gungnirc"
+          tests/package-consumer/app.gnr
+          -o "$GUNGNIR_GENERATED_SOURCE"
+
       - name: Configure installed package consumer
         run: >
           cmake
@@ -734,6 +742,7 @@ jobs:
           -B build-tls-consumer
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
 
       - name: Build installed package consumer
         run: cmake --build build-tls-consumer --parallel
