@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <charconv>
 #include <chrono>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <thread>
 
+#include <gungnir/core/timer.hpp>
 #include <gungnir/http/server.hpp>
 #include <gungnir/routing/router.hpp>
 
@@ -383,12 +385,55 @@ int main() {
 
     routing::Router router;
 
+    std::atomic_bool slow_started{false};
+    std::atomic_bool slow_cancelled{false};
+
     router.get(
         "/ping",
         [] {
             return http::Response::text(
                 "pong"
             );
+        }
+    );
+
+    router.get(
+        "/slow",
+        [&](
+            http::Request& request
+        ) -> Task<http::Response> {
+            slow_started.store(
+                true
+            );
+
+            for (
+                int attempt = 0;
+                attempt < 20;
+                ++attempt
+            ) {
+                if (request.cancelled()) {
+                    slow_cancelled.store(
+                        true
+                    );
+
+                    co_return
+                        http::Response::text(
+                            "cancelled",
+                            503
+                        );
+                }
+
+                co_await sleep_for(
+                    std::chrono::milliseconds{
+                        10
+                    }
+                );
+            }
+
+            co_return
+                http::Response::text(
+                    "slow"
+                );
         }
     );
 
@@ -532,7 +577,65 @@ int main() {
         );
     }
 
-    server.stop();
+    {
+        SocketGuard client{
+            connect_local(port)
+        };
+
+        send_all(
+            client.get(),
+            "GET /slow HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Connection: keep-alive\r\n"
+            "\r\n"
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 200 &&
+                !slow_started.load();
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds{5}
+            );
+        }
+
+        assert(
+            slow_started.load()
+        );
+
+        server.stop();
+
+        const auto response =
+            receive_response(
+                client.get()
+            );
+
+        assert(
+            response.find(
+                "HTTP/1.1 200 OK\r\n"
+            ) == 0
+        );
+
+        assert(
+            response.find(
+                "connection: close\r\n"
+            ) !=
+            std::string::npos
+        );
+
+        assert(
+            response.ends_with(
+                "\r\n\r\nslow"
+            )
+        );
+
+        assert(
+            !slow_cancelled.load()
+        );
+    }
+
     server_thread.join();
 
     if (server_error) {
