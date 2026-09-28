@@ -410,7 +410,7 @@ Application::views() noexcept {
 
 const view::Engine&
 Application::views() const noexcept {
-    return impl_->views;
+    return *impl_->views;
 }
 
 config::Repository&
