@@ -5,17 +5,19 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <cstdio>
 #include <cstdint>
+#include <cwctype>
 #include <limits>
+#include <memory>
 #include <system_error>
-#include <thread>
 #include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
 #else
+#include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -99,9 +101,8 @@ std::uint64_t process_id()
 }
 
 [[nodiscard]]
-std::filesystem::path
-temporary_path(
-    const std::filesystem::path& target
+std::string temporary_name(
+    std::string_view filename
 ) {
     const auto sequence =
         temporary_sequence.fetch_add(
@@ -109,9 +110,9 @@ temporary_path(
             std::memory_order_relaxed
         );
 
-    auto name =
+    return
         "." +
-        target.filename().string() +
+        std::string{filename} +
         ".gungnir-" +
         std::to_string(
             process_id()
@@ -119,10 +120,6 @@ temporary_path(
         "-" +
         std::to_string(sequence) +
         ".tmp";
-
-    return
-        target.parent_path() /
-        std::move(name);
 }
 
 #ifdef _WIN32
@@ -213,18 +210,219 @@ std::string windows_error(
 }
 
 [[nodiscard]]
-NativeFile create_exclusive(
-    const std::filesystem::path& path
+std::uint64_t file_index(
+    const BY_HANDLE_FILE_INFORMATION& info
+) noexcept {
+    return
+        (
+            static_cast<std::uint64_t>(
+                info.nFileIndexHigh
+            ) <<
+            32U
+        ) |
+        static_cast<std::uint64_t>(
+            info.nFileIndexLow
+        );
+}
+
+[[nodiscard]]
+BY_HANDLE_FILE_INFORMATION
+file_information(
+    HANDLE handle,
+    std::string_view operation
+) {
+    BY_HANDLE_FILE_INFORMATION info{};
+
+    if (
+        !GetFileInformationByHandle(
+            handle,
+            &info
+        )
+    ) {
+        throw Error{
+            windows_error(
+                operation,
+                GetLastError()
+            )
+        };
+    }
+
+    return info;
+}
+
+[[nodiscard]]
+std::wstring final_path(
+    HANDLE handle
+) {
+    std::vector<wchar_t>
+        buffer(1024);
+
+    while (true) {
+        const auto length =
+            GetFinalPathNameByHandleW(
+                handle,
+                buffer.data(),
+                static_cast<DWORD>(
+                    buffer.size()
+                ),
+                FILE_NAME_NORMALIZED |
+                    VOLUME_NAME_DOS
+            );
+
+        if (length == 0) {
+            throw Error{
+                windows_error(
+                    "Unable to resolve storage handle path",
+                    GetLastError()
+                )
+            };
+        }
+
+        if (
+            length <
+            buffer.size()
+        ) {
+            return std::wstring{
+                buffer.data(),
+                length
+            };
+        }
+
+        buffer.resize(
+            static_cast<std::size_t>(
+                length
+            ) +
+            1
+        );
+    }
+}
+
+[[nodiscard]]
+std::wstring normalized_native_path(
+    std::wstring value
+) {
+    constexpr std::wstring_view
+        unc_prefix{
+            L"\\\\?\\UNC\\"
+        };
+
+    constexpr std::wstring_view
+        device_prefix{
+            L"\\\\?\\"
+        };
+
+    if (
+        value.starts_with(
+            unc_prefix
+        )
+    ) {
+        value =
+            L"\\" +
+            value.substr(
+                unc_prefix.size()
+            );
+    } else if (
+        value.starts_with(
+            device_prefix
+        )
+    ) {
+        value.erase(
+            0,
+            device_prefix.size()
+        );
+    }
+
+    std::replace(
+        value.begin(),
+        value.end(),
+        L'/',
+        L'\\'
+    );
+
+    while (
+        value.size() > 3 &&
+        value.back() == L'\\'
+    ) {
+        value.pop_back();
+    }
+
+    for (auto& character : value) {
+        character =
+            static_cast<wchar_t>(
+                std::towlower(
+                    character
+                )
+            );
+    }
+
+    return value;
+}
+
+[[nodiscard]]
+bool native_path_within(
+    const std::wstring& root,
+    const std::wstring& candidate
+) {
+    if (
+        candidate.size() <
+        root.size() ||
+        candidate.compare(
+            0,
+            root.size(),
+            root
+        ) != 0
+    ) {
+        return false;
+    }
+
+    return
+        candidate.size() ==
+            root.size() ||
+        candidate[root.size()] ==
+            L'\\';
+}
+
+void reject_reparse(
+    HANDLE handle,
+    std::string_view path
+) {
+    const auto info =
+        file_information(
+            handle,
+            "Unable to inspect storage handle"
+        );
+
+    if (
+        (
+            info.dwFileAttributes &
+            FILE_ATTRIBUTE_REPARSE_POINT
+        ) != 0
+    ) {
+        throw InvalidPath{
+            std::string{path}
+        };
+    }
+}
+
+[[nodiscard]]
+NativeFile open_root(
+    const std::filesystem::path& root,
+    std::uint64_t identity_a,
+    std::uint64_t identity_b
 ) {
     const auto handle =
         CreateFileW(
-            path.c_str(),
-            GENERIC_WRITE,
-            0,
+            root.c_str(),
+            FILE_LIST_DIRECTORY |
+                FILE_READ_ATTRIBUTES |
+                FILE_TRAVERSE,
+            FILE_SHARE_READ |
+                FILE_SHARE_WRITE |
+                FILE_SHARE_DELETE,
             nullptr,
-            CREATE_NEW,
-            FILE_ATTRIBUTE_NORMAL |
-                FILE_ATTRIBUTE_TEMPORARY,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS |
+                FILE_FLAG_OPEN_REPARSE_POINT,
             nullptr
         );
 
@@ -234,13 +432,271 @@ NativeFile create_exclusive(
     ) {
         throw Error{
             windows_error(
-                "Unable to create temporary storage object",
+                "Unable to open storage root",
                 GetLastError()
             )
         };
     }
 
-    return NativeFile{handle};
+    NativeFile result{handle};
+
+    reject_reparse(
+        result.get(),
+        root.generic_string()
+    );
+
+    const auto info =
+        file_information(
+            result.get(),
+            "Unable to inspect storage root"
+        );
+
+    if (
+        static_cast<std::uint64_t>(
+            info.dwVolumeSerialNumber
+        ) != identity_a ||
+        file_index(info) !=
+            identity_b
+    ) {
+        throw InvalidPath{
+            root.generic_string()
+        };
+    }
+
+    return result;
+}
+
+[[nodiscard]]
+NativeFile open_directory_checked(
+    const std::filesystem::path& path,
+    const std::wstring& root_final,
+    DWORD access =
+        FILE_LIST_DIRECTORY |
+        FILE_READ_ATTRIBUTES |
+        FILE_TRAVERSE
+) {
+    const auto handle =
+        CreateFileW(
+            path.c_str(),
+            access,
+            FILE_SHARE_READ |
+                FILE_SHARE_WRITE |
+                FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS |
+                FILE_FLAG_OPEN_REPARSE_POINT,
+            nullptr
+        );
+
+    if (
+        handle ==
+        INVALID_HANDLE_VALUE
+    ) {
+        throw Error{
+            windows_error(
+                "Unable to open storage directory",
+                GetLastError()
+            )
+        };
+    }
+
+    NativeFile result{handle};
+
+    reject_reparse(
+        result.get(),
+        path.generic_string()
+    );
+
+    const auto actual =
+        normalized_native_path(
+            final_path(
+                result.get()
+            )
+        );
+
+    if (
+        !native_path_within(
+            root_final,
+            actual
+        )
+    ) {
+        throw InvalidPath{
+            path.generic_string()
+        };
+    }
+
+    return result;
+}
+
+[[nodiscard]]
+std::optional<NativeFile>
+open_regular_checked(
+    const std::filesystem::path& path,
+    const std::wstring& root_final,
+    DWORD access
+) {
+    const auto handle =
+        CreateFileW(
+            path.c_str(),
+            access |
+                FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ |
+                FILE_SHARE_WRITE |
+                FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL |
+                FILE_FLAG_OPEN_REPARSE_POINT,
+            nullptr
+        );
+
+    if (
+        handle ==
+        INVALID_HANDLE_VALUE
+    ) {
+        const auto error =
+            GetLastError();
+
+        if (
+            error ==
+                ERROR_FILE_NOT_FOUND ||
+            error ==
+                ERROR_PATH_NOT_FOUND
+        ) {
+            return std::nullopt;
+        }
+
+        throw Error{
+            windows_error(
+                "Unable to open storage object",
+                error
+            )
+        };
+    }
+
+    NativeFile result{handle};
+
+    reject_reparse(
+        result.get(),
+        path.generic_string()
+    );
+
+    const auto actual =
+        normalized_native_path(
+            final_path(
+                result.get()
+            )
+        );
+
+    if (
+        !native_path_within(
+            root_final,
+            actual
+        )
+    ) {
+        throw InvalidPath{
+            path.generic_string()
+        };
+    }
+
+    const auto info =
+        file_information(
+            result.get(),
+            "Unable to inspect storage object"
+        );
+
+    if (
+        (
+            info.dwFileAttributes &
+            FILE_ATTRIBUTE_DIRECTORY
+        ) != 0
+    ) {
+        return std::nullopt;
+    }
+
+    return result;
+}
+
+void mark_delete(
+    HANDLE handle
+) {
+    FILE_DISPOSITION_INFO info{};
+    info.DeleteFile = TRUE;
+
+    if (
+        !SetFileInformationByHandle(
+            handle,
+            FileDispositionInfo,
+            &info,
+            sizeof(info)
+        )
+    ) {
+        throw Error{
+            windows_error(
+                "Unable to remove storage object",
+                GetLastError()
+            )
+        };
+    }
+}
+
+void rename_handle(
+    HANDLE source,
+    HANDLE destination_directory,
+    std::wstring_view destination_name,
+    bool replace
+) {
+    const auto bytes =
+        destination_name.size() *
+        sizeof(wchar_t);
+
+    std::vector<std::byte> buffer(
+        sizeof(FILE_RENAME_INFO) +
+        bytes
+    );
+
+    auto* info =
+        reinterpret_cast<
+            FILE_RENAME_INFO*
+        >(buffer.data());
+
+    info->ReplaceIfExists =
+        replace
+            ? TRUE
+            : FALSE;
+
+    info->RootDirectory =
+        destination_directory;
+
+    info->FileNameLength =
+        static_cast<DWORD>(
+            bytes
+        );
+
+    std::memcpy(
+        info->FileName,
+        destination_name.data(),
+        bytes
+    );
+
+    if (
+        !SetFileInformationByHandle(
+            source,
+            FileRenameInfo,
+            info,
+            static_cast<DWORD>(
+                buffer.size()
+            )
+        )
+    ) {
+        throw Error{
+            windows_error(
+                "Unable to move storage object",
+                GetLastError()
+            )
+        };
+    }
 }
 
 void write_all(
@@ -287,7 +743,7 @@ void write_all(
         ) {
             throw Error{
                 windows_error(
-                    "Unable to write temporary storage object",
+                    "Unable to write storage object",
                     GetLastError()
                 )
             };
@@ -301,10 +757,14 @@ void write_all(
 
     cancellation.throw_if_cancelled();
 
-    if (!FlushFileBuffers(file.get())) {
+    if (
+        !FlushFileBuffers(
+            file.get()
+        )
+    ) {
         throw Error{
             windows_error(
-                "Unable to flush temporary storage object",
+                "Unable to flush storage object",
                 GetLastError()
             )
         };
@@ -312,79 +772,12 @@ void write_all(
 }
 
 [[nodiscard]]
-std::optional<std::string>
-read_file(
-    const std::filesystem::path& path,
+std::string read_all(
+    NativeFile& file,
     const CancellationToken& cancellation
 ) {
-    const auto handle =
-        CreateFileW(
-            path.c_str(),
-            GENERIC_READ,
-            FILE_SHARE_READ |
-                FILE_SHARE_WRITE |
-                FILE_SHARE_DELETE,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL |
-                FILE_FLAG_OPEN_REPARSE_POINT,
-            nullptr
-        );
-
-    if (
-        handle ==
-        INVALID_HANDLE_VALUE
-    ) {
-        const auto error =
-            GetLastError();
-
-        if (
-            error ==
-                ERROR_FILE_NOT_FOUND ||
-            error ==
-                ERROR_PATH_NOT_FOUND
-        ) {
-            return std::nullopt;
-        }
-
-        throw Error{
-            windows_error(
-                "Unable to read storage object",
-                error
-            )
-        };
-    }
-
-    NativeFile file{handle};
-
-    BY_HANDLE_FILE_INFORMATION info{};
-
-    if (
-        !GetFileInformationByHandle(
-            file.get(),
-            &info
-        )
-    ) {
-        throw Error{
-            windows_error(
-                "Unable to inspect storage object",
-                GetLastError()
-            )
-        };
-    }
-
-    if (
-        (
-            info.dwFileAttributes &
-            FILE_ATTRIBUTE_REPARSE_POINT
-        ) != 0
-    ) {
-        throw InvalidPath{
-            path.generic_string()
-        };
-    }
-
     std::string result;
+
     std::array<char, io_buffer_size>
         buffer{};
 
@@ -427,27 +820,6 @@ read_file(
     cancellation.throw_if_cancelled();
 
     return result;
-}
-
-void replace_file(
-    const std::filesystem::path& temporary,
-    const std::filesystem::path& target
-) {
-    if (
-        !MoveFileExW(
-            temporary.c_str(),
-            target.c_str(),
-            MOVEFILE_REPLACE_EXISTING |
-                MOVEFILE_WRITE_THROUGH
-        )
-    ) {
-        throw Error{
-            windows_error(
-                "Unable to replace storage object atomically",
-                GetLastError()
-            )
-        };
-    }
 }
 
 #else
@@ -513,7 +885,9 @@ public:
     void close() noexcept {
         if (*this) {
             static_cast<void>(
-                ::close(descriptor_)
+                ::close(
+                    descriptor_
+                )
             );
 
             descriptor_ = -1;
@@ -525,8 +899,381 @@ private:
 };
 
 [[nodiscard]]
-NativeFile create_exclusive(
-    const std::filesystem::path& path
+int directory_flags() noexcept {
+    int flags =
+        O_RDONLY |
+        O_DIRECTORY;
+
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+
+    return flags;
+}
+
+[[nodiscard]]
+int file_read_flags() noexcept {
+    int flags =
+        O_RDONLY;
+
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+
+    return flags;
+}
+
+[[nodiscard]]
+NativeFile open_root(
+    const std::filesystem::path& root,
+    std::uint64_t identity_a,
+    std::uint64_t identity_b
+) {
+    const auto descriptor =
+        ::open(
+            root.c_str(),
+            directory_flags()
+        );
+
+    if (descriptor < 0) {
+        if (errno == ELOOP) {
+            throw InvalidPath{
+                root.generic_string()
+            };
+        }
+
+        throw Error{
+            "Unable to open storage root: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    NativeFile result{
+        descriptor
+    };
+
+    struct stat info{};
+
+    if (
+        ::fstat(
+            result.get(),
+            &info
+        ) != 0
+    ) {
+        throw Error{
+            "Unable to inspect storage root: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    if (
+        !S_ISDIR(
+            info.st_mode
+        ) ||
+        static_cast<std::uint64_t>(
+            info.st_dev
+        ) != identity_a ||
+        static_cast<std::uint64_t>(
+            info.st_ino
+        ) != identity_b
+    ) {
+        throw InvalidPath{
+            root.generic_string()
+        };
+    }
+
+    return result;
+}
+
+[[nodiscard]]
+std::vector<std::string>
+components(
+    const std::filesystem::path& relative
+) {
+    std::vector<std::string>
+        result;
+
+    for (const auto& part : relative) {
+        if (
+            part.empty() ||
+            part == "."
+        ) {
+            continue;
+        }
+
+        result.push_back(
+            part.string()
+        );
+    }
+
+    return result;
+}
+
+[[nodiscard]]
+std::optional<NativeFile>
+open_child_directory(
+    int parent,
+    std::string_view name,
+    bool create
+) {
+    auto open_child =
+        [&]() {
+            return ::openat(
+                parent,
+                std::string{name}.c_str(),
+                directory_flags()
+            );
+        };
+
+    auto descriptor =
+        open_child();
+
+    if (
+        descriptor < 0 &&
+        errno == ENOENT &&
+        create
+    ) {
+        if (
+            ::mkdirat(
+                parent,
+                std::string{name}.c_str(),
+                static_cast<mode_t>(
+                    0700
+                )
+            ) != 0 &&
+            errno != EEXIST
+        ) {
+            throw Error{
+                "Unable to create storage directory: " +
+                std::error_code{
+                    errno,
+                    std::generic_category()
+                }.message()
+            };
+        }
+
+        descriptor =
+            open_child();
+    }
+
+    if (descriptor < 0) {
+        if (
+            errno == ENOENT ||
+            errno == ENOTDIR
+        ) {
+            return std::nullopt;
+        }
+
+        if (errno == ELOOP) {
+            throw InvalidPath{
+                std::string{name}
+            };
+        }
+
+        throw Error{
+            "Unable to open storage directory: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    NativeFile result{
+        descriptor
+    };
+
+    struct stat info{};
+
+    if (
+        ::fstat(
+            result.get(),
+            &info
+        ) != 0
+    ) {
+        throw Error{
+            "Unable to inspect storage directory: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    if (!S_ISDIR(info.st_mode)) {
+        throw InvalidPath{
+            std::string{name}
+        };
+    }
+
+    return result;
+}
+
+struct ParentHandle {
+    NativeFile directory;
+    std::string name;
+};
+
+[[nodiscard]]
+std::optional<ParentHandle>
+open_parent(
+    NativeFile root,
+    const std::filesystem::path& relative,
+    bool create
+) {
+    auto parts =
+        components(relative);
+
+    if (parts.empty()) {
+        return std::nullopt;
+    }
+
+    auto current =
+        std::move(root);
+
+    for (
+        std::size_t index = 0;
+        index + 1 <
+            parts.size();
+        ++index
+    ) {
+        auto child =
+            open_child_directory(
+                current.get(),
+                parts[index],
+                create
+            );
+
+        if (!child) {
+            return std::nullopt;
+        }
+
+        current =
+            std::move(*child);
+    }
+
+    return ParentHandle{
+        std::move(current),
+        std::move(
+            parts.back()
+        )
+    };
+}
+
+[[nodiscard]]
+std::optional<NativeFile>
+open_directory(
+    NativeFile root,
+    const std::filesystem::path& relative,
+    bool create
+) {
+    auto parts =
+        components(relative);
+
+    auto current =
+        std::move(root);
+
+    for (const auto& part : parts) {
+        auto child =
+            open_child_directory(
+                current.get(),
+                part,
+                create
+            );
+
+        if (!child) {
+            return std::nullopt;
+        }
+
+        current =
+            std::move(*child);
+    }
+
+    return current;
+}
+
+[[nodiscard]]
+std::optional<NativeFile>
+open_regular(
+    int parent,
+    std::string_view name
+) {
+    const auto descriptor =
+        ::openat(
+            parent,
+            std::string{name}.c_str(),
+            file_read_flags()
+        );
+
+    if (descriptor < 0) {
+        if (
+            errno == ENOENT ||
+            errno == ENOTDIR
+        ) {
+            return std::nullopt;
+        }
+
+        if (errno == ELOOP) {
+            throw InvalidPath{
+                std::string{name}
+            };
+        }
+
+        throw Error{
+            "Unable to open storage object: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    NativeFile result{
+        descriptor
+    };
+
+    struct stat info{};
+
+    if (
+        ::fstat(
+            result.get(),
+            &info
+        ) != 0
+    ) {
+        throw Error{
+            "Unable to inspect storage object: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    if (!S_ISREG(info.st_mode)) {
+        return std::nullopt;
+    }
+
+    return result;
+}
+
+[[nodiscard]]
+NativeFile create_exclusive_at(
+    int parent,
+    std::string_view name
 ) {
     int flags =
         O_WRONLY |
@@ -542,10 +1289,13 @@ NativeFile create_exclusive(
 #endif
 
     const auto descriptor =
-        ::open(
-            path.c_str(),
+        ::openat(
+            parent,
+            std::string{name}.c_str(),
             flags,
-            static_cast<mode_t>(0600)
+            static_cast<mode_t>(
+                0600
+            )
         );
 
     if (descriptor < 0) {
@@ -558,7 +1308,9 @@ NativeFile create_exclusive(
         };
     }
 
-    return NativeFile{descriptor};
+    return NativeFile{
+        descriptor
+    };
 }
 
 void write_all(
@@ -589,7 +1341,7 @@ void write_all(
             }
 
             throw Error{
-                "Unable to write temporary storage object: " +
+                "Unable to write storage object: " +
                 std::error_code{
                     errno,
                     std::generic_category()
@@ -599,7 +1351,7 @@ void write_all(
 
         if (written == 0) {
             throw Error{
-                "Unable to write temporary storage object"
+                "Unable to write storage object"
             };
         }
 
@@ -621,7 +1373,7 @@ void write_all(
         }
 
         throw Error{
-            "Unable to flush temporary storage object: " +
+            "Unable to flush storage object: " +
             std::error_code{
                 errno,
                 std::generic_category()
@@ -631,54 +1383,10 @@ void write_all(
 }
 
 [[nodiscard]]
-std::optional<std::string>
-read_file(
-    const std::filesystem::path& path,
+std::string read_all(
+    NativeFile& file,
     const CancellationToken& cancellation
 ) {
-    int flags = O_RDONLY;
-
-#ifdef O_CLOEXEC
-    flags |= O_CLOEXEC;
-#endif
-
-#ifdef O_NOFOLLOW
-    flags |= O_NOFOLLOW;
-#endif
-
-    const auto descriptor =
-        ::open(
-            path.c_str(),
-            flags
-        );
-
-    if (descriptor < 0) {
-        if (
-            errno == ENOENT ||
-            errno == ENOTDIR
-        ) {
-            return std::nullopt;
-        }
-
-#ifdef ELOOP
-        if (errno == ELOOP) {
-            throw InvalidPath{
-                path.generic_string()
-            };
-        }
-#endif
-
-        throw Error{
-            "Unable to read storage object: " +
-            std::error_code{
-                errno,
-                std::generic_category()
-            }.message()
-        };
-    }
-
-    NativeFile file{descriptor};
-
     struct stat info{};
 
     if (
@@ -694,10 +1402,6 @@ read_file(
                 std::generic_category()
             }.message()
         };
-    }
-
-    if (!S_ISREG(info.st_mode)) {
-        return std::nullopt;
     }
 
     std::string result;
@@ -752,26 +1456,6 @@ read_file(
     cancellation.throw_if_cancelled();
 
     return result;
-}
-
-void replace_file(
-    const std::filesystem::path& temporary,
-    const std::filesystem::path& target
-) {
-    if (
-        ::rename(
-            temporary.c_str(),
-            target.c_str()
-        ) != 0
-    ) {
-        throw Error{
-            "Unable to replace storage object atomically: " +
-            std::error_code{
-                errno,
-                std::generic_category()
-            }.message()
-        };
-    }
 }
 
 #endif
@@ -851,6 +1535,106 @@ LocalDisk::LocalDisk(
             )
         };
     }
+
+#ifdef _WIN32
+    const auto handle =
+        CreateFileW(
+            root_.c_str(),
+            FILE_LIST_DIRECTORY |
+                FILE_READ_ATTRIBUTES |
+                FILE_TRAVERSE,
+            FILE_SHARE_READ |
+                FILE_SHARE_WRITE |
+                FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS |
+                FILE_FLAG_OPEN_REPARSE_POINT,
+            nullptr
+        );
+
+    if (
+        handle ==
+        INVALID_HANDLE_VALUE
+    ) {
+        throw Error{
+            windows_error(
+                "Unable to pin storage root",
+                GetLastError()
+            )
+        };
+    }
+
+    NativeFile pinned{
+        handle
+    };
+
+    reject_reparse(
+        pinned.get(),
+        root_.generic_string()
+    );
+
+    const auto info =
+        file_information(
+            pinned.get(),
+            "Unable to inspect storage root"
+        );
+
+    root_identity_a_ =
+        static_cast<std::uint64_t>(
+            info.dwVolumeSerialNumber
+        );
+
+    root_identity_b_ =
+        file_index(info);
+#else
+    const auto descriptor =
+        ::open(
+            root_.c_str(),
+            directory_flags()
+        );
+
+    if (descriptor < 0) {
+        throw Error{
+            "Unable to pin storage root: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    NativeFile pinned{
+        descriptor
+    };
+
+    struct stat info{};
+
+    if (
+        ::fstat(
+            pinned.get(),
+            &info
+        ) != 0
+    ) {
+        throw Error{
+            "Unable to inspect storage root: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    root_identity_a_ =
+        static_cast<std::uint64_t>(
+            info.st_dev
+        );
+
+    root_identity_b_ =
+        static_cast<std::uint64_t>(
+            info.st_ino
+        );
+#endif
 }
 
 const std::filesystem::path&
@@ -1099,37 +1883,67 @@ bool LocalDisk::exists(
 ) const {
     cancellation.throw_if_cancelled();
 
+    const auto relative =
+        validate_relative(path);
+
+    if (is_root_path(relative)) {
+        return false;
+    }
+
+#ifdef _WIN32
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
+        );
+
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
+            )
+        );
+
     const auto target =
         resolve(path);
 
-    std::error_code error;
-
-    const auto result =
-        std::filesystem::is_regular_file(
+    const auto file =
+        open_regular_checked(
             target,
-            error
+            root_final,
+            GENERIC_READ
         );
-
-    if (error) {
-        if (
-            error ==
-            std::errc::
-                no_such_file_or_directory
-        ) {
-            return false;
-        }
-
-        throw Error{
-            filesystem_error(
-                "Unable to inspect storage object",
-                error
-            )
-        };
-    }
 
     cancellation.throw_if_cancelled();
 
-    return result;
+    return file.has_value();
+#else
+    auto parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            relative,
+            false
+        );
+
+    if (!parent) {
+        return false;
+    }
+
+    const auto file =
+        open_regular(
+            parent->directory.get(),
+            parent->name
+        );
+
+    cancellation.throw_if_cancelled();
+
+    return file.has_value();
+#endif
 }
 
 std::optional<std::string>
@@ -1149,10 +1963,77 @@ LocalDisk::get(
 ) const {
     cancellation.throw_if_cancelled();
 
-    return read_file(
-        resolve(path),
+    const auto relative =
+        validate_relative(path);
+
+    if (is_root_path(relative)) {
+        return std::nullopt;
+    }
+
+#ifdef _WIN32
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
+        );
+
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
+            )
+        );
+
+    const auto target =
+        resolve(path);
+
+    auto file =
+        open_regular_checked(
+            target,
+            root_final,
+            GENERIC_READ
+        );
+
+    if (!file) {
+        return std::nullopt;
+    }
+
+    return read_all(
+        *file,
         cancellation
     );
+#else
+    auto parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            relative,
+            false
+        );
+
+    if (!parent) {
+        return std::nullopt;
+    }
+
+    auto file =
+        open_regular(
+            parent->directory.get(),
+            parent->name
+        );
+
+    if (!file) {
+        return std::nullopt;
+    }
+
+    return read_all(
+        *file,
+        cancellation
+    );
+#endif
 }
 
 void LocalDisk::atomic_put(
@@ -1163,46 +2044,225 @@ void LocalDisk::atomic_put(
 ) const {
     cancellation.throw_if_cancelled();
 
-    std::optional<
-        std::filesystem::path
-    > temporary;
+    const auto relative =
+        validate_relative(
+            original_path
+        );
+
+    if (is_root_path(relative)) {
+        throw InvalidPath{
+            std::string{
+                original_path
+            }
+        };
+    }
+
+#ifdef _WIN32
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
+        );
+
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
+            )
+        );
+
+    auto parent =
+        open_directory_checked(
+            target.parent_path(),
+            root_final,
+            FILE_LIST_DIRECTORY |
+                FILE_READ_ATTRIBUTES |
+                FILE_TRAVERSE |
+                FILE_ADD_FILE
+        );
+
+    const auto parent_final =
+        normalized_native_path(
+            final_path(
+                parent.get()
+            )
+        );
+
+    const auto temp_name =
+        temporary_name(
+            target.filename()
+                .string()
+        );
+
+    const auto temporary =
+        target.parent_path() /
+        temp_name;
+
+    const auto handle =
+        CreateFileW(
+            temporary.c_str(),
+            GENERIC_WRITE |
+                DELETE |
+                FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ |
+                FILE_SHARE_WRITE |
+                FILE_SHARE_DELETE,
+            nullptr,
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL |
+                FILE_ATTRIBUTE_TEMPORARY |
+                FILE_FLAG_OPEN_REPARSE_POINT,
+            nullptr
+        );
+
+    if (
+        handle ==
+        INVALID_HANDLE_VALUE
+    ) {
+        throw Error{
+            windows_error(
+                "Unable to create temporary storage object",
+                GetLastError()
+            )
+        };
+    }
+
+    NativeFile output{
+        handle
+    };
 
     try {
-        NativeFile output;
+        reject_reparse(
+            output.get(),
+            temporary.generic_string()
+        );
 
-        for (
-            int attempt = 0;
-            attempt < 32;
-            ++attempt
-        ) {
-            const auto candidate =
-                temporary_path(target);
+        const auto actual =
+            normalized_native_path(
+                final_path(
+                    output.get()
+                )
+            );
 
-            try {
-                output =
-                    create_exclusive(
-                        candidate
-                    );
-
-                temporary = candidate;
-                break;
-            } catch (const Error&) {
-                if (attempt == 31) {
-                    throw;
-                }
-            }
-        }
+        const auto actual_parent =
+            normalized_native_path(
+                std::filesystem::path{
+                    actual
+                }.parent_path()
+                    .wstring()
+            );
 
         if (
-            !temporary ||
-            !output
+            !native_path_within(
+                root_final,
+                actual
+            ) ||
+            actual_parent !=
+                parent_final
         ) {
-            throw Error{
-                "Unable to allocate temporary storage object: " +
-                std::string{original_path}
+            mark_delete(
+                output.get()
+            );
+
+            throw InvalidPath{
+                std::string{
+                    original_path
+                }
             };
         }
 
+        write_all(
+            output,
+            contents,
+            cancellation
+        );
+
+        cancellation.throw_if_cancelled();
+
+        rename_handle(
+            output.get(),
+            parent.get(),
+            target.filename()
+                .wstring(),
+            true
+        );
+    } catch (...) {
+        try {
+            mark_delete(
+                output.get()
+            );
+        } catch (...) {
+        }
+
+        throw;
+    }
+#else
+    auto parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            relative,
+            true
+        );
+
+    if (!parent) {
+        throw InvalidPath{
+            std::string{
+                original_path
+            }
+        };
+    }
+
+    std::optional<std::string>
+        temporary;
+
+    NativeFile output;
+
+    for (
+        int attempt = 0;
+        attempt < 32;
+        ++attempt
+    ) {
+        const auto candidate =
+            temporary_name(
+                parent->name
+            );
+
+        try {
+            output =
+                create_exclusive_at(
+                    parent->directory.get(),
+                    candidate
+                );
+
+            temporary =
+                candidate;
+
+            break;
+        } catch (const Error&) {
+            if (attempt == 31) {
+                throw;
+            }
+        }
+    }
+
+    if (
+        !temporary ||
+        !output
+    ) {
+        throw Error{
+            "Unable to allocate temporary storage object: " +
+            std::string{
+                original_path
+            }
+        };
+    }
+
+    try {
         write_all(
             output,
             contents,
@@ -1213,24 +2273,38 @@ void LocalDisk::atomic_put(
 
         cancellation.throw_if_cancelled();
 
-        replace_file(
-            *temporary,
-            target
-        );
+        if (
+            ::renameat(
+                parent->directory.get(),
+                temporary->c_str(),
+                parent->directory.get(),
+                parent->name.c_str()
+            ) != 0
+        ) {
+            throw Error{
+                "Unable to replace storage object atomically: " +
+                std::error_code{
+                    errno,
+                    std::generic_category()
+                }.message()
+            };
+        }
 
         temporary.reset();
     } catch (...) {
         if (temporary) {
-            std::error_code ignored;
-
-            std::filesystem::remove(
-                *temporary,
-                ignored
+            static_cast<void>(
+                ::unlinkat(
+                    parent->directory.get(),
+                    temporary->c_str(),
+                    0
+                )
             );
         }
 
         throw;
     }
+#endif
 }
 
 void LocalDisk::put(
@@ -1249,8 +2323,22 @@ void LocalDisk::put(
     std::string contents,
     const CancellationToken& cancellation
 ) {
+#ifdef _WIN32
     const auto target =
         prepare_destination(path);
+#else
+    const auto relative =
+        validate_relative(path);
+
+    if (is_root_path(relative)) {
+        throw InvalidPath{
+            path
+        };
+    }
+
+    const auto target =
+        root_ / relative;
+#endif
 
     atomic_put(
         target,
@@ -1284,27 +2372,112 @@ bool LocalDisk::remove(
         };
     }
 
-    const auto target =
-        resolve(path);
-
-    std::error_code error;
-
-    const auto removed =
-        std::filesystem::remove(
-            target,
-            error
+#ifdef _WIN32
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
         );
 
-    if (error) {
-        throw Error{
-            filesystem_error(
-                "Unable to remove storage object",
-                error
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
             )
+        );
+
+    auto file =
+        open_regular_checked(
+            resolve(path),
+            root_final,
+            DELETE
+        );
+
+    if (!file) {
+        return false;
+    }
+
+    cancellation.throw_if_cancelled();
+
+    mark_delete(
+        file->get()
+    );
+
+    return true;
+#else
+    auto parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            relative,
+            false
+        );
+
+    if (!parent) {
+        return false;
+    }
+
+    struct stat info{};
+
+    if (
+        ::fstatat(
+            parent->directory.get(),
+            parent->name.c_str(),
+            &info,
+            AT_SYMLINK_NOFOLLOW
+        ) != 0
+    ) {
+        if (errno == ENOENT) {
+            return false;
+        }
+
+        throw Error{
+            "Unable to inspect storage object: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
         };
     }
 
-    return removed;
+    if (S_ISLNK(info.st_mode)) {
+        throw InvalidPath{
+            std::string{path}
+        };
+    }
+
+    if (!S_ISREG(info.st_mode)) {
+        return false;
+    }
+
+    cancellation.throw_if_cancelled();
+
+    if (
+        ::unlinkat(
+            parent->directory.get(),
+            parent->name.c_str(),
+            0
+        ) != 0
+    ) {
+        if (errno == ENOENT) {
+            return false;
+        }
+
+        throw Error{
+            "Unable to remove storage object: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    return true;
+#endif
 }
 
 bool LocalDisk::move(
@@ -1328,61 +2501,173 @@ bool LocalDisk::move(
     const auto source_relative =
         validate_relative(from);
 
-    if (is_root_path(source_relative)) {
+    const auto destination_relative =
+        validate_relative(to);
+
+    if (
+        is_root_path(
+            source_relative
+        ) ||
+        is_root_path(
+            destination_relative
+        )
+    ) {
+        throw InvalidPath{
+            is_root_path(source_relative)
+                ? std::string{from}
+                : std::string{to}
+        };
+    }
+
+#ifdef _WIN32
+    const auto destination =
+        prepare_destination(to);
+
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
+        );
+
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
+            )
+        );
+
+    auto source =
+        open_regular_checked(
+            resolve(from),
+            root_final,
+            DELETE
+        );
+
+    if (!source) {
+        return false;
+    }
+
+    auto destination_parent =
+        open_directory_checked(
+            destination.parent_path(),
+            root_final,
+            FILE_LIST_DIRECTORY |
+                FILE_READ_ATTRIBUTES |
+                FILE_TRAVERSE |
+                FILE_ADD_FILE
+        );
+
+    cancellation.throw_if_cancelled();
+
+    rename_handle(
+        source->get(),
+        destination_parent.get(),
+        destination.filename()
+            .wstring(),
+        true
+    );
+
+    return true;
+#else
+    auto source_parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            source_relative,
+            false
+        );
+
+    if (!source_parent) {
+        return false;
+    }
+
+    struct stat info{};
+
+    if (
+        ::fstatat(
+            source_parent
+                ->directory
+                .get(),
+            source_parent
+                ->name
+                .c_str(),
+            &info,
+            AT_SYMLINK_NOFOLLOW
+        ) != 0
+    ) {
+        if (errno == ENOENT) {
+            return false;
+        }
+
+        throw Error{
+            "Unable to inspect storage source: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    if (S_ISLNK(info.st_mode)) {
         throw InvalidPath{
             std::string{from}
         };
     }
 
-    const auto source =
-        resolve(from);
+    if (!S_ISREG(info.st_mode)) {
+        return false;
+    }
 
-    std::error_code error;
+    auto destination_parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            destination_relative,
+            true
+        );
 
-    if (
-        !std::filesystem::is_regular_file(
-            source,
-            error
-        )
-    ) {
-        if (
-            !error ||
-            error ==
-                std::errc::
-                    no_such_file_or_directory
-        ) {
-            return false;
-        }
-
-        throw Error{
-            filesystem_error(
-                "Unable to inspect storage source",
-                error
-            )
+    if (!destination_parent) {
+        throw InvalidPath{
+            std::string{to}
         };
     }
 
     cancellation.throw_if_cancelled();
 
-    const auto destination =
-        prepare_destination(to);
-
-    std::filesystem::rename(
-        source,
-        destination,
-        error
-    );
-
-    if (error) {
+    if (
+        ::renameat(
+            source_parent
+                ->directory
+                .get(),
+            source_parent
+                ->name
+                .c_str(),
+            destination_parent
+                ->directory
+                .get(),
+            destination_parent
+                ->name
+                .c_str()
+        ) != 0
+    ) {
         throw Error{
-            filesystem_error(
-                "Unable to move storage object",
-                error
-            )
+            "Unable to move storage object: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
         };
     }
 
     return true;
+#endif
 }
 
 bool LocalDisk::copy(
@@ -1437,40 +2722,117 @@ std::uintmax_t LocalDisk::size(
 ) const {
     cancellation.throw_if_cancelled();
 
-    const auto target =
-        resolve(path);
+    const auto relative =
+        validate_relative(path);
 
-    std::error_code error;
-
-    if (
-        !std::filesystem::is_regular_file(
-            target,
-            error
-        )
-    ) {
+    if (is_root_path(relative)) {
         throw NotFound{
             std::string{path}
         };
     }
 
-    const auto result =
-        std::filesystem::file_size(
-            target,
-            error
+#ifdef _WIN32
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
         );
 
-    if (error) {
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
+            )
+        );
+
+    auto file =
+        open_regular_checked(
+            resolve(path),
+            root_final,
+            GENERIC_READ
+        );
+
+    if (!file) {
+        throw NotFound{
+            std::string{path}
+        };
+    }
+
+    LARGE_INTEGER size{};
+
+    if (
+        !GetFileSizeEx(
+            file->get(),
+            &size
+        )
+    ) {
         throw Error{
-            filesystem_error(
+            windows_error(
                 "Unable to inspect storage object size",
-                error
+                GetLastError()
             )
         };
     }
 
     cancellation.throw_if_cancelled();
 
-    return result;
+    return static_cast<
+        std::uintmax_t
+    >(size.QuadPart);
+#else
+    auto parent =
+        open_parent(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            relative,
+            false
+        );
+
+    if (!parent) {
+        throw NotFound{
+            std::string{path}
+        };
+    }
+
+    auto file =
+        open_regular(
+            parent->directory.get(),
+            parent->name
+        );
+
+    if (!file) {
+        throw NotFound{
+            std::string{path}
+        };
+    }
+
+    struct stat info{};
+
+    if (
+        ::fstat(
+            file->get(),
+            &info
+        ) != 0
+    ) {
+        throw Error{
+            "Unable to inspect storage object size: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    cancellation.throw_if_cancelled();
+
+    return static_cast<
+        std::uintmax_t
+    >(info.st_size);
+#endif
 }
 
 std::vector<std::string>
@@ -1490,93 +2852,279 @@ LocalDisk::files(
 ) const {
     cancellation.throw_if_cancelled();
 
+    const auto relative =
+        validate_relative(
+            directory
+        );
+
+    std::vector<std::string>
+        result;
+
+#ifdef _WIN32
+    const auto root_handle =
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
+        );
+
+    const auto root_final =
+        normalized_native_path(
+            final_path(
+                root_handle.get()
+            )
+        );
+
     const auto target =
         resolve(directory);
 
-    std::error_code error;
+    NativeFile folder;
 
-    if (
-        !std::filesystem::exists(
-            target,
-            error
-        )
-    ) {
-        return {};
-    }
-
-    if (
-        error ||
-        !std::filesystem::is_directory(
-            target,
-            error
-        )
-    ) {
-        if (error) {
-            throw Error{
-                filesystem_error(
-                    "Unable to inspect storage directory",
-                    error
-                )
-            };
-        }
-
-        return {};
-    }
-
-    std::vector<std::string> result;
-
-    std::filesystem::directory_iterator
-        iterator{
-            target,
-            std::filesystem::
-                directory_options::
-                    skip_permission_denied,
-            error
-        };
-
-    if (error) {
-        throw Error{
-            filesystem_error(
-                "Unable to enumerate storage directory",
-                error
-            )
-        };
-    }
-
-    for (
-        const auto& entry :
-        iterator
-    ) {
-        cancellation.throw_if_cancelled();
-
-        const auto status =
-            entry.symlink_status(
-                error
+    try {
+        folder =
+            open_directory_checked(
+                target,
+                root_final
             );
-
-        if (error) {
-            throw Error{
-                filesystem_error(
-                    "Unable to inspect storage directory entry",
-                    error
-                )
-            };
-        }
+    } catch (const Error&) {
+        std::error_code error;
 
         if (
-            std::filesystem::
-                is_regular_file(
-                    status
-                )
+            !std::filesystem::exists(
+                target,
+                error
+            )
         ) {
-            result.push_back(
-                std::filesystem::relative(
-                    entry.path(),
-                    root_
-                ).generic_string()
-            );
+            return {};
+        }
+
+        throw;
+    }
+
+    std::array<std::byte, 64 * 1024>
+        buffer{};
+
+    while (true) {
+        if (
+            !GetFileInformationByHandleEx(
+                folder.get(),
+                FileIdBothDirectoryInfo,
+                buffer.data(),
+                static_cast<DWORD>(
+                    buffer.size()
+                )
+            )
+        ) {
+            const auto error =
+                GetLastError();
+
+            if (
+                error ==
+                ERROR_NO_MORE_FILES
+            ) {
+                break;
+            }
+
+            throw Error{
+                windows_error(
+                    "Unable to enumerate storage directory",
+                    error
+                )
+            };
+        }
+
+        auto* entry =
+            reinterpret_cast<
+                FILE_ID_BOTH_DIR_INFO*
+            >(buffer.data());
+
+        while (entry != nullptr) {
+            cancellation.throw_if_cancelled();
+
+            const std::wstring name{
+                entry->FileName,
+                entry->FileNameLength /
+                    sizeof(wchar_t)
+            };
+
+            if (
+                name != L"." &&
+                name != L".." &&
+                (
+                    entry->FileAttributes &
+                    (
+                        FILE_ATTRIBUTE_DIRECTORY |
+                        FILE_ATTRIBUTE_REPARSE_POINT
+                    )
+                ) == 0
+            ) {
+                auto output =
+                    is_root_path(relative)
+                        ? std::filesystem::path{
+                            name
+                          }
+                        : relative /
+                            std::filesystem::path{
+                                name
+                            };
+
+                result.push_back(
+                    output.generic_string()
+                );
+            }
+
+            if (
+                entry->NextEntryOffset ==
+                0
+            ) {
+                break;
+            }
+
+            entry =
+                reinterpret_cast<
+                    FILE_ID_BOTH_DIR_INFO*
+                >(
+                    reinterpret_cast<
+                        std::byte*
+                    >(entry) +
+                    entry->NextEntryOffset
+                );
         }
     }
+#else
+    auto folder =
+        open_directory(
+            open_root(
+                root_,
+                root_identity_a_,
+                root_identity_b_
+            ),
+            relative,
+            false
+        );
+
+    if (!folder) {
+        return {};
+    }
+
+    const auto duplicate =
+        ::dup(
+            folder->get()
+        );
+
+    if (duplicate < 0) {
+        throw Error{
+            "Unable to enumerate storage directory: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    std::unique_ptr<
+        DIR,
+        decltype(&closedir)
+    > stream{
+        ::fdopendir(
+            duplicate
+        ),
+        &closedir
+    };
+
+    if (!stream) {
+        static_cast<void>(
+            ::close(
+                duplicate
+            )
+        );
+
+        throw Error{
+            "Unable to enumerate storage directory: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+
+    while (true) {
+        cancellation.throw_if_cancelled();
+
+        errno = 0;
+
+        auto* entry =
+            ::readdir(
+                stream.get()
+            );
+
+        if (entry == nullptr) {
+            if (errno != 0) {
+                throw Error{
+                    "Unable to enumerate storage directory: " +
+                    std::error_code{
+                        errno,
+                        std::generic_category()
+                    }.message()
+                };
+            }
+
+            break;
+        }
+
+        const std::string_view name{
+            entry->d_name
+        };
+
+        if (
+            name == "." ||
+            name == ".."
+        ) {
+            continue;
+        }
+
+        struct stat info{};
+
+        if (
+            ::fstatat(
+                folder->get(),
+                entry->d_name,
+                &info,
+                AT_SYMLINK_NOFOLLOW
+            ) != 0
+        ) {
+            if (errno == ENOENT) {
+                continue;
+            }
+
+            throw Error{
+                "Unable to inspect storage directory entry: " +
+                std::error_code{
+                    errno,
+                    std::generic_category()
+                }.message()
+            };
+        }
+
+        if (!S_ISREG(info.st_mode)) {
+            continue;
+        }
+
+        auto output =
+            is_root_path(relative)
+                ? std::filesystem::path{
+                    name
+                  }
+                : relative /
+                    std::filesystem::path{
+                        name
+                    };
+
+        result.push_back(
+            output.generic_string()
+        );
+    }
+#endif
 
     std::sort(
         result.begin(),
