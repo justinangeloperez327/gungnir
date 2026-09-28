@@ -11,6 +11,7 @@
 
 #include <gungnir/scheduler/clock.hpp>
 #include <gungnir/scheduler/cron.hpp>
+#include <gungnir/scheduler/lock.hpp>
 #include <gungnir/scheduler/task.hpp>
 #include <gungnir/scheduler/timezone.hpp>
 
@@ -37,6 +38,19 @@ public:
     const TimeZone& timezone()
         const noexcept {
         return *timezone_;
+    }
+
+    Scheduler& locks(
+        LockStore& locks
+    ) noexcept {
+        locks_ = &locks;
+        return *this;
+    }
+
+    [[nodiscard]]
+    LockStore* lock_store()
+        const noexcept {
+        return locks_;
     }
 
     Task& every(
@@ -139,8 +153,14 @@ public:
                 continue;
             }
 
-            task.run(now);
-            ++count;
+            if (
+                task.execute(
+                    now,
+                    locks_
+                )
+            ) {
+                ++count;
+            }
         }
 
         return count;
@@ -196,6 +216,7 @@ private:
 
     Clock* clock_;
     const TimeZone* timezone_;
+    LockStore* locks_{nullptr};
     std::unordered_set<
         std::string
     > names_;
