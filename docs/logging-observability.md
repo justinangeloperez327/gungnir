@@ -35,3 +35,18 @@ The core executor captures the active trace context when work is posted and reac
 ## Failure semantics
 
 Sink exceptions currently propagate to the caller. Applications that require best-effort logging should implement that behavior in a sink or wrapper rather than having the framework silently discard logging failures.
+
+
+## Framework tracing
+
+When a global tracer with a sink is configured, Gungnir instruments the major runtime boundaries automatically:
+
+- HTTP dispatch creates `http.server.request` spans with method, normalized request path and response status.
+- Database execution creates `database.query` spans with database system, connection name and operation verb. Bind values and full statements are intentionally not recorded by default.
+- Queue workers create `queue.job` spans with job ID, logical job name and attempt count.
+- Scheduler actions create `scheduler.task` spans with task name, schedule type and timezone.
+- Mail delivery creates `mail.send` spans with operation type and recipient count; addresses, subject and body content are not recorded.
+
+Queue envelopes carry trace ID and parent span ID metadata separately from the application payload. Memory and Redis drivers capture that metadata at enqueue time, and workers continue the originating trace even when processing occurs later or in another process. Redis decoding remains compatible with queue envelopes persisted before trace metadata existed.
+
+HTTP route coroutine context is suspended and restored across Gungnir executor yields and timer sleeps. Framework-owned async boundaries must preserve trace context; custom application awaiters that move execution to another thread should capture `current_context()` and reactivate it when resuming.
