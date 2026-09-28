@@ -430,7 +430,9 @@ std::size_t attach(
     return attach(
         parent,
         relation,
-        {
+        std::vector<
+            model::AttributeValue
+        >{
             std::move(
                 related_key
             )
@@ -544,7 +546,9 @@ std::size_t detach(
     return detach(
         parent,
         relation,
-        {
+        std::vector<
+            model::AttributeValue
+        >{
             std::move(
                 related_key
             )
