@@ -142,6 +142,7 @@ add_library(gungnir
     src/routing/route.cpp
     src/routing/router.cpp
     src/security/security.cpp
+    src/session/middleware.cpp
     src/storage/local_disk.cpp
     src/validation/validator.cpp
     src/view/engine.cpp
