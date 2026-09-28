@@ -42,7 +42,7 @@ Gungnir can terminate HTTPS directly when built with `GUNGNIR_WITH_TLS=ON`. TLS 
 
 Configure HTTPS with `Application::tls(http::TlsOptions{...})` or by setting `RuntimeOptions::tls`. A certificate chain and private key are required. Encrypted connections use the same nonblocking reactor as plaintext HTTP: TLS handshakes, reads, writes, request limits, timeouts, keep-alive behavior, graceful process draining and connection metrics all share the existing server lifecycle.
 
-The server requires TLS 1.2 or newer, disables TLS-level compression, supports password-protected PEM private keys, and can optionally require a client certificate backed by a configured CA bundle. ALPN is explicit; Group 48A accepts `http/1.1` only rather than advertising HTTP/2 before the HTTP/2 transport is implemented.
+The server requires TLS 1.2 or newer, disables TLS-level compression, supports password-protected PEM private keys, and can optionally require a client certificate backed by a configured CA bundle. ALPN is explicit. When Gungnir is built with `GUNGNIR_WITH_HTTP2=ON` and `Application::http2(...)` is configured, the TLS endpoint advertises `h2` ahead of `http/1.1`; otherwise it advertises only enabled protocols.
 
 Normal HTTP connection closure attempts a nonblocking TLS `close_notify`. Error, cancellation and timeout paths close immediately so a faulty peer cannot extend the framework's shutdown deadline.
 
@@ -58,7 +58,9 @@ The server owns response framing. User-provided `Content-Length`, `Transfer-Enco
 
 ## Current runtime limitation
 
-The core server provides production HTTPS/TLS termination for HTTP/1.1, coroutine response streaming with bounded write-side backpressure, and WebSocket upgrade/data-plane handling on the same nonblocking reactor. WebSockets enforce client masking, control-frame rules, fragmentation, UTF-8 text validity, bounded message sizes, coroutine message-handler deadlines, ping/pong, close handshakes and coordinated shutdown. HTTP/2 and incoming request-body streaming remain incomplete; ordinary request bodies are still bounded and buffered according to `max_request_bytes`. Deployments should validate connection limits and throughput under representative load.
+The core server provides production HTTPS/TLS termination, HTTP/1.1 coroutine response streaming with bounded write-side backpressure, WebSocket upgrade/data-plane handling, and optional HTTP/2 over TLS/ALPN using nghttp2 for framing and HPACK. HTTP/2 request streams are multiplexed through the same router, middleware, IoC, session/auth, tracing and cancellation path as HTTP/1.1. `Http2Options` bounds concurrent streams and header-list size; the existing request-size and request-timeout limits remain enforced per stream. Graceful shutdown sends GOAWAY, refuses new streams, lets already-dispatched streams finish until the process deadline, then cancels remaining request tokens.
+
+HTTP/2 currently supports buffered request bodies and ordinary buffered `Response` bodies. `Response::stream(...)` and WebSocket upgrades on an HTTP/2 stream return 501 rather than silently falling back; HTTP/2 streaming DATA providers and RFC 8441 extended CONNECT are explicit follow-up work. Incoming request-body streaming is also not yet implemented. Deployments should validate connection limits, stream concurrency and throughput under representative load.
 
 ## Deployment responsibility
 

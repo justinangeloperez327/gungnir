@@ -193,6 +193,10 @@ public:
         http::TlsOptions options
     );
 
+    Application& http2(
+        http::Http2Options options = {}
+    );
+
     [[nodiscard]]
     const http::RuntimeOptions&
     http_runtime() const noexcept;
