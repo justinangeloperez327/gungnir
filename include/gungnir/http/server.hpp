@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/http/runtime.hpp>
 
 namespace gungnir::routing {
@@ -27,6 +28,11 @@ public:
     Server& operator=(Server&&) = delete;
 
     void listen(std::string host, std::uint16_t port);
+    void listen(
+        std::string host,
+        std::uint16_t port,
+        CancellationToken cancellation
+    );
     void stop() noexcept;
     void configure(RuntimeOptions options);
     void view_engine(
