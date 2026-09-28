@@ -2030,6 +2030,348 @@ public:
     }
 #endif
 
+    enum class IoState {
+        progress,
+        would_block,
+        closed,
+        error
+    };
+
+    struct IoResult {
+        IoState state{
+            IoState::error
+        };
+        std::size_t count{0};
+    };
+
+    [[nodiscard]]
+    IoResult receive_bytes(
+        ConnectionState& connection,
+        char* buffer,
+        std::size_t capacity
+    ) noexcept {
+#ifdef GUNGNIR_WITH_TLS
+        if (connection.tls) {
+            connection.tls_want_read =
+                false;
+
+            connection.tls_want_write =
+                false;
+
+            while (true) {
+                std::size_t received = 0;
+
+                ERR_clear_error();
+
+                const auto status =
+                    SSL_read_ex(
+                        connection.tls.get(),
+                        buffer,
+                        capacity,
+                        &received
+                    );
+
+                if (status == 1) {
+                    return {
+                        IoState::progress,
+                        received
+                    };
+                }
+
+                const auto error =
+                    SSL_get_error(
+                        connection.tls.get(),
+                        status
+                    );
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_READ
+                ) {
+                    connection.tls_want_read =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_WRITE
+                ) {
+                    connection.tls_want_write =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_ZERO_RETURN
+                ) {
+                    return {
+                        IoState::closed,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                        SSL_ERROR_SYSCALL &&
+                    interrupted(
+                        socket_error()
+                    )
+                ) {
+                    continue;
+                }
+
+                return {
+                    IoState::error,
+                    0
+                };
+            }
+        }
+#endif
+
+        while (true) {
+#ifdef _WIN32
+            const auto chunk =
+                std::min<std::size_t>(
+                    capacity,
+                    static_cast<std::size_t>(
+                        std::numeric_limits<int>::
+                            max()
+                    )
+                );
+
+            const auto received =
+                ::recv(
+                    connection.socket,
+                    buffer,
+                    static_cast<int>(
+                        chunk
+                    ),
+                    0
+                );
+#else
+            const auto received =
+                ::recv(
+                    connection.socket,
+                    buffer,
+                    capacity,
+                    0
+                );
+#endif
+
+            if (received > 0) {
+                return {
+                    IoState::progress,
+                    static_cast<
+                        std::size_t
+                    >(received)
+                };
+            }
+
+            if (received == 0) {
+                return {
+                    IoState::closed,
+                    0
+                };
+            }
+
+            const auto error =
+                socket_error();
+
+            if (interrupted(error)) {
+                continue;
+            }
+
+            if (would_block(error)) {
+                return {
+                    IoState::would_block,
+                    0
+                };
+            }
+
+            return {
+                IoState::error,
+                0
+            };
+        }
+    }
+
+    [[nodiscard]]
+    IoResult send_bytes(
+        ConnectionState& connection,
+        const char* data,
+        std::size_t size
+    ) noexcept {
+#ifdef GUNGNIR_WITH_TLS
+        if (connection.tls) {
+            connection.tls_want_read =
+                false;
+
+            connection.tls_want_write =
+                false;
+
+            while (true) {
+                std::size_t written = 0;
+
+                ERR_clear_error();
+
+                const auto status =
+                    SSL_write_ex(
+                        connection.tls.get(),
+                        data,
+                        size,
+                        &written
+                    );
+
+                if (status == 1) {
+                    return {
+                        IoState::progress,
+                        written
+                    };
+                }
+
+                const auto error =
+                    SSL_get_error(
+                        connection.tls.get(),
+                        status
+                    );
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_READ
+                ) {
+                    connection.tls_want_read =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_WRITE
+                ) {
+                    connection.tls_want_write =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_ZERO_RETURN
+                ) {
+                    return {
+                        IoState::closed,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                        SSL_ERROR_SYSCALL &&
+                    interrupted(
+                        socket_error()
+                    )
+                ) {
+                    continue;
+                }
+
+                return {
+                    IoState::error,
+                    0
+                };
+            }
+        }
+#endif
+
+        while (true) {
+#ifdef _WIN32
+            const auto chunk =
+                std::min<std::size_t>(
+                    size,
+                    static_cast<std::size_t>(
+                        std::numeric_limits<int>::
+                            max()
+                    )
+                );
+
+            const auto written =
+                ::send(
+                    connection.socket,
+                    data,
+                    static_cast<int>(
+                        chunk
+                    ),
+                    0
+                );
+#else
+            int flags = 0;
+
+#ifdef MSG_NOSIGNAL
+            flags = MSG_NOSIGNAL;
+#endif
+
+            const auto written =
+                ::send(
+                    connection.socket,
+                    data,
+                    size,
+                    flags
+                );
+#endif
+
+            if (written > 0) {
+                return {
+                    IoState::progress,
+                    static_cast<
+                        std::size_t
+                    >(written)
+                };
+            }
+
+            if (written == 0) {
+                return {
+                    IoState::closed,
+                    0
+                };
+            }
+
+            const auto error =
+                socket_error();
+
+            if (interrupted(error)) {
+                continue;
+            }
+
+            if (would_block(error)) {
+                return {
+                    IoState::would_block,
+                    0
+                };
+            }
+
+            return {
+                IoState::error,
+                0
+            };
+        }
+    }
+
     void reactor_loop() {
         std::optional<
             Clock::time_point
