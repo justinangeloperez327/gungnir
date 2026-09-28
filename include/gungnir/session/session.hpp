@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <utility>
 
+#include <gungnir/security/security.hpp>
+
 namespace gungnir::session {
 
 class Session {
@@ -45,17 +47,35 @@ public:
         flash_next_.clear();
     }
 
-    void regenerate(std::string new_id) {
+    void regenerate() {
+        regenerate(
+            security::random_token()
+        );
+    }
+
+    void regenerate(
+        std::string new_id
+    ) {
         id_ = std::move(new_id);
         regenerated_ = true;
     }
 
-    void invalidate(std::string new_id = {}) {
+    void invalidate() {
         clear();
         flash_current_.clear();
         flash_next_.clear();
-        id_ = std::move(new_id);
-        regenerated_ = true;
+        regenerate();
+    }
+
+    void invalidate(
+        std::string new_id
+    ) {
+        clear();
+        flash_current_.clear();
+        flash_next_.clear();
+        regenerate(
+            std::move(new_id)
+        );
     }
 
     [[nodiscard]] bool regenerated() const noexcept { return regenerated_; }

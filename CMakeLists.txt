@@ -142,6 +142,7 @@ add_library(gungnir
     src/routing/route.cpp
     src/routing/router.cpp
     src/security/security.cpp
+    src/session/middleware.cpp
     src/storage/local_disk.cpp
     src/validation/validator.cpp
     src/view/engine.cpp
@@ -237,7 +238,12 @@ target_compile_features(gungnir PUBLIC cxx_std_23)
 target_link_libraries(gungnir PRIVATE Threads::Threads)
 
 if(WIN32)
-    target_link_libraries(gungnir PRIVATE ws2_32)
+    target_link_libraries(
+        gungnir
+        PRIVATE
+            ws2_32
+            bcrypt
+    )
 endif()
 
 target_include_directories(gungnir
@@ -744,6 +750,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_session_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_session_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.session COMMAND gungnir_session_test)
+
+    add_executable(
+        gungnir_session_lifecycle_test
+        tests/session_lifecycle.cpp
+    )
+    target_link_libraries(
+        gungnir_session_lifecycle_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_session_lifecycle_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.session_lifecycle
+        COMMAND gungnir_session_lifecycle_test
+    )
 
     add_executable(gungnir_security_test tests/security.cpp)
     target_link_libraries(gungnir_security_test PRIVATE gungnir::gungnir)

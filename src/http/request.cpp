@@ -1,6 +1,7 @@
 #include <gungnir/http/request.hpp>
 
 #include <gungnir/core/container.hpp>
+#include <gungnir/session/session.hpp>
 
 #include <gungnir/validation/validator.hpp>
 
@@ -222,6 +223,30 @@ const ServiceScope& Request::services() const {
     }
 
     return *services_;
+}
+
+bool Request::has_session() const noexcept {
+    return static_cast<bool>(session_);
+}
+
+session::Session& Request::session() {
+    if (!session_) {
+        throw std::logic_error(
+            "HTTP request is not attached to a session"
+        );
+    }
+
+    return *session_;
+}
+
+const session::Session& Request::session() const {
+    if (!session_) {
+        throw std::logic_error(
+            "HTTP request is not attached to a session"
+        );
+    }
+
+    return *session_;
 }
 
 void Request::set_header(std::string name, std::string value) {
@@ -563,6 +588,18 @@ void Request::attach_services(
     }
 
     services_ = std::move(services);
+}
+
+void Request::attach_session(
+    std::shared_ptr<session::Session> session
+) {
+    if (!session) {
+        throw std::invalid_argument(
+            "HTTP request session is invalid"
+        );
+    }
+
+    session_ = std::move(session);
 }
 
 void Request::clear_route_parameters() noexcept {
