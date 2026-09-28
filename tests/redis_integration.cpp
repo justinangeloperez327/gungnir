@@ -302,13 +302,16 @@ int main() {
 
     queue.flush();
 
+    const std::string
+        queue_binary_payload{
+            "a\0b",
+            3
+        };
+
     queue.push({
         "job-1",
         "mail.send",
-        std::string{
-            "a\0b",
-            3
-        },
+        queue_binary_payload,
         0,
         3
     });
@@ -327,10 +330,7 @@ int main() {
 
     assert(
         first_lease->payload ==
-        std::string{
-            "a\0b",
-            3
-        }
+        queue_binary_payload
     );
 
     assert(
