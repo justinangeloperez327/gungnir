@@ -9,6 +9,8 @@
 #include <thread>
 #include <vector>
 
+#include <gungnir/observability/trace.hpp>
+
 namespace gungnir {
 
 class Executor {
@@ -29,7 +31,13 @@ public:
     struct ScheduleAwaiter {
         Executor& executor;
         bool await_ready() const noexcept { return false; }
-        void await_suspend(std::coroutine_handle<> handle) const { executor.schedule(handle); }
+        void await_suspend(
+            std::coroutine_handle<> handle
+        ) const {
+            executor.schedule(handle);
+            observability::
+                clear_current_context();
+        }
         void await_resume() const noexcept {}
     };
 
