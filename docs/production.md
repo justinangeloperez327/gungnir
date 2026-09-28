@@ -20,7 +20,9 @@ Gungnir provides `production::Supervisor` as the process-wide shutdown coordinat
 
 Runtime registration is explicit and named. Stop requests are idempotent, callback failures are isolated, and a timed-out shutdown reports the runtimes that remain active rather than silently claiming a graceful exit.
 
-The supervisor foundation does not terminate threads or processes forcibly. Typed HTTP/queue/scheduler integration and application-owned service lifecycle build on this contract.
+Typed adapters are available through `production::supervise(...)` for `Application`, `queue::Worker`, and `scheduler::Scheduler`. The adapters bind each runtime's native stop/running contract to the supervisor so hosting code does not need to duplicate shutdown lambdas. Queue workers and schedulers can run with `supervisor.token()`, giving them both shared cancellation and their native stop signal.
+
+The supervisor does not terminate threads or processes forcibly. Application-owned service startup/join policy builds on this contract.
 
 ## Reverse proxies
 
