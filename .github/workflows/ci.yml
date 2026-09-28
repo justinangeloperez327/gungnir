@@ -440,3 +440,74 @@ jobs:
       - name: Run MongoDB package consumer
         run: ./build-mongodb-consumer/gungnir-mongodb-package-consumer
 
+
+  redis:
+    name: Redis cache adapter
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8.10.2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-redis-install
+      GUNGNIR_REDIS_HOST: 127.0.0.1
+      GUNGNIR_REDIS_PORT: "6379"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install hiredis
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhiredis-dev
+
+      - name: Configure Redis adapter
+        run: >
+          cmake -S . -B build-redis
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_REDIS=ON
+          -DGUNGNIR_REDIS_INTEGRATION_TESTS=ON
+
+      - name: Build Redis adapter
+        run: >
+          cmake --build build-redis
+          --target
+          gungnir
+          gungnir-orm
+          gungnir-language
+          gungnir-redis
+          gungnir_redis_integration_test
+          --parallel
+
+      - name: Test Redis adapter
+        run: >
+          ctest --test-dir build-redis
+          -R "^gungnir.redis$"
+          --output-on-failure
+
+      - name: Install Redis-enabled package
+        run: cmake --install build-redis
+
+      - name: Configure Redis package consumer
+        run: >
+          cmake
+          -S tests/redis-package-consumer
+          -B build-redis-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+
+      - name: Build Redis package consumer
+        run: cmake --build build-redis-consumer --parallel
+
+      - name: Run Redis package consumer
+        run: ./build-redis-consumer/gungnir-redis-package-consumer
