@@ -1679,6 +1679,30 @@ std::size_t RedisDriver::failed() {
     return impl_->failed();
 }
 
+std::vector<Envelope>
+RedisDriver::failed_jobs() {
+    return impl_->failed_jobs();
+}
+
+std::optional<Envelope>
+RedisDriver::failed_job(
+    std::string_view id
+) {
+    return impl_->failed_job(id);
+}
+
+bool RedisDriver::retry_failed(
+    std::string_view id
+) {
+    return impl_->retry_failed(id);
+}
+
+bool RedisDriver::forget_failed(
+    std::string_view id
+) {
+    return impl_->forget_failed(id);
+}
+
 void RedisDriver::flush() {
     impl_->flush();
 }
