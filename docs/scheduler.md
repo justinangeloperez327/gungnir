@@ -36,9 +36,19 @@ During a spring-forward gap, nonexistent wall-clock minutes do not run. During f
 
 Recurring transition rules define the start time in pre-transition standard time and the end time in pre-transition daylight time.
 
-## Process lifecycle
+## Production runner
 
-The scheduler does not yet create its own production loop in this stage. A command, worker, service manager or application runtime can call `run_due()` and use `next_due()` to avoid aggressive polling.
+`Scheduler::run()` provides the long-running production loop. It executes due work, computes the next scheduled deadline, and sleeps until that deadline or `RunnerOptions::maximum_sleep`, whichever is earlier. The bounded maximum sleep lets the runner re-evaluate wall-clock changes without aggressive polling.
+
+The runner accepts a Gungnir `CancellationToken` and also exposes `request_stop()`. Both wake an idle runner immediately.
+
+Shutdown is cooperative. If stop/cancellation arrives while a synchronous scheduled action is running, that action is allowed to finish. Before the runner considers the next task, it re-checks shutdown state and exits without starting additional scheduled work.
+
+`reset_stop()` allows explicit reuse after a requested stop. Scheduler configuration and manual `run_due()` are rejected while the production runner is active.
+
+Interval schedules support millisecond resolution; cron schedules remain minute-based by definition.
+
+Scheduled tasks are stored with stable references, so the `Task&` returned by registration remains valid when additional tasks are registered.
 
 ## Overlap and distributed execution
 
