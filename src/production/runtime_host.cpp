@@ -5,6 +5,7 @@
 
 #include <gungnir/core/application.hpp>
 #include <gungnir/production/runtime_adapters.hpp>
+#include <gungnir/production/signal_watcher.hpp>
 #include <gungnir/queue/worker.hpp>
 
 namespace gungnir::production {
@@ -254,6 +255,22 @@ ShutdownResult RuntimeHost::run(
     rethrow_failure();
 
     return result;
+}
+
+ShutdownResult RuntimeHost::run_with_signals(
+    std::uint16_t port,
+    std::string host
+) {
+    SignalWatcher signals{
+        [this](int) {
+            request_stop();
+        }
+    };
+
+    return run(
+        port,
+        std::move(host)
+    );
 }
 
 void RuntimeHost::ensure_not_started()
