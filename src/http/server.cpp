@@ -3024,6 +3024,80 @@ public:
                 "HTTP runtime timeouts must be greater than zero"
             );
         }
+
+        if (options.tls) {
+            const auto& tls =
+                *options.tls;
+
+            if (
+                tls.certificate_chain.empty() ||
+                tls.private_key.empty()
+            ) {
+                throw std::invalid_argument(
+                    "TLS certificate_chain and private_key are required"
+                );
+            }
+
+            if (
+                tls.require_client_certificate &&
+                tls.client_ca.empty()
+            ) {
+                throw std::invalid_argument(
+                    "TLS client_ca is required when client certificates are mandatory"
+                );
+            }
+
+            if (
+                tls.alpn_protocols.empty()
+            ) {
+                throw std::invalid_argument(
+                    "TLS ALPN protocol list must not be empty"
+                );
+            }
+
+            std::unordered_set<
+                std::string
+            > protocols;
+
+            for (
+                const auto& protocol :
+                tls.alpn_protocols
+            ) {
+                if (
+                    protocol.empty() ||
+                    protocol.size() > 255
+                ) {
+                    throw std::invalid_argument(
+                        "TLS ALPN protocol names must contain 1-255 bytes"
+                    );
+                }
+
+                if (
+                    protocol !=
+                    "http/1.1"
+                ) {
+                    throw std::invalid_argument(
+                        "The core TLS server currently supports HTTP/1.1 ALPN only"
+                    );
+                }
+
+                if (
+                    !protocols
+                        .insert(protocol)
+                        .second
+                ) {
+                    throw std::invalid_argument(
+                        "TLS ALPN protocol names must be unique"
+                    );
+                }
+            }
+
+#ifndef GUNGNIR_WITH_TLS
+            throw std::logic_error(
+                "TLS runtime configuration requires a GUNGNIR_WITH_TLS build"
+            );
+#endif
+        }
     }
 
     SocketRuntime socket_runtime;
@@ -3035,6 +3109,14 @@ public:
     };
     routing::Router& router;
     RuntimeOptions options;
+
+#ifdef GUNGNIR_WITH_TLS
+    SslContext tls_context{
+        nullptr,
+        &SSL_CTX_free
+    };
+#endif
+
     std::shared_ptr<view::Engine>
         view_engine;
     std::atomic_bool running{false};
