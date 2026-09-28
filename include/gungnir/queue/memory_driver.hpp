@@ -1,9 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <chrono>
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -135,6 +137,114 @@ public:
         };
 
         return failed_.size();
+    }
+
+    [[nodiscard]]
+    std::vector<Envelope>
+    failed_jobs() override {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        return failed_;
+    }
+
+    [[nodiscard]]
+    std::optional<Envelope>
+    failed_job(
+        std::string_view id
+    ) override {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        const auto found =
+            std::find_if(
+                failed_.begin(),
+                failed_.end(),
+                [id](
+                    const Envelope& job
+                ) {
+                    return job.id == id;
+                }
+            );
+
+        if (
+            found ==
+            failed_.end()
+        ) {
+            return std::nullopt;
+        }
+
+        return *found;
+    }
+
+    bool retry_failed(
+        std::string_view id
+    ) override {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        const auto found =
+            std::find_if(
+                failed_.begin(),
+                failed_.end(),
+                [id](
+                    const Envelope& job
+                ) {
+                    return job.id == id;
+                }
+            );
+
+        if (
+            found ==
+            failed_.end()
+        ) {
+            return false;
+        }
+
+        auto job =
+            std::move(*found);
+
+        failed_.erase(found);
+
+        job.attempts = 0;
+        job.reservation.clear();
+
+        pending_.push_back(
+            std::move(job)
+        );
+
+        return true;
+    }
+
+    bool forget_failed(
+        std::string_view id
+    ) override {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        const auto before =
+            failed_.size();
+
+        failed_.erase(
+            std::remove_if(
+                failed_.begin(),
+                failed_.end(),
+                [id](
+                    const Envelope& job
+                ) {
+                    return job.id == id;
+                }
+            ),
+            failed_.end()
+        );
+
+        return
+            failed_.size() !=
+            before;
     }
 
 private:

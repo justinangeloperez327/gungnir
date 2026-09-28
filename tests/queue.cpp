@@ -75,6 +75,120 @@ int main() {
 
     assert(!worker.run_one());
 
+    const auto failed_retry =
+        driver.failed_job("2");
+
+    assert(failed_retry);
+    assert(failed_retry->attempts == 2);
+    assert(
+        driver.failed_jobs().size() == 2
+    );
+
+    int recovered_failed = 0;
+
+    worker.handle(
+        "retry",
+        [&](
+            std::string_view
+        ) {
+            ++recovered_failed;
+        }
+    );
+
+    assert(
+        driver.retry_failed("2")
+    );
+
+    const auto retried =
+        driver.failed_job("2");
+
+    assert(!retried);
+    assert(driver.pending() == 1);
+
+    assert(worker.run_one());
+    assert(recovered_failed == 1);
+    assert(driver.failed() == 1);
+
+    assert(
+        driver.forget_failed("3")
+    );
+
+    assert(driver.failed() == 0);
+    assert(
+        !driver.forget_failed("3")
+    );
+
+    queue::MemoryDriver
+        backoff_driver;
+
+    queue::WorkerOptions
+        backoff_options;
+
+    backoff_options.retry_backoff = {
+        30ms,
+        60ms
+    };
+
+    queue::Worker backoff_worker{
+        backoff_driver,
+        backoff_options
+    };
+
+    backoff_worker.handle(
+        "backoff",
+        [](
+            std::string_view
+        ) {
+            throw std::runtime_error{
+                "retry later"
+            };
+        }
+    );
+
+    backoff_driver.push({
+        "backoff-1",
+        "backoff",
+        "",
+        0,
+        2
+    });
+
+    assert(
+        backoff_worker.run_one()
+    );
+
+    assert(
+        backoff_driver.pending() == 0
+    );
+
+    assert(
+        backoff_driver.delayed() == 1
+    );
+
+    assert(
+        !backoff_worker.run_one()
+    );
+
+    std::this_thread::sleep_for(
+        40ms
+    );
+
+    assert(
+        backoff_worker.run_one()
+    );
+
+    assert(
+        backoff_driver.failed() == 1
+    );
+
+    const auto exhausted =
+        backoff_driver.failed_job(
+            "backoff-1"
+        );
+
+    assert(exhausted);
+    assert(exhausted->attempts == 2);
+
     queue::MemoryDriver delayed_driver;
     queue::Worker delayed_worker{
         delayed_driver

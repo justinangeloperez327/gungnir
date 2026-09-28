@@ -6,6 +6,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <gungnir/queue/driver.hpp>
 
@@ -104,6 +106,24 @@ public:
 
     [[nodiscard]]
     std::size_t failed();
+
+    [[nodiscard]]
+    std::vector<Envelope>
+    failed_jobs() override;
+
+    [[nodiscard]]
+    std::optional<Envelope>
+    failed_job(
+        std::string_view id
+    ) override;
+
+    bool retry_failed(
+        std::string_view id
+    ) override;
+
+    bool forget_failed(
+        std::string_view id
+    ) override;
 
     void flush();
 

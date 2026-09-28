@@ -581,8 +581,18 @@ int main() {
 
     assert(duplicate_rejected);
 
+    queue::WorkerOptions
+        retry_options;
+
+    retry_options.retry_backoff = {
+        std::chrono::milliseconds{
+            50
+        }
+    };
+
     queue::Worker worker{
-        queue
+        queue,
+        retry_options
     };
 
     worker.handle(
@@ -597,14 +607,91 @@ int main() {
     );
 
     assert(worker.run_one());
-    assert(queue.pending() == 1);
+    assert(queue.pending() == 0);
+    assert(queue.delayed() == 1);
     assert(queue.reserved() == 0);
     assert(queue.failed() == 0);
 
+    assert(!worker.run_one());
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            70
+        }
+    );
+
     assert(worker.run_one());
     assert(queue.pending() == 0);
+    assert(queue.delayed() == 0);
     assert(queue.reserved() == 0);
     assert(queue.failed() == 1);
+
+    const auto failed_job =
+        queue.failed_job(
+            "job-2"
+        );
+
+    assert(failed_job);
+    assert(
+        failed_job->attempts == 2
+    );
+
+    assert(
+        queue.failed_jobs().size() ==
+        1
+    );
+
+    assert(
+        queue.retry_failed(
+            "job-2"
+        )
+    );
+
+    assert(queue.failed() == 0);
+    assert(queue.pending() == 1);
+
+    auto manually_retried =
+        queue.pop();
+
+    assert(manually_retried);
+    assert(
+        manually_retried->id ==
+        "job-2"
+    );
+
+    assert(
+        manually_retried->attempts ==
+        0
+    );
+
+    queue.acknowledge(
+        *manually_retried
+    );
+
+    queue.push({
+        "job-forget",
+        "unknown",
+        "",
+        0,
+        1
+    });
+
+    assert(worker.run_one());
+    assert(queue.failed() == 1);
+
+    assert(
+        queue.forget_failed(
+            "job-forget"
+        )
+    );
+
+    assert(queue.failed() == 0);
+
+    assert(
+        !queue.forget_failed(
+            "job-forget"
+        )
+    );
 
     queue.flush();
 

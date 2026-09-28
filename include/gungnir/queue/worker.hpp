@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -12,6 +13,7 @@
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <gungnir/core/cancellation.hpp>
 #include <gungnir/queue/driver.hpp>
@@ -21,6 +23,7 @@ namespace gungnir::queue {
 struct WorkerOptions {
     std::chrono::milliseconds idle_sleep{100};
     std::chrono::milliseconds lease_renewal_interval{0};
+    std::vector<std::chrono::milliseconds> retry_backoff;
     std::size_t max_jobs{0};
     std::chrono::milliseconds max_runtime{0};
 };
@@ -88,8 +91,14 @@ public:
                 job->attempts <
                 job->max_attempts
             ) {
-                driver_->release(
-                    std::move(*job)
+                const auto delay =
+                    retry_delay(
+                        job->attempts
+                    );
+
+                driver_->release_after(
+                    std::move(*job),
+                    delay
                 );
             } else {
                 driver_->fail(*job);
@@ -255,6 +264,17 @@ private:
             );
         }
 
+        for (
+            const auto delay :
+            options_.retry_backoff
+        ) {
+            if (delay.count() < 0) {
+                throw std::invalid_argument(
+                    "Queue worker retry backoff cannot be negative"
+                );
+            }
+        }
+
         if (
             options_
                 .max_runtime
@@ -264,6 +284,41 @@ private:
                 "Queue worker max_runtime cannot be negative"
             );
         }
+    }
+
+    [[nodiscard]]
+    std::chrono::milliseconds
+    retry_delay(
+        unsigned attempts
+    ) const noexcept {
+        if (
+            options_
+                .retry_backoff
+                .empty()
+        ) {
+            return
+                std::chrono::milliseconds{
+                    0
+                };
+        }
+
+        const auto index =
+            std::min<std::size_t>(
+                attempts == 0
+                    ? 0
+                    : static_cast<
+                        std::size_t
+                      >(attempts - 1),
+                options_
+                    .retry_backoff
+                    .size() - 1
+            );
+
+        return
+            options_
+                .retry_backoff[
+                    index
+                ];
     }
 
     class LeaseHeartbeat {

@@ -24,7 +24,9 @@ The generic contract does not promise exactly-once delivery. Production adapters
 
 ## Worker lifecycle
 
-Background execution is provided by queue workers, not by pretending synchronous application code is asynchronous. The worker loop now has cooperative production shutdown semantics: stop polling first, finish the active job, then exit. Operating-system signal ownership remains with the hosting executable or service manager so applications can coordinate HTTP, queue, scheduler and other shutdown participants through one cancellation source.
+Background execution is provided by queue workers, not by pretending synchronous application code is asynchronous. The worker loop has cooperative production shutdown semantics: stop polling first, finish the active job, then exit. Operating-system signal ownership remains with the hosting executable or service manager so applications can coordinate HTTP, queue, scheduler and other shutdown participants through one cancellation source.
+
+`WorkerOptions::retry_backoff` controls delayed retry after handler failure. The first delay applies after attempt 1, the second after attempt 2, and so on; when attempts exceed the configured list, the last delay is reused. An empty list preserves immediate retry behavior. `Envelope::max_attempts` remains the hard retry ceiling.
 
 Multi-worker supervision, process restarts and deployment-level concurrency remain host concerns.
 
@@ -83,4 +85,10 @@ Current Redis queue guarantees:
 - binary-safe payload storage; and
 - duplicate active/failed job-ID rejection.
 
-Retry backoff policy, failed-job administration, Redis Cluster/Sentinel/TLS support, and multi-process worker supervision remain separate runtime work.
+### Failed jobs
+
+Drivers may expose retained failures through `failed_jobs()` and `failed_job(id)`. `retry_failed(id)` moves a retained failure back to the ready queue and resets its attempt counter to zero, starting a fresh manual retry cycle. `forget_failed(id)` permanently removes the retained failure.
+
+Redis performs manual retry atomically: the failed record must still match the value inspected by the caller, and the same job ID must not already be active.
+
+Redis Cluster/Sentinel/TLS support and multi-process worker supervision remain separate runtime work.
