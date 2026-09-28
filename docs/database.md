@@ -57,6 +57,10 @@ auto result = connection->execute(
 
 `Manager::transaction()` pins work to one connection. `Transaction::run()` commits on success and rolls back on exceptions. Nested transaction/savepoint semantics are explicit driver capabilities and are not emulated by the core.
 
+Transaction closures are currently **synchronous and thread-affine by design**. `Transaction` is non-movable, its operations verify the creating thread, and `run()` does not accept callbacks returning `Task<T>`. The transaction-scoped connection override is internal to the synchronous closure and is isolated per thread. This prevents a suspended coroutine from silently resuming on another executor worker while still assuming ownership of a thread-bound database transaction.
+
+True asynchronous transactions require coroutine-local execution context and a connection-leasing model that can preserve transaction ownership across suspension. Gungnir does not claim that capability yet.
+
 Connections expose `supports_transactions()` and `supports_savepoints()`. The migration runner honors these capabilities. The initial MongoDB adapter targets standalone deployments and reports transactions as unsupported instead of emulating them; replica-set transaction support is separate work.
 
 ## Errors
