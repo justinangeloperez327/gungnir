@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include <gungnir/http/security.hpp>
+#include <gungnir/security/random.hpp>
 
 namespace gungnir::security {
 
@@ -17,9 +18,6 @@ namespace gungnir::security {
 
 [[nodiscard]] bool valid_cookie_name(std::string_view value) noexcept;
 
-[[nodiscard]] std::string random_token(
-    std::size_t bytes = 32
-);
 
 using CorsOptions = http::CorsOptions;
 using RateLimitOptions = http::RateLimitOptions;
