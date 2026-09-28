@@ -36,9 +36,19 @@ Applications deployed behind a reverse proxy must configure trust at the HTTP bo
 
 Production configuration should be supplied through the application's environment/configuration facilities. Secrets must not be committed to generated project files or emitted through diagnostics, HTTP error pages or logs.
 
+## HTTPS / TLS
+
+Gungnir can terminate HTTPS directly when built with `GUNGNIR_WITH_TLS=ON`. TLS support uses OpenSSL 3 and remains optional so the default core build has no OpenSSL dependency.
+
+Configure HTTPS with `Application::tls(http::TlsOptions{...})` or by setting `RuntimeOptions::tls`. A certificate chain and private key are required. Encrypted connections use the same nonblocking reactor as plaintext HTTP: TLS handshakes, reads, writes, request limits, timeouts, keep-alive behavior, graceful process draining and connection metrics all share the existing server lifecycle.
+
+The server requires TLS 1.2 or newer, disables TLS-level compression, supports password-protected PEM private keys, and can optionally require a client certificate backed by a configured CA bundle. ALPN is explicit; Group 48A accepts `http/1.1` only rather than advertising HTTP/2 before the HTTP/2 transport is implemented.
+
+Normal HTTP connection closure attempts a nonblocking TLS `close_notify`. Error, cancellation and timeout paths close immediately so a faulty peer cannot extend the framework's shutdown deadline.
+
 ## Current runtime limitation
 
-The current HTTP runtime is not presented as a production-grade HTTP/2, TLS, WebSocket or high-concurrency server unless the concrete transport implements those capabilities. Deployments requiring those properties should use a suitable front-end server or transport integration and validate the runtime under representative load.
+The core server now provides production HTTPS/TLS termination for HTTP/1.1 when the optional OpenSSL transport is enabled. HTTP/2, WebSocket data-plane handling, and asynchronous streaming/backpressure are addressed by later Group 48 transport layers. Deployments should still validate connection limits and throughput under representative load.
 
 ## Deployment responsibility
 
