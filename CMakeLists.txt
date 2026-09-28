@@ -866,6 +866,25 @@ if(GUNGNIR_BUILD_TESTS)
         COMMAND gungnir_orm_relations_test
     )
 
+    add_executable(
+        gungnir_orm_pivot_mutations_test
+        tests/orm_pivot_mutations.cpp
+    )
+    target_link_libraries(
+        gungnir_orm_pivot_mutations_test
+        PRIVATE
+            gungnir::orm
+    )
+    target_compile_features(
+        gungnir_orm_pivot_mutations_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.orm_pivot_mutations
+        COMMAND gungnir_orm_pivot_mutations_test
+    )
+
     add_executable(gungnir_migration_runner_test tests/migration_runner.cpp)
     target_link_libraries(gungnir_migration_runner_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_migration_runner_test PRIVATE cxx_std_23)
