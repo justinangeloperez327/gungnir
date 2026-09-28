@@ -1,6 +1,10 @@
 #include <cassert>
+#include <thread>
+#include <chrono>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -295,6 +299,220 @@ int main() {
             file_symlink_rejected
         );
     }
+
+    const auto identity_root =
+        base / "identity-root";
+
+    const auto replaced_root =
+        base / "identity-old";
+
+    storage::LocalDisk
+        identity_disk{
+            identity_root
+        };
+
+    identity_disk.put(
+        "value.txt",
+        "pinned"
+    );
+
+    std::filesystem::rename(
+        identity_root,
+        replaced_root
+    );
+
+    std::filesystem::
+        create_directories(
+            identity_root
+        );
+
+    write_plain(
+        identity_root /
+            "value.txt",
+        "replacement"
+    );
+
+    bool root_replacement_rejected =
+        false;
+
+    try {
+        static_cast<void>(
+            identity_disk.get(
+                "value.txt"
+            )
+        );
+    } catch (
+        const storage::InvalidPath&
+    ) {
+        root_replacement_rejected =
+            true;
+    }
+
+    assert(
+        root_replacement_rejected
+    );
+
+#ifndef _WIN32
+    const auto race_root =
+        base / "race-root";
+
+    const auto race_outside =
+        base / "race-outside";
+
+    std::filesystem::
+        create_directories(
+            race_outside
+        );
+
+    write_plain(
+        race_outside /
+            "value.txt",
+        "outside"
+    );
+
+    storage::LocalDisk
+        race_disk{
+            race_root
+        };
+
+    race_disk.put(
+        "slot/value.txt",
+        "inside"
+    );
+
+    const auto slot =
+        race_root / "slot";
+
+    const auto held =
+        race_root / "slot-held";
+
+    std::atomic_bool
+        attack_done{false};
+
+    std::thread attacker{
+        [&] {
+            for (
+                int attempt = 0;
+                attempt < 500;
+                ++attempt
+            ) {
+                std::error_code error;
+
+                std::filesystem::rename(
+                    slot,
+                    held,
+                    error
+                );
+
+                if (error) {
+                    std::this_thread::
+                        yield();
+                    continue;
+                }
+
+                error.clear();
+
+                std::filesystem::
+                    create_directory_symlink(
+                        race_outside,
+                        slot,
+                        error
+                    );
+
+                if (!error) {
+                    std::this_thread::
+                        yield();
+
+                    error.clear();
+
+                    std::filesystem::remove(
+                        slot,
+                        error
+                    );
+                }
+
+                error.clear();
+
+                std::filesystem::rename(
+                    held,
+                    slot,
+                    error
+                );
+            }
+
+            attack_done.store(
+                true,
+                std::memory_order_release
+            );
+        }
+    };
+
+    bool observed_outside = false;
+
+    for (
+        int attempt = 0;
+        attempt < 1000;
+        ++attempt
+    ) {
+        try {
+            const auto value =
+                race_disk.get(
+                    "slot/value.txt"
+                );
+
+            if (
+                value &&
+                *value == "outside"
+            ) {
+                observed_outside = true;
+                break;
+            }
+
+            race_disk.put(
+                "slot/value.txt",
+                "inside"
+            );
+        } catch (
+            const storage::InvalidPath&
+        ) {
+        } catch (
+            const storage::Error&
+        ) {
+        }
+
+        if (
+            attack_done.load(
+                std::memory_order_acquire
+            )
+        ) {
+            break;
+        }
+    }
+
+    attacker.join();
+
+    assert(!observed_outside);
+
+    std::ifstream outside_value{
+        race_outside /
+            "value.txt",
+        std::ios::binary
+    };
+
+    assert(outside_value);
+
+    std::string outside_contents{
+        std::istreambuf_iterator<char>{
+            outside_value
+        },
+        std::istreambuf_iterator<char>{}
+    };
+
+    assert(
+        outside_contents ==
+        "outside"
+    );
+#endif
 
     std::filesystem::remove_all(base);
 

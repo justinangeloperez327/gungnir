@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -139,6 +140,8 @@ private:
     ) const;
 
     std::filesystem::path root_;
+    std::uint64_t root_identity_a_{0};
+    std::uint64_t root_identity_b_{0};
 };
 
 } // namespace gungnir::storage
