@@ -10,6 +10,22 @@
 
 namespace gungnir::session {
 
+struct SessionState {
+    std::string id;
+    std::unordered_map<
+        std::string,
+        std::string
+    > values;
+    std::unordered_map<
+        std::string,
+        std::string
+    > flash_current;
+    std::unordered_map<
+        std::string,
+        std::string
+    > flash_next;
+};
+
 class Session {
 public:
     explicit Session(std::string id = {}) : id_(std::move(id)) {}
@@ -83,6 +99,50 @@ public:
 
     [[nodiscard]] const std::unordered_map<std::string, std::string>& values() const noexcept {
         return values_;
+    }
+
+    [[nodiscard]]
+    SessionState state()
+        const {
+        return SessionState{
+            .id = id_,
+            .values = values_,
+            .flash_current =
+                flash_current_,
+            .flash_next =
+                flash_next_
+        };
+    }
+
+    [[nodiscard]]
+    static Session restore(
+        SessionState state
+    ) {
+        Session session{
+            std::move(
+                state.id
+            )
+        };
+
+        session.values_ =
+            std::move(
+                state.values
+            );
+
+        session.flash_current_ =
+            std::move(
+                state.flash_current
+            );
+
+        session.flash_next_ =
+            std::move(
+                state.flash_next
+            );
+
+        session.regenerated_ =
+            false;
+
+        return session;
     }
 
 private:

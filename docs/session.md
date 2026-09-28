@@ -80,7 +80,31 @@ For local plain-HTTP development, set `session::Options::secure` to `false`. Pro
 
 `MemoryStore` is thread-safe and suitable for tests, local development, and single-process ephemeral deployments. It is not a durable or distributed production session store.
 
-Persistent database/cache-backed stores, expiry/garbage collection, and distributed session lifecycle policies remain separate production-adapter work.
+When Gungnir is built with `GUNGNIR_WITH_REDIS=ON`, `gungnir::redis` provides a Redis-backed session store with server-side TTL expiry.
+
+```cpp
+gungnir::session::RedisSessionSettings settings;
+settings.redis.host = "127.0.0.1";
+settings.redis.prefix = "myapp:sessions:";
+settings.lifetime = std::chrono::hours{2};
+
+auto store =
+    std::make_shared<
+        gungnir::session::RedisStore
+    >(settings);
+
+router.use(
+    gungnir::session::middleware(
+        store
+    )
+);
+```
+
+The Redis store persists normal session values plus both flash-data generations, so moving from `MemoryStore` to Redis does not change flash semantics. Saving a session refreshes its Redis TTL. Expired records disappear through Redis expiry and a stale browser cookie therefore creates a fresh session through the normal lifecycle.
+
+Use a dedicated non-empty Redis key prefix for sessions. The adapter rejects an empty prefix so its maintenance operations cannot accidentally target the whole Redis database.
+
+`MemoryStore` remains appropriate for tests and ephemeral single-process use. Redis provides the concrete distributed store for multi-process deployments.
 
 ## Authentication integration
 

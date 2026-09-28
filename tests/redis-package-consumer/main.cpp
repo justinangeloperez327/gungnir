@@ -1,9 +1,12 @@
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <string>
 
 #include <gungnir/cache/redis_store.hpp>
 #include <gungnir/queue/redis_driver.hpp>
+#include <gungnir/session/redis_store.hpp>
+#include <gungnir/security/random.hpp>
 
 int main() {
     gungnir::cache::RedisSettings settings;
@@ -116,6 +119,75 @@ int main() {
     assert(queue.reserved() == 0);
 
     queue.flush();
+
+    gungnir::session::
+        RedisSessionSettings
+        session_settings;
+
+    session_settings.redis.host =
+        settings.host;
+
+    session_settings.redis.port =
+        settings.port;
+
+    session_settings.redis.database =
+        settings.database;
+
+    session_settings.redis.prefix =
+        "gungnir:package:session:";
+
+    session_settings.lifetime =
+        std::chrono::seconds{60};
+
+    gungnir::session::RedisStore
+        sessions{
+            session_settings
+        };
+
+    assert(sessions.ping());
+
+    sessions.flush();
+
+    const auto session_id =
+        gungnir::security::
+            random_token();
+
+    gungnir::session::Session
+        session{
+            session_id
+        };
+
+    session.put(
+        "user_id",
+        "42"
+    );
+
+    sessions.save(session);
+
+    const auto loaded_session =
+        sessions.load(
+            session_id
+        );
+
+    assert(loaded_session);
+
+    assert(
+        loaded_session->get(
+            "user_id"
+        ) == "42"
+    );
+
+    sessions.erase(
+        session_id
+    );
+
+    assert(
+        !sessions.load(
+            session_id
+        )
+    );
+
+    sessions.flush();
 
     return 0;
 }
