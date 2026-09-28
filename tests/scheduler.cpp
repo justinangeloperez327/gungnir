@@ -320,5 +320,196 @@ int main() {
 
     assert(duplicate_rejected);
 
+    using gungnir::scheduler::
+        FixedOffsetTimeZone;
+    using gungnir::scheduler::
+        RecurringTimeZone;
+    using gungnir::scheduler::
+        TransitionRule;
+
+    FixedOffsetTimeZone dubai{
+        "Asia/Dubai",
+        4h
+    };
+
+    const auto dubai_local =
+        dubai.to_local(
+            utc(
+                2026,
+                9,
+                28,
+                10,
+                30
+            )
+        );
+
+    assert(dubai_local.hour == 14);
+    assert(dubai_local.minute == 30);
+    assert(
+        dubai_local.offset_minutes ==
+        240
+    );
+
+    RecurringTimeZone eastern{
+        "America/New_York",
+        -5h,
+        -4h,
+        TransitionRule{
+            3,
+            2,
+            0,
+            2h
+        },
+        TransitionRule{
+            11,
+            1,
+            0,
+            2h
+        }
+    };
+
+    const auto before_spring =
+        eastern.to_local(
+            utc(
+                2026,
+                3,
+                8,
+                6,
+                59
+            )
+        );
+
+    const auto after_spring =
+        eastern.to_local(
+            utc(
+                2026,
+                3,
+                8,
+                7,
+                0
+            )
+        );
+
+    assert(before_spring.hour == 1);
+    assert(before_spring.minute == 59);
+    assert(!before_spring.daylight);
+
+    assert(after_spring.hour == 3);
+    assert(after_spring.minute == 0);
+    assert(after_spring.daylight);
+
+    const auto first_fall =
+        eastern.to_local(
+            utc(
+                2026,
+                11,
+                1,
+                5,
+                30
+            )
+        );
+
+    const auto second_fall =
+        eastern.to_local(
+            utc(
+                2026,
+                11,
+                1,
+                6,
+                30
+            )
+        );
+
+    assert(first_fall.hour == 1);
+    assert(first_fall.minute == 30);
+    assert(first_fall.daylight);
+
+    assert(second_fall.hour == 1);
+    assert(second_fall.minute == 30);
+    assert(!second_fall.daylight);
+
+    TestClock timezone_clock;
+
+    timezone_clock.current =
+        utc(
+            2026,
+            11,
+            1,
+            5,
+            30
+        );
+
+    Scheduler timezone_scheduler{
+        timezone_clock,
+        eastern
+    };
+
+    int fallback_runs = 0;
+
+    timezone_scheduler.cron(
+        "fallback-once",
+        "30 1 * * *",
+        [&] {
+            ++fallback_runs;
+        }
+    );
+
+    assert(
+        timezone_scheduler.run_due() ==
+        1
+    );
+
+    assert(fallback_runs == 1);
+
+    timezone_clock.current =
+        utc(
+            2026,
+            11,
+            1,
+            6,
+            30
+        );
+
+    assert(
+        timezone_scheduler.run_due() ==
+        0
+    );
+
+    assert(fallback_runs == 1);
+
+    TestClock override_clock;
+
+    override_clock.current =
+        utc(
+            2026,
+            9,
+            28,
+            20,
+            0
+        );
+
+    Scheduler override_scheduler{
+        override_clock
+    };
+
+    int override_runs = 0;
+
+    override_scheduler
+        .cron(
+            "dubai-midnight",
+            "0 0 * * *",
+            [&] {
+                ++override_runs;
+            }
+        )
+        .timezone(dubai);
+
+    assert(
+        override_scheduler.run_due() ==
+        1
+    );
+
+    assert(override_runs == 1);
+
     return 0;
 }
