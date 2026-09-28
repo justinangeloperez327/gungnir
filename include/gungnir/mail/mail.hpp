@@ -2,3 +2,4 @@
 #include <gungnir/mail/memory_transport.hpp>
 #include <gungnir/mail/message.hpp>
 #include <gungnir/mail/transport.hpp>
+#include <gungnir/mail/smtp_transport.hpp>
