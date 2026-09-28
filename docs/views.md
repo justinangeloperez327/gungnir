@@ -4,7 +4,7 @@ Gungnir views provide server-rendered HTML with escaped interpolation by default
 
 ## Rendering
 
-`Engine::render()` resolves templates beneath the configured view root. Absolute paths and parent traversal are rejected. `Response::view()` uses the application's active view engine.
+`Engine::render()` resolves templates beneath the configured view root. Empty names, embedded NUL bytes, absolute/rooted paths and lexical parent traversal are rejected. The configured root and every existing template path component are checked for symbolic links, the candidate is weakly canonicalized, and the resolved template must remain beneath the canonical view root. Symlinked template files and symlinked directories are rejected even when they would resolve back inside the root. `Response::view()` uses the application's active view engine.
 
 ## Data
 

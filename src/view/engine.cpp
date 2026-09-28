@@ -14,6 +14,279 @@ namespace gungnir::view {
 
 namespace {
 
+[[nodiscard]]
+bool is_within(
+    const std::filesystem::path& root,
+    const std::filesystem::path& candidate
+) {
+    auto root_part =
+        root.begin();
+
+    auto candidate_part =
+        candidate.begin();
+
+    while (
+        root_part != root.end()
+    ) {
+        if (
+            candidate_part ==
+                candidate.end() ||
+            *candidate_part !=
+                *root_part
+        ) {
+            return false;
+        }
+
+        ++root_part;
+        ++candidate_part;
+    }
+
+    return true;
+}
+
+[[nodiscard]]
+std::filesystem::path normalize_root(
+    std::filesystem::path value
+) {
+    if (value.empty()) {
+        throw InvalidPath{
+            value.generic_string()
+        };
+    }
+
+    std::error_code error;
+
+    auto absolute =
+        std::filesystem::absolute(
+            std::move(value),
+            error
+        );
+
+    if (error) {
+        throw Error{
+            "Unable to resolve Gungnir view root: " +
+            error.message()
+        };
+    }
+
+    absolute =
+        absolute.lexically_normal();
+
+    const auto status =
+        std::filesystem::symlink_status(
+            absolute,
+            error
+        );
+
+    if (
+        !error &&
+        std::filesystem::is_symlink(
+            status
+        )
+    ) {
+        throw InvalidPath{
+            absolute.generic_string()
+        };
+    }
+
+    return absolute;
+}
+
+[[nodiscard]]
+std::filesystem::path resolve_template(
+    const std::filesystem::path& root,
+    std::string_view name
+) {
+    if (
+        name.empty() ||
+        name.find('\0') !=
+            std::string_view::npos
+    ) {
+        throw InvalidPath{
+            std::string{name}
+        };
+    }
+
+    std::filesystem::path relative{
+        std::string{name}
+    };
+
+    if (
+        relative.is_absolute() ||
+        relative.has_root_name() ||
+        relative.has_root_directory()
+    ) {
+        throw InvalidPath{
+            std::string{name}
+        };
+    }
+
+    for (const auto& part : relative) {
+        if (part == "..") {
+            throw InvalidPath{
+                std::string{name}
+            };
+        }
+    }
+
+    relative =
+        relative.lexically_normal();
+
+    if (
+        relative.empty() ||
+        relative == "."
+    ) {
+        throw InvalidPath{
+            std::string{name}
+        };
+    }
+
+    if (!relative.has_extension()) {
+        relative += ".html";
+    }
+
+    std::error_code error;
+
+    const auto root_status =
+        std::filesystem::symlink_status(
+            root,
+            error
+        );
+
+    if (error) {
+        if (
+            error ==
+            std::errc::
+                no_such_file_or_directory
+        ) {
+            throw NotFound{
+                root.generic_string()
+            };
+        }
+
+        throw Error{
+            "Unable to inspect Gungnir view root: " +
+            error.message()
+        };
+    }
+
+    if (
+        std::filesystem::is_symlink(
+            root_status
+        )
+    ) {
+        throw InvalidPath{
+            root.generic_string()
+        };
+    }
+
+    const auto canonical_root =
+        std::filesystem::weakly_canonical(
+            root,
+            error
+        );
+
+    if (error) {
+        throw Error{
+            "Unable to canonicalize Gungnir view root: " +
+            error.message()
+        };
+    }
+
+    auto current = root;
+
+    for (const auto& part : relative) {
+        if (
+            part.empty() ||
+            part == "."
+        ) {
+            continue;
+        }
+
+        current /= part;
+
+        error.clear();
+
+        const auto status =
+            std::filesystem::symlink_status(
+                current,
+                error
+            );
+
+        if (error) {
+            if (
+                error ==
+                std::errc::
+                    no_such_file_or_directory
+            ) {
+                break;
+            }
+
+            throw Error{
+                "Unable to inspect Gungnir view path: " +
+                error.message()
+            };
+        }
+
+        if (
+            std::filesystem::is_symlink(
+                status
+            )
+        ) {
+            throw InvalidPath{
+                std::string{name}
+            };
+        }
+    }
+
+    error.clear();
+
+    const auto candidate =
+        std::filesystem::weakly_canonical(
+            root / relative,
+            error
+        );
+
+    if (error) {
+        throw Error{
+            "Unable to resolve Gungnir view path: " +
+            error.message()
+        };
+    }
+
+    if (
+        !is_within(
+            canonical_root,
+            candidate
+        )
+    ) {
+        throw InvalidPath{
+            std::string{name}
+        };
+    }
+
+    error.clear();
+
+    const auto final_status =
+        std::filesystem::symlink_status(
+            candidate,
+            error
+        );
+
+    if (
+        !error &&
+        std::filesystem::is_symlink(
+            final_status
+        )
+    ) {
+        throw InvalidPath{
+            std::string{name}
+        };
+    }
+
+    return candidate;
+}
+
 std::string_view trim(std::string_view value) {
     while (
         !value.empty() &&
@@ -309,8 +582,14 @@ String render_block(
 
 } // namespace
 
-Engine::Engine(std::filesystem::path root)
-    : root_(std::move(root)) {}
+Engine::Engine(
+    std::filesystem::path root
+)
+    : root_(
+        normalize_root(
+            std::move(root)
+        )
+      ) {}
 
 Engine& Engine::root(
     std::filesystem::path value
@@ -320,7 +599,9 @@ Engine& Engine::root(
     };
 
     root_ =
-        std::move(value);
+        normalize_root(
+            std::move(value)
+        );
 
     return *this;
 }
@@ -338,32 +619,16 @@ String Engine::render(
     std::string_view name,
     const Data& data
 ) const {
-    const std::filesystem::path relative{name};
-
-    if (
-        relative.is_absolute() ||
-        std::find(
-            relative.begin(),
-            relative.end(),
-            std::filesystem::path{".."}
-        ) != relative.end()
-    ) {
-        throw std::invalid_argument(
-            "Gungnir view name must stay inside the configured view root"
+    const auto path =
+        resolve_template(
+            root(),
+            name
         );
-    }
 
-    const auto root =
-        this->root();
-
-    auto path =
-        root / relative;
-
-    if (!path.has_extension()) {
-        path += ".html";
-    }
-
-    std::ifstream input{path, std::ios::binary};
+    std::ifstream input{
+        path,
+        std::ios::binary
+    };
     if (!input) {
         throw NotFound{path.string()};
     }
