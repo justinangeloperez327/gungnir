@@ -10,6 +10,10 @@ namespace gungnir::routing {
 class Router;
 }
 
+namespace gungnir::view {
+class Engine;
+}
+
 namespace gungnir::http::detail {
 
 class Server {
@@ -25,6 +29,9 @@ public:
     void listen(std::string host, std::uint16_t port);
     void stop() noexcept;
     void configure(RuntimeOptions options);
+    void view_engine(
+        std::shared_ptr<view::Engine> engine
+    );
 
     [[nodiscard]] bool running() const noexcept;
     [[nodiscard]] std::uint16_t bound_port() const noexcept;
