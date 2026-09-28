@@ -518,10 +518,22 @@ int main() {
         );
 
     assert(
+        mongo.kind ==
+        orm::CompiledQueryKind::mongodb
+    );
+
+    assert(
         contains(
             mongo.text,
-            "\"user_id\":{\"$bind\":0}"
+            "\"user_id\":{\"$eq\":"
         )
+    );
+
+    assert(mongo.bindings.size() == 1);
+    assert(
+        std::get<Int64>(
+            mongo.bindings.front()
+        ) == 7
     );
 
     database::Manager manager;
