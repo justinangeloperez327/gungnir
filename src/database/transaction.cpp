@@ -85,7 +85,9 @@ void Transaction::rollback() {
 }
 
 bool Transaction::active()
-    const noexcept {
+    const {
+    ensure_owner();
+
     return active_;
 }
 
