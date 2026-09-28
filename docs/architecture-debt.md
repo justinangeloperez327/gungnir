@@ -3,7 +3,7 @@
 This document records known limitations that should remain visible before a stable release.
 
 - Dependency-injection scoped state and resolution tracking need coroutine-safe ownership.
-- Suspended route handlers and `sleep_for` deadlines now share the HTTP platform readiness loop while the server is active; due continuations are dispatched through the bounded executor pool. Request cancellation propagates into database connection execution through scoped driver cancellation hooks. PostgreSQL and SQL Server implement native in-flight interruption; MySQL and MongoDB remain cooperative at the connection boundary, and filesystem/storage operations are not yet uniformly cancellation-aware.
+- Suspended route handlers and `sleep_for` deadlines now share the HTTP platform readiness loop while the server is active; due continuations are dispatched through the bounded executor pool. Request cancellation propagates into database connection execution through scoped driver cancellation hooks. PostgreSQL and SQL Server implement native in-flight interruption; MySQL and MongoDB remain cooperative at the connection boundary. Storage operations expose cancellation-aware overloads with buffered LocalDisk checkpoints; other filesystem-backed framework components are not yet uniformly cancellation-aware.
 - The HTTP server does not yet establish production-grade HTTP/2, TLS, WebSocket or asynchronous streaming guarantees.
 - Database runtime state must avoid unsafe global or thread-local assumptions when coroutines can migrate threads.
 - PostgreSQL, MySQL, SQL Server, and MongoDB have concrete client-library adapters. MongoDB replica-set transaction/session support remains incomplete.
@@ -11,7 +11,7 @@ This document records known limitations that should remain visible before a stab
 - Session lifecycle/cookie integration, secure identifiers and regeneration cleanup remain incomplete.
 - Cache, queue, mail and notification production adapters are not supplied by their in-memory contracts.
 - View runtime global engine state and filesystem symlink containment require hardening.
-- Storage path containment must account for symlinks; writes are not guaranteed atomic.
+- Local storage rejects existing symlink traversal, canonicalizes containment, uses exclusive same-directory temporary files and atomically replaces completed writes. Race-free containment against concurrent hostile filesystem mutation and full crash-durable directory commits remain separate hardening work.
 - Events currently use named polymorphic events rather than a fully typed dispatch surface.
 - Queue visibility, leasing, crash recovery, delayed jobs and worker lifecycle need production contracts.
 - Scheduler provides interval execution, not cron/timezone/distributed locking semantics.
