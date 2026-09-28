@@ -404,6 +404,21 @@ public:
             return {};
         }
 
+        std::shared_ptr<SpanSink>
+            sink;
+
+        {
+            std::lock_guard lock{
+                mutex_
+            };
+
+            sink = sink_;
+        }
+
+        if (!sink) {
+            return {};
+        }
+
         if (!parent) {
             const auto current =
                 current_context();
@@ -446,17 +461,6 @@ public:
         record.started_at =
             std::chrono::
                 system_clock::now();
-
-        std::shared_ptr<SpanSink>
-            sink;
-
-        {
-            std::lock_guard lock{
-                mutex_
-            };
-
-            sink = sink_;
-        }
 
         return Span{
             std::move(sink),
