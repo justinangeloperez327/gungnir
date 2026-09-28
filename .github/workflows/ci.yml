@@ -592,3 +592,92 @@ jobs:
 
       - name: Run SMTP package consumer
         run: ./build-smtp-consumer/gungnir-smtp-package-consumer
+
+
+  otlp:
+    name: OTLP HTTP exporter
+    runs-on: ubuntu-latest
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-otlp-install
+      GUNGNIR_OTLP_ENDPOINT: http://127.0.0.1:4319
+      GUNGNIR_OTLP_CAPTURE: ${{ github.workspace }}/otlp-capture.jsonl
+      GUNGNIR_OTLP_PORT: "4319"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install libcurl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Start local OTLP collector
+        run: |
+          python3 tests/otlp_collector.py >otlp-collector.log 2>&1 &
+          echo $! > otlp-collector.pid
+          for attempt in {1..30}; do
+            if curl -sS -o /dev/null -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:4319/v1/traces; then
+              rm -f "$GUNGNIR_OTLP_CAPTURE"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat otlp-collector.log
+          exit 1
+
+      - name: Configure OTLP exporter
+        run: >
+          cmake -S . -B build-otlp
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_WITH_OTLP=ON
+          -DGUNGNIR_OTLP_INTEGRATION_TESTS=ON
+
+      - name: Build OTLP exporter
+        run: >
+          cmake --build build-otlp
+          --target
+          gungnir
+          gungnir-otlp
+          gungnir_otlp_test
+          --parallel
+
+      - name: Test OTLP exporter
+        run: >
+          ctest --test-dir build-otlp
+          -R "^gungnir.otlp$"
+          --output-on-failure
+
+      - name: Verify OTLP collector received traces and metrics
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          capture = os.environ["GUNGNIR_OTLP_CAPTURE"]
+          with open(capture, encoding="utf-8") as stream:
+              rows = [json.loads(line) for line in stream if line.strip()]
+
+          paths = {row["path"] for row in rows}
+          assert "/v1/traces" in paths, paths
+          assert "/v1/metrics" in paths, paths
+          PY
+
+      - name: Install OTLP-enabled package
+        run: cmake --install build-otlp
+
+      - name: Configure OTLP package consumer
+        run: >
+          cmake
+          -S tests/otlp-package-consumer
+          -B build-otlp-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+
+      - name: Build OTLP package consumer
+        run: cmake --build build-otlp-consumer --parallel
+
+      - name: Run OTLP package consumer
+        run: ./build-otlp-consumer/gungnir-otlp-package-consumer
