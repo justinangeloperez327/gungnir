@@ -1638,6 +1638,7 @@ struct ConnectionState {
         &SSL_free
     };
     bool tls_handshake_complete{false};
+    bool tls_shutdown_pending{false};
     bool tls_want_read{false};
     bool tls_want_write{false};
 #endif
@@ -1654,15 +1655,7 @@ void close_connection(
     }
 
 #ifdef GUNGNIR_WITH_TLS
-    if (connection.tls) {
-        static_cast<void>(
-            SSL_shutdown(
-                connection.tls.get()
-            )
-        );
-
-        connection.tls.reset();
-    }
+    connection.tls.reset();
 #endif
 
     close_socket(
@@ -2027,6 +2020,142 @@ public:
         );
 
         return false;
+    }
+#endif
+
+    void graceful_close(
+        ConnectionState& connection
+    ) noexcept {
+#ifdef GUNGNIR_WITH_TLS
+        if (
+            connection.tls &&
+            connection
+                .tls_handshake_complete
+        ) {
+            connection.tls_want_read =
+                false;
+
+            connection.tls_want_write =
+                false;
+
+            ERR_clear_error();
+
+            const auto status =
+                SSL_shutdown(
+                    connection.tls.get()
+                );
+
+            if (status >= 0) {
+                close_connection(
+                    connection
+                );
+
+                return;
+            }
+
+            const auto error =
+                SSL_get_error(
+                    connection.tls.get(),
+                    status
+                );
+
+            if (
+                error ==
+                SSL_ERROR_WANT_READ
+            ) {
+                connection
+                    .tls_shutdown_pending =
+                    true;
+
+                connection.tls_want_read =
+                    true;
+
+                return;
+            }
+
+            if (
+                error ==
+                SSL_ERROR_WANT_WRITE
+            ) {
+                connection
+                    .tls_shutdown_pending =
+                    true;
+
+                connection.tls_want_write =
+                    true;
+
+                return;
+            }
+        }
+#endif
+
+        close_connection(
+            connection
+        );
+    }
+
+#ifdef GUNGNIR_WITH_TLS
+    void tls_shutdown_ready(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            !connection.tls ||
+            !connection
+                .tls_shutdown_pending
+        ) {
+            return;
+        }
+
+        connection.tls_want_read =
+            false;
+
+        connection.tls_want_write =
+            false;
+
+        ERR_clear_error();
+
+        const auto status =
+            SSL_shutdown(
+                connection.tls.get()
+            );
+
+        if (status >= 0) {
+            close_connection(
+                connection
+            );
+
+            return;
+        }
+
+        const auto error =
+            SSL_get_error(
+                connection.tls.get(),
+                status
+            );
+
+        if (
+            error ==
+            SSL_ERROR_WANT_READ
+        ) {
+            connection.tls_want_read =
+                true;
+
+            return;
+        }
+
+        if (
+            error ==
+            SSL_ERROR_WANT_WRITE
+        ) {
+            connection.tls_want_write =
+                true;
+
+            return;
+        }
+
+        close_connection(
+            connection
+        );
     }
 #endif
 
@@ -2515,6 +2644,27 @@ public:
                 } else if (
                     connection.tls &&
                     connection
+                        .tls_shutdown_pending
+                ) {
+                    if (
+                        connection
+                            .tls_want_read
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+
+                    if (
+                        connection
+                            .tls_want_write ||
+                        events == 0
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+                } else if (
+                    connection.tls &&
+                    connection
                         .tls_handshake_complete &&
                     (
                         connection
@@ -2684,6 +2834,28 @@ public:
                 }
 
 #ifdef GUNGNIR_WITH_TLS
+                if (
+                    connection.tls &&
+                    connection
+                        .tls_shutdown_pending &&
+                    (
+                        (
+                            events &
+                            poll_read_event
+                        ) != 0 ||
+                        (
+                            events &
+                            poll_write_event
+                        ) != 0
+                    )
+                ) {
+                    tls_shutdown_ready(
+                        connection
+                    );
+
+                    continue;
+                }
+
                 if (
                     connection.tls &&
                     !connection
@@ -3198,9 +3370,10 @@ public:
                 Clock::now();
 
             if (close) {
-                close_connection(
+                graceful_close(
                     connection
                 );
+
                 return;
             }
 
