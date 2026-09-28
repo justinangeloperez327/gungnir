@@ -16,7 +16,11 @@ The HTTP server performs cooperative graceful draining when `stop()` is requeste
 
 HTTP, queue workers and the scheduler each expose cooperative shutdown primitives. Queue workers finish the active job before exiting; the scheduler finishes the active synchronous task and refuses to start another task after stop/cancellation is observed.
 
-Gungnir does not yet provide one process-wide supervisor that automatically coordinates all HTTP, queue, scheduler and arbitrary application coroutines. Hosting code should fan a shared cancellation source into the participating runtimes and apply its own overall shutdown deadline.
+Gungnir provides `production::Supervisor` as the process-wide shutdown coordination primitive. A supervisor owns one shared cancellation source, fans stop requests out to registered runtimes, and waits for their running checks to drain within one overall shutdown deadline.
+
+Runtime registration is explicit and named. Stop requests are idempotent, callback failures are isolated, and a timed-out shutdown reports the runtimes that remain active rather than silently claiming a graceful exit.
+
+The supervisor foundation does not terminate threads or processes forcibly. Typed HTTP/queue/scheduler integration and application-owned service lifecycle build on this contract.
 
 ## Reverse proxies
 

@@ -8,7 +8,6 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
-#include <vector>
 
 namespace gungnir {
 
@@ -265,7 +264,8 @@ public:
             return;
         }
 
-        std::vector<
+        std::unordered_map<
+            std::uint64_t,
             std::function<void()>
         > callbacks;
 
@@ -274,28 +274,17 @@ public:
                 state_->mutex
             };
 
-            callbacks.reserve(
-                state_->callbacks.size()
-            );
-
-            for (
-                auto& [id, callback] :
+            callbacks.swap(
                 state_->callbacks
-            ) {
-                static_cast<void>(id);
-
-                callbacks.push_back(
-                    std::move(callback)
-                );
-            }
-
-            state_->callbacks.clear();
+            );
         }
 
         for (
-            auto& callback :
+            auto& [id, callback] :
             callbacks
         ) {
+            static_cast<void>(id);
+
             try {
                 callback();
             } catch (...) {
