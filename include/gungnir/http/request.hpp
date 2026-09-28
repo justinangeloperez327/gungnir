@@ -17,6 +17,11 @@ namespace gungnir {
 class ServiceScope;
 }
 
+namespace gungnir::session {
+class Session;
+class StartSession;
+}
+
 namespace gungnir::routing {
 class Router;
 }
@@ -45,6 +50,10 @@ public:
     [[nodiscard]] bool has_services() const noexcept;
     [[nodiscard]] ServiceScope& services();
     [[nodiscard]] const ServiceScope& services() const;
+
+    [[nodiscard]] bool has_session() const noexcept;
+    [[nodiscard]] session::Session& session();
+    [[nodiscard]] const session::Session& session() const;
 
     void set_header(std::string name, std::string value);
     [[nodiscard]] std::string_view header(
@@ -101,6 +110,7 @@ public:
 
 private:
     friend class gungnir::routing::Router;
+    friend class gungnir::session::StartSession;
 
     void parse_target();
     void parse_body_input() const;
@@ -108,6 +118,9 @@ private:
     void clear_route_parameters() noexcept;
     void set_route_parameter(std::string name, std::string value);
     void attach_services(std::shared_ptr<ServiceScope> services);
+    void attach_session(
+        std::shared_ptr<session::Session> session
+    );
 
     Method method_;
     std::string target_;
@@ -115,6 +128,7 @@ private:
     std::string body_;
     CancellationToken cancellation_;
     std::shared_ptr<ServiceScope> services_;
+    std::shared_ptr<session::Session> session_;
     Headers headers_;
     Parameters parameters_;
     Input query_;
