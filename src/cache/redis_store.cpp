@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -450,8 +451,13 @@ private:
             );
         }
 
-        authenticate_unlocked();
-        select_database_unlocked();
+        try {
+            authenticate_unlocked();
+            select_database_unlocked();
+        } catch (...) {
+            disconnect();
+            throw;
+        }
     }
 
     void disconnect()
