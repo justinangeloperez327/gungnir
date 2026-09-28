@@ -777,6 +777,25 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(NAME gungnir.security COMMAND gungnir_security_test)
 
     add_executable(
+        gungnir_csrf_test
+        tests/csrf.cpp
+    )
+    target_link_libraries(
+        gungnir_csrf_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_csrf_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.csrf
+        COMMAND gungnir_csrf_test
+    )
+
+    add_executable(
         gungnir_auth_session_test
         tests/auth_session.cpp
     )
