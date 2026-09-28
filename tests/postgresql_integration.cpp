@@ -1,7 +1,10 @@
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include <gungnir/database/database.hpp>
 #include <gungnir/database/postgresql.hpp>
@@ -89,6 +92,51 @@ int main() {
         );
 
     assert(connection->healthy());
+
+    {
+        CancellationSource cancellation;
+        std::atomic_bool cancelled{false};
+
+        const auto started =
+            std::chrono::steady_clock::now();
+
+        std::thread worker{
+            [&] {
+                try {
+                    static_cast<void>(
+                        connection->execute(
+                            "SELECT pg_sleep(5)",
+                            {},
+                            cancellation.token()
+                        )
+                    );
+                } catch (
+                    const OperationCancelled&
+                ) {
+                    cancelled.store(true);
+                }
+            }
+        };
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds{
+                200
+            }
+        );
+
+        cancellation.cancel();
+        worker.join();
+
+        const auto elapsed =
+            std::chrono::steady_clock::now() -
+            started;
+
+        assert(cancelled.load());
+        assert(
+            elapsed <
+            std::chrono::seconds{3}
+        );
+    }
 
     connection->execute(
         "DROP TABLE IF EXISTS gungnir_postgresql_integration"
