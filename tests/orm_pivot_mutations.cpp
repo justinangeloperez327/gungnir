@@ -138,6 +138,7 @@ int main() {
     int begins = 0;
     int commits = 0;
     int rollbacks = 0;
+    bool fail_next_insert = false;
 
     database::Manager manager;
 
@@ -208,6 +209,14 @@ int main() {
                             "\"role_user\""
                         )
                     ) {
+                        if (fail_next_insert) {
+                            fail_next_insert = false;
+
+                            throw std::runtime_error(
+                                "simulated pivot insert failure"
+                            );
+                        }
+
                         return database::Result{
                             .rows = {},
                             .affected_rows =
@@ -395,6 +404,40 @@ int main() {
     assert(begins == 1);
     assert(commits == 1);
     assert(rollbacks == 0);
+
+    user.roles.set({});
+
+    fail_next_insert = true;
+
+    bool sync_failed = false;
+
+    try {
+        static_cast<void>(
+            orm::sync(
+                user,
+                user.roles,
+                std::vector<
+                    model::AttributeValue
+                >{
+                    Int64{3},
+                    Int64{5}
+                }
+            )
+        );
+    } catch (
+        const database::Error&
+    ) {
+        sync_failed = true;
+    }
+
+    assert(sync_failed);
+    assert(begins == 2);
+    assert(commits == 1);
+    assert(rollbacks == 1);
+
+    // The transaction rolled back, so the previously loaded
+    // in-memory relation remains valid instead of being invalidated.
+    assert(user.roles.loaded());
 
     const auto all_detached =
         orm::detach(
