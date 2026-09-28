@@ -1,57 +1,68 @@
 #include <gungnir/database/transaction.hpp>
 
-#include <utility>
+#include <exception>
+#include <thread>
 
 namespace gungnir::database {
 
-Transaction::Transaction(std::shared_ptr<Connection> connection)
-    : connection_(std::move(connection)),
-      lock_(connection_->mutex_),
+Transaction::Transaction(
+    std::shared_ptr<Connection> connection
+)
+    : connection_(
+        std::move(
+            connection
+        )
+      ),
+      lock_(
+        connection_->mutex_
+      ),
+      owner_(
+        std::this_thread::
+            get_id()
+      ),
       active_(true) {
     connection_->begin();
 }
 
 Transaction::~Transaction() {
-    if (active_ && connection_) {
-        try {
-            connection_->rollback();
-        } catch (...) {
-        }
+    if (
+        !active_ ||
+        !connection_
+    ) {
+        return;
+    }
+
+    if (
+        owner_ !=
+        std::this_thread::
+            get_id()
+    ) {
+        std::terminate();
+    }
+
+    try {
+        connection_->rollback();
+    } catch (...) {
     }
 }
 
-Transaction::Transaction(Transaction&& other) noexcept
-    : connection_(std::move(other.connection_)),
-      lock_(std::move(other.lock_)),
-      active_(std::exchange(other.active_, false)) {}
+Connection&
+Transaction::connection() {
+    ensure_owner();
 
-Transaction& Transaction::operator=(Transaction&& other) noexcept {
-    if (this == &other) {
-        return *this;
-    }
-
-    if (active_ && connection_) {
-        try {
-            connection_->rollback();
-        } catch (...) {
-        }
-    }
-
-    connection_ = std::move(other.connection_);
-    lock_ = std::move(other.lock_);
-    active_ = std::exchange(other.active_, false);
-    return *this;
-}
-
-Connection& Transaction::connection() noexcept {
     return *connection_;
 }
 
-const Connection& Transaction::connection() const noexcept {
+const Connection&
+Transaction::connection() const {
+    ensure_owner();
+
     return *connection_;
 }
 
 void Transaction::commit() {
+    ensure_owner();
+
     if (!active_) {
         return;
     }
@@ -62,6 +73,8 @@ void Transaction::commit() {
 }
 
 void Transaction::rollback() {
+    ensure_owner();
+
     if (!active_) {
         return;
     }
@@ -71,8 +84,22 @@ void Transaction::rollback() {
     lock_.unlock();
 }
 
-bool Transaction::active() const noexcept {
+bool Transaction::active()
+    const noexcept {
     return active_;
+}
+
+void Transaction::ensure_owner()
+    const {
+    if (
+        owner_ !=
+        std::this_thread::
+            get_id()
+    ) {
+        throw std::logic_error(
+            "Database transaction cannot migrate across threads"
+        );
+    }
 }
 
 } // namespace gungnir::database
