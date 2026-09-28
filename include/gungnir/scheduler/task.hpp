@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include <gungnir/observability/trace.hpp>
 #include <gungnir/scheduler/clock.hpp>
 #include <gungnir/scheduler/cron.hpp>
 #include <gungnir/scheduler/lock.hpp>
@@ -205,7 +206,7 @@ public:
     void run(
         Clock::TimePoint now
     ) {
-        action_();
+        invoke_action();
         mark_observed(now);
     }
 
@@ -264,7 +265,7 @@ public:
         }
 
         try {
-            action_();
+            invoke_action();
             mark_observed(now);
         } catch (...) {
             if (overlap_lease) {
@@ -290,6 +291,63 @@ public:
     }
 
 private:
+    void invoke_action() {
+        auto span =
+            observability::
+                global_tracer()
+                ->start_span(
+                    "scheduler.task",
+                    {
+                        {
+                            "scheduler.task.name",
+                            name_
+                        },
+                        {
+                            "scheduler.schedule.type",
+                            cron_
+                                ? "cron"
+                                : "interval"
+                        },
+                        {
+                            "scheduler.timezone",
+                            timezone_->name()
+                        }
+                    }
+                );
+
+        auto scope =
+            span.valid()
+                ? span.scope()
+                : observability::Scope{};
+
+        try {
+            action_();
+
+            span.status(
+                observability::
+                    SpanStatus::ok
+            );
+
+            span.end();
+        } catch (
+            const std::exception& error
+        ) {
+            span.error(
+                error.what()
+            );
+
+            span.end();
+            throw;
+        } catch (...) {
+            span.error(
+                "Unknown scheduler task exception"
+            );
+
+            span.end();
+            throw;
+        }
+    }
+
     static void validate_lock_ttl(
         std::chrono::milliseconds ttl
     ) {
