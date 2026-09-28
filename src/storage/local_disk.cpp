@@ -11,6 +11,7 @@
 #include <cwctype>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -124,6 +125,26 @@ std::string temporary_name(
         ".tmp";
 }
 
+[[nodiscard]]
+bool is_temporary_artifact(
+    std::string_view name
+) noexcept {
+    constexpr std::string_view
+        marker{".gungnir-"};
+
+    constexpr std::string_view
+        suffix{".tmp"};
+
+    return
+        !name.empty() &&
+        name.front() == '.' &&
+        name.find(marker) !=
+            std::string_view::npos &&
+        name.size() >
+            suffix.size() &&
+        name.ends_with(suffix);
+}
+
 #ifdef _WIN32
 
 class NativeFile {
@@ -209,6 +230,35 @@ std::string windows_error(
         " (Windows error " +
         std::to_string(code) +
         ")";
+}
+
+void flush_directory_best_effort(
+    HANDLE handle
+) {
+    if (
+        FlushFileBuffers(handle)
+    ) {
+        return;
+    }
+
+    const auto error =
+        GetLastError();
+
+    if (
+        error ==
+            ERROR_INVALID_HANDLE ||
+        error ==
+            ERROR_ACCESS_DENIED
+    ) {
+        return;
+    }
+
+    throw Error{
+        windows_error(
+            "Unable to flush storage directory metadata",
+            error
+        )
+    };
 }
 
 [[nodiscard]]
@@ -900,6 +950,28 @@ private:
     int descriptor_;
 };
 
+void sync_directory(
+    int descriptor
+) {
+    while (
+        ::fsync(
+            descriptor
+        ) != 0
+    ) {
+        if (errno == EINTR) {
+            continue;
+        }
+
+        throw Error{
+            "Unable to flush storage directory metadata: " +
+            std::error_code{
+                errno,
+                std::generic_category()
+            }.message()
+        };
+    }
+}
+
 [[nodiscard]]
 int directory_flags() noexcept {
     int flags =
@@ -1049,6 +1121,8 @@ open_child_directory(
         errno == ENOENT &&
         create
     ) {
+        bool created = false;
+
         if (
             ::mkdirat(
                 parent,
@@ -1056,9 +1130,10 @@ open_child_directory(
                 static_cast<mode_t>(
                     0700
                 )
-            ) != 0 &&
-            errno != EEXIST
+            ) == 0
         ) {
+            created = true;
+        } else if (errno != EEXIST) {
             throw Error{
                 "Unable to create storage directory: " +
                 std::error_code{
@@ -1066,6 +1141,12 @@ open_child_directory(
                     std::generic_category()
                 }.message()
             };
+        }
+
+        if (created) {
+            sync_directory(
+                parent
+            );
         }
 
         descriptor =
@@ -2217,6 +2298,10 @@ void LocalDisk::atomic_put(
                 .wstring(),
             true
         );
+
+        flush_directory_best_effort(
+            parent.get()
+        );
     } catch (...) {
         try {
             mark_delete(
@@ -2320,6 +2405,10 @@ void LocalDisk::atomic_put(
             };
         }
 
+        sync_directory(
+            parent->directory.get()
+        );
+
         temporary.reset();
     } catch (...) {
         if (temporary) {
@@ -2417,9 +2506,12 @@ bool LocalDisk::remove(
             )
         );
 
+    const auto target =
+        resolve(path);
+
     auto file =
         open_regular_checked(
-            resolve(path),
+            target,
             root_final,
             DELETE
         );
@@ -2428,10 +2520,20 @@ bool LocalDisk::remove(
         return false;
     }
 
+    auto parent =
+        open_directory_checked(
+            target.parent_path(),
+            root_final
+        );
+
     cancellation.throw_if_cancelled();
 
     mark_delete(
         file->get()
+    );
+
+    flush_directory_best_effort(
+        parent.get()
     );
 
     return true;
@@ -2505,6 +2607,10 @@ bool LocalDisk::remove(
             }.message()
         };
     }
+
+    sync_directory(
+        parent->directory.get()
+    );
 
     return true;
 #endif
@@ -2596,6 +2702,10 @@ bool LocalDisk::move(
         destination.filename()
             .wstring(),
         true
+    );
+
+    flush_directory_best_effort(
+        destination_parent.get()
     );
 
     return true;
@@ -2695,6 +2805,18 @@ bool LocalDisk::move(
             }.message()
         };
     }
+
+    sync_directory(
+        destination_parent
+            ->directory
+            .get()
+    );
+
+    sync_directory(
+        source_parent
+            ->directory
+            .get()
+    );
 
     return true;
 #endif
@@ -3203,6 +3325,183 @@ LocalDisk::files(
     cancellation.throw_if_cancelled();
 
     return result;
+}
+
+std::size_t LocalDisk::cleanup_abandoned(
+    std::chrono::seconds older_than
+) {
+    if (
+        older_than <=
+        std::chrono::seconds::zero()
+    ) {
+        throw std::invalid_argument(
+            "Storage temporary cleanup age must be greater than zero"
+        );
+    }
+
+    // Verify that the configured root still refers to the filesystem
+    // object pinned when this LocalDisk instance was constructed.
+    static_cast<void>(
+        open_root(
+            root_,
+            root_identity_a_,
+            root_identity_b_
+        )
+    );
+
+    const auto cutoff =
+        std::filesystem::
+            file_time_type::
+            clock::now() -
+        older_than;
+
+    std::size_t removed = 0;
+
+    std::error_code error;
+
+    std::filesystem::
+        recursive_directory_iterator
+        iterator{
+            root_,
+            std::filesystem::
+                directory_options::
+                    skip_permission_denied,
+            error
+        };
+
+    if (error) {
+        throw Error{
+            filesystem_error(
+                "Unable to enumerate storage temporary objects",
+                error
+            )
+        };
+    }
+
+    const auto end =
+        std::filesystem::
+            recursive_directory_iterator{};
+
+    while (iterator != end) {
+        const auto entry =
+            *iterator;
+
+        error.clear();
+
+        const auto status =
+            entry.symlink_status(
+                error
+            );
+
+        if (error) {
+            iterator.increment(
+                error
+            );
+
+            if (error) {
+                throw Error{
+                    filesystem_error(
+                        "Unable to enumerate storage temporary objects",
+                        error
+                    )
+                };
+            }
+
+            continue;
+        }
+
+        if (
+            std::filesystem::
+                is_symlink(
+                    status
+                )
+        ) {
+            if (
+                std::filesystem::
+                    is_directory(
+                        status
+                    )
+            ) {
+                iterator
+                    .disable_recursion_pending();
+            }
+
+            iterator.increment(
+                error
+            );
+
+            if (error) {
+                throw Error{
+                    filesystem_error(
+                        "Unable to enumerate storage temporary objects",
+                        error
+                    )
+                };
+            }
+
+            continue;
+        }
+
+        const auto name =
+            entry.path()
+                .filename()
+                .string();
+
+        if (
+            std::filesystem::
+                is_regular_file(
+                    status
+                ) &&
+            is_temporary_artifact(
+                name
+            )
+        ) {
+            error.clear();
+
+            const auto modified =
+                entry.last_write_time(
+                    error
+                );
+
+            if (
+                !error &&
+                modified <= cutoff
+            ) {
+                const auto relative =
+                    entry.path()
+                        .lexically_relative(
+                            root_
+                        )
+                        .generic_string();
+
+                try {
+                    if (remove(relative)) {
+                        ++removed;
+                    }
+                } catch (
+                    const InvalidPath&
+                ) {
+                    // A concurrent replacement is treated as a skipped
+                    // candidate rather than following the replacement.
+                }
+            }
+        }
+
+        iterator.increment(
+            error
+        );
+
+        if (error) {
+            throw Error{
+                filesystem_error(
+                    "Unable to enumerate storage temporary objects",
+                    error
+                )
+            };
+        }
+    }
+
+    return removed;
 }
 
 } // namespace gungnir::storage

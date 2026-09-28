@@ -514,6 +514,115 @@ int main() {
     );
 #endif
 
+    const auto cleanup_root =
+        base / "cleanup-root";
+
+    storage::LocalDisk
+        cleanup_disk{
+            cleanup_root
+        };
+
+    const auto cleanup_directory =
+        cleanup_root / "nested";
+
+    std::filesystem::
+        create_directories(
+            cleanup_directory
+        );
+
+    const auto stale_temporary =
+        cleanup_directory /
+        ".report.txt.gungnir-999-1.tmp";
+
+    const auto fresh_temporary =
+        cleanup_directory /
+        ".report.txt.gungnir-999-2.tmp";
+
+    const auto unrelated_old =
+        cleanup_directory /
+        "report.txt";
+
+    write_plain(
+        stale_temporary,
+        "stale"
+    );
+
+    write_plain(
+        fresh_temporary,
+        "fresh"
+    );
+
+    write_plain(
+        unrelated_old,
+        "keep"
+    );
+
+    const auto old_time =
+        std::filesystem::
+            file_time_type::
+            clock::now() -
+        std::chrono::hours{48};
+
+    std::filesystem::
+        last_write_time(
+            stale_temporary,
+            old_time
+        );
+
+    std::filesystem::
+        last_write_time(
+            unrelated_old,
+            old_time
+        );
+
+    const auto removed_temporary =
+        cleanup_disk
+            .cleanup_abandoned(
+                std::chrono::hours{24}
+            );
+
+    assert(
+        removed_temporary == 1
+    );
+
+    assert(
+        !std::filesystem::exists(
+            stale_temporary
+        )
+    );
+
+    assert(
+        std::filesystem::exists(
+            fresh_temporary
+        )
+    );
+
+    assert(
+        std::filesystem::exists(
+            unrelated_old
+        )
+    );
+
+    bool invalid_cleanup_age =
+        false;
+
+    try {
+        static_cast<void>(
+            cleanup_disk
+                .cleanup_abandoned(
+                    std::chrono::seconds{
+                        0
+                    }
+                )
+        );
+    } catch (
+        const std::invalid_argument&
+    ) {
+        invalid_cleanup_age = true;
+    }
+
+    assert(invalid_cleanup_age);
+
     std::filesystem::remove_all(base);
 
     return 0;

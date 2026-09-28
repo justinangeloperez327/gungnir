@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -111,6 +113,12 @@ public:
         std::string_view directory,
         const CancellationToken& cancellation
     ) const override;
+
+    [[nodiscard]]
+    std::size_t cleanup_abandoned(
+        std::chrono::seconds older_than =
+            std::chrono::hours{24}
+    );
 
 private:
     [[nodiscard]]

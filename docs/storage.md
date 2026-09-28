@@ -16,13 +16,21 @@ On POSIX platforms, object operations reopen and verify the pinned root, walk pa
 
 On Windows, Gungnir pins the root by volume/file identity, opens objects and directories with `FILE_FLAG_OPEN_REPARSE_POINT`, rejects reparse points, verifies resolved handle paths remain under the pinned root, and uses handle-based delete/rename operations with a verified destination-directory handle. Temporary candidates are verified before application data is written. A concurrently hostile process may still cause a candidate create to fail or create-and-delete an empty candidate before verification; Gungnir does not claim the same descriptor-relative create primitive that POSIX provides.
 
-### Atomic writes
+### Atomic and durable writes
 
-`LocalDisk::put()` does not truncate the destination in place. It creates an exclusive temporary file in the destination directory, writes and flushes the new content, checks cancellation, and then atomically replaces the destination using the platform replacement primitive.
+`LocalDisk::put()` does not truncate the destination in place. It creates an exclusive temporary file in the destination directory, writes the complete new content, flushes the file, checks cancellation, and then atomically replaces the destination.
+
+On POSIX, Gungnir `fsync()`s the file before `renameat()` and then `fsync()`s the containing directory. Newly created parent-directory levels are also followed by a parent-directory metadata sync. Removes and moves sync the affected directory metadata after the mutation. This provides the normal crash-durability contract expected from local filesystems that honor file and directory `fsync()`.
+
+On Windows, file contents are flushed with `FlushFileBuffers()` before the handle-based rename. Gungnir also attempts to flush verified directory handles after metadata mutations. Windows filesystems do not uniformly permit directory `FlushFileBuffers()`; `ERROR_INVALID_HANDLE` and `ERROR_ACCESS_DENIED` are treated as an unsupported directory-flush capability rather than pretending to provide a POSIX-equivalent guarantee.
 
 If writing fails or cancellation is observed before replacement, the temporary object is removed and the previous destination remains unchanged.
 
-Atomic replacement prevents readers from observing a partially written object. It does not by itself guarantee full power-loss durability of directory metadata on every filesystem.
+### Abandoned temporary files
+
+`LocalDisk::cleanup_abandoned(older_than)` explicitly removes Gungnir temporary artifacts older than the supplied age. The default threshold is 24 hours. Cleanup recognizes only Gungnir's hidden `.gungnir-...tmp` naming pattern; unrelated files and fresh temporary files are left untouched.
+
+Cleanup is explicit rather than unconditional at startup so one process does not silently delete another long-running process's temporary write. Candidates are passed back through the disk's hardened remove path before deletion.
 
 ## Cancellation
 
