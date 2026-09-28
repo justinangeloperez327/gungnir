@@ -255,6 +255,7 @@ add_library(gungnir
     src/routing/route.cpp
     src/routing/router.cpp
     src/security/security.cpp
+    src/scheduler/iana_timezone.cpp
     src/session/middleware.cpp
     src/storage/local_disk.cpp
     src/validation/validator.cpp
@@ -575,8 +576,8 @@ if(GUNGNIR_WITH_REDIS)
         gungnir-redis
         src/cache/redis_store.cpp
         src/queue/redis_driver.cpp
-        src/scheduler/iana_timezone.cpp
-    src/scheduler/redis_lock.cpp
+        src/redis/client.cpp
+        src/scheduler/redis_lock.cpp
         src/session/redis_store.cpp
     )
 
@@ -598,6 +599,20 @@ if(GUNGNIR_WITH_REDIS)
             gungnir::gungnir
             Hiredis::Hiredis
     )
+
+    if(TARGET Hiredis::SSL)
+        target_link_libraries(
+            gungnir-redis
+            PUBLIC
+                Hiredis::SSL
+        )
+
+        target_compile_definitions(
+            gungnir-redis
+            PRIVATE
+                GUNGNIR_HIREDIS_SSL=1
+        )
+    endif()
 
     target_include_directories(
         gungnir-redis
