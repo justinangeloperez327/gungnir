@@ -1,4 +1,5 @@
 #include <gungnir/core/executor.hpp>
+#include <gungnir/database/runtime.hpp>
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/view/runtime.hpp>
 #include <algorithm>
@@ -44,10 +45,14 @@ void Executor::post(
     const auto view_context =
         view::runtime::current();
 
+    const auto database_context =
+        database::runtime::current();
+
     auto wrapped =
         [
             trace_context,
             view_context,
+            database_context,
             work = std::move(work)
         ]() mutable {
             auto trace_scope =
@@ -58,6 +63,11 @@ void Executor::post(
             auto view_scope =
                 view::runtime::activate(
                     view_context
+                );
+
+            auto database_scope =
+                database::runtime::activate(
+                    database_context
                 );
 
             work();
