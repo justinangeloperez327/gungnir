@@ -1,5 +1,7 @@
 #include <gungnir/http/security.hpp>
 
+#include <gungnir/security/security.hpp>
+
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -10,8 +12,70 @@
 
 namespace gungnir::http {
 namespace {
+
 std::atomic_uint64_t ids{1};
+
+bool csrf_safe_method(
+    Method method
+) noexcept {
+    return
+        method == Method::get ||
+        method == Method::head ||
+        method == Method::options;
 }
+
+std::string_view presented_csrf_token(
+    Request& request,
+    const CsrfOptions& options
+) {
+    const auto header =
+        request.header(
+            options.header_name
+        );
+
+    if (!header.empty()) {
+        return header;
+    }
+
+    const auto& form =
+        request.form();
+
+    const auto found =
+        form.find(
+            options.form_field
+        );
+
+    return
+        found == form.end()
+            ? std::string_view{}
+            : std::string_view{
+                found->second
+              };
+}
+
+void validate_csrf_options(
+    const CsrfOptions& options
+) {
+    if (options.session_key.empty()) {
+        throw std::invalid_argument(
+            "CSRF session key cannot be empty"
+        );
+    }
+
+    if (options.header_name.empty()) {
+        throw std::invalid_argument(
+            "CSRF header name cannot be empty"
+        );
+    }
+
+    if (options.form_field.empty()) {
+        throw std::invalid_argument(
+            "CSRF form field cannot be empty"
+        );
+    }
+}
+
+} // namespace
 
 MiddlewareHandler cors(CorsOptions options) {
     return [options = std::move(options)](Request& request, Next next) -> Task<Response> {
@@ -84,6 +148,126 @@ MiddlewareHandler rate_limit(RateLimitOptions options) {
             if (++bucket.count > options.requests) co_return Response::text("Too Many Requests", 429);
         }
         co_return co_await next(request);
+    };
+}
+
+std::string_view csrf_token(
+    Request& request,
+    const CsrfOptions& options
+) {
+    validate_csrf_options(
+        options
+    );
+
+    if (!request.has_session()) {
+        throw std::logic_error(
+            "CSRF protection requires session middleware to run first"
+        );
+    }
+
+    auto& current =
+        request.session();
+
+    if (
+        !current.has(
+            options.session_key
+        ) ||
+        current.get(
+            options.session_key
+        ).empty()
+    ) {
+        current.put(
+            options.session_key,
+            security::random_token()
+        );
+    }
+
+    return current.get(
+        options.session_key
+    );
+}
+
+MiddlewareHandler csrf(
+    CsrfOptions options
+) {
+    validate_csrf_options(
+        options
+    );
+
+    return [
+        options = std::move(options)
+    ](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        if (!request.has_session()) {
+            throw std::logic_error(
+                "CSRF protection requires session middleware to run first"
+            );
+        }
+
+        auto& current =
+            request.session();
+
+        const auto initial_session_id =
+            std::string{
+                current.id()
+            };
+
+        if (
+            csrf_safe_method(
+                request.method()
+            )
+        ) {
+            static_cast<void>(
+                csrf_token(
+                    request,
+                    options
+                )
+            );
+        } else {
+            const auto expected =
+                current.get(
+                    options.session_key
+                );
+
+            const auto presented =
+                presented_csrf_token(
+                    request,
+                    options
+                );
+
+            if (
+                expected.empty() ||
+                presented.empty() ||
+                !security::
+                    constant_time_equal(
+                        expected,
+                        presented
+                    )
+            ) {
+                co_return Response::text(
+                    "Page Expired",
+                    419
+                );
+            }
+        }
+
+        auto response =
+            co_await next(request);
+
+        if (
+            current.id() !=
+                initial_session_id ||
+            current.regenerated()
+        ) {
+            current.put(
+                options.session_key,
+                security::random_token()
+            );
+        }
+
+        co_return response;
     };
 }
 
