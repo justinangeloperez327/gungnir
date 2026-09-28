@@ -96,6 +96,12 @@ public:
         std::string host = "127.0.0.1"
     );
 
+    [[nodiscard]]
+    ShutdownResult run_with_signals(
+        std::uint16_t port = 8000,
+        std::string host = "127.0.0.1"
+    );
+
 private:
     struct Service {
         std::string name;
