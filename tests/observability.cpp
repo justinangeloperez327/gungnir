@@ -4,7 +4,11 @@
 #include <mutex>
 
 #include <gungnir/core/executor.hpp>
+#include <gungnir/database/database.hpp>
+#include <gungnir/mail/mail.hpp>
 #include <gungnir/observability/observability.hpp>
+#include <gungnir/queue/queue.hpp>
+#include <gungnir/scheduler/scheduling.hpp>
 
 int main() {
     using namespace gungnir;
@@ -229,6 +233,192 @@ int main() {
     assert(saw_database);
     assert(saw_executor);
     assert(saw_root);
+
+    sink->clear();
+
+    auto application_root =
+        tracer->start_span(
+            "application.request"
+        );
+
+    const auto application_context =
+        application_root.context();
+
+    queue::MemoryDriver
+        queue_driver;
+
+    {
+        auto application_scope =
+            application_root.scope();
+
+        auto driver =
+            std::make_shared<
+                database::CallbackDriver
+            >(
+                database::Backend::
+                    postgresql,
+                [](
+                    const String&,
+                    const std::vector<
+                        model::AttributeValue
+                    >&
+                ) {
+                    return
+                        database::Result{};
+                }
+            );
+
+        database::Connection connection{
+            "primary",
+            std::move(driver)
+        };
+
+        static_cast<void>(
+            connection.execute(
+                "select * from users where id = ?",
+                {}
+            )
+        );
+
+        queue_driver.push({
+            "job-1",
+            "mail.send",
+            "42",
+            0,
+            1
+        });
+
+        scheduler::SystemClock clock;
+        scheduler::Scheduler
+            scheduler{clock};
+
+        scheduler.every(
+            "cleanup",
+            std::chrono::seconds{10},
+            [] {}
+        );
+
+        assert(
+            scheduler.run_due() == 1
+        );
+
+        mail::MemoryTransport
+            transport;
+
+        mail::Mailer mailer{
+            transport
+        };
+
+        mail::Message message;
+
+        message
+            .from({
+                "sender@test.invalid",
+                "Sender"
+            })
+            .to({
+                "user@test.invalid",
+                "User"
+            })
+            .subject("Trace")
+            .text("Body");
+
+        mailer.send(message);
+    }
+
+    application_root.end();
+
+    queue::Worker queue_worker{
+        queue_driver
+    };
+
+    queue_worker.handle(
+        "mail.send",
+        [](
+            std::string_view
+        ) {}
+    );
+
+    assert(
+        queue_worker.run_one()
+    );
+
+    const auto framework_spans =
+        sink->spans();
+
+    bool saw_db = false;
+    bool saw_queue = false;
+    bool saw_scheduler = false;
+    bool saw_mail = false;
+
+    for (
+        const auto& span :
+        framework_spans
+    ) {
+        if (
+            span.name ==
+            "database.query"
+        ) {
+            saw_db = true;
+
+            assert(
+                span.trace_id ==
+                application_context.trace_id
+            );
+
+            assert(
+                span.parent_span_id ==
+                application_context.span_id
+            );
+
+            assert(
+                span.attributes.at(
+                    "db.operation"
+                ) ==
+                "SELECT"
+            );
+        } else if (
+            span.name ==
+            "queue.job"
+        ) {
+            saw_queue = true;
+
+            assert(
+                span.trace_id ==
+                application_context.trace_id
+            );
+
+            assert(
+                span.parent_span_id ==
+                application_context.span_id
+            );
+        } else if (
+            span.name ==
+            "scheduler.task"
+        ) {
+            saw_scheduler = true;
+
+            assert(
+                span.trace_id ==
+                application_context.trace_id
+            );
+        } else if (
+            span.name ==
+            "mail.send"
+        ) {
+            saw_mail = true;
+
+            assert(
+                span.trace_id ==
+                application_context.trace_id
+            );
+        }
+    }
+
+    assert(saw_db);
+    assert(saw_queue);
+    assert(saw_scheduler);
+    assert(saw_mail);
 
     tracer->flush();
     tracer->shutdown();
