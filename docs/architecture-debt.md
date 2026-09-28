@@ -13,7 +13,7 @@ This document records known limitations that should remain visible before a stab
 - Local storage rejects existing symlink traversal, canonicalizes containment, uses exclusive same-directory temporary files and atomically replaces completed writes. Race-free containment against concurrent hostile filesystem mutation and full crash-durable directory commits remain separate hardening work.
 - Events currently use named polymorphic events rather than a fully typed dispatch surface.
 - Queue visibility leasing, delayed delivery/release, crash recovery, reservation-token lease renewal, retry backoff and failed-job lookup/retry/delete are implemented. The generic worker has a long-running loop with cooperative stop/cancellation, idle polling, bounded-run options and optional lease heartbeats. Multi-process supervision remains incomplete.
-- Scheduler provides interval and standard five-field cron execution, explicit fixed/recurring timezones, DST gap handling and repeated-wall-minute suppression. A full external IANA timezone database adapter, distributed no-overlap locking and a production scheduler runner remain incomplete.
+- Scheduler provides interval and standard five-field cron execution, explicit fixed/recurring timezones, DST gap handling, repeated-wall-minute suppression, in-memory overlap locking and Redis owner-token distributed locks for no-overlap/one-server execution. A full external IANA timezone database adapter and a production scheduler runner remain incomplete.
 - Logging provides structured records and sinks, not tracing/metrics exporters.
 - Plugin compatibility expressions are not yet parsed or enforced.
 - Generated CLI scaffolding must remain synchronized with source-language lowering and runtime contracts.
