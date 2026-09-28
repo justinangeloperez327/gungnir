@@ -1310,7 +1310,8 @@ public:
 
     void listen(
         std::string host,
-        std::uint16_t port
+        std::uint16_t port,
+        CancellationToken cancellation
     ) {
         bool expected = false;
 
@@ -1326,6 +1327,21 @@ public:
         }
 
         bound.store(0);
+
+        const auto cancellation_registration =
+            cancellation.on_cancel(
+                [this] {
+                    stop();
+                }
+            );
+
+        static_cast<void>(
+            cancellation_registration
+        );
+
+        if (!running.load()) {
+            return;
+        }
 
         try {
             const auto socket =
@@ -2464,7 +2480,20 @@ void Server::listen(
 ) {
     impl_->listen(
         std::move(host),
-        port
+        port,
+        CancellationToken{}
+    );
+}
+
+void Server::listen(
+    std::string host,
+    std::uint16_t port,
+    CancellationToken cancellation
+) {
+    impl_->listen(
+        std::move(host),
+        port,
+        std::move(cancellation)
     );
 }
 

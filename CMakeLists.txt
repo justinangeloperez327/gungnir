@@ -215,6 +215,7 @@ add_library(gungnir
     src/migration/runner.cpp
     src/migration/table.cpp
     src/production/runtime_adapters.cpp
+    src/production/runtime_host.cpp
     src/routing/route.cpp
     src/routing/router.cpp
     src/security/security.cpp
@@ -1037,6 +1038,25 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(
         NAME gungnir.runtime_supervisor
         COMMAND gungnir_runtime_supervisor_test
+    )
+
+    add_executable(
+        gungnir_runtime_host_test
+        tests/runtime_host.cpp
+    )
+    target_link_libraries(
+        gungnir_runtime_host_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_runtime_host_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.runtime_host
+        COMMAND gungnir_runtime_host_test
     )
 
     add_executable(gungnir_storage_test tests/storage.cpp)

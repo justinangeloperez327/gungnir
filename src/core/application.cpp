@@ -710,6 +710,18 @@ void Application::listen(
     std::uint16_t port,
     String host
 ) {
+    listen(
+        port,
+        std::move(host),
+        CancellationToken{}
+    );
+}
+
+void Application::listen(
+    std::uint16_t port,
+    String host,
+    CancellationToken cancellation
+) {
     if (!impl_) {
         throw std::logic_error(
             "Gungnir application is not initialized"
@@ -720,10 +732,14 @@ void Application::listen(
         boot();
     }
 
-    impl_->lifecycle.stage(LifecycleStage::running);
+    impl_->lifecycle.stage(
+        LifecycleStage::running
+    );
+
     impl_->server->listen(
         std::move(host),
-        port
+        port,
+        std::move(cancellation)
     );
 }
 
