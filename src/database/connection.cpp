@@ -68,6 +68,8 @@ Result Connection::execute(
             }
         );
 
+    cancellation.throw_if_cancelled();
+
     try {
         auto result =
             driver_->execute(
