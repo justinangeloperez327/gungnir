@@ -136,6 +136,35 @@ bool valid_mailbox(
     return true;
 }
 
+[[nodiscard]]
+bool valid_header_text(
+    std::string_view value
+) noexcept {
+    if (
+        !security::valid_header_value(
+            value
+        )
+    ) {
+        return false;
+    }
+
+    for (const auto character : value) {
+        const auto byte =
+            static_cast<unsigned char>(
+                character
+            );
+
+        if (
+            byte < 0x20 ||
+            byte == 0x7f
+        ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void validate_address(
     const Address& address,
     std::string_view role
@@ -153,7 +182,7 @@ void validate_address(
     }
 
     if (
-        !security::valid_header_value(
+        !valid_header_text(
             address.name
         )
     ) {
@@ -956,7 +985,7 @@ private:
         }
 
         if (
-            !security::valid_header_value(
+            !valid_header_text(
                 message.subject_line()
             )
         ) {
