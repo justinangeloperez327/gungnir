@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <limits>
 #include <system_error>
