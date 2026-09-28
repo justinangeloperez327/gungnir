@@ -8,6 +8,7 @@
 
 #include <gungnir/scheduler/clock.hpp>
 #include <gungnir/scheduler/cron.hpp>
+#include <gungnir/scheduler/timezone.hpp>
 
 namespace gungnir::scheduler {
 
@@ -31,7 +32,9 @@ public:
     Task(
         std::string name,
         CronExpression cron,
-        Action action
+        Action action,
+        const TimeZone& timezone =
+            UtcTimeZone::instance()
     )
         : name_(
             std::move(name)
@@ -41,7 +44,8 @@ public:
           ),
           action_(
             std::move(action)
-          ) {}
+          ),
+          timezone_(&timezone) {}
 
     [[nodiscard]]
     const std::string& name()
@@ -80,6 +84,19 @@ public:
         return &*cron_;
     }
 
+    Task& timezone(
+        const TimeZone& timezone
+    ) noexcept {
+        timezone_ = &timezone;
+        return *this;
+    }
+
+    [[nodiscard]]
+    const TimeZone& timezone()
+        const noexcept {
+        return *timezone_;
+    }
+
     [[nodiscard]]
     bool due(
         Clock::TimePoint now
@@ -95,13 +112,14 @@ public:
             return false;
         }
 
+        const auto local =
+            timezone_->to_local(now);
+
         const auto slot =
-            std::chrono::floor<
-                std::chrono::minutes
-            >(now);
+            wall_minute(local);
 
         return
-            cron_->matches_utc(now) &&
+            cron_->matches(local) &&
             (
                 !last_cron_slot_ ||
                 *last_cron_slot_ != slot
@@ -127,13 +145,14 @@ public:
                 Clock::TimePoint::max();
         }
 
+        const auto local =
+            timezone_->to_local(now);
+
         const auto slot =
-            std::chrono::floor<
-                std::chrono::minutes
-            >(now);
+            wall_minute(local);
 
         if (
-            cron_->matches_utc(now) &&
+            cron_->matches(local) &&
             (
                 !last_cron_slot_ ||
                 *last_cron_slot_ != slot
@@ -143,8 +162,10 @@ public:
         }
 
         return
-            cron_->next_after_utc(
-                slot
+            cron_->next_after(
+                now,
+                *timezone_,
+                last_cron_slot_
             );
     }
 
@@ -158,9 +179,11 @@ public:
 
         if (cron_) {
             last_cron_slot_ =
-                std::chrono::floor<
-                    std::chrono::minutes
-                >(now);
+                wall_minute(
+                    timezone_->to_local(
+                        now
+                    )
+                );
         }
     }
 
@@ -174,10 +197,11 @@ private:
     > cron_;
     Action action_;
     Clock::TimePoint last_run_{};
+    const TimeZone* timezone_{
+        &UtcTimeZone::instance()
+    };
     std::optional<
-        std::chrono::sys_time<
-            std::chrono::minutes
-        >
+        WallMinute
     > last_cron_slot_;
     bool has_run_{false};
 };
