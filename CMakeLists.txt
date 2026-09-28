@@ -1204,6 +1204,34 @@ if(GUNGNIR_BUILD_TESTS)
                 gungnir_mongodb_integration_test
         )
     endif()
+
+    if(
+        GUNGNIR_WITH_REDIS AND
+        GUNGNIR_REDIS_INTEGRATION_TESTS
+    )
+        add_executable(
+            gungnir_redis_integration_test
+            tests/redis_integration.cpp
+        )
+
+        target_link_libraries(
+            gungnir_redis_integration_test
+            PRIVATE
+                gungnir::redis
+        )
+
+        target_compile_features(
+            gungnir_redis_integration_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.redis
+            COMMAND
+                gungnir_redis_integration_test
+        )
+    endif()
 endif()
 
 
