@@ -12,15 +12,21 @@ A queued job is represented by an `Envelope` containing an opaque identifier, st
 
 ## Worker
 
-`Worker` maps stable job names to handlers and processes one job at a time with `run_one()`. Failed handlers are released until `max_attempts` is reached, after which the driver receives the failed job.
+`Worker` maps stable job names to handlers. `run_one()` remains available for tests and explicit single-job execution, while `run()` provides the long-running production loop.
+
+`WorkerOptions` controls idle polling, an optional maximum number of jobs, and an optional maximum runtime. `request_stop()` wakes an idle worker immediately and prevents any new reservation after the current iteration. If shutdown is requested while a handler is active, that handler is allowed to finish and its job is acknowledged or released before the worker exits.
+
+`run()` also accepts a Gungnir `CancellationToken`. Process supervisors and application signal handlers should cancel that token rather than installing queue-specific global signal state inside the framework.
 
 ## Delivery semantics
 
 The generic contract does not promise exactly-once delivery. Production adapters must document their acknowledgement, visibility timeout, redelivery and crash-recovery semantics.
 
-## Async execution
+## Worker lifecycle
 
-Background execution is provided by queue workers, not by pretending synchronous application code is asynchronous. A production worker process, shutdown handling, signals, concurrency and backoff remain runtime concerns.
+Background execution is provided by queue workers, not by pretending synchronous application code is asynchronous. The worker loop now has cooperative production shutdown semantics: stop polling first, finish the active job, then exit. Operating-system signal ownership remains with the hosting executable or service manager so applications can coordinate HTTP, queue, scheduler and other shutdown participants through one cancellation source.
+
+Multi-worker supervision, process restarts and deployment-level concurrency remain host concerns.
 
 ## Serialization and compatibility
 
