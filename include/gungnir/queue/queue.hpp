@@ -3,3 +3,4 @@
 #include <gungnir/queue/job.hpp>
 #include <gungnir/queue/memory_driver.hpp>
 #include <gungnir/queue/worker.hpp>
+#include <gungnir/queue/redis_driver.hpp>
