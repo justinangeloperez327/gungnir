@@ -204,7 +204,7 @@ RuntimeHost::supervisor()
 }
 
 std::exception_ptr RuntimeHost::failure()
-    const noexcept {
+    const {
     std::lock_guard lock{
         failure_mutex_
     };
