@@ -85,3 +85,16 @@ Persistent database/cache-backed stores, expiry/garbage collection, and distribu
 ## Authentication integration
 
 Register `session::middleware(...)` before `auth::session(...)`. Authentication stores only the identity ID in session state; the configured identity resolver reloads the current identity on each request. Login, logout, and stale identity resolution trigger session-ID rotation.
+
+
+## CSRF integration
+
+For browser routes that mutate state, register `http::csrf()` after session middleware and before `auth::session(...)`:
+
+```cpp
+router.use(session::middleware(store));
+router.use(http::csrf());
+router.use(auth::session(identity_resolver));
+```
+
+The CSRF token is stored in the server-side session. Session-ID regeneration caused by login, logout, invalidation, or stale authentication rotates the CSRF token as well.
