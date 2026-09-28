@@ -1735,6 +1735,8 @@ public:
         }
 
         try {
+            prepare_tls_context();
+
             const auto socket =
                 make_listener(
                     host,
@@ -1835,6 +1837,198 @@ public:
         view_engine =
             std::move(value);
     }
+
+    void prepare_tls_context() {
+        if (!options.tls) {
+#ifdef GUNGNIR_WITH_TLS
+            tls_context.reset();
+#endif
+            return;
+        }
+
+#ifndef GUNGNIR_WITH_TLS
+        throw std::logic_error(
+            "Gungnir was built without TLS transport support"
+        );
+#else
+        tls_context =
+            make_tls_context(
+                *options.tls
+            );
+#endif
+    }
+
+#ifdef GUNGNIR_WITH_TLS
+    [[nodiscard]]
+    bool attach_tls(
+        ConnectionState& connection
+    ) noexcept {
+        if (!tls_context) {
+            return true;
+        }
+
+#ifdef _WIN32
+        if (
+            static_cast<std::uint64_t>(
+                connection.socket
+            ) >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<int>::
+                    max()
+            )
+        ) {
+            return false;
+        }
+#endif
+
+        ERR_clear_error();
+
+        SslConnection session{
+            SSL_new(
+                tls_context.get()
+            ),
+            &SSL_free
+        };
+
+        if (!session) {
+            return false;
+        }
+
+        if (
+            SSL_set_fd(
+                session.get(),
+                static_cast<int>(
+                    connection.socket
+                )
+            ) != 1
+        ) {
+            return false;
+        }
+
+        SSL_set_accept_state(
+            session.get()
+        );
+
+        SSL_set_mode(
+            session.get(),
+            SSL_MODE_ENABLE_PARTIAL_WRITE |
+                SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER
+        );
+
+        connection.tls =
+            std::move(session);
+
+        connection.tls_handshake_complete =
+            false;
+
+        connection.tls_want_read =
+            true;
+
+        connection.tls_want_write =
+            false;
+
+        return true;
+    }
+
+    [[nodiscard]]
+    bool tls_handshake_ready(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            !connection.tls ||
+            connection
+                .tls_handshake_complete
+        ) {
+            return true;
+        }
+
+        connection.tls_want_read =
+            false;
+
+        connection.tls_want_write =
+            false;
+
+        ERR_clear_error();
+
+        const auto result =
+            SSL_accept(
+                connection.tls.get()
+            );
+
+        if (result == 1) {
+            connection
+                .tls_handshake_complete =
+                true;
+
+            connection.last_activity =
+                Clock::now();
+
+            observability::
+                global_meter()
+                ->counter(
+                    "http.server.tls.handshake.count"
+                )
+                .add(
+                    1.0,
+                    {
+                        {
+                            "outcome",
+                            "ok"
+                        }
+                    }
+                );
+
+            return true;
+        }
+
+        const auto error =
+            SSL_get_error(
+                connection.tls.get(),
+                result
+            );
+
+        if (
+            error ==
+            SSL_ERROR_WANT_READ
+        ) {
+            connection.tls_want_read =
+                true;
+
+            return false;
+        }
+
+        if (
+            error ==
+            SSL_ERROR_WANT_WRITE
+        ) {
+            connection.tls_want_write =
+                true;
+
+            return false;
+        }
+
+        observability::
+            global_meter()
+            ->counter(
+                "http.server.tls.handshake.count"
+            )
+            .add(
+                1.0,
+                {
+                    {
+                        "outcome",
+                        "error"
+                    }
+                }
+            );
+
+        close_connection(
+            connection
+        );
+
+        return false;
+    }
+#endif
 
     void reactor_loop() {
         std::optional<
