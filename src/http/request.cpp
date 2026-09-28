@@ -169,12 +169,14 @@ Request::Request(
     Method method,
     std::string target,
     std::string body,
-    CancellationToken cancellation
+    CancellationToken cancellation,
+    bool secure
 )
     : method_(method),
       target_(std::move(target)),
       body_(std::move(body)),
-      cancellation_(std::move(cancellation)) {
+      cancellation_(std::move(cancellation)),
+      secure_(secure) {
     parse_target();
 }
 
@@ -196,6 +198,10 @@ std::string_view Request::body() const noexcept {
 
 bool Request::cancelled() const noexcept {
     return cancellation_.cancelled();
+}
+
+bool Request::secure() const noexcept {
+    return secure_;
 }
 
 CancellationToken Request::cancellation() const noexcept {
