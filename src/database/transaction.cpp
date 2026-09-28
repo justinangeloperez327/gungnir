@@ -1,7 +1,7 @@
 #include <gungnir/database/transaction.hpp>
 
-#include <exception>
-#include <thread>
+#include <stdexcept>
+#include <utility>
 
 namespace gungnir::database {
 
@@ -9,97 +9,178 @@ Transaction::Transaction(
     std::shared_ptr<Connection> connection
 )
     : connection_(
-        std::move(
-            connection
-        )
-      ),
-      lock_(
-        connection_->mutex_
-      ),
-      owner_(
-        std::this_thread::
-            get_id()
-      ),
-      active_(true) {
-    connection_->begin();
+        std::move(connection)
+      ) {
+    if (!connection_) {
+        throw std::invalid_argument(
+            "Database transaction requires a connection"
+        );
+    }
+
+    token_ =
+        connection_->begin_scope();
+
+    active_ = true;
 }
 
 Transaction::~Transaction() {
-    if (
-        !active_ ||
-        !connection_
-    ) {
+    if (!active_) {
         return;
     }
 
-    if (
-        owner_ !=
-        std::this_thread::
-            get_id()
-    ) {
-        std::terminate();
-    }
-
     try {
-        connection_->rollback();
+        rollback();
     } catch (...) {
     }
 }
 
 Connection&
 Transaction::connection() {
-    ensure_owner();
-
     return *connection_;
 }
 
 const Connection&
-Transaction::connection() const {
-    ensure_owner();
-
+Transaction::connection()
+    const {
     return *connection_;
 }
 
 void Transaction::commit() {
-    ensure_owner();
-
     if (!active_) {
         return;
     }
 
-    connection_->commit();
+    connection_->
+        commit_scope(
+            token_
+        );
+
     active_ = false;
-    lock_.unlock();
 }
 
 void Transaction::rollback() {
-    ensure_owner();
-
     if (!active_) {
         return;
     }
 
-    connection_->rollback();
+    connection_->
+        rollback_scope(
+            token_
+        );
+
     active_ = false;
-    lock_.unlock();
 }
 
 bool Transaction::active()
-    const {
-    ensure_owner();
-
+    const noexcept {
     return active_;
 }
 
-void Transaction::ensure_owner()
-    const {
+AsyncTransaction::AsyncTransaction(
+    std::shared_ptr<Connection> connection,
+    AsyncTransactionOptions options
+)
+    : connection_(
+        std::move(connection)
+      ),
+      options_(
+        std::move(options)
+      ),
+      started_(
+        std::chrono::
+            steady_clock::now()
+      ) {
+    if (!connection_) {
+        throw std::invalid_argument(
+            "Async database transaction requires a connection"
+        );
+    }
+
     if (
-        owner_ !=
-        std::this_thread::
-            get_id()
+        options_.timeout.count() <= 0
     ) {
-        throw std::logic_error(
-            "Database transaction cannot migrate across threads"
+        throw std::invalid_argument(
+            "Async database transaction timeout must be greater than zero"
+        );
+    }
+
+    token_ =
+        connection_->begin_scope();
+
+    active_ = true;
+}
+
+AsyncTransaction::~AsyncTransaction() {
+    if (!active_) {
+        return;
+    }
+
+    try {
+        rollback();
+    } catch (...) {
+    }
+}
+
+Connection&
+AsyncTransaction::connection() {
+    ensure_not_expired();
+    return *connection_;
+}
+
+const Connection&
+AsyncTransaction::connection()
+    const {
+    ensure_not_expired();
+    return *connection_;
+}
+
+void AsyncTransaction::commit() {
+    if (!active_) {
+        return;
+    }
+
+    ensure_not_expired();
+
+    connection_->
+        commit_scope(
+            token_
+        );
+
+    active_ = false;
+}
+
+void AsyncTransaction::rollback() {
+    if (!active_) {
+        return;
+    }
+
+    connection_->
+        rollback_scope(
+            token_
+        );
+
+    active_ = false;
+}
+
+bool AsyncTransaction::active()
+    const noexcept {
+    return active_;
+}
+
+bool AsyncTransaction::expired()
+    const noexcept {
+    return
+        std::chrono::
+            steady_clock::now() -
+        started_ >=
+        options_.timeout;
+}
+
+void AsyncTransaction::ensure_not_expired()
+    const {
+    if (expired()) {
+        throw std::runtime_error(
+            "Async database transaction exceeded its timeout"
         );
     }
 }
