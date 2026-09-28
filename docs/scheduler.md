@@ -24,11 +24,17 @@ Cron tasks execute at most once for each matching minute, even when `run_due()` 
 
 `next_due()` exposes the earliest next task deadline for scheduler runtimes that want deadline-aware sleeping.
 
-## Clock
+## Clock and timezones
 
 Time is provided through the `Clock` interface. Production applications can use `SystemClock`; tests can provide deterministic clocks.
 
-Cron evaluation in this group is UTC. Named timezones and daylight-saving-time policy are handled separately by the timezone scheduling layer.
+A scheduler has an explicit default `TimeZone`, defaulting to UTC. Cron tasks inherit that timezone when registered and may override it fluently with `.timezone(...)`.
+
+`FixedOffsetTimeZone` covers zones without daylight-saving transitions. `RecurringTimeZone` models named zones whose daylight transitions follow recurring month / nth-weekday / local-time rules. Transition rules are evaluated without modifying process-global timezone state.
+
+During a spring-forward gap, nonexistent wall-clock minutes do not run. During fall-back, the repeated wall-clock minute represents one scheduled slot: once a cron task has run for that local year/month/day/hour/minute, the repeated occurrence is suppressed. This prevents accidental duplicate business actions during DST rollback.
+
+Recurring transition rules define the start time in pre-transition standard time and the end time in pre-transition daylight time.
 
 ## Process lifecycle
 

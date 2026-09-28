@@ -12,15 +12,32 @@
 #include <gungnir/scheduler/clock.hpp>
 #include <gungnir/scheduler/cron.hpp>
 #include <gungnir/scheduler/task.hpp>
+#include <gungnir/scheduler/timezone.hpp>
 
 namespace gungnir::scheduler {
 
 class Scheduler {
 public:
     explicit Scheduler(
-        Clock& clock
+        Clock& clock,
+        const TimeZone& timezone =
+            UtcTimeZone::instance()
     )
-        : clock_(&clock) {}
+        : clock_(&clock),
+          timezone_(&timezone) {}
+
+    Scheduler& timezone(
+        const TimeZone& timezone
+    ) noexcept {
+        timezone_ = &timezone;
+        return *this;
+    }
+
+    [[nodiscard]]
+    const TimeZone& timezone()
+        const noexcept {
+        return *timezone_;
+    }
 
     Task& every(
         std::string name,
@@ -59,7 +76,8 @@ public:
             CronExpression{
                 std::move(expression)
             },
-            std::move(action)
+            std::move(action),
+            *timezone_
         );
 
         return tasks_.back();
@@ -177,6 +195,7 @@ private:
     }
 
     Clock* clock_;
+    const TimeZone* timezone_;
     std::unordered_set<
         std::string
     > names_;

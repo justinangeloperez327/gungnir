@@ -12,6 +12,8 @@
 #include <string_view>
 #include <vector>
 
+#include <gungnir/scheduler/timezone.hpp>
+
 namespace gungnir::scheduler {
 
 class CronExpression {
@@ -32,53 +34,20 @@ public:
     }
 
     [[nodiscard]]
-    bool matches_utc(
-        std::chrono::system_clock::time_point point
-    ) const {
-        const auto minute_point =
-            std::chrono::floor<
-                std::chrono::minutes
-            >(point);
-
-        const auto time =
-            std::chrono::system_clock::
-                to_time_t(minute_point);
-
-        std::tm calendar{};
-
-#ifdef _WIN32
-        if (
-            gmtime_s(
-                &calendar,
-                &time
-            ) != 0
-        ) {
-            throw std::runtime_error(
-                "Unable to convert cron time to UTC"
-            );
-        }
-#else
-        if (
-            gmtime_r(
-                &time,
-                &calendar
-            ) == nullptr
-        ) {
-            throw std::runtime_error(
-                "Unable to convert cron time to UTC"
-            );
-        }
-#endif
-
+    bool matches(
+        const LocalDateTime& local
+    ) const noexcept {
         if (
             !minute_.contains(
-                calendar.tm_min
+                local.minute
             ) ||
             !hour_.contains(
-                calendar.tm_hour
+                local.hour
             ) ||
             !month_.contains(
-                calendar.tm_mon + 1
+                static_cast<int>(
+                    local.month
+                )
             )
         ) {
             return false;
@@ -86,15 +55,17 @@ public:
 
         const auto day_of_month =
             day_of_month_.contains(
-                calendar.tm_mday
+                static_cast<int>(
+                    local.day
+                )
             );
 
         const auto day_of_week =
             day_of_week_.contains(
-                calendar.tm_wday
+                local.weekday
             ) ||
             (
-                calendar.tm_wday == 0 &&
+                local.weekday == 0 &&
                 day_of_week_.contains(7)
             );
 
@@ -119,9 +90,22 @@ public:
     }
 
     [[nodiscard]]
-    std::chrono::system_clock::time_point
-    next_after_utc(
+    bool matches_utc(
         std::chrono::system_clock::time_point point
+    ) const {
+        return matches(
+            UtcTimeZone::instance()
+                .to_local(point)
+        );
+    }
+
+    [[nodiscard]]
+    Clock::TimePoint next_after(
+        Clock::TimePoint point,
+        const TimeZone& timezone,
+        std::optional<WallMinute>
+            skip_wall_minute =
+                std::nullopt
     ) const {
         auto candidate =
             std::chrono::floor<
@@ -137,7 +121,19 @@ public:
             attempt < limit;
             ++attempt
         ) {
-            if (matches_utc(candidate)) {
+            const auto local =
+                timezone.to_local(
+                    candidate
+                );
+
+            if (
+                matches(local) &&
+                (
+                    !skip_wall_minute ||
+                    wall_minute(local) !=
+                        *skip_wall_minute
+                )
+            ) {
                 return candidate;
             }
 
@@ -147,6 +143,17 @@ public:
 
         throw std::runtime_error(
             "Cron expression has no occurrence within the search horizon"
+        );
+    }
+
+    [[nodiscard]]
+    std::chrono::system_clock::time_point
+    next_after_utc(
+        std::chrono::system_clock::time_point point
+    ) const {
+        return next_after(
+            point,
+            UtcTimeZone::instance()
         );
     }
 
