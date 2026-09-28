@@ -1,90 +1,120 @@
 #include <gungnir/database/runtime.hpp>
 
+#include <atomic>
 #include <stdexcept>
 #include <utility>
 
 namespace gungnir::database::runtime {
 
 namespace {
-Manager* active_manager = nullptr;
-thread_local std::shared_ptr<Connection> scoped_connection;
-}
+
+std::atomic<Manager*> active_manager{
+    nullptr
+};
+
+thread_local std::shared_ptr<
+    Connection
+> scoped_connection;
+
+} // namespace
+
+namespace detail {
 
 ConnectionScope::ConnectionScope(
     std::shared_ptr<Connection> connection
 )
-    : previous_(std::move(scoped_connection)) {
+    : previous_(
+        std::move(
+            scoped_connection
+        )
+      ) {
     if (!connection) {
         throw std::invalid_argument(
             "Database connection scope requires a connection"
         );
     }
 
-    scoped_connection = std::move(connection);
+    scoped_connection =
+        std::move(
+            connection
+        );
 }
 
 ConnectionScope::~ConnectionScope() {
-    if (active_) {
-        scoped_connection = std::move(previous_);
-    }
+    scoped_connection =
+        std::move(
+            previous_
+        );
 }
 
-ConnectionScope::ConnectionScope(ConnectionScope&& other) noexcept
-    : previous_(std::move(other.previous_)),
-      active_(std::exchange(other.active_, false)) {}
+} // namespace detail
 
-ConnectionScope& ConnectionScope::operator=(
-    ConnectionScope&& other
+void use(
+    Manager& manager
 ) noexcept {
-    if (this == &other) {
-        return *this;
-    }
-
-    if (active_) {
-        scoped_connection = std::move(previous_);
-    }
-
-    previous_ = std::move(other.previous_);
-    active_ = std::exchange(other.active_, false);
-    return *this;
-}
-
-void use(Manager& manager) noexcept {
-    active_manager = &manager;
+    active_manager.store(
+        &manager,
+        std::memory_order_release
+    );
 }
 
 void clear() noexcept {
-    active_manager = nullptr;
+    active_manager.store(
+        nullptr,
+        std::memory_order_release
+    );
+
     scoped_connection.reset();
 }
 
 bool configured() noexcept {
-    return active_manager != nullptr;
+    return
+        active_manager.load(
+            std::memory_order_acquire
+        ) != nullptr;
 }
 
-bool using_manager(const Manager& manager) noexcept {
-    return active_manager == &manager;
+bool using_manager(
+    const Manager& manager
+) noexcept {
+    return
+        active_manager.load(
+            std::memory_order_acquire
+        ) ==
+        &manager;
 }
 
 Manager& manager() {
-    if (active_manager == nullptr) {
+    auto* current =
+        active_manager.load(
+            std::memory_order_acquire
+        );
+
+    if (current == nullptr) {
         throw std::logic_error(
             "Gungnir database runtime is not configured"
         );
     }
 
-    return *active_manager;
+    return *current;
 }
 
-std::shared_ptr<Connection> connection(std::string_view name) {
+std::shared_ptr<Connection>
+connection(
+    std::string_view name
+) {
     if (
         scoped_connection &&
-        scoped_connection->name() == name
+        scoped_connection->name() ==
+            name
     ) {
         return scoped_connection;
     }
 
-    return manager().connection(name);
+    return
+        manager().connection(
+            name
+        );
 }
 
 } // namespace gungnir::database::runtime
