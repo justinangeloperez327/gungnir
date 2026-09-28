@@ -109,6 +109,7 @@ if(GUNGNIR_WITH_MONGODB)
 endif()
 
 add_library(gungnir
+    src/auth/session.cpp
     src/config/environment.cpp
     src/config/repository.cpp
     src/core/application.cpp
