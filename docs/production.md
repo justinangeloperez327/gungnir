@@ -10,9 +10,11 @@ Readiness checks should cover dependencies that must be available before an inst
 
 ## Shutdown
 
-The application already exposes lifecycle shutdown and server stop operations. Deployment environments should stop accepting new traffic before terminating the process and allow in-flight work to finish according to the server/runtime guarantees actually implemented.
+The HTTP server performs cooperative graceful draining when `stop()` is requested. It closes the listener first, refuses additional keep-alive work, and allows requests that were already dispatched to finish and flush their response with `Connection: close`.
 
-Gungnir does not currently claim complete graceful draining across HTTP connections, queues, scheduler callbacks and arbitrary application coroutines.
+`RuntimeOptions::shutdown_timeout` is the drain deadline. When the deadline expires, remaining request cancellation tokens are signaled and their client sockets are closed. Request handlers that perform cancellable work should observe the request cancellation token so shutdown can complete promptly after the deadline.
+
+This guarantee is currently scoped to the HTTP server. Gungnir does not yet coordinate one process-wide drain across queue workers, scheduler callbacks and arbitrary application coroutines.
 
 ## Reverse proxies
 
