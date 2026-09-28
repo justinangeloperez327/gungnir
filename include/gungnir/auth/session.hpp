@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <gungnir/auth/auth.hpp>
 #include <gungnir/http/middleware.hpp>
