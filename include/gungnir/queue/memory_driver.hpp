@@ -18,6 +18,8 @@ public:
     void push(
         Envelope job
     ) override {
+        inherit_trace(job);
+
         std::lock_guard lock{
             mutex_
         };
@@ -31,6 +33,8 @@ public:
         Envelope job,
         std::chrono::milliseconds delay
     ) override {
+        inherit_trace(job);
+
         if (delay.count() <= 0) {
             push(
                 std::move(job)
