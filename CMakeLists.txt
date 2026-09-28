@@ -1060,6 +1060,25 @@ if(GUNGNIR_BUILD_TESTS)
         COMMAND gungnir_runtime_host_test
     )
 
+    add_executable(
+        gungnir_runtime_signals_test
+        tests/runtime_signals.cpp
+    )
+    target_link_libraries(
+        gungnir_runtime_signals_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_runtime_signals_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.runtime_signals
+        COMMAND gungnir_runtime_signals_test
+    )
+
     add_executable(gungnir_storage_test tests/storage.cpp)
     target_link_libraries(gungnir_storage_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_storage_test PRIVATE cxx_std_23)
