@@ -776,6 +776,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_security_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.security COMMAND gungnir_security_test)
 
+    add_executable(
+        gungnir_auth_session_test
+        tests/auth_session.cpp
+    )
+    target_link_libraries(
+        gungnir_auth_session_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_auth_session_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.auth_session
+        COMMAND gungnir_auth_session_test
+    )
+
     add_executable(gungnir_exception_test tests/exceptions.cpp)
     target_link_libraries(gungnir_exception_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_exception_test PRIVATE cxx_std_23)
