@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <gungnir/core/cancellation.hpp>
+#include <gungnir/observability/metrics.hpp>
 #include <gungnir/queue/driver.hpp>
 
 namespace gungnir::queue {
@@ -60,6 +61,64 @@ public:
         if (!job) {
             return false;
         }
+
+        const auto metric_started =
+            std::chrono::steady_clock::now();
+
+        const auto record_metrics =
+            [&](
+                std::string outcome,
+                bool failed
+            ) {
+                auto attributes =
+                    observability::Attributes{
+                        {
+                            "messaging.destination.name",
+                            job->name
+                        },
+                        {
+                            "outcome",
+                            std::move(outcome)
+                        }
+                    };
+
+                const auto elapsed =
+                    std::chrono::duration<
+                        double,
+                        std::milli
+                    >(
+                        std::chrono::
+                            steady_clock::now() -
+                        metric_started
+                    ).count();
+
+                auto meter =
+                    observability::
+                        global_meter();
+
+                meter->histogram(
+                    "messaging.process.duration"
+                ).record(
+                    elapsed,
+                    attributes
+                );
+
+                meter->counter(
+                    "messaging.process.count"
+                ).add(
+                    1.0,
+                    attributes
+                );
+
+                if (failed) {
+                    meter->counter(
+                        "messaging.process.failures"
+                    ).add(
+                        1.0,
+                        std::move(attributes)
+                    );
+                }
+            };
 
         auto span =
             observability::
@@ -106,6 +165,12 @@ public:
             );
 
             span.end();
+
+            record_metrics(
+                "error",
+                true
+            );
+
             driver_->fail(*job);
             return true;
         }
@@ -156,6 +221,11 @@ public:
 
             span.end();
 
+            record_metrics(
+                "ok",
+                false
+            );
+
             driver_->acknowledge(*job);
         } catch (
             const std::exception& error
@@ -167,6 +237,12 @@ public:
             );
 
             span.end();
+
+            record_metrics(
+                "error",
+                true
+            );
+
             handle_failure();
         } catch (...) {
             heartbeat.stop();
@@ -176,6 +252,12 @@ public:
             );
 
             span.end();
+
+            record_metrics(
+                "error",
+                true
+            );
+
             handle_failure();
         }
 
@@ -203,6 +285,25 @@ public:
 
         const auto started =
             std::chrono::steady_clock::now();
+
+        const auto active =
+            active_workers()
+                .fetch_add(
+                    1,
+                    std::memory_order_acq_rel
+                ) +
+            1;
+
+        observability::
+            global_meter()
+            ->gauge(
+                "messaging.worker.active"
+            )
+            .set(
+                static_cast<double>(
+                    active
+                )
+            );
 
         std::size_t processed = 0;
 
@@ -262,6 +363,7 @@ public:
                 std::memory_order_release
             );
 
+            publish_worker_exit();
             throw;
         }
 
@@ -269,6 +371,8 @@ public:
             false,
             std::memory_order_release
         );
+
+        publish_worker_exit();
 
         return processed;
     }
@@ -316,6 +420,38 @@ public:
     }
 
 private:
+    [[nodiscard]]
+    static std::atomic_size_t&
+    active_workers()
+        noexcept {
+        static std::atomic_size_t
+            active{0};
+
+        return active;
+    }
+
+    static void publish_worker_exit()
+        noexcept {
+        const auto active =
+            active_workers()
+                .fetch_sub(
+                    1,
+                    std::memory_order_acq_rel
+                ) -
+            1;
+
+        observability::
+            global_meter()
+            ->gauge(
+                "messaging.worker.active"
+            )
+            .set(
+                static_cast<double>(
+                    active
+                )
+            );
+    }
+
     void validate_options()
         const {
         if (
