@@ -92,6 +92,10 @@ public:
         const auto day_of_week =
             day_of_week_.contains(
                 calendar.tm_wday
+            ) ||
+            (
+                calendar.tm_wday == 0 &&
+                day_of_week_.contains(7)
             );
 
         if (
@@ -247,13 +251,6 @@ private:
                 "Cron field contains an invalid value: " +
                 std::string{value}
             );
-        }
-
-        if (
-            weekday &&
-            output == 7
-        ) {
-            output = 0;
         }
 
         if (
@@ -649,7 +646,7 @@ private:
             parse_field(
                 fields[4],
                 0,
-                6,
+                7,
                 &weekday_names,
                 true
             );
