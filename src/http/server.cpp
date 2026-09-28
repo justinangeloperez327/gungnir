@@ -21,6 +21,7 @@
 
 #include <gungnir/core/timer.hpp>
 #include <gungnir/http/message.hpp>
+#include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/routing/router.hpp>
 
@@ -1008,6 +1009,9 @@ struct PendingDispatch {
     Request request;
     CancellationSource cancellation;
     observability::Span span;
+    Clock::time_point metric_started{
+        Clock::now()
+    };
     std::optional<Response> response;
     std::exception_ptr exception;
     std::atomic_bool ready{false};
@@ -1115,20 +1119,25 @@ DetachedTask settle_dispatch(
             ? pending->span.scope()
             : observability::Scope{};
 
+    int response_status = 500;
+    std::string outcome{"error"};
+
     try {
         pending->response.emplace(
             co_await task
         );
 
-        const auto status =
+        response_status =
             pending->response->status();
 
         pending->span.attribute(
             "http.response.status_code",
-            std::to_string(status)
+            std::to_string(
+                response_status
+            )
         );
 
-        if (status >= 500) {
+        if (response_status >= 500) {
             pending->span.error(
                 "HTTP server error response"
             );
@@ -1137,6 +1146,8 @@ DetachedTask settle_dispatch(
                 observability::
                     SpanStatus::ok
             );
+
+            outcome = "ok";
         }
     } catch (
         const std::exception& error
@@ -1155,6 +1166,63 @@ DetachedTask settle_dispatch(
         pending->exception =
             std::current_exception();
     }
+
+    const auto elapsed =
+        std::chrono::duration<
+            double,
+            std::milli
+        >(
+            Clock::now() -
+            pending->metric_started
+        ).count();
+
+    auto metric_attributes =
+        observability::Attributes{
+            {
+                "http.request.method",
+                std::string{
+                    to_string(
+                        pending->request.method()
+                    )
+                }
+            },
+            {
+                "url.path",
+                std::string{
+                    pending->request.path()
+                }
+            },
+            {
+                "http.response.status_code",
+                std::to_string(
+                    response_status
+                )
+            },
+            {
+                "outcome",
+                outcome
+            }
+        };
+
+    auto meter =
+        observability::
+            global_meter();
+
+    meter->histogram(
+        "http.server.request.duration"
+    ).record(
+        elapsed,
+        metric_attributes
+    );
+
+    meter->counter(
+        "http.server.request.count"
+    ).add(
+        1.0,
+        std::move(
+            metric_attributes
+        )
+    );
 
     pending->span.end();
 
@@ -1702,6 +1770,8 @@ public:
             connections.push_back(
                 std::move(connection)
             );
+
+            publish_connection_gauge();
         }
     }
 
@@ -2233,6 +2303,8 @@ public:
             ),
             connections.end()
         );
+
+        publish_connection_gauge();
     }
 
     void close_all() noexcept {
@@ -2247,12 +2319,31 @@ public:
 
         connections.clear();
 
+        publish_connection_gauge();
+
         const auto socket =
             listener.exchange(
                 invalid_socket
             );
 
         close_socket(socket);
+    }
+
+    void publish_connection_gauge()
+        noexcept {
+        try {
+            observability::
+                global_meter()
+                ->gauge(
+                    "http.server.connection.active"
+                )
+                .set(
+                    static_cast<double>(
+                        connections.size()
+                    )
+                );
+        } catch (...) {
+        }
     }
 
     void validate_options() const {

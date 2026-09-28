@@ -3,6 +3,7 @@
 #include <memory>
 #include <mutex>
 
+#include <gungnir/cache/cache.hpp>
 #include <gungnir/core/executor.hpp>
 #include <gungnir/database/database.hpp>
 #include <gungnir/mail/mail.hpp>
@@ -30,6 +31,18 @@ int main() {
         );
 
     set_global_tracer(tracer);
+
+    auto metric_sink =
+        std::make_shared<
+            MemoryMetricSink
+        >();
+
+    auto meter =
+        std::make_shared<Meter>(
+            metric_sink
+        );
+
+    set_global_meter(meter);
 
     auto root =
         tracer->start_span(
@@ -86,6 +99,67 @@ int main() {
             );
 
         child.end();
+
+        meter->counter(
+            "test.counter"
+        ).add(
+            2.0,
+            {
+                {
+                    "kind",
+                    "test"
+                }
+            }
+        );
+
+        meter->gauge(
+            "test.gauge"
+        ).set(
+            3.0
+        );
+
+        meter->histogram(
+            "test.histogram"
+        ).record(
+            4.0
+        );
+    }
+
+    const auto primitive_metrics =
+        metric_sink->points();
+
+    assert(
+        primitive_metrics.size() == 3
+    );
+
+    assert(
+        primitive_metrics[0].kind ==
+        MetricKind::counter
+    );
+
+    assert(
+        primitive_metrics[1].kind ==
+        MetricKind::gauge
+    );
+
+    assert(
+        primitive_metrics[2].kind ==
+        MetricKind::histogram
+    );
+
+    for (
+        const auto& point :
+        primitive_metrics
+    ) {
+        assert(
+            point.trace_id ==
+            root_context.trace_id
+        );
+
+        assert(
+            point.span_id ==
+            root_context.span_id
+        );
     }
 
     assert(
@@ -235,6 +309,7 @@ int main() {
     assert(saw_root);
 
     sink->clear();
+    metric_sink->clear();
 
     auto application_root =
         tracer->start_span(
@@ -278,6 +353,30 @@ int main() {
                 "select * from users where id = ?",
                 {}
             )
+        );
+
+        cache::MemoryStore
+            cache_store;
+
+        cache::Repository
+            cache{
+                cache_store
+            };
+
+        assert(
+            !cache.get("missing")
+        );
+
+        cache.put(
+            "present",
+            "value"
+        );
+
+        assert(
+            cache.get("present") ==
+            std::optional<std::string>{
+                "value"
+            }
         );
 
         queue_driver.push({
@@ -420,10 +519,78 @@ int main() {
     assert(saw_scheduler);
     assert(saw_mail);
 
+    const auto framework_metrics =
+        metric_sink->points();
+
+    bool saw_db_duration = false;
+    bool saw_queue_duration = false;
+    bool saw_scheduler_duration = false;
+    bool saw_mail_duration = false;
+    bool saw_cache_hit = false;
+    bool saw_cache_miss = false;
+
+    for (
+        const auto& point :
+        framework_metrics
+    ) {
+        if (
+            point.name ==
+            "db.client.operation.duration"
+        ) {
+            saw_db_duration = true;
+            assert(
+                point.kind ==
+                MetricKind::histogram
+            );
+        } else if (
+            point.name ==
+            "messaging.process.duration"
+        ) {
+            saw_queue_duration = true;
+        } else if (
+            point.name ==
+            "scheduler.task.duration"
+        ) {
+            saw_scheduler_duration = true;
+        } else if (
+            point.name ==
+            "mail.send.duration"
+        ) {
+            saw_mail_duration = true;
+        } else if (
+            point.name ==
+            "cache.request.count"
+        ) {
+            const auto result =
+                point.attributes.at(
+                    "cache.result"
+                );
+
+            if (result == "hit") {
+                saw_cache_hit = true;
+            } else if (
+                result == "miss"
+            ) {
+                saw_cache_miss = true;
+            }
+        }
+    }
+
+    assert(saw_db_duration);
+    assert(saw_queue_duration);
+    assert(saw_scheduler_duration);
+    assert(saw_mail_duration);
+    assert(saw_cache_hit);
+    assert(saw_cache_miss);
+
+    meter->flush();
+    meter->shutdown();
+
     tracer->flush();
     tracer->shutdown();
 
     set_global_tracer(nullptr);
+    set_global_meter(nullptr);
 
     return 0;
 }

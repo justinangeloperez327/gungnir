@@ -1,6 +1,7 @@
 #include <gungnir/database/connection.hpp>
 
 #include <gungnir/database/error.hpp>
+#include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
 
 #include <cctype>
@@ -94,6 +95,62 @@ observability::Span database_span(
             );
 }
 
+void record_database_metrics(
+    const Connection& connection,
+    const String& statement,
+    std::chrono::steady_clock::time_point started,
+    std::string outcome
+) {
+    auto attributes =
+        observability::Attributes{
+            {
+                "db.system",
+                std::string{
+                    name(
+                        connection.backend()
+                    )
+                }
+            },
+            {
+                "db.connection.name",
+                connection.name()
+            },
+            {
+                "db.operation",
+                operation_name(
+                    statement
+                )
+            },
+            {
+                "outcome",
+                std::move(outcome)
+            }
+        };
+
+    const auto elapsed =
+        std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() -
+            started
+        ).count();
+
+    auto meter =
+        observability::global_meter();
+
+    meter->histogram(
+        "db.client.operation.duration"
+    ).record(
+        elapsed,
+        attributes
+    );
+
+    meter->counter(
+        "db.client.operation.count"
+    ).add(
+        1.0,
+        std::move(attributes)
+    );
+}
+
 } // namespace
 
 Connection::Connection(
@@ -123,6 +180,9 @@ Result Connection::execute(
 ) {
     std::lock_guard lock{mutex_};
 
+    const auto metrics_started =
+        std::chrono::steady_clock::now();
+
     auto span =
         database_span(
             *this,
@@ -147,6 +207,14 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "ok"
+        );
+
         return result;
     } catch (const Error& error) {
         span.error(
@@ -154,6 +222,14 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "error"
+        );
+
         throw;
     } catch (const std::exception& error) {
         span.error(
@@ -161,6 +237,13 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "error"
+        );
 
         throw Error{
             "Database execution failed: " +
@@ -178,6 +261,9 @@ Result Connection::execute(
     const CancellationToken& cancellation
 ) {
     std::lock_guard lock{mutex_};
+
+    const auto metrics_started =
+        std::chrono::steady_clock::now();
 
     auto span =
         database_span(
@@ -216,6 +302,14 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "ok"
+        );
+
         return result;
     } catch (
         const OperationCancelled&
@@ -225,6 +319,14 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "cancelled"
+        );
+
         throw;
     } catch (const Error& error) {
         if (cancellation.cancelled()) {
@@ -233,6 +335,14 @@ Result Connection::execute(
             );
 
             span.end();
+
+            record_database_metrics(
+                *this,
+                statement,
+                metrics_started,
+                "cancelled"
+            );
+
             throw OperationCancelled{};
         }
 
@@ -241,6 +351,14 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "error"
+        );
+
         throw;
     } catch (
         const std::exception& error
@@ -251,6 +369,14 @@ Result Connection::execute(
             );
 
             span.end();
+
+            record_database_metrics(
+                *this,
+                statement,
+                metrics_started,
+                "cancelled"
+            );
+
             throw OperationCancelled{};
         }
 
@@ -259,6 +385,13 @@ Result Connection::execute(
         );
 
         span.end();
+
+        record_database_metrics(
+            *this,
+            statement,
+            metrics_started,
+            "error"
+        );
 
         throw Error{
             "Database execution failed: " +

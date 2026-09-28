@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/scheduler/clock.hpp>
 #include <gungnir/scheduler/cron.hpp>
@@ -292,6 +293,9 @@ public:
 
 private:
     void invoke_action() {
+        const auto metric_started =
+            std::chrono::steady_clock::now();
+
         auto span =
             observability::
                 global_tracer()
@@ -320,6 +324,67 @@ private:
                 ? span.scope()
                 : observability::Scope{};
 
+        const auto record_metrics =
+            [&](
+                std::string outcome,
+                bool failed
+            ) {
+                auto attributes =
+                    observability::Attributes{
+                        {
+                            "scheduler.task.name",
+                            name_
+                        },
+                        {
+                            "scheduler.schedule.type",
+                            cron_
+                                ? "cron"
+                                : "interval"
+                        },
+                        {
+                            "outcome",
+                            std::move(outcome)
+                        }
+                    };
+
+                const auto elapsed =
+                    std::chrono::duration<
+                        double,
+                        std::milli
+                    >(
+                        std::chrono::
+                            steady_clock::now() -
+                        metric_started
+                    ).count();
+
+                auto meter =
+                    observability::
+                        global_meter();
+
+                meter->histogram(
+                    "scheduler.task.duration"
+                ).record(
+                    elapsed,
+                    attributes
+                );
+
+                meter->counter(
+                    "scheduler.task.executions"
+                ).add(
+                    1.0,
+                    attributes
+                );
+
+                if (failed) {
+                    meter->counter(
+                        "scheduler.task.failures"
+                    ).add(
+                        1.0,
+                        std::move(attributes)
+                    );
+                }
+            };
+
         try {
             action_();
 
@@ -329,6 +394,11 @@ private:
             );
 
             span.end();
+
+            record_metrics(
+                "ok",
+                false
+            );
         } catch (
             const std::exception& error
         ) {
@@ -337,6 +407,12 @@ private:
             );
 
             span.end();
+
+            record_metrics(
+                "error",
+                true
+            );
+
             throw;
         } catch (...) {
             span.error(
@@ -344,6 +420,12 @@ private:
             );
 
             span.end();
+
+            record_metrics(
+                "error",
+                true
+            );
+
             throw;
         }
     }

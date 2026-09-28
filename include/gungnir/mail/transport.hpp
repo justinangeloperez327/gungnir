@@ -1,9 +1,11 @@
 #pragma once
 
+#include <chrono>
 #include <exception>
 #include <string>
 
 #include <gungnir/mail/message.hpp>
+#include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
 
 namespace gungnir::mail {
@@ -26,6 +28,9 @@ public:
     void send(
         const Message& message
     ) {
+        const auto metric_started =
+            std::chrono::steady_clock::now();
+
         const auto recipient_count =
             message.recipients().size() +
             message.cc_recipients().size() +
@@ -70,6 +75,12 @@ public:
             );
 
             span.end();
+
+            record_metrics(
+                metric_started,
+                recipient_count,
+                "ok"
+            );
         } catch (
             const std::exception& error
         ) {
@@ -78,6 +89,13 @@ public:
             );
 
             span.end();
+
+            record_metrics(
+                metric_started,
+                recipient_count,
+                "error"
+            );
+
             throw;
         } catch (...) {
             span.error(
@@ -85,11 +103,73 @@ public:
             );
 
             span.end();
+
+            record_metrics(
+                metric_started,
+                recipient_count,
+                "error"
+            );
+
             throw;
         }
     }
 
 private:
+    static void record_metrics(
+        std::chrono::steady_clock::time_point started,
+        std::size_t recipient_count,
+        std::string outcome
+    ) {
+        auto attributes =
+            observability::Attributes{
+                {
+                    "messaging.system",
+                    "email"
+                },
+                {
+                    "outcome",
+                    std::move(outcome)
+                }
+            };
+
+        const auto elapsed =
+            std::chrono::duration<
+                double,
+                std::milli
+            >(
+                std::chrono::
+                    steady_clock::now() -
+                started
+            ).count();
+
+        auto meter =
+            observability::
+                global_meter();
+
+        meter->histogram(
+            "mail.send.duration"
+        ).record(
+            elapsed,
+            attributes
+        );
+
+        meter->counter(
+            "mail.send.count"
+        ).add(
+            1.0,
+            attributes
+        );
+
+        meter->histogram(
+            "mail.recipient.count"
+        ).record(
+            static_cast<double>(
+                recipient_count
+            ),
+            std::move(attributes)
+        );
+    }
+
     Transport* transport_;
 };
 
