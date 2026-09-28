@@ -573,7 +573,7 @@ private:
 
     [[nodiscard]]
     Reply command_argv(
-        const std::vector<
+        std::vector<
             const char*
         >& argv,
         const std::vector<
