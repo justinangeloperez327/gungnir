@@ -10,11 +10,11 @@ Gungnir storage uses named disks behind the `storage::Disk` contract. `LocalDisk
 
 Local storage accepts relative object paths only. Absolute paths, embedded null bytes and lexical `..` traversal are rejected.
 
-Before resolving an object, `LocalDisk` walks existing path components and rejects symbolic links. The candidate is then canonicalized and verified to remain under the canonical storage root. Destination paths are checked again after parent-directory creation.
+The storage root is pinned by filesystem identity when `LocalDisk` is constructed. If the configured root pathname is later replaced with a different directory, operations reject it rather than silently following the replacement.
 
-This closes ordinary symlink-escape paths such as a child under the storage root that points outside the configured root.
+On POSIX platforms, object operations reopen and verify the pinned root, walk parent directories with descriptor-relative `openat(..., O_NOFOLLOW)`, create directories with `mkdirat`, and perform final reads/writes/removes/moves relative to verified directory descriptors. Atomic commits use `renameat` inside the pinned destination directory. Directory listing uses the already-open directory descriptor. A concurrent symlink swap can therefore make an operation fail, but cannot redirect object I/O outside the pinned storage root.
 
-These checks do not claim race-free containment against a hostile process that can concurrently replace directory components between validation and an operating-system call. Strong adversarial multi-process containment would require descriptor-relative platform primitives such as `openat2` or equivalent directory-handle APIs.
+On Windows, Gungnir pins the root by volume/file identity, opens objects and directories with `FILE_FLAG_OPEN_REPARSE_POINT`, rejects reparse points, verifies resolved handle paths remain under the pinned root, and uses handle-based delete/rename operations with a verified destination-directory handle. Temporary candidates are verified before application data is written. A concurrently hostile process may still cause a candidate create to fail or create-and-delete an empty candidate before verification; Gungnir does not claim the same descriptor-relative create primitive that POSIX provides.
 
 ### Atomic writes
 
