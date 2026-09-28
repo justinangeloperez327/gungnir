@@ -401,6 +401,22 @@ int main() {
             tracer
         );
 
+    auto metric_sink =
+        std::make_shared<
+            observability::
+                MemoryMetricSink
+        >();
+
+    auto meter =
+        std::make_shared<
+            observability::Meter
+        >(metric_sink);
+
+    observability::
+        set_global_meter(
+            meter
+        );
+
     routing::Router router;
 
     std::atomic_bool slow_started{false};
@@ -723,8 +739,48 @@ int main() {
         slow_request->span_id
     );
 
+    const auto metrics =
+        metric_sink->points();
+
+    std::size_t request_count_points = 0;
+    bool saw_duration = false;
+    bool saw_zero_connections = false;
+
+    for (
+        const auto& point :
+        metrics
+    ) {
+        if (
+            point.name ==
+            "http.server.request.count"
+        ) {
+            ++request_count_points;
+        } else if (
+            point.name ==
+            "http.server.request.duration"
+        ) {
+            saw_duration = true;
+            assert(point.value >= 0.0);
+        } else if (
+            point.name ==
+            "http.server.connection.active" &&
+            point.value == 0.0
+        ) {
+            saw_zero_connections = true;
+        }
+    }
+
+    assert(request_count_points == 3);
+    assert(saw_duration);
+    assert(saw_zero_connections);
+
     observability::
         set_global_tracer(
+            nullptr
+        );
+
+    observability::
+        set_global_meter(
             nullptr
         );
 
