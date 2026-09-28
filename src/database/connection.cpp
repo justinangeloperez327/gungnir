@@ -1,11 +1,100 @@
 #include <gungnir/database/connection.hpp>
 
 #include <gungnir/database/error.hpp>
+#include <gungnir/observability/trace.hpp>
 
+#include <cctype>
 #include <stdexcept>
 #include <utility>
 
 namespace gungnir::database {
+
+namespace {
+
+[[nodiscard]]
+std::string operation_name(
+    const String& statement
+) {
+    std::size_t cursor = 0;
+
+    while (
+        cursor < statement.size() &&
+        std::isspace(
+            static_cast<unsigned char>(
+                statement[cursor]
+            )
+        )
+    ) {
+        ++cursor;
+    }
+
+    const auto start = cursor;
+
+    while (
+        cursor < statement.size() &&
+        !std::isspace(
+            static_cast<unsigned char>(
+                statement[cursor]
+            )
+        )
+    ) {
+        ++cursor;
+    }
+
+    auto operation =
+        statement.substr(
+            start,
+            cursor - start
+        );
+
+    for (auto& character : operation) {
+        character =
+            static_cast<char>(
+                std::toupper(
+                    static_cast<unsigned char>(
+                        character
+                    )
+                )
+            );
+    }
+
+    return operation;
+}
+
+[[nodiscard]]
+observability::Span database_span(
+    const Connection& connection,
+    const String& statement
+) {
+    return
+        observability::
+            global_tracer()
+            ->start_span(
+                "database.query",
+                {
+                    {
+                        "db.system",
+                        std::string{
+                            name(
+                                connection.backend()
+                            )
+                        }
+                    },
+                    {
+                        "db.connection.name",
+                        connection.name()
+                    },
+                    {
+                        "db.operation",
+                        operation_name(
+                            statement
+                        )
+                    }
+                }
+            );
+}
+
+} // namespace
 
 Connection::Connection(
     String name,
@@ -34,14 +123,45 @@ Result Connection::execute(
 ) {
     std::lock_guard lock{mutex_};
 
-    try {
-        return driver_->execute(
-            statement,
-            bindings
+    auto span =
+        database_span(
+            *this,
+            statement
         );
-    } catch (const Error&) {
+
+    auto scope =
+        span.valid()
+            ? span.scope()
+            : observability::Scope{};
+
+    try {
+        auto result =
+            driver_->execute(
+                statement,
+                bindings
+            );
+
+        span.status(
+            observability::
+                SpanStatus::ok
+        );
+
+        span.end();
+        return result;
+    } catch (const Error& error) {
+        span.error(
+            error.what()
+        );
+
+        span.end();
         throw;
     } catch (const std::exception& error) {
+        span.error(
+            error.what()
+        );
+
+        span.end();
+
         throw Error{
             "Database execution failed: " +
                 String{error.what()},
@@ -58,6 +178,17 @@ Result Connection::execute(
     const CancellationToken& cancellation
 ) {
     std::lock_guard lock{mutex_};
+
+    auto span =
+        database_span(
+            *this,
+            statement
+        );
+
+    auto scope =
+        span.valid()
+            ? span.scope()
+            : observability::Scope{};
 
     cancellation.throw_if_cancelled();
 
@@ -79,23 +210,55 @@ Result Connection::execute(
 
         cancellation.throw_if_cancelled();
 
+        span.status(
+            observability::
+                SpanStatus::ok
+        );
+
+        span.end();
         return result;
     } catch (
         const OperationCancelled&
     ) {
+        span.error(
+            "Database operation cancelled"
+        );
+
+        span.end();
         throw;
-    } catch (const Error&) {
+    } catch (const Error& error) {
         if (cancellation.cancelled()) {
+            span.error(
+                "Database operation cancelled"
+            );
+
+            span.end();
             throw OperationCancelled{};
         }
 
+        span.error(
+            error.what()
+        );
+
+        span.end();
         throw;
     } catch (
         const std::exception& error
     ) {
         if (cancellation.cancelled()) {
+            span.error(
+                "Database operation cancelled"
+            );
+
+            span.end();
             throw OperationCancelled{};
         }
+
+        span.error(
+            error.what()
+        );
+
+        span.end();
 
         throw Error{
             "Database execution failed: " +
