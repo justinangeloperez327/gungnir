@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -116,8 +117,10 @@ public:
     };
 
     struct ResponseBody {
-        std::string body;
+        std::deque<std::string>
+            chunks;
         std::size_t offset{0};
+        bool eof{false};
     };
 
     Impl(
@@ -654,8 +657,23 @@ public:
             return 0;
         }
 
+        if (body->chunks.empty()) {
+            if (body->eof) {
+                *data_flags |=
+                    NGHTTP2_DATA_FLAG_EOF;
+
+                return 0;
+            }
+
+            return
+                NGHTTP2_ERR_DEFERRED;
+        }
+
+        auto& chunk =
+            body->chunks.front();
+
         const auto remaining =
-            body->body.size() -
+            chunk.size() -
             body->offset;
 
         const auto count =
@@ -667,7 +685,7 @@ public:
         if (count != 0) {
             std::memcpy(
                 buffer,
-                body->body.data() +
+                chunk.data() +
                     body->offset,
                 count
             );
@@ -677,7 +695,15 @@ public:
 
         if (
             body->offset >=
-            body->body.size()
+            chunk.size()
+        ) {
+            body->chunks.pop_front();
+            body->offset = 0;
+        }
+
+        if (
+            body->eof &&
+            body->chunks.empty()
         ) {
             *data_flags |=
                 NGHTTP2_DATA_FLAG_EOF;
@@ -837,13 +863,20 @@ void Http2Session::submit_response(
     Response effective =
         response;
 
-    if (
-        effective.streaming() ||
-        effective.websocket_upgrade()
-    ) {
+    if (effective.streaming()) {
+        submit_stream_response(
+            stream_id,
+            effective,
+            omit_body
+        );
+
+        return;
+    }
+
+    if (effective.websocket_upgrade()) {
         effective =
             Response::text(
-                "HTTP/2 response mode is not supported for this route",
+                "HTTP/2 WebSocket extended CONNECT is not enabled for this route",
                 501
             );
     }
@@ -947,10 +980,13 @@ void Http2Session::submit_response(
                 Impl::ResponseBody
             >();
 
-        body->body =
+        body->chunks.push_back(
             std::string{
                 effective.body()
-            };
+            }
+        );
+
+        body->eof = true;
 
         provider.source.ptr =
             body.get();
