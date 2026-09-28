@@ -641,12 +641,14 @@ int main() {
         )
         .without_overlapping();
 
+    std::size_t
+        overlap_first_executed = 0;
+
     std::thread first_execution{
         [&] {
-            assert(
+            overlap_first_executed =
                 overlap_first
-                    .run_due() == 1
-            );
+                    .run_due();
         }
     };
 
@@ -682,6 +684,10 @@ int main() {
 
     overlap_ready.notify_all();
     first_execution.join();
+
+    assert(
+        overlap_first_executed == 1
+    );
 
     auto manual =
         overlap_locks.acquire(
