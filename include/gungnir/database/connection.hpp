@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -13,6 +14,12 @@
 namespace gungnir::database {
 
 class Transaction;
+class AsyncTransaction;
+
+struct TransactionToken {
+    bool root{false};
+    String savepoint;
+};
 
 class Connection {
 public:
@@ -46,14 +53,32 @@ public:
     void commit();
     void rollback();
 
-    [[nodiscard]] bool healthy();
+    [[nodiscard]]
+    TransactionToken begin_scope();
+
+    void commit_scope(
+        const TransactionToken& token
+    );
+
+    void rollback_scope(
+        const TransactionToken& token
+    );
+
+    [[nodiscard]]
+    bool healthy();
 
 private:
     friend class Transaction;
+    friend class AsyncTransaction;
+
+    [[nodiscard]]
+    String next_savepoint_name();
 
     String name_;
     std::shared_ptr<Driver> driver_;
     std::recursive_mutex mutex_;
+    std::size_t transaction_depth_{0};
+    std::uint64_t savepoint_sequence_{0};
 };
 
 } // namespace gungnir::database
