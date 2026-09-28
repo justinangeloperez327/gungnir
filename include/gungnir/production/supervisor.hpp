@@ -152,34 +152,33 @@ public:
 
         cancellation_.cancel();
 
-        std::vector<StopAction>
-            stop_actions;
+        const Runtime* runtimes =
+            nullptr;
+
+        std::size_t runtime_count = 0;
 
         {
             std::lock_guard lock{
                 mutex_
             };
 
-            stop_actions.reserve(
-                runtimes_.size()
-            );
+            runtimes =
+                runtimes_.data();
 
-            for (
-                const auto& runtime :
-                runtimes_
-            ) {
-                stop_actions.push_back(
-                    runtime.request_stop
-                );
-            }
+            runtime_count =
+                runtimes_.size();
         }
 
+        // Registration is rejected after stopping_ becomes true,
+        // so the vector remains stable while stop callbacks run.
         for (
-            auto& stop :
-            stop_actions
+            std::size_t index = 0;
+            index < runtime_count;
+            ++index
         ) {
             try {
-                stop();
+                runtimes[index]
+                    .request_stop();
             } catch (...) {
                 // Shutdown requests are best-effort signals.
                 // Drain state is decided by the running checks.
