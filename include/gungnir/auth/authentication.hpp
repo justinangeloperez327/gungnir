@@ -5,3 +5,4 @@
 #include <gungnir/auth/authorize.hpp>
 #include <gungnir/auth/context.hpp>
 #include <gungnir/auth/manager.hpp>
+#include <gungnir/auth/session.hpp>
