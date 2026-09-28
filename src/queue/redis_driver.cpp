@@ -232,7 +232,9 @@ std::string encode(
         job.id.size() +
         job.name.size() +
         job.payload.size() +
-        64
+        job.trace_id.size() +
+        job.parent_span_id.size() +
+        96
     );
 
     append_field(
@@ -268,6 +270,16 @@ std::string encode(
     append_field(
         output,
         maximum
+    );
+
+    append_field(
+        output,
+        job.trace_id
+    );
+
+    append_field(
+        output,
+        job.parent_span_id
     );
 
     return output;
@@ -320,6 +332,27 @@ Envelope decode(
                 cursor
             )
         );
+
+    if (
+        cursor !=
+        encoded.size()
+    ) {
+        job.trace_id =
+            std::string{
+                read_field(
+                    encoded,
+                    cursor
+                )
+            };
+
+        job.parent_span_id =
+            std::string{
+                read_field(
+                    encoded,
+                    cursor
+                )
+            };
+    }
 
     if (
         cursor !=
@@ -486,6 +519,7 @@ public:
         Envelope job
     ) {
         validate_job(job);
+        inherit_trace(job);
         job.reservation.clear();
 
         std::lock_guard lock{
@@ -527,6 +561,7 @@ public:
         std::chrono::milliseconds delay
     ) {
         validate_job(job);
+        inherit_trace(job);
         job.reservation.clear();
 
         std::lock_guard lock{
