@@ -66,7 +66,7 @@ public:
     void schedule(
         std::chrono::milliseconds duration,
         std::coroutine_handle<> handle,
-        observability::TraceContext context
+        observability::TraceContext trace_context
     ) {
         if (!handle) {
             return;
@@ -75,7 +75,7 @@ public:
         detail::TimerWakeFunction wake =
             nullptr;
 
-        void* context = nullptr;
+        void* wake_context = nullptr;
 
         {
             std::lock_guard lock{
@@ -98,18 +98,21 @@ public:
                     .handle =
                         handle,
                     .context =
-                        std::move(context)
+                        std::move(
+                            trace_context
+                        )
                 }
             );
 
             if (pump_token_ != 0) {
                 wake = pump_wake_;
-                context = pump_context_;
+                wake_context =
+                    pump_context_;
             }
         }
 
         if (wake != nullptr) {
-            wake(context);
+            wake(wake_context);
         } else {
             ready_.notify_one();
         }
