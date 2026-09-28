@@ -1631,6 +1631,17 @@ struct ConnectionState {
         Clock::now()
     };
     std::shared_ptr<PendingDispatch> pending;
+
+#ifdef GUNGNIR_WITH_TLS
+    SslConnection tls{
+        nullptr,
+        &SSL_free
+    };
+    bool tls_handshake_complete{false};
+    bool tls_want_read{false};
+    bool tls_want_write{false};
+#endif
+
     bool close_after_write{false};
     bool closing{false};
 };
@@ -1641,6 +1652,18 @@ void close_connection(
     if (connection.pending) {
         connection.pending->cancel();
     }
+
+#ifdef GUNGNIR_WITH_TLS
+    if (connection.tls) {
+        static_cast<void>(
+            SSL_shutdown(
+                connection.tls.get()
+            )
+        );
+
+        connection.tls.reset();
+    }
+#endif
 
     close_socket(
         connection.socket
