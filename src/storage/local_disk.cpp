@@ -1073,14 +1073,42 @@ open_child_directory(
     }
 
     if (descriptor < 0) {
+        const auto open_error =
+            errno;
+
         if (
-            errno == ENOENT ||
-            errno == ENOTDIR
+            open_error == ELOOP ||
+            open_error == ENOTDIR
         ) {
+            struct stat entry{};
+
+            if (
+                ::fstatat(
+                    parent,
+                    std::string{name}.c_str(),
+                    &entry,
+                    AT_SYMLINK_NOFOLLOW
+                ) == 0
+            ) {
+                if (
+                    S_ISLNK(entry.st_mode) ||
+                    !S_ISDIR(entry.st_mode)
+                ) {
+                    throw InvalidPath{
+                        std::string{name}
+                    };
+                }
+            }
+        }
+
+        if (open_error == ENOENT) {
             return std::nullopt;
         }
 
-        if (errno == ELOOP) {
+        if (
+            open_error == ELOOP ||
+            open_error == ENOTDIR
+        ) {
             throw InvalidPath{
                 std::string{name}
             };
@@ -1089,7 +1117,7 @@ open_child_directory(
         throw Error{
             "Unable to open storage directory: " +
             std::error_code{
-                errno,
+                open_error,
                 std::generic_category()
             }.message()
         };
