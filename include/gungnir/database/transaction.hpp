@@ -125,7 +125,7 @@ public:
 
     [[nodiscard]]
     bool active()
-        const noexcept;
+        const;
 
 private:
     void ensure_owner() const;
