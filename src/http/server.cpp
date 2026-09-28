@@ -23,6 +23,7 @@
 #include <gungnir/http/message.hpp>
 #include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
+#include <gungnir/view/runtime.hpp>
 #include <gungnir/routing/router.hpp>
 
 #ifdef _WIN32
@@ -970,13 +971,20 @@ Response error_response(
 struct PendingDispatch {
     PendingDispatch(
         Request value,
-        CancellationSource source
+        CancellationSource source,
+        std::shared_ptr<view::Engine>
+            value_view_engine
     )
         : request(
             std::move(value)
           ),
           cancellation(
             std::move(source)
+          ),
+          view_engine(
+            std::move(
+                value_view_engine
+            )
           ),
           span(
             observability::
@@ -1008,6 +1016,8 @@ struct PendingDispatch {
 
     Request request;
     CancellationSource cancellation;
+    std::shared_ptr<view::Engine>
+        view_engine;
     observability::Span span;
     Clock::time_point metric_started{
         Clock::now()
@@ -1118,6 +1128,11 @@ DetachedTask settle_dispatch(
         pending->span.valid()
             ? pending->span.scope()
             : observability::Scope{};
+
+    auto view_scope =
+        view::runtime::activate(
+            pending->view_engine
+        );
 
     int response_status = 500;
     std::string outcome{"error"};
@@ -1398,6 +1413,20 @@ public:
             options = previous;
             throw;
         }
+    }
+
+    void set_view_engine(
+        std::shared_ptr<view::Engine>
+            value
+    ) {
+        if (running.load()) {
+            throw std::logic_error(
+                "HTTP view engine cannot change while the server is running"
+            );
+        }
+
+        view_engine =
+            std::move(value);
     }
 
     void reactor_loop() {
@@ -2025,7 +2054,8 @@ public:
                 PendingDispatch
             >(
                 std::move(request),
-                std::move(cancellation)
+                std::move(cancellation),
+                view_engine
             );
 
         pending->keep_alive =
@@ -2404,6 +2434,8 @@ public:
     };
     routing::Router& router;
     RuntimeOptions options;
+    std::shared_ptr<view::Engine>
+        view_engine;
     std::atomic_bool running{false};
     std::atomic<NativeSocket> listener{
         invalid_socket
@@ -2445,6 +2477,14 @@ void Server::configure(
 ) {
     impl_->configure(
         std::move(options)
+    );
+}
+
+void Server::view_engine(
+    std::shared_ptr<view::Engine> engine
+) {
+    impl_->set_view_engine(
+        std::move(engine)
     );
 }
 
