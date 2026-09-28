@@ -564,6 +564,8 @@ jobs:
           cmake --build build-smtp
           --target
           gungnir
+          gungnir-orm
+          gungnir-language
           gungnir-smtp
           gungnir_smtp_integration_test
           --parallel
