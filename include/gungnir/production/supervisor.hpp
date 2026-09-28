@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -126,7 +127,7 @@ public:
 
     [[nodiscard]]
     std::size_t size()
-        const noexcept {
+        const {
         std::lock_guard lock{
             mutex_
         };
