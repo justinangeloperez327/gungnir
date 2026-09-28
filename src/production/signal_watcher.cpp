@@ -181,8 +181,18 @@ void SignalWatcher::stop()
         std::memory_order_release
     );
 
-    if (thread_.joinable()) {
-        thread_.join();
+    if (
+        thread_.joinable() &&
+        thread_.get_id() !=
+            std::this_thread::get_id()
+    ) {
+        try {
+            thread_.join();
+        } catch (...) {
+            // A joinable non-self thread should normally join cleanly.
+            // stop() remains noexcept so signal-shutdown cleanup never
+            // escapes through a destructor path.
+        }
     }
 
     restore_signal_handlers(this);
