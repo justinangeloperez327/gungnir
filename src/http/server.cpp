@@ -1397,6 +1397,24 @@ struct PendingDispatch {
     bool omit_body{false};
 };
 
+struct PendingStreamChunk {
+    explicit PendingStreamChunk(
+        std::shared_ptr<BodyStream>
+            value_stream
+    )
+        : stream(
+            std::move(
+                value_stream
+            )
+          ) {}
+
+    std::shared_ptr<BodyStream>
+        stream;
+    BodyStream::Chunk chunk;
+    std::exception_ptr exception;
+    std::atomic_bool ready{false};
+};
+
 class DispatchTracker {
 public:
     void begin() {
@@ -1618,6 +1636,34 @@ DetachedTask settle_dispatch(
     dispatches->finish();
 }
 
+DetachedTask settle_stream_chunk(
+    Task<BodyStream::Chunk> task,
+    std::shared_ptr<
+        PendingStreamChunk
+    > pending,
+    std::shared_ptr<WakeState> wakeup,
+    std::shared_ptr<DispatchTracker>
+        dispatches
+) {
+    dispatches->begin();
+
+    try {
+        pending->chunk =
+            co_await task;
+    } catch (...) {
+        pending->exception =
+            std::current_exception();
+    }
+
+    pending->ready.store(
+        true,
+        std::memory_order_release
+    );
+
+    wakeup->notify();
+    dispatches->finish();
+}
+
 struct ConnectionState {
     NativeSocket socket{invalid_socket};
     std::string input;
@@ -1631,6 +1677,13 @@ struct ConnectionState {
         Clock::now()
     };
     std::shared_ptr<PendingDispatch> pending;
+    std::shared_ptr<PendingDispatch>
+        stream_request;
+    std::shared_ptr<BodyStream>
+        stream;
+    std::shared_ptr<PendingStreamChunk>
+        pending_stream;
+    bool stream_terminal_queued{false};
 
 #ifdef GUNGNIR_WITH_TLS
     SslConnection tls{
@@ -1652,6 +1705,12 @@ void close_connection(
 ) noexcept {
     if (connection.pending) {
         connection.pending->cancel();
+    }
+
+    if (connection.stream_request) {
+        connection
+            .stream_request
+            ->cancel();
     }
 
 #ifdef GUNGNIR_WITH_TLS
@@ -3150,6 +3209,191 @@ public:
         }
     }
 
+    void request_stream_chunk(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.stream ||
+            connection.pending_stream ||
+            !connection.output.empty()
+        ) {
+            return;
+        }
+
+        try {
+            auto pending =
+                std::make_shared<
+                    PendingStreamChunk
+                >(
+                    connection.stream
+                );
+
+            connection.pending_stream =
+                pending;
+
+            connection.phase_started =
+                Clock::now();
+
+            auto task =
+                connection.stream->next();
+
+            settle_stream_chunk(
+                std::move(task),
+                pending,
+                wakeup,
+                dispatches
+            );
+        } catch (...) {
+            observability::
+                global_meter()
+                ->counter(
+                    "http.server.stream.failures"
+                )
+                .add(
+                    1.0,
+                    {
+                        {
+                            "reason",
+                            "producer_start"
+                        }
+                    }
+                );
+
+            close_connection(
+                connection
+            );
+        }
+    }
+
+    void complete_ready_stream(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.pending_stream ||
+            !connection
+                .pending_stream
+                ->ready.load(
+                    std::memory_order_acquire
+                )
+        ) {
+            return;
+        }
+
+        auto pending =
+            std::move(
+                connection.pending_stream
+            );
+
+        if (pending->exception) {
+            observability::
+                global_meter()
+                ->counter(
+                    "http.server.stream.failures"
+                )
+                .add(
+                    1.0,
+                    {
+                        {
+                            "reason",
+                            "producer_exception"
+                        }
+                    }
+                );
+
+            close_connection(
+                connection
+            );
+
+            return;
+        }
+
+        if (!pending->chunk) {
+            connection.stream.reset();
+
+            connection.output =
+                wire::
+                    serialize_chunk_end();
+
+            connection.output_offset = 0;
+
+            connection
+                .stream_terminal_queued =
+                true;
+
+            connection.phase_started =
+                Clock::now();
+
+            return;
+        }
+
+        if (
+            pending->chunk->empty()
+        ) {
+            request_stream_chunk(
+                connection
+            );
+
+            return;
+        }
+
+        if (
+            pending->chunk->size() >
+            options
+                .max_stream_chunk_bytes
+        ) {
+            observability::
+                global_meter()
+                ->counter(
+                    "http.server.stream.failures"
+                )
+                .add(
+                    1.0,
+                    {
+                        {
+                            "reason",
+                            "chunk_too_large"
+                        }
+                    }
+                );
+
+            close_connection(
+                connection
+            );
+
+            return;
+        }
+
+        const auto chunk_size =
+            pending->chunk->size();
+
+        connection.output =
+            wire::serialize_chunk(
+                *pending->chunk
+            );
+
+        connection.output_offset = 0;
+        connection.phase_started =
+            Clock::now();
+
+        auto meter =
+            observability::
+                global_meter();
+
+        meter->counter(
+            "http.server.stream.chunk.count"
+        ).add();
+
+        meter->counter(
+            "http.server.stream.bytes"
+        ).add(
+            static_cast<double>(
+                chunk_size
+            )
+        );
+    }
+
     void complete_ready_handler(
         ConnectionState& connection
     ) noexcept {
@@ -3189,16 +3433,40 @@ public:
                 pending->keep_alive &&
                 !connection.close_after_write;
 
-            connection.output =
-                wire::serialize_response(
-                    response,
-                    pending->omit_body,
-                    keep_alive
-                        ? ConnectionDirective::
-                            keep_alive
-                        : ConnectionDirective::
-                            close
-                );
+            const auto directive =
+                keep_alive
+                    ? ConnectionDirective::
+                        keep_alive
+                    : ConnectionDirective::
+                        close;
+
+            if (
+                !failed &&
+                response.streaming()
+            ) {
+                connection.output =
+                    wire::
+                        serialize_stream_headers(
+                            response,
+                            pending->omit_body,
+                            directive
+                        );
+
+                if (!pending->omit_body) {
+                    connection.stream =
+                        response.body_stream();
+
+                    connection.stream_request =
+                        pending;
+                }
+            } else {
+                connection.output =
+                    wire::serialize_response(
+                        response,
+                        pending->omit_body,
+                        directive
+                    );
+            }
 
             connection.output_offset = 0;
             connection.close_after_write =
@@ -3223,6 +3491,10 @@ public:
             complete_ready_handler(
                 connection
             );
+
+            complete_ready_stream(
+                connection
+            );
         }
     }
 
@@ -3231,7 +3503,10 @@ public:
     ) {
         if (
             !connection.output.empty() ||
-            connection.pending
+            connection.pending ||
+            connection.stream ||
+            connection.pending_stream ||
+            connection.stream_terminal_queued
         ) {
             return;
         }
@@ -3369,12 +3644,43 @@ public:
             const auto close =
                 connection.close_after_write;
 
+            const auto stream_continues =
+                static_cast<bool>(
+                    connection.stream
+                ) ||
+                static_cast<bool>(
+                    connection.pending_stream
+                );
+
+            const auto stream_terminal =
+                connection
+                    .stream_terminal_queued;
+
             connection.output.clear();
             connection.output_offset = 0;
-            connection.close_after_write =
-                false;
             connection.phase_started =
                 Clock::now();
+
+            if (stream_continues) {
+                request_stream_chunk(
+                    connection
+                );
+
+                return;
+            }
+
+            if (stream_terminal) {
+                connection
+                    .stream_terminal_queued =
+                    false;
+
+                connection
+                    .stream_request
+                    .reset();
+            }
+
+            connection.close_after_write =
+                false;
 
             if (close) {
                 graceful_close(
@@ -3419,7 +3725,25 @@ public:
                 connection.pending->cancel();
             }
 
+            if (
+                connection.stream_request
+            ) {
+                connection
+                    .stream_request
+                    ->cancel();
+            }
+
             connection.pending.reset();
+            connection
+                .pending_stream
+                .reset();
+            connection.stream.reset();
+            connection
+                .stream_request
+                .reset();
+            connection
+                .stream_terminal_queued =
+                false;
             connection.output_offset = 0;
             connection.close_after_write =
                 true;
@@ -3449,6 +3773,22 @@ public:
                     now -
                         connection.phase_started >=
                     options.request_timeout
+                ) {
+                    close_connection(
+                        connection
+                    );
+                }
+
+                continue;
+            }
+
+            if (
+                connection.pending_stream
+            ) {
+                if (
+                    now -
+                        connection.phase_started >=
+                    options.stream_chunk_timeout
                 ) {
                     close_connection(
                         connection
@@ -3597,10 +3937,20 @@ public:
         }
 
         if (
+            options.max_stream_chunk_bytes ==
+            0
+        ) {
+            throw std::invalid_argument(
+                "HTTP max_stream_chunk_bytes must be greater than zero"
+            );
+        }
+
+        if (
             options.read_timeout.count() <= 0 ||
             options.write_timeout.count() <= 0 ||
             options.idle_timeout.count() <= 0 ||
             options.request_timeout.count() <= 0 ||
+            options.stream_chunk_timeout.count() <= 0 ||
             options.shutdown_timeout.count() <= 0
         ) {
             throw std::invalid_argument(

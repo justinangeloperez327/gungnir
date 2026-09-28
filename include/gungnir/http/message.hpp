@@ -21,6 +21,22 @@ namespace gungnir::http::wire {
     ConnectionDirective connection = ConnectionDirective::close
 );
 
+[[nodiscard]]
+std::string serialize_stream_headers(
+    const Response& response,
+    bool omit_body = false,
+    ConnectionDirective connection =
+        ConnectionDirective::close
+);
+
+[[nodiscard]]
+std::string serialize_chunk(
+    std::string_view chunk
+);
+
+[[nodiscard]]
+std::string serialize_chunk_end();
+
 [[nodiscard]] bool request_keep_alive(const Request& request) noexcept;
 
 } // namespace gungnir::http::wire
