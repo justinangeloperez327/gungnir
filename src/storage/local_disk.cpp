@@ -2931,18 +2931,115 @@ LocalDisk::files(
         throw;
     }
 
-    std::array<std::byte, 64 * 1024>
-        buffer{};
+    const auto pattern =
+        target /
+        std::filesystem::path{L"*"};
+
+    WIN32_FIND_DATAW data{};
+
+    const auto search =
+        FindFirstFileW(
+            pattern.c_str(),
+            &data
+        );
+
+    if (
+        search ==
+        INVALID_HANDLE_VALUE
+    ) {
+        const auto error =
+            GetLastError();
+
+        if (
+            error ==
+                ERROR_FILE_NOT_FOUND
+        ) {
+            return {};
+        }
+
+        throw Error{
+            windows_error(
+                "Unable to enumerate storage directory",
+                error
+            )
+        };
+    }
+
+    struct FindHandle {
+        HANDLE value{
+            INVALID_HANDLE_VALUE
+        };
+
+        ~FindHandle() {
+            if (
+                value !=
+                INVALID_HANDLE_VALUE
+            ) {
+                FindClose(value);
+            }
+        }
+    } guard{search};
 
     while (true) {
+        cancellation.throw_if_cancelled();
+
+        const std::wstring name{
+            data.cFileName
+        };
+
         if (
-            !GetFileInformationByHandleEx(
-                folder.get(),
-                FileIdBothDirectoryInfo,
-                buffer.data(),
-                static_cast<DWORD>(
-                    buffer.size()
+            name != L"." &&
+            name != L".." &&
+            (
+                data.dwFileAttributes &
+                (
+                    FILE_ATTRIBUTE_DIRECTORY |
+                    FILE_ATTRIBUTE_REPARSE_POINT
                 )
+            ) == 0
+        ) {
+            const auto candidate =
+                target /
+                std::filesystem::path{
+                    name
+                };
+
+            try {
+                const auto verified =
+                    open_regular_checked(
+                        candidate,
+                        root_final,
+                        GENERIC_READ
+                    );
+
+                if (verified) {
+                    auto output =
+                        is_root_path(relative)
+                            ? std::filesystem::path{
+                                name
+                              }
+                            : relative /
+                                std::filesystem::path{
+                                    name
+                                };
+
+                    result.push_back(
+                        output.generic_string()
+                    );
+                }
+            } catch (
+                const InvalidPath&
+            ) {
+                // The entry or a parent changed after enumeration.
+                // Never expose a name that no longer resolves inside
+                // the pinned storage root.
+            }
+        }
+
+        if (
+            !FindNextFileW(
+                guard.value,
+                &data
             )
         ) {
             const auto error =
@@ -2961,64 +3058,6 @@ LocalDisk::files(
                     error
                 )
             };
-        }
-
-        auto* entry =
-            reinterpret_cast<
-                FILE_ID_BOTH_DIR_INFO*
-            >(buffer.data());
-
-        while (entry != nullptr) {
-            cancellation.throw_if_cancelled();
-
-            const std::wstring name{
-                entry->FileName,
-                entry->FileNameLength /
-                    sizeof(wchar_t)
-            };
-
-            if (
-                name != L"." &&
-                name != L".." &&
-                (
-                    entry->FileAttributes &
-                    (
-                        FILE_ATTRIBUTE_DIRECTORY |
-                        FILE_ATTRIBUTE_REPARSE_POINT
-                    )
-                ) == 0
-            ) {
-                auto output =
-                    is_root_path(relative)
-                        ? std::filesystem::path{
-                            name
-                          }
-                        : relative /
-                            std::filesystem::path{
-                                name
-                            };
-
-                result.push_back(
-                    output.generic_string()
-                );
-            }
-
-            if (
-                entry->NextEntryOffset ==
-                0
-            ) {
-                break;
-            }
-
-            entry =
-                reinterpret_cast<
-                    FILE_ID_BOTH_DIR_INFO*
-                >(
-                    reinterpret_cast<
-                        std::byte*
-                    >(entry) +
-                    entry->NextEntryOffset
-                );
         }
     }
 #else
