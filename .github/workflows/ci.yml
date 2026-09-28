@@ -442,7 +442,7 @@ jobs:
 
 
   redis:
-    name: Redis cache adapter
+    name: Redis adapters
     runs-on: ubuntu-latest
     services:
       redis:
@@ -478,7 +478,7 @@ jobs:
           -DGUNGNIR_WITH_REDIS=ON
           -DGUNGNIR_REDIS_INTEGRATION_TESTS=ON
 
-      - name: Build Redis adapter
+      - name: Build Redis adapters
         run: >
           cmake --build build-redis
           --target
@@ -489,7 +489,7 @@ jobs:
           gungnir_redis_integration_test
           --parallel
 
-      - name: Test Redis adapter
+      - name: Test Redis adapters
         run: >
           ctest --test-dir build-redis
           -R "^gungnir.redis$"
