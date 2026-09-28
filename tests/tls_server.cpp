@@ -689,13 +689,16 @@ int main() {
         &selected_length
     );
 
-    assert(
-        std::string_view{
+    const std::string_view
+        selected_protocol{
             reinterpret_cast<
                 const char*
             >(selected),
             selected_length
-        } ==
+        };
+
+    assert(
+        selected_protocol ==
         "http/1.1"
     );
 
