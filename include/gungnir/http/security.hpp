@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 #include <gungnir/http/middleware.hpp>
+#include <gungnir/session/session.hpp>
 
 namespace gungnir::http {
 
@@ -33,12 +34,8 @@ struct RateLimitOptions {
 
 [[nodiscard]] MiddlewareHandler rate_limit(RateLimitOptions options = {});
 
-class Session {
-public:
-    void put(std::string key, std::string value) { values_.insert_or_assign(std::move(key), std::move(value)); }
-    [[nodiscard]] std::string_view get(std::string_view key) const noexcept {
-        const auto found = values_.find(std::string{key});
-        return found == values_.end() ? std::string_view{} : std::string_view{found->second};
+using Session =
+    gungnir::session::Session;
     }
     [[nodiscard]] bool has(std::string_view key) const { return values_.contains(std::string{key}); }
     void forget(std::string_view key) { values_.erase(std::string{key}); }
