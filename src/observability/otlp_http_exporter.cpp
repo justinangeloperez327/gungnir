@@ -815,7 +815,7 @@ std::string encode_traces_json(
         output += "}}";
     }
 
-    output += "]}]}]}]}";
+    output += "]}]}]}";
 
     return output;
 }
@@ -961,7 +961,7 @@ std::string encode_metrics_json(
         output += "]}}";
     }
 
-    output += "]}]}]}]}";
+    output += "]}]}]}";
 
     return output;
 }
