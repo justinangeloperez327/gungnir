@@ -22,7 +22,11 @@ Runtime registration is explicit and named. Stop requests are idempotent, callba
 
 Typed adapters are available through `production::supervise(...)` for `Application`, `queue::Worker`, and `scheduler::Scheduler`. The adapters bind each runtime's native stop/running contract to the supervisor so hosting code does not need to duplicate shutdown lambdas. Queue workers and schedulers can run with `supervisor.token()`, giving them both shared cancellation and their native stop signal.
 
-The supervisor does not terminate threads or processes forcibly. Application-owned service startup/join policy builds on this contract.
+`production::RuntimeHost` provides application-owned service startup and join policy on top of the supervisor. Queue workers and schedulers are registered before `start()`, then run on dedicated service threads with the supervisor's shared cancellation token. An unhandled background runtime exception is captured and triggers process-wide stop fan-out; callers can inspect or rethrow it through the host.
+
+`RuntimeHost::shutdown()` requests one coordinated shutdown and waits only until the supervisor's top-level deadline. Managed service threads are joined automatically after all runtimes report drained. If the deadline expires, the result reports pending runtimes and the call returns without blocking past the deadline. Gungnir does not attempt unsafe in-process thread termination; an external service manager may terminate the process according to deployment policy after a reported timeout.
+
+`RuntimeHost::run(port, host)` starts managed background services, runs the application's HTTP listener on the calling thread, coordinates shutdown when the listener returns, and rethrows any captured background runtime failure after cleanup.
 
 ## Reverse proxies
 
