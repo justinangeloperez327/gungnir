@@ -35,6 +35,7 @@ struct PoolStats {
 
 class ConnectionPool {
 public:
+    class Impl;
     ConnectionPool(
         String name,
         Backend backend,
@@ -70,7 +71,6 @@ public:
     void validate_idle();
 
 private:
-    class Impl;
     std::shared_ptr<Impl> impl_;
 };
 
