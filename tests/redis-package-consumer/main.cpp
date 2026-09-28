@@ -5,6 +5,7 @@
 
 #include <gungnir/cache/redis_store.hpp>
 #include <gungnir/queue/redis_driver.hpp>
+#include <gungnir/scheduler/redis_lock.hpp>
 #include <gungnir/session/redis_store.hpp>
 #include <gungnir/security/random.hpp>
 
@@ -119,6 +120,54 @@ int main() {
     assert(queue.reserved() == 0);
 
     queue.flush();
+
+    gungnir::scheduler::
+        RedisLockSettings
+        lock_settings;
+
+    lock_settings.host =
+        settings.host;
+
+    lock_settings.port =
+        settings.port;
+
+    lock_settings.database =
+        settings.database;
+
+    lock_settings.prefix =
+        "gungnir:package:scheduler:";
+
+    gungnir::scheduler::RedisLockStore
+        locks{
+            lock_settings
+        };
+
+    assert(locks.ping());
+
+    locks.flush();
+
+    const auto lease =
+        locks.acquire(
+            "package-lock",
+            std::chrono::seconds{5}
+        );
+
+    assert(lease);
+
+    assert(
+        locks.renew(
+            *lease,
+            std::chrono::seconds{5}
+        )
+    );
+
+    assert(
+        locks.release(
+            *lease
+        )
+    );
+
+    locks.flush();
 
     gungnir::session::
         RedisSessionSettings

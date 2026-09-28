@@ -8,6 +8,7 @@
 
 #include <gungnir/scheduler/clock.hpp>
 #include <gungnir/scheduler/cron.hpp>
+#include <gungnir/scheduler/lock.hpp>
 #include <gungnir/scheduler/timezone.hpp>
 
 namespace gungnir::scheduler {
@@ -97,6 +98,38 @@ public:
         return *timezone_;
     }
 
+    Task& without_overlapping(
+        std::chrono::milliseconds ttl =
+            std::chrono::hours{24}
+    ) {
+        validate_lock_ttl(ttl);
+        prevent_overlap_ = true;
+        overlap_ttl_ = ttl;
+        return *this;
+    }
+
+    Task& on_one_server(
+        std::chrono::milliseconds ttl =
+            std::chrono::hours{24}
+    ) {
+        validate_lock_ttl(ttl);
+        one_server_ = true;
+        one_server_ttl_ = ttl;
+        return *this;
+    }
+
+    [[nodiscard]]
+    bool prevents_overlap()
+        const noexcept {
+        return prevent_overlap_;
+    }
+
+    [[nodiscard]]
+    bool one_server()
+        const noexcept {
+        return one_server_;
+    }
+
     [[nodiscard]]
     bool due(
         Clock::TimePoint now
@@ -173,7 +206,103 @@ public:
         Clock::TimePoint now
     ) {
         action_();
+        mark_observed(now);
+    }
 
+    [[nodiscard]]
+    bool execute(
+        Clock::TimePoint now,
+        LockStore* locks
+    ) {
+        if (
+            !prevent_overlap_ &&
+            !one_server_
+        ) {
+            run(now);
+            return true;
+        }
+
+        if (locks == nullptr) {
+            throw std::logic_error(
+                "Scheduled task requires a configured lock store: " +
+                name_
+            );
+        }
+
+        std::optional<LockLease>
+            occurrence_lease;
+
+        if (one_server_) {
+            occurrence_lease =
+                locks->acquire(
+                    occurrence_lock_key(
+                        now
+                    ),
+                    one_server_ttl_
+                );
+
+            if (!occurrence_lease) {
+                mark_observed(now);
+                return false;
+            }
+        }
+
+        std::optional<LockLease>
+            overlap_lease;
+
+        if (prevent_overlap_) {
+            overlap_lease =
+                locks->acquire(
+                    overlap_lock_key(),
+                    overlap_ttl_
+                );
+
+            if (!overlap_lease) {
+                mark_observed(now);
+                return false;
+            }
+        }
+
+        try {
+            action_();
+            mark_observed(now);
+        } catch (...) {
+            if (overlap_lease) {
+                static_cast<void>(
+                    locks->release(
+                        *overlap_lease
+                    )
+                );
+            }
+
+            throw;
+        }
+
+        if (overlap_lease) {
+            static_cast<void>(
+                locks->release(
+                    *overlap_lease
+                )
+            );
+        }
+
+        return true;
+    }
+
+private:
+    static void validate_lock_ttl(
+        std::chrono::milliseconds ttl
+    ) {
+        if (ttl.count() <= 0) {
+            throw std::invalid_argument(
+                "Scheduled task lock TTL must be greater than zero"
+            );
+        }
+    }
+
+    void mark_observed(
+        Clock::TimePoint now
+    ) {
         last_run_ = now;
         has_run_ = true;
 
@@ -187,7 +316,78 @@ public:
         }
     }
 
-private:
+    [[nodiscard]]
+    std::string overlap_lock_key()
+        const {
+        return
+            "gungnir:scheduler:overlap:" +
+            name_;
+    }
+
+    [[nodiscard]]
+    std::string occurrence_lock_key(
+        Clock::TimePoint now
+    ) const {
+        std::string slot;
+
+        if (cron_) {
+            const auto local =
+                timezone_->to_local(
+                    now
+                );
+
+            slot =
+                std::to_string(
+                    local.year
+                ) + "-" +
+                std::to_string(
+                    local.month
+                ) + "-" +
+                std::to_string(
+                    local.day
+                ) + "-" +
+                std::to_string(
+                    local.hour
+                ) + "-" +
+                std::to_string(
+                    local.minute
+                );
+        } else if (interval_) {
+            const auto seconds =
+                std::chrono::duration_cast<
+                    std::chrono::seconds
+                >(
+                    now.time_since_epoch()
+                ).count();
+
+            const auto width =
+                interval_->count();
+
+            slot =
+                std::to_string(
+                    width > 0
+                        ? seconds / width
+                        : seconds
+                );
+        } else {
+            slot =
+                std::to_string(
+                    std::chrono::
+                        duration_cast<
+                            std::chrono::seconds
+                        >(
+                            now.time_since_epoch()
+                        ).count()
+                );
+        }
+
+        return
+            "gungnir:scheduler:single:" +
+            name_ +
+            ":" +
+            slot;
+    }
+
     std::string name_;
     std::optional<
         std::chrono::seconds
@@ -203,6 +403,16 @@ private:
     std::optional<
         WallMinute
     > last_cron_slot_;
+    bool prevent_overlap_{false};
+    bool one_server_{false};
+    std::chrono::milliseconds
+        overlap_ttl_{
+            std::chrono::hours{24}
+        };
+    std::chrono::milliseconds
+        one_server_ttl_{
+            std::chrono::hours{24}
+        };
     bool has_run_{false};
 };
 

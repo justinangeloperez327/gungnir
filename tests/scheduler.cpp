@@ -1,4 +1,8 @@
 #include <cassert>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <chrono>
 #include <stdexcept>
 #include <string>
@@ -510,6 +514,206 @@ int main() {
     );
 
     assert(override_runs == 1);
+
+    using gungnir::scheduler::
+        MemoryLockStore;
+
+    MemoryLockStore
+        distributed_locks;
+
+    TestClock lock_clock;
+
+    lock_clock.current =
+        utc(
+            2026,
+            9,
+            28,
+            10,
+            0
+        );
+
+    Scheduler first_server{
+        lock_clock
+    };
+
+    Scheduler second_server{
+        lock_clock
+    };
+
+    first_server.locks(
+        distributed_locks
+    );
+
+    second_server.locks(
+        distributed_locks
+    );
+
+    int first_server_runs = 0;
+    int second_server_runs = 0;
+
+    first_server
+        .cron(
+            "singleton-report",
+            "0 * * * *",
+            [&] {
+                ++first_server_runs;
+            }
+        )
+        .on_one_server();
+
+    second_server
+        .cron(
+            "singleton-report",
+            "0 * * * *",
+            [&] {
+                ++second_server_runs;
+            }
+        )
+        .on_one_server();
+
+    assert(
+        first_server.run_due() == 1
+    );
+
+    assert(
+        second_server.run_due() == 0
+    );
+
+    assert(first_server_runs == 1);
+    assert(second_server_runs == 0);
+
+    MemoryLockStore
+        overlap_locks;
+
+    Scheduler overlap_first{
+        lock_clock
+    };
+
+    Scheduler overlap_second{
+        lock_clock
+    };
+
+    overlap_first.locks(
+        overlap_locks
+    );
+
+    overlap_second.locks(
+        overlap_locks
+    );
+
+    std::mutex overlap_mutex;
+    std::condition_variable
+        overlap_ready;
+    bool overlap_started = false;
+    bool finish_overlap = false;
+    int overlapping_second_runs = 0;
+
+    overlap_first
+        .cron(
+            "exclusive-task",
+            "0 * * * *",
+            [&] {
+                std::unique_lock lock{
+                    overlap_mutex
+                };
+
+                overlap_started = true;
+                overlap_ready.notify_all();
+
+                overlap_ready.wait(
+                    lock,
+                    [&] {
+                        return
+                            finish_overlap;
+                    }
+                );
+            }
+        )
+        .without_overlapping();
+
+    overlap_second
+        .cron(
+            "exclusive-task",
+            "0 * * * *",
+            [&] {
+                ++overlapping_second_runs;
+            }
+        )
+        .without_overlapping();
+
+    std::thread first_execution{
+        [&] {
+            assert(
+                overlap_first
+                    .run_due() == 1
+            );
+        }
+    };
+
+    {
+        std::unique_lock lock{
+            overlap_mutex
+        };
+
+        overlap_ready.wait(
+            lock,
+            [&] {
+                return
+                    overlap_started;
+            }
+        );
+    }
+
+    assert(
+        overlap_second.run_due() == 0
+    );
+
+    assert(
+        overlapping_second_runs == 0
+    );
+
+    {
+        std::lock_guard lock{
+            overlap_mutex
+        };
+
+        finish_overlap = true;
+    }
+
+    overlap_ready.notify_all();
+    first_execution.join();
+
+    auto manual =
+        overlap_locks.acquire(
+            "manual",
+            1s
+        );
+
+    assert(manual);
+
+    gungnir::scheduler::LockLease stale{
+        manual->key,
+        "wrong-owner"
+    };
+
+    assert(
+        !overlap_locks.release(
+            stale
+        )
+    );
+
+    assert(
+        overlap_locks.renew(
+            *manual,
+            1s
+        )
+    );
+
+    assert(
+        overlap_locks.release(
+            *manual
+        )
+    );
 
     return 0;
 }

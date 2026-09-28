@@ -40,6 +40,16 @@ Recurring transition rules define the start time in pre-transition standard time
 
 The scheduler does not yet create its own production loop in this stage. A command, worker, service manager or application runtime can call `run_due()` and use `next_due()` to avoid aggressive polling.
 
-## Distributed deployments
+## Overlap and distributed execution
 
-Cron syntax does not imply distributed exclusivity. Multiple application instances may run the same due task until an explicit shared locking policy is configured.
+Scheduler locking is explicit. Configure a `LockStore` on the scheduler with `.locks(...)`, then opt individual tasks into the desired policy.
+
+`without_overlapping(ttl)` acquires a task-name lease before the action starts. If another process already owns that lease, the occurrence is skipped. The lease is released after successful or failed execution; the TTL is crash recovery protection.
+
+`on_one_server(ttl)` acquires a schedule-occurrence-specific lease. The occurrence key includes the cron wall-clock slot (or the interval bucket), so only one application instance can execute that occurrence. The lease is intentionally not released after the action; it expires by TTL so a second server cannot replay the same slot immediately after the first finishes.
+
+The two policies may be combined: `on_one_server()` elects one instance for the occurrence, while `without_overlapping()` prevents the elected occurrence from starting while a previous occurrence is still active.
+
+`MemoryLockStore` is deterministic and useful for tests or single-process coordination.
+
+When Gungnir is built with `GUNGNIR_WITH_REDIS=ON`, `RedisLockStore` provides distributed leases using Redis `SET NX PX`. Release and renewal use owner-token comparisons, preventing a stale process from releasing or extending a lock that was reacquired by another process.

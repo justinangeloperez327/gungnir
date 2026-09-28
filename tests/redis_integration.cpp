@@ -11,6 +11,7 @@
 #include <gungnir/cache/repository.hpp>
 #include <gungnir/queue/redis_driver.hpp>
 #include <gungnir/queue/worker.hpp>
+#include <gungnir/scheduler/redis_lock.hpp>
 #include <gungnir/session/redis_store.hpp>
 #include <gungnir/security/random.hpp>
 
@@ -698,6 +699,128 @@ int main() {
     assert(queue.pending() == 0);
     assert(queue.reserved() == 0);
     assert(queue.failed() == 0);
+
+    scheduler::RedisLockSettings
+        lock_settings;
+
+    lock_settings.host =
+        env(
+            "GUNGNIR_REDIS_HOST",
+            "127.0.0.1"
+        );
+
+    lock_settings.port =
+        redis_port();
+
+    lock_settings.database = 12;
+    lock_settings.prefix =
+        "gungnir:scheduler:test:";
+
+    scheduler::RedisLockStore
+        first_lock_store{
+            lock_settings
+        };
+
+    scheduler::RedisLockStore
+        second_lock_store{
+            lock_settings
+        };
+
+    assert(
+        first_lock_store.ping()
+    );
+
+    first_lock_store.flush();
+
+    auto first_lock =
+        first_lock_store.acquire(
+            "shared",
+            std::chrono::milliseconds{
+                120
+            }
+        );
+
+    assert(first_lock);
+
+    assert(
+        !second_lock_store.acquire(
+            "shared",
+            std::chrono::milliseconds{
+                120
+            }
+        )
+    );
+
+    assert(
+        first_lock_store.renew(
+            *first_lock,
+            std::chrono::milliseconds{
+                120
+            }
+        )
+    );
+
+    scheduler::LockLease stale_lock{
+        first_lock->key,
+        "stale-owner"
+    };
+
+    assert(
+        !second_lock_store.release(
+            stale_lock
+        )
+    );
+
+    assert(
+        first_lock_store.release(
+            *first_lock
+        )
+    );
+
+    auto expiring_lock =
+        first_lock_store.acquire(
+            "expires",
+            std::chrono::milliseconds{
+                60
+            }
+        );
+
+    assert(expiring_lock);
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            90
+        }
+    );
+
+    auto replacement_lock =
+        second_lock_store.acquire(
+            "expires",
+            std::chrono::milliseconds{
+                120
+            }
+        );
+
+    assert(replacement_lock);
+
+    assert(
+        replacement_lock->owner !=
+        expiring_lock->owner
+    );
+
+    assert(
+        !first_lock_store.release(
+            *expiring_lock
+        )
+    );
+
+    assert(
+        second_lock_store.release(
+            *replacement_lock
+        )
+    );
+
+    first_lock_store.flush();
 
     session::RedisSessionSettings
         session_settings;
