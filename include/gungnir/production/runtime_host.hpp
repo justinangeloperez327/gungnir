@@ -85,7 +85,7 @@ public:
 
     [[nodiscard]]
     std::exception_ptr failure()
-        const noexcept;
+        const;
 
     void rethrow_failure()
         const;
