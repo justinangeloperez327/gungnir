@@ -38,13 +38,17 @@ Authentication state is request-owned. It is not stored in global or thread-loca
 
 ## Session-backed authentication
 
-Register the session lifecycle before session authentication:
+For cookie-authenticated browser routes, register the session lifecycle and CSRF middleware before session authentication:
 
 ```cpp
 router.use(
     gungnir::session::middleware(
         session_store
     )
+);
+
+router.use(
+    gungnir::http::csrf()
 );
 
 router.use(
@@ -101,3 +105,6 @@ The historical `http::Session` name aliases the canonical `session::Session` typ
 ## Authorization
 
 Roles and abilities belong to authorization policy. The existing `Gate` API remains available, while policy maturity is handled separately in Group 17.
+
+
+Session-authenticated state-changing browser requests should use CSRF protection. Login/logout session rotation also rotates the session-bound CSRF token when middleware is registered in the documented order.

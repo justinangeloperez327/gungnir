@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 
 #include <gungnir/http/middleware.hpp>
@@ -52,6 +53,29 @@ struct RateLimitOptions {
 [[nodiscard]]
 MiddlewareHandler rate_limit(
     RateLimitOptions options = {}
+);
+
+struct CsrfOptions {
+    std::string session_key{
+        "_gungnir_csrf_token"
+    };
+    std::string header_name{
+        "x-csrf-token"
+    };
+    std::string form_field{
+        "_token"
+    };
+};
+
+[[nodiscard]]
+std::string_view csrf_token(
+    Request& request,
+    const CsrfOptions& options = {}
+);
+
+[[nodiscard]]
+MiddlewareHandler csrf(
+    CsrfOptions options = {}
 );
 
 // Compatibility alias. New code should use

@@ -38,3 +38,50 @@ CSRF protection depends on session lifecycle, token generation, token rotation, 
 ## Cryptography
 
 Gungnir does not implement custom password hashing, encryption, signing, random-number generation, or TLS cryptography. Production implementations should use established cryptographic libraries and operating-system facilities.
+
+
+## CSRF protection
+
+Cookie-authenticated browser routes can use session-bound CSRF protection:
+
+```cpp
+router.use(
+    gungnir::session::middleware(
+        session_store
+    )
+);
+
+router.use(
+    gungnir::http::csrf()
+);
+
+router.use(
+    gungnir::auth::session(
+        identity_resolver
+    )
+);
+```
+
+Use this order: **session → CSRF → session authentication**. The ordering lets CSRF observe session-ID rotation caused by login, logout, or stale authentication and rotate the CSRF token at the same boundary.
+
+Safe methods (`GET`, `HEAD`, and `OPTIONS`) do not require a submitted token. They ensure a session token exists. Application code can render it with:
+
+```cpp
+auto token =
+    gungnir::http::csrf_token(
+        request
+    );
+```
+
+Unsafe methods (`POST`, `PUT`, `PATCH`, and `DELETE`) require the current token in either:
+
+- the `X-CSRF-Token` request header; or
+- the `_token` URL-encoded form field.
+
+Query-string tokens are intentionally not accepted because URLs are routinely copied, logged, cached, and included in referrers.
+
+Token comparison is constant-time. A missing or mismatched token returns HTTP **419 Page Expired** before the route handler runs.
+
+When the underlying session ID rotates, the CSRF token also rotates. A token captured before login/logout cannot be reused with the new authenticated session.
+
+CSRF protects cookie-authenticated browser requests from cross-site request forgery. It does not mitigate XSS; scripts executing in the application's own origin can read or submit same-origin state.
