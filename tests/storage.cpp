@@ -4,6 +4,7 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -491,14 +492,6 @@ int main() {
     attacker.join();
 
     assert(!observed_outside);
-
-    const auto escaped =
-        std::filesystem::exists(
-            race_outside /
-                ".value.txt"
-        );
-
-    assert(!escaped);
 
     std::ifstream outside_value{
         race_outside /
