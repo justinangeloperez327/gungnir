@@ -192,7 +192,9 @@ public:
     std::shared_ptr<database::DriverRegistry> drivers{
         std::make_shared<database::DriverRegistry>()
     };
-    view::Engine views;
+    std::shared_ptr<view::Engine> views{
+        std::make_shared<view::Engine>()
+    };
     std::shared_ptr<config::Repository> config;
     std::shared_ptr<config::Environment> environment;
     std::filesystem::path base_path;
@@ -234,6 +236,10 @@ Application::Application()
         impl_->views
     );
 
+    impl_->server->view_engine(
+        impl_->views
+    );
+
     impl_->container.instance<
         config::Repository
     >(impl_->config);
@@ -271,7 +277,7 @@ Application::~Application() {
 
         if (
             view::runtime::using_engine(
-                impl_->views
+                *impl_->views
             )
         ) {
             view::runtime::clear();
@@ -292,6 +298,10 @@ Application::Application(
         );
 
         view::runtime::use(
+            impl_->views
+        );
+
+        impl_->server->view_engine(
             impl_->views
         );
     }
@@ -321,7 +331,7 @@ Application& Application::operator=(
 
         if (
             view::runtime::using_engine(
-                impl_->views
+                *impl_->views
             )
         ) {
             view::runtime::clear();
@@ -395,7 +405,7 @@ Application::database_drivers() const noexcept {
 
 view::Engine&
 Application::views() noexcept {
-    return impl_->views;
+    return *impl_->views;
 }
 
 const view::Engine&
@@ -516,7 +526,7 @@ Application& Application::view_root(
         );
     }
 
-    impl_->views.root(
+    impl_->views->root(
         std::move(path)
     );
 
