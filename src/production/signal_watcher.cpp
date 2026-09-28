@@ -14,8 +14,9 @@ using NativeSignalHandler =
 
 std::mutex signal_mutex;
 
-bool signal_watcher_installed =
-    false;
+SignalWatcher*
+    active_signal_watcher =
+        nullptr;
 
 volatile std::sig_atomic_t
     pending_signal = 0;
@@ -37,13 +38,17 @@ void signal_bridge(
         >(signal_number);
 }
 
-void restore_signal_handlers()
-    noexcept {
+void restore_signal_handlers(
+    SignalWatcher* watcher
+) noexcept {
     std::lock_guard lock{
         signal_mutex
     };
 
-    if (!signal_watcher_installed) {
+    if (
+        active_signal_watcher !=
+        watcher
+    ) {
         return;
     }
 
@@ -63,8 +68,8 @@ void restore_signal_handlers()
 
     pending_signal = 0;
 
-    signal_watcher_installed =
-        false;
+    active_signal_watcher =
+        nullptr;
 }
 
 } // namespace
@@ -101,7 +106,8 @@ SignalWatcher::SignalWatcher(
         };
 
         if (
-            signal_watcher_installed
+            active_signal_watcher !=
+            nullptr
         ) {
             throw std::logic_error(
                 "Only one Gungnir signal watcher may be active"
@@ -147,8 +153,8 @@ SignalWatcher::SignalWatcher(
             );
         }
 
-        signal_watcher_installed =
-            true;
+        active_signal_watcher =
+            this;
     }
 
     try {
@@ -159,7 +165,7 @@ SignalWatcher::SignalWatcher(
                 }
             };
     } catch (...) {
-        restore_signal_handlers();
+        restore_signal_handlers(this);
         throw;
     }
 }
@@ -179,7 +185,7 @@ void SignalWatcher::stop()
         thread_.join();
     }
 
-    restore_signal_handlers();
+    restore_signal_handlers(this);
 }
 
 int SignalWatcher::last_signal()
