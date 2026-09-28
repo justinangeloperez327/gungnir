@@ -131,6 +131,20 @@ public:
         return *this;
     }
 
+    template <typename Service, typename Implementation = Service>
+    Application& scoped() {
+        container().template scoped<Service, Implementation>();
+        return *this;
+    }
+
+    template <typename Service, typename Factory>
+    Application& scoped(Factory&& factory) {
+        container().template scoped<Service>(
+            std::forward<Factory>(factory)
+        );
+        return *this;
+    }
+
     template <typename Service>
     Application& instance(std::shared_ptr<Service> value) {
         container().template instance<Service>(std::move(value));

@@ -1,5 +1,7 @@
 #include <gungnir/routing/router.hpp>
 
+#include <gungnir/core/container.hpp>
+
 #include <exception>
 #include <stdexcept>
 #include <utility>
@@ -65,6 +67,7 @@ public:
     std::vector<RouteEntry> routes;
     std::vector<http::MiddlewareHandler> middleware;
     http::MiddlewareRegistry* middleware_registry{nullptr};
+    Container* container{nullptr};
     http::ExceptionHandler exceptions;
     std::optional<Handler> fallback;
 };
@@ -121,6 +124,7 @@ RouteRegistration Router::remove(std::string p, SimpleHandler h){return delete_(
 
 Router& Router::use(http::MiddlewareHandler m){impl_->middleware.push_back(std::move(m));return *this;}
 Router& Router::middleware_registry(http::MiddlewareRegistry& registry){impl_->middleware_registry=&registry;return *this;}
+Router& Router::service_container(Container& container) noexcept{impl_->container=&container;return *this;}
 Router& Router::fallback(Handler h){impl_->fallback=std::move(h);return *this;}
 Router& Router::fallback(SyncHandler h){return fallback([h=std::move(h)](http::Request& r)->Task<http::Response>{co_return h(r);});}
 Router& Router::fallback(SimpleHandler h){return fallback([h=std::move(h)](http::Request&)->Task<http::Response>{co_return h();});}
@@ -143,6 +147,13 @@ std::string Router::url(std::string_view name,const std::unordered_map<std::stri
 }
 
 Task<http::Response> Router::dispatch(http::Request& request) const {
+    if (impl_->container && !request.has_services()) {
+        request.attach_services(
+            std::make_shared<ServiceScope>(
+                impl_->container->scope()
+            )
+        );
+    }
     request.clear_route_parameters(); const RouteEntry* selected=nullptr;
     for(const auto& route:impl_->routes){if(route.method!=request.method())continue;http::Request::Parameters params;if(!match(route,request.path(),params))continue;for(auto& [k,v]:params)request.set_route_parameter(k,std::move(v));selected=&route;break;}
     std::vector<http::MiddlewareHandler> chain=impl_->middleware;
