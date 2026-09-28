@@ -522,7 +522,13 @@ int main() {
 
     router.get(
         "/secure",
-        [] {
+        [](
+            http::Request& request
+        ) {
+            assert(
+                request.secure()
+            );
+
             return http::Response::text(
                 "tls"
             );
