@@ -7,7 +7,7 @@ This document records known limitations that should remain visible before a stab
 - The HTTP server does not yet establish production-grade HTTP/2, TLS, WebSocket or asynchronous streaming guarantees.
 - Database runtime state must avoid unsafe global or thread-local assumptions when coroutines can migrate threads.
 - PostgreSQL, MySQL, SQL Server, and MongoDB have concrete client-library adapters. MongoDB replica-set transaction/session support remains incomplete.
-- Parent-scoped ORM relationship queries now cover direct, pivot and through relations with execution tests. Pivot mutation contracts and broader concurrent relationship execution coverage remain incomplete.
+- Parent-scoped ORM relationship queries cover direct, pivot and through relations. Many-to-many attach/detach/sync now execute real pivot mutations with transactional sync and rollback coverage. Broader concurrent relationship execution coverage remains incomplete.
 - Session lifecycle/cookie integration, secure identifiers and regeneration cleanup remain incomplete.
 - Cache, queue, mail and notification production adapters are not supplied by their in-memory contracts.
 - View runtime global engine state and filesystem symlink containment require hardening.

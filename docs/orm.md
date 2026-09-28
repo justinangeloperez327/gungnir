@@ -28,6 +28,8 @@ Rows are hydrated through generated model metadata. Persisted models are marked 
 
 Parent-scoped relationship queries are available through `orm::relation_query(parent, parent.relation)`. Joined relationship queries qualify their columns and preserve empty-parent semantics so an uninitialized key cannot produce an unbounded query.
 
+Many-to-many relations also expose parent-aware `orm::attach`, `orm::detach`, and transactional `orm::sync` helpers. These execute against the pivot table, participate in query observation, and invalidate loaded relationship state after successful writes.
+
 ## Query observation
 
 `orm::listen()` can observe executed ORM statements without receiving binding values. Events include the connection, backend, statement, and binding count. This provides an observability hook without copying potentially sensitive bound data.
