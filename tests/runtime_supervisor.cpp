@@ -5,7 +5,11 @@
 #include <string>
 #include <thread>
 
+#include <gungnir/core/application.hpp>
 #include <gungnir/production/production.hpp>
+#include <gungnir/queue/memory_driver.hpp>
+#include <gungnir/queue/worker.hpp>
+#include <gungnir/scheduler/scheduler.hpp>
 
 int main() {
     using namespace std::chrono_literals;
@@ -230,6 +234,119 @@ int main() {
 
     assert(empty_result.graceful);
     assert(empty_result.pending.empty());
+
+    SupervisorOptions adapter_options;
+    adapter_options.shutdown_timeout =
+        1s;
+    adapter_options.poll_interval =
+        2ms;
+
+    Supervisor adapters{
+        adapter_options
+    };
+
+    gungnir::Application application;
+
+    gungnir::queue::MemoryDriver
+        queue_driver;
+
+    gungnir::queue::WorkerOptions
+        worker_options;
+
+    worker_options.idle_sleep =
+        5s;
+
+    gungnir::queue::Worker worker{
+        queue_driver,
+        worker_options
+    };
+
+    gungnir::scheduler::SystemClock
+        scheduler_clock;
+
+    gungnir::scheduler::Scheduler
+        scheduler{
+            scheduler_clock
+        };
+
+    gungnir::scheduler::RunnerOptions
+        scheduler_options;
+
+    scheduler_options.maximum_sleep =
+        5s;
+
+    gungnir::production::supervise(
+        adapters,
+        application,
+        "http"
+    );
+
+    gungnir::production::supervise(
+        adapters,
+        worker,
+        "queue"
+    );
+
+    gungnir::production::supervise(
+        adapters,
+        scheduler,
+        "scheduler"
+    );
+
+    assert(adapters.size() == 3);
+
+    std::thread worker_thread{
+        [&] {
+            static_cast<void>(
+                worker.run(
+                    adapters.token()
+                )
+            );
+
+            adapters.notify();
+        }
+    };
+
+    std::thread scheduler_thread{
+        [&] {
+            static_cast<void>(
+                scheduler.run(
+                    scheduler_options,
+                    adapters.token()
+                )
+            );
+
+            adapters.notify();
+        }
+    };
+
+    for (
+        int attempt = 0;
+        attempt < 500 &&
+        (
+            !worker.running() ||
+            !scheduler.running()
+        );
+        ++attempt
+    ) {
+        std::this_thread::sleep_for(
+            1ms
+        );
+    }
+
+    assert(worker.running());
+    assert(scheduler.running());
+
+    const auto adapters_result =
+        adapters.shutdown();
+
+    worker_thread.join();
+    scheduler_thread.join();
+
+    assert(adapters_result.graceful);
+    assert(adapters_result.pending.empty());
+    assert(!worker.running());
+    assert(!scheduler.running());
 
     return 0;
 }
