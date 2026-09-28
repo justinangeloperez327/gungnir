@@ -9,6 +9,7 @@
 #include <thread>
 #include <vector>
 
+#include <gungnir/database/runtime.hpp>
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/view/runtime.hpp>
 
@@ -40,6 +41,9 @@ public:
                 clear_current_context();
 
             view::runtime::
+                clear_current();
+
+            database::runtime::
                 clear_current();
         }
         void await_resume() const noexcept {}
