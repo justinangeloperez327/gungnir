@@ -1301,22 +1301,20 @@ public:
                     auto& connection :
                     connections
                 ) {
-                    if (
-                        connection.output.empty() &&
-                        connection.input.empty() &&
-                        !connection.pending
-                    ) {
+                    const auto has_in_flight_work =
+                        connection.pending ||
+                        !connection.output.empty();
+
+                    if (!has_in_flight_work) {
                         close_connection(
                             connection
                         );
-                    } else {
-                        if (connection.pending) {
-                            connection.pending->cancel();
-                        }
-
-                        connection.close_after_write =
-                            true;
+                        continue;
                     }
+
+                    connection.input.clear();
+                    connection.close_after_write =
+                        true;
                 }
             }
 
@@ -1333,6 +1331,15 @@ public:
                 drain_deadline &&
                 now >= *drain_deadline
             ) {
+                for (
+                    auto& connection :
+                    connections
+                ) {
+                    if (connection.pending) {
+                        connection.pending->cancel();
+                    }
+                }
+
                 close_all();
                 return;
             }
