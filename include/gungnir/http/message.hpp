@@ -11,7 +11,8 @@ namespace gungnir::http::wire {
 
 [[nodiscard]] Request parse_request(
     std::string_view message,
-    CancellationToken cancellation = {}
+    CancellationToken cancellation = {},
+    bool secure = false
 );
 
 [[nodiscard]] std::string serialize_response(

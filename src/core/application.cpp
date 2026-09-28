@@ -668,6 +668,20 @@ Application& Application::http_runtime(
     return *this;
 }
 
+Application& Application::tls(
+    http::TlsOptions tls_options
+) {
+    auto options =
+        http_runtime();
+
+    options.tls =
+        std::move(tls_options);
+
+    return http_runtime(
+        std::move(options)
+    );
+}
+
 const http::RuntimeOptions&
 Application::http_runtime()
     const noexcept {

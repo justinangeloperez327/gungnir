@@ -188,7 +188,14 @@ public:
     [[nodiscard]] bool is_booted() const noexcept;
 
     Application& http_runtime(http::RuntimeOptions options);
-    [[nodiscard]] const http::RuntimeOptions& http_runtime() const noexcept;
+
+    Application& tls(
+        http::TlsOptions options
+    );
+
+    [[nodiscard]]
+    const http::RuntimeOptions&
+    http_runtime() const noexcept;
 
     void run();
 

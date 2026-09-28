@@ -683,3 +683,70 @@ jobs:
 
       - name: Run OTLP package consumer
         run: ./build-otlp-consumer/gungnir-otlp-package-consumer
+
+
+  tls:
+    name: TLS HTTPS transport
+    runs-on: ubuntu-latest
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-tls-install
+      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-tls-consumer.cpp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install OpenSSL development package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Configure TLS build
+        run: >
+          cmake -S . -B build-tls
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
+          -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_WITH_TLS=ON
+
+      - name: Build TLS server and installable targets
+        run: >
+          cmake --build build-tls
+          --target
+          gungnir
+          gungnir-orm
+          gungnir-language
+          gungnirc
+          gungnir-cli
+          gungnir_tls_server_test
+          --parallel
+
+      - name: Test HTTPS transport
+        run: >
+          ctest --test-dir build-tls
+          -R "^gungnir.tls_server$"
+          --output-on-failure
+
+      - name: Install TLS-enabled package
+        run: cmake --install build-tls
+
+      - name: Transpile TLS package consumer
+        run: >
+          "$GUNGNIR_PREFIX/bin/gungnirc"
+          tests/package-consumer/app.gnr
+          -o "$GUNGNIR_GENERATED_SOURCE"
+
+      - name: Configure installed package consumer
+        run: >
+          cmake
+          -S tests/package-consumer
+          -B build-tls-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
+
+      - name: Build installed package consumer
+        run: cmake --build build-tls-consumer --parallel
+
+      - name: Run installed package consumer
+        run: ./build-tls-consumer/gungnir-package-consumer

@@ -7,15 +7,18 @@
 #include <condition_variable>
 #include <coroutine>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -25,6 +28,11 @@
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/view/runtime.hpp>
 #include <gungnir/routing/router.hpp>
+
+#ifdef GUNGNIR_WITH_TLS
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -47,6 +55,366 @@ namespace {
 
 constexpr int listen_backlog = 256;
 constexpr int reactor_poll_timeout_ms = 100;
+
+#ifdef GUNGNIR_WITH_TLS
+
+using SslContext =
+    std::unique_ptr<
+        SSL_CTX,
+        decltype(&SSL_CTX_free)
+    >;
+
+using SslConnection =
+    std::unique_ptr<
+        SSL,
+        decltype(&SSL_free)
+    >;
+
+[[nodiscard]]
+std::string openssl_error(
+    std::string_view prefix
+) {
+    std::ostringstream message;
+    message << prefix;
+
+    bool found = false;
+
+    while (true) {
+        const auto code =
+            ERR_get_error();
+
+        if (code == 0) {
+            break;
+        }
+
+        char buffer[
+            256
+        ]{};
+
+        ERR_error_string_n(
+            code,
+            buffer,
+            sizeof(buffer)
+        );
+
+        message <<
+            (found ? "; " : ": ") <<
+            buffer;
+
+        found = true;
+    }
+
+    return message.str();
+}
+
+[[nodiscard]]
+bool alpn_contains(
+    const unsigned char* protocols,
+    unsigned int protocols_length,
+    std::string_view expected
+) noexcept {
+    unsigned int cursor = 0;
+
+    while (cursor < protocols_length) {
+        const auto length =
+            static_cast<unsigned int>(
+                protocols[cursor]
+            );
+
+        ++cursor;
+
+        if (
+            length == 0 ||
+            cursor + length >
+                protocols_length
+        ) {
+            return false;
+        }
+
+        const std::string_view value{
+            reinterpret_cast<
+                const char*
+            >(
+                protocols + cursor
+            ),
+            length
+        };
+
+        if (value == expected) {
+            return true;
+        }
+
+        cursor += length;
+    }
+
+    return false;
+}
+
+int select_alpn(
+    SSL*,
+    const unsigned char** output,
+    unsigned char* output_length,
+    const unsigned char* input,
+    unsigned int input_length,
+    void* context
+) noexcept {
+    const auto* configured =
+        static_cast<
+            const std::vector<
+                std::string
+            >*
+        >(context);
+
+    if (configured == nullptr) {
+        return
+            SSL_TLSEXT_ERR_NOACK;
+    }
+
+    for (
+        const auto& protocol :
+        *configured
+    ) {
+        if (
+            protocol.size() >
+            255 ||
+            !alpn_contains(
+                input,
+                input_length,
+                protocol
+            )
+        ) {
+            continue;
+        }
+
+        *output =
+            reinterpret_cast<
+                const unsigned char*
+            >(
+                protocol.data()
+            );
+
+        *output_length =
+            static_cast<unsigned char>(
+                protocol.size()
+            );
+
+        return
+            SSL_TLSEXT_ERR_OK;
+    }
+
+    return
+        SSL_TLSEXT_ERR_NOACK;
+}
+
+[[nodiscard]]
+SslContext make_tls_context(
+    const TlsOptions& options
+) {
+    ERR_clear_error();
+
+    SslContext context{
+        SSL_CTX_new(
+            TLS_server_method()
+        ),
+        &SSL_CTX_free
+    };
+
+    if (!context) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to create TLS server context"
+            )
+        );
+    }
+
+    if (
+        SSL_CTX_set_min_proto_version(
+            context.get(),
+            TLS1_2_VERSION
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to require TLS 1.2 or newer"
+            )
+        );
+    }
+
+    SSL_CTX_set_options(
+        context.get(),
+        SSL_OP_NO_COMPRESSION
+    );
+
+    if (
+        !options
+            .private_key_password
+            .empty()
+    ) {
+        SSL_CTX_set_default_passwd_cb_userdata(
+            context.get(),
+            const_cast<char*>(
+                options
+                    .private_key_password
+                    .c_str()
+            )
+        );
+
+        SSL_CTX_set_default_passwd_cb(
+            context.get(),
+            [](
+                char* buffer,
+                int size,
+                int,
+                void* userdata
+            ) -> int {
+                if (
+                    buffer == nullptr ||
+                    size <= 0 ||
+                    userdata == nullptr
+                ) {
+                    return 0;
+                }
+
+                const auto* password =
+                    static_cast<
+                        const char*
+                    >(userdata);
+
+                const auto length =
+                    std::min<std::size_t>(
+                        std::strlen(
+                            password
+                        ),
+                        static_cast<
+                            std::size_t
+                        >(size - 1)
+                    );
+
+                std::memcpy(
+                    buffer,
+                    password,
+                    length
+                );
+
+                buffer[length] = '\0';
+
+                return
+                    static_cast<int>(
+                        length
+                    );
+            }
+        );
+    }
+
+    if (
+        SSL_CTX_use_certificate_chain_file(
+            context.get(),
+            options
+                .certificate_chain
+                .c_str()
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to load TLS certificate chain"
+            )
+        );
+    }
+
+    if (
+        SSL_CTX_use_PrivateKey_file(
+            context.get(),
+            options
+                .private_key
+                .c_str(),
+            SSL_FILETYPE_PEM
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to load TLS private key"
+            )
+        );
+    }
+
+    if (
+        SSL_CTX_check_private_key(
+            context.get()
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "TLS private key does not match certificate"
+            )
+        );
+    }
+
+    SSL_CTX_set_default_passwd_cb(
+        context.get(),
+        nullptr
+    );
+
+    SSL_CTX_set_default_passwd_cb_userdata(
+        context.get(),
+        nullptr
+    );
+
+    if (
+        !options
+            .client_ca
+            .empty()
+    ) {
+        if (
+            SSL_CTX_load_verify_locations(
+                context.get(),
+                options
+                    .client_ca
+                    .c_str(),
+                nullptr
+            ) != 1
+        ) {
+            throw std::runtime_error(
+                openssl_error(
+                    "Unable to load TLS client CA bundle"
+                )
+            );
+        }
+    }
+
+    if (
+        options
+            .require_client_certificate
+    ) {
+        SSL_CTX_set_verify(
+            context.get(),
+            SSL_VERIFY_PEER |
+                SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+            nullptr
+        );
+    } else {
+        SSL_CTX_set_verify(
+            context.get(),
+            SSL_VERIFY_NONE,
+            nullptr
+        );
+    }
+
+    SSL_CTX_set_alpn_select_cb(
+        context.get(),
+        &select_alpn,
+        const_cast<
+            std::vector<
+                std::string
+            >*
+        >(
+            &options.alpn_protocols
+        )
+    );
+
+    return context;
+}
+
+#endif
 
 class HeaderLimitError final :
     public std::length_error {
@@ -1263,6 +1631,18 @@ struct ConnectionState {
         Clock::now()
     };
     std::shared_ptr<PendingDispatch> pending;
+
+#ifdef GUNGNIR_WITH_TLS
+    SslConnection tls{
+        nullptr,
+        &SSL_free
+    };
+    bool tls_handshake_complete{false};
+    bool tls_shutdown_pending{false};
+    bool tls_want_read{false};
+    bool tls_want_write{false};
+#endif
+
     bool close_after_write{false};
     bool closing{false};
 };
@@ -1273,6 +1653,10 @@ void close_connection(
     if (connection.pending) {
         connection.pending->cancel();
     }
+
+#ifdef GUNGNIR_WITH_TLS
+    connection.tls.reset();
+#endif
 
     close_socket(
         connection.socket
@@ -1344,6 +1728,8 @@ public:
         }
 
         try {
+            prepare_tls_context();
+
             const auto socket =
                 make_listener(
                     host,
@@ -1443,6 +1829,676 @@ public:
 
         view_engine =
             std::move(value);
+    }
+
+    void prepare_tls_context() {
+        if (!options.tls) {
+#ifdef GUNGNIR_WITH_TLS
+            tls_context.reset();
+#endif
+            return;
+        }
+
+#ifndef GUNGNIR_WITH_TLS
+        throw std::logic_error(
+            "Gungnir was built without TLS transport support"
+        );
+#else
+        tls_context =
+            make_tls_context(
+                *options.tls
+            );
+#endif
+    }
+
+#ifdef GUNGNIR_WITH_TLS
+    [[nodiscard]]
+    bool attach_tls(
+        ConnectionState& connection
+    ) noexcept {
+        if (!tls_context) {
+            return true;
+        }
+
+#ifdef _WIN32
+        if (
+            static_cast<std::uint64_t>(
+                connection.socket
+            ) >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<int>::
+                    max()
+            )
+        ) {
+            return false;
+        }
+#endif
+
+        ERR_clear_error();
+
+        SslConnection session{
+            SSL_new(
+                tls_context.get()
+            ),
+            &SSL_free
+        };
+
+        if (!session) {
+            return false;
+        }
+
+        if (
+            SSL_set_fd(
+                session.get(),
+                static_cast<int>(
+                    connection.socket
+                )
+            ) != 1
+        ) {
+            return false;
+        }
+
+        SSL_set_accept_state(
+            session.get()
+        );
+
+        SSL_set_mode(
+            session.get(),
+            SSL_MODE_ENABLE_PARTIAL_WRITE |
+                SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER
+        );
+
+        connection.tls =
+            std::move(session);
+
+        connection.tls_handshake_complete =
+            false;
+
+        connection.tls_want_read =
+            true;
+
+        connection.tls_want_write =
+            false;
+
+        return true;
+    }
+
+    [[nodiscard]]
+    bool tls_handshake_ready(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            !connection.tls ||
+            connection
+                .tls_handshake_complete
+        ) {
+            return true;
+        }
+
+        connection.tls_want_read =
+            false;
+
+        connection.tls_want_write =
+            false;
+
+        ERR_clear_error();
+
+        const auto result =
+            SSL_accept(
+                connection.tls.get()
+            );
+
+        if (result == 1) {
+            connection
+                .tls_handshake_complete =
+                true;
+
+            connection.last_activity =
+                Clock::now();
+
+            observability::
+                global_meter()
+                ->counter(
+                    "http.server.tls.handshake.count"
+                )
+                .add(
+                    1.0,
+                    {
+                        {
+                            "outcome",
+                            "ok"
+                        }
+                    }
+                );
+
+            return true;
+        }
+
+        const auto error =
+            SSL_get_error(
+                connection.tls.get(),
+                result
+            );
+
+        if (
+            error ==
+            SSL_ERROR_WANT_READ
+        ) {
+            connection.tls_want_read =
+                true;
+
+            return false;
+        }
+
+        if (
+            error ==
+            SSL_ERROR_WANT_WRITE
+        ) {
+            connection.tls_want_write =
+                true;
+
+            return false;
+        }
+
+        observability::
+            global_meter()
+            ->counter(
+                "http.server.tls.handshake.count"
+            )
+            .add(
+                1.0,
+                {
+                    {
+                        "outcome",
+                        "error"
+                    }
+                }
+            );
+
+        close_connection(
+            connection
+        );
+
+        return false;
+    }
+#endif
+
+    void graceful_close(
+        ConnectionState& connection
+    ) noexcept {
+#ifdef GUNGNIR_WITH_TLS
+        if (
+            connection.tls &&
+            connection
+                .tls_handshake_complete
+        ) {
+            connection.tls_want_read =
+                false;
+
+            connection.tls_want_write =
+                false;
+
+            ERR_clear_error();
+
+            const auto status =
+                SSL_shutdown(
+                    connection.tls.get()
+                );
+
+            if (status >= 0) {
+                close_connection(
+                    connection
+                );
+
+                return;
+            }
+
+            const auto error =
+                SSL_get_error(
+                    connection.tls.get(),
+                    status
+                );
+
+            if (
+                error ==
+                SSL_ERROR_WANT_READ
+            ) {
+                connection
+                    .tls_shutdown_pending =
+                    true;
+
+                connection.tls_want_read =
+                    true;
+
+                return;
+            }
+
+            if (
+                error ==
+                SSL_ERROR_WANT_WRITE
+            ) {
+                connection
+                    .tls_shutdown_pending =
+                    true;
+
+                connection.tls_want_write =
+                    true;
+
+                return;
+            }
+        }
+#endif
+
+        close_connection(
+            connection
+        );
+    }
+
+#ifdef GUNGNIR_WITH_TLS
+    void tls_shutdown_ready(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            !connection.tls ||
+            !connection
+                .tls_shutdown_pending
+        ) {
+            return;
+        }
+
+        connection.tls_want_read =
+            false;
+
+        connection.tls_want_write =
+            false;
+
+        ERR_clear_error();
+
+        const auto status =
+            SSL_shutdown(
+                connection.tls.get()
+            );
+
+        if (status >= 0) {
+            close_connection(
+                connection
+            );
+
+            return;
+        }
+
+        const auto error =
+            SSL_get_error(
+                connection.tls.get(),
+                status
+            );
+
+        if (
+            error ==
+            SSL_ERROR_WANT_READ
+        ) {
+            connection.tls_want_read =
+                true;
+
+            return;
+        }
+
+        if (
+            error ==
+            SSL_ERROR_WANT_WRITE
+        ) {
+            connection.tls_want_write =
+                true;
+
+            return;
+        }
+
+        close_connection(
+            connection
+        );
+    }
+#endif
+
+    enum class IoState {
+        progress,
+        would_block,
+        closed,
+        error
+    };
+
+    struct IoResult {
+        IoState state{
+            IoState::error
+        };
+        std::size_t count{0};
+    };
+
+    [[nodiscard]]
+    IoResult receive_bytes(
+        ConnectionState& connection,
+        char* buffer,
+        std::size_t capacity
+    ) noexcept {
+#ifdef GUNGNIR_WITH_TLS
+        if (connection.tls) {
+            connection.tls_want_read =
+                false;
+
+            connection.tls_want_write =
+                false;
+
+            while (true) {
+                std::size_t received = 0;
+
+                ERR_clear_error();
+
+                const auto status =
+                    SSL_read_ex(
+                        connection.tls.get(),
+                        buffer,
+                        capacity,
+                        &received
+                    );
+
+                if (status == 1) {
+                    return {
+                        IoState::progress,
+                        received
+                    };
+                }
+
+                const auto error =
+                    SSL_get_error(
+                        connection.tls.get(),
+                        status
+                    );
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_READ
+                ) {
+                    connection.tls_want_read =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_WRITE
+                ) {
+                    connection.tls_want_write =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_ZERO_RETURN
+                ) {
+                    return {
+                        IoState::closed,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                        SSL_ERROR_SYSCALL &&
+                    interrupted(
+                        socket_error()
+                    )
+                ) {
+                    continue;
+                }
+
+                return {
+                    IoState::error,
+                    0
+                };
+            }
+        }
+#endif
+
+        while (true) {
+#ifdef _WIN32
+            const auto chunk =
+                std::min<std::size_t>(
+                    capacity,
+                    static_cast<std::size_t>(
+                        std::numeric_limits<int>::
+                            max()
+                    )
+                );
+
+            const auto received =
+                ::recv(
+                    connection.socket,
+                    buffer,
+                    static_cast<int>(
+                        chunk
+                    ),
+                    0
+                );
+#else
+            const auto received =
+                ::recv(
+                    connection.socket,
+                    buffer,
+                    capacity,
+                    0
+                );
+#endif
+
+            if (received > 0) {
+                return {
+                    IoState::progress,
+                    static_cast<
+                        std::size_t
+                    >(received)
+                };
+            }
+
+            if (received == 0) {
+                return {
+                    IoState::closed,
+                    0
+                };
+            }
+
+            const auto error =
+                socket_error();
+
+            if (interrupted(error)) {
+                continue;
+            }
+
+            if (would_block(error)) {
+                return {
+                    IoState::would_block,
+                    0
+                };
+            }
+
+            return {
+                IoState::error,
+                0
+            };
+        }
+    }
+
+    [[nodiscard]]
+    IoResult send_bytes(
+        ConnectionState& connection,
+        const char* data,
+        std::size_t size
+    ) noexcept {
+#ifdef GUNGNIR_WITH_TLS
+        if (connection.tls) {
+            connection.tls_want_read =
+                false;
+
+            connection.tls_want_write =
+                false;
+
+            while (true) {
+                std::size_t written = 0;
+
+                ERR_clear_error();
+
+                const auto status =
+                    SSL_write_ex(
+                        connection.tls.get(),
+                        data,
+                        size,
+                        &written
+                    );
+
+                if (status == 1) {
+                    return {
+                        IoState::progress,
+                        written
+                    };
+                }
+
+                const auto error =
+                    SSL_get_error(
+                        connection.tls.get(),
+                        status
+                    );
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_READ
+                ) {
+                    connection.tls_want_read =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_WANT_WRITE
+                ) {
+                    connection.tls_want_write =
+                        true;
+
+                    return {
+                        IoState::would_block,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                    SSL_ERROR_ZERO_RETURN
+                ) {
+                    return {
+                        IoState::closed,
+                        0
+                    };
+                }
+
+                if (
+                    error ==
+                        SSL_ERROR_SYSCALL &&
+                    interrupted(
+                        socket_error()
+                    )
+                ) {
+                    continue;
+                }
+
+                return {
+                    IoState::error,
+                    0
+                };
+            }
+        }
+#endif
+
+        while (true) {
+#ifdef _WIN32
+            const auto chunk =
+                std::min<std::size_t>(
+                    size,
+                    static_cast<std::size_t>(
+                        std::numeric_limits<int>::
+                            max()
+                    )
+                );
+
+            const auto written =
+                ::send(
+                    connection.socket,
+                    data,
+                    static_cast<int>(
+                        chunk
+                    ),
+                    0
+                );
+#else
+            int flags = 0;
+
+#ifdef MSG_NOSIGNAL
+            flags = MSG_NOSIGNAL;
+#endif
+
+            const auto written =
+                ::send(
+                    connection.socket,
+                    data,
+                    size,
+                    flags
+                );
+#endif
+
+            if (written > 0) {
+                return {
+                    IoState::progress,
+                    static_cast<
+                        std::size_t
+                    >(written)
+                };
+            }
+
+            if (written == 0) {
+                return {
+                    IoState::closed,
+                    0
+                };
+            }
+
+            const auto error =
+                socket_error();
+
+            if (interrupted(error)) {
+                continue;
+            }
+
+            if (would_block(error)) {
+                return {
+                    IoState::would_block,
+                    0
+                };
+            }
+
+            return {
+                IoState::error,
+                0
+            };
+        }
     }
 
     void reactor_loop() {
@@ -1563,6 +2619,77 @@ public:
             ) {
                 short events = 0;
 
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    connection.tls &&
+                    !connection
+                        .tls_handshake_complete
+                ) {
+                    if (
+                        connection
+                            .tls_want_write
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+
+                    if (
+                        connection
+                            .tls_want_read ||
+                        events == 0
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+                } else if (
+                    connection.tls &&
+                    connection
+                        .tls_shutdown_pending
+                ) {
+                    if (
+                        connection
+                            .tls_want_read
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+
+                    if (
+                        connection
+                            .tls_want_write ||
+                        events == 0
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+                } else if (
+                    connection.tls &&
+                    connection
+                        .tls_handshake_complete &&
+                    (
+                        connection
+                            .tls_want_read ||
+                        connection
+                            .tls_want_write
+                    )
+                ) {
+                    if (
+                        connection
+                            .tls_want_read
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+
+                    if (
+                        connection
+                            .tls_want_write
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+                } else
+#endif
                 if (connection.pending) {
                     events =
                         poll_read_event;
@@ -1706,6 +2833,60 @@ public:
                     continue;
                 }
 
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    connection.tls &&
+                    connection
+                        .tls_shutdown_pending &&
+                    (
+                        (
+                            events &
+                            poll_read_event
+                        ) != 0 ||
+                        (
+                            events &
+                            poll_write_event
+                        ) != 0
+                    )
+                ) {
+                    tls_shutdown_ready(
+                        connection
+                    );
+
+                    continue;
+                }
+
+                if (
+                    connection.tls &&
+                    !connection
+                        .tls_handshake_complete &&
+                    (
+                        (
+                            events &
+                            poll_read_event
+                        ) != 0 ||
+                        (
+                            events &
+                            poll_write_event
+                        ) != 0
+                    )
+                ) {
+                    if (
+                        !tls_handshake_ready(
+                            connection
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    read_ready(
+                        connection
+                    );
+
+                    continue;
+                }
+#endif
+
                 if (
                     connection.output.empty() &&
                     (
@@ -1730,6 +2911,44 @@ public:
                         connection
                     );
                 }
+
+#ifdef GUNGNIR_WITH_TLS
+                if (
+                    !connection.closing &&
+                    connection.tls &&
+                    connection
+                        .tls_handshake_complete &&
+                    connection
+                        .tls_want_write &&
+                    (
+                        events &
+                        poll_write_event
+                    ) != 0 &&
+                    connection.output.empty()
+                ) {
+                    read_ready(
+                        connection
+                    );
+                }
+
+                if (
+                    !connection.closing &&
+                    connection.tls &&
+                    connection
+                        .tls_handshake_complete &&
+                    connection
+                        .tls_want_read &&
+                    (
+                        events &
+                        poll_read_event
+                    ) != 0 &&
+                    !connection.output.empty()
+                ) {
+                    write_ready(
+                        connection
+                    );
+                }
+#endif
             }
 
             remove_closed();
@@ -1801,6 +3020,18 @@ public:
 
             ConnectionState connection;
             connection.socket = client;
+
+#ifdef GUNGNIR_WITH_TLS
+            if (
+                !attach_tls(
+                    connection
+                )
+            ) {
+                close_socket(client);
+                continue;
+            }
+#endif
+
             connection.input.reserve(
                 std::min<std::size_t>(
                     options.max_request_bytes,
@@ -1827,38 +3058,23 @@ public:
             char buffer[8192];
 
             while (true) {
-#ifdef _WIN32
                 const auto received =
-                    ::recv(
-                        connection.socket,
+                    receive_bytes(
+                        connection,
                         buffer,
-                        static_cast<int>(
-                            sizeof(buffer)
-                        ),
-                        0
+                        sizeof(buffer)
                     );
-#else
-                const auto received =
-                    ::recv(
-                        connection.socket,
-                        buffer,
-                        sizeof(buffer),
-                        0
-                    );
-#endif
 
-                if (received > 0) {
-                    const auto count =
-                        static_cast<std::size_t>(
-                            received
-                        );
-
+                if (
+                    received.state ==
+                    IoState::progress
+                ) {
                     const auto new_request =
                         connection.input.empty();
 
                     connection.input.append(
                         buffer,
-                        count
+                        received.count
                     );
 
                     const auto activity =
@@ -1884,24 +3100,9 @@ public:
                     continue;
                 }
 
-                if (received == 0) {
-                    close_connection(
-                        connection
-                    );
-                    return;
-                }
-
-                const auto error =
-                    socket_error();
-
                 if (
-                    interrupted(error)
-                ) {
-                    continue;
-                }
-
-                if (
-                    would_block(error)
+                    received.state ==
+                    IoState::would_block
                 ) {
                     break;
                 }
@@ -1909,6 +3110,7 @@ public:
                 close_connection(
                     connection
                 );
+
                 return;
             }
 
@@ -2060,7 +3262,14 @@ public:
         auto request =
             wire::parse_request(
                 raw,
-                cancellation.token()
+                cancellation.token(),
+#ifdef GUNGNIR_WITH_TLS
+                static_cast<bool>(
+                    connection.tls
+                )
+#else
+                false
+#endif
             );
 
         ++connection.requests_served;
@@ -2122,48 +3331,20 @@ public:
                     connection.output.size() -
                     connection.output_offset;
 
-#ifdef _WIN32
-                const auto chunk =
-                    std::min<std::size_t>(
-                        remaining,
-                        static_cast<std::size_t>(
-                            std::numeric_limits<int>::
-                                max()
-                        )
-                    );
-
                 const auto written =
-                    ::send(
-                        connection.socket,
+                    send_bytes(
+                        connection,
                         connection.output.data() +
                             connection.output_offset,
-                        static_cast<int>(
-                            chunk
-                        ),
-                        0
+                        remaining
                     );
-#else
-                int flags = 0;
 
-#ifdef MSG_NOSIGNAL
-                flags = MSG_NOSIGNAL;
-#endif
-
-                const auto written =
-                    ::send(
-                        connection.socket,
-                        connection.output.data() +
-                            connection.output_offset,
-                        remaining,
-                        flags
-                    );
-#endif
-
-                if (written > 0) {
+                if (
+                    written.state ==
+                    IoState::progress
+                ) {
                     connection.output_offset +=
-                        static_cast<std::size_t>(
-                            written
-                        );
+                        written.count;
 
                     connection.last_activity =
                         Clock::now();
@@ -2171,24 +3352,9 @@ public:
                     continue;
                 }
 
-                if (written == 0) {
-                    close_connection(
-                        connection
-                    );
-                    return;
-                }
-
-                const auto error =
-                    socket_error();
-
                 if (
-                    interrupted(error)
-                ) {
-                    continue;
-                }
-
-                if (
-                    would_block(error)
+                    written.state ==
+                    IoState::would_block
                 ) {
                     return;
                 }
@@ -2196,6 +3362,7 @@ public:
                 close_connection(
                     connection
                 );
+
                 return;
             }
 
@@ -2210,9 +3377,10 @@ public:
                 Clock::now();
 
             if (close) {
-                close_connection(
+                graceful_close(
                     connection
                 );
+
                 return;
             }
 
@@ -2439,6 +3607,80 @@ public:
                 "HTTP runtime timeouts must be greater than zero"
             );
         }
+
+        if (options.tls) {
+            const auto& tls =
+                *options.tls;
+
+            if (
+                tls.certificate_chain.empty() ||
+                tls.private_key.empty()
+            ) {
+                throw std::invalid_argument(
+                    "TLS certificate_chain and private_key are required"
+                );
+            }
+
+            if (
+                tls.require_client_certificate &&
+                tls.client_ca.empty()
+            ) {
+                throw std::invalid_argument(
+                    "TLS client_ca is required when client certificates are mandatory"
+                );
+            }
+
+            if (
+                tls.alpn_protocols.empty()
+            ) {
+                throw std::invalid_argument(
+                    "TLS ALPN protocol list must not be empty"
+                );
+            }
+
+            std::unordered_set<
+                std::string
+            > protocols;
+
+            for (
+                const auto& protocol :
+                tls.alpn_protocols
+            ) {
+                if (
+                    protocol.empty() ||
+                    protocol.size() > 255
+                ) {
+                    throw std::invalid_argument(
+                        "TLS ALPN protocol names must contain 1-255 bytes"
+                    );
+                }
+
+                if (
+                    protocol !=
+                    "http/1.1"
+                ) {
+                    throw std::invalid_argument(
+                        "The core TLS server currently supports HTTP/1.1 ALPN only"
+                    );
+                }
+
+                if (
+                    !protocols
+                        .insert(protocol)
+                        .second
+                ) {
+                    throw std::invalid_argument(
+                        "TLS ALPN protocol names must be unique"
+                    );
+                }
+            }
+
+#ifndef GUNGNIR_WITH_TLS
+            throw std::logic_error(
+                "TLS runtime configuration requires a GUNGNIR_WITH_TLS build"
+            );
+#endif
+        }
     }
 
     SocketRuntime socket_runtime;
@@ -2450,6 +3692,14 @@ public:
     };
     routing::Router& router;
     RuntimeOptions options;
+
+#ifdef GUNGNIR_WITH_TLS
+    SslContext tls_context{
+        nullptr,
+        &SSL_CTX_free
+    };
+#endif
+
     std::shared_ptr<view::Engine>
         view_engine;
     std::atomic_bool running{false};

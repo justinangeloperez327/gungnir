@@ -77,6 +77,12 @@ option(
     "Build the libcurl OTLP/HTTP observability exporter"
     OFF
 )
+
+option(
+    GUNGNIR_WITH_TLS
+    "Build OpenSSL-backed HTTPS server transport support"
+    OFF
+)
 option(
     GUNGNIR_OTLP_INTEGRATION_TESTS
     "Build live OTLP HTTP integration tests"
@@ -180,6 +186,10 @@ if(
     GUNGNIR_WITH_OTLP
 )
     find_package(CURL 7.56 REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_TLS)
+    find_package(OpenSSL 3.0 REQUIRED)
 endif()
 
 add_library(gungnir
@@ -314,6 +324,21 @@ set_target_properties(gungnir-orm PROPERTIES
 
 target_compile_features(gungnir PUBLIC cxx_std_23)
 target_link_libraries(gungnir PRIVATE Threads::Threads)
+
+if(GUNGNIR_WITH_TLS)
+    target_compile_definitions(
+        gungnir
+        PRIVATE
+            GUNGNIR_WITH_TLS=1
+    )
+
+    target_link_libraries(
+        gungnir
+        PRIVATE
+            OpenSSL::SSL
+            OpenSSL::Crypto
+    )
+endif()
 
 if(WIN32)
     target_link_libraries(
@@ -967,6 +992,32 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_http_server_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_http_server_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.http_server COMMAND gungnir_http_server_test)
+
+    if(GUNGNIR_WITH_TLS)
+        add_executable(
+            gungnir_tls_server_test
+            tests/tls_server.cpp
+        )
+
+        target_link_libraries(
+            gungnir_tls_server_test
+            PRIVATE
+                gungnir::gungnir
+                OpenSSL::SSL
+                OpenSSL::Crypto
+        )
+
+        target_compile_features(
+            gungnir_tls_server_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.tls_server
+            COMMAND gungnir_tls_server_test
+        )
+    endif()
 
     add_executable(gungnir_request_test tests/request.cpp)
     target_link_libraries(gungnir_request_test PRIVATE gungnir::gungnir)

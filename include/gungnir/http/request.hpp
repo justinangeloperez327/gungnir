@@ -44,7 +44,8 @@ public:
         Method method,
         std::string target,
         std::string body = {},
-        CancellationToken cancellation = {}
+        CancellationToken cancellation = {},
+        bool secure = false
     );
 
     [[nodiscard]] Method method() const noexcept;
@@ -52,6 +53,7 @@ public:
     [[nodiscard]] std::string_view path() const noexcept;
     [[nodiscard]] std::string_view body() const noexcept;
     [[nodiscard]] bool cancelled() const noexcept;
+    [[nodiscard]] bool secure() const noexcept;
     [[nodiscard]] CancellationToken cancellation() const noexcept;
     [[nodiscard]] bool has_services() const noexcept;
     [[nodiscard]] ServiceScope& services();
@@ -144,6 +146,7 @@ private:
     std::string path_;
     std::string body_;
     CancellationToken cancellation_;
+    bool secure_{false};
     std::shared_ptr<ServiceScope> services_;
     std::shared_ptr<session::Session> session_;
     std::shared_ptr<auth::Context> auth_;
