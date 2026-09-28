@@ -14,7 +14,7 @@ public:
 
     explicit Context(
         std::optional<Identity> identity
-    ) noexcept
+    )
         : identity_(
             std::move(identity)
           ) {}
