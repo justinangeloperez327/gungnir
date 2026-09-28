@@ -50,6 +50,17 @@ option(
     OFF
 )
 
+option(
+    GUNGNIR_WITH_REDIS
+    "Build the hiredis Redis cache adapter"
+    OFF
+)
+option(
+    GUNGNIR_REDIS_INTEGRATION_TESTS
+    "Build live Redis integration tests"
+    OFF
+)
+
 if(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
     NOT GUNGNIR_WITH_POSTGRESQL
@@ -90,6 +101,16 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_REDIS_INTEGRATION_TESTS AND
+    NOT GUNGNIR_WITH_REDIS
+)
+    message(
+        FATAL_ERROR
+        "Redis integration tests require GUNGNIR_WITH_REDIS=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
@@ -106,6 +127,10 @@ endif()
 
 if(GUNGNIR_WITH_MONGODB)
     find_package(mongoc 2.5.4 CONFIG REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_REDIS)
+    find_package(Hiredis REQUIRED)
 endif()
 
 add_library(gungnir
@@ -423,6 +448,47 @@ if(GUNGNIR_WITH_MONGODB)
     )
 endif()
 
+if(GUNGNIR_WITH_REDIS)
+    add_library(
+        gungnir-redis
+        src/cache/redis_store.cpp
+    )
+
+    add_library(
+        gungnir::redis
+        ALIAS
+        gungnir-redis
+    )
+
+    target_compile_features(
+        gungnir-redis
+        PUBLIC
+            cxx_std_23
+    )
+
+    target_link_libraries(
+        gungnir-redis
+        PUBLIC
+            gungnir::gungnir
+            Hiredis::Hiredis
+    )
+
+    target_include_directories(
+        gungnir-redis
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    set_target_properties(
+        gungnir-redis
+        PROPERTIES
+            CXX_EXTENSIONS OFF
+            POSITION_INDEPENDENT_CODE ON
+            EXPORT_NAME redis
+    )
+endif()
+
 if(MSVC)
     target_compile_options(gungnir PRIVATE /W4 /permissive-)
     target_compile_options(gungnir-orm PRIVATE /W4 /permissive-)
@@ -459,6 +525,15 @@ if(MSVC)
     if(GUNGNIR_WITH_MONGODB)
         target_compile_options(
             gungnir-mongodb
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    endif()
+
+    if(GUNGNIR_WITH_REDIS)
+        target_compile_options(
+            gungnir-redis
             PRIVATE
                 /W4
                 /permissive-
@@ -509,6 +584,18 @@ else()
     if(GUNGNIR_WITH_MONGODB)
         target_compile_options(
             gungnir-mongodb
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+
+    if(GUNGNIR_WITH_REDIS)
+        target_compile_options(
+            gungnir-redis
             PRIVATE
                 -Wall
                 -Wextra
@@ -1209,6 +1296,30 @@ if(GUNGNIR_WITH_MONGODB)
             ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION
             ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
+
+if(GUNGNIR_WITH_REDIS)
+    install(
+        TARGETS
+            gungnir-redis
+        EXPORT
+            GungnirTargets
+        ARCHIVE DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+
+    install(
+        FILES
+            cmake/FindHiredis.cmake
+        DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir/modules
     )
 endif()
 
