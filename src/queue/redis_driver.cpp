@@ -448,6 +448,15 @@ constexpr std::string_view fail_script =
     "redis.call('ZREM', KEYS[3], ARGV[1]) "
     "return 1";
 
+constexpr std::string_view retry_failed_script =
+    "local current = redis.call('HGET', KEYS[3], ARGV[1]) "
+    "if not current or current ~= ARGV[2] then return 0 end "
+    "if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return -1 end "
+    "redis.call('HDEL', KEYS[3], ARGV[1]) "
+    "redis.call('HSET', KEYS[1], ARGV[1], ARGV[3]) "
+    "redis.call('RPUSH', KEYS[2], ARGV[1]) "
+    "return 1";
+
 } // namespace
 
 class RedisDriver::Impl {
@@ -882,6 +891,212 @@ public:
             "HLEN",
             failed_key()
         );
+    }
+
+    [[nodiscard]]
+    std::vector<Envelope>
+    failed_jobs() {
+        std::lock_guard lock{
+            mutex
+        };
+
+        auto reply =
+            command({
+                "HVALS",
+                failed_key()
+            });
+
+        if (
+            reply->type !=
+            REDIS_REPLY_ARRAY
+        ) {
+            throw std::runtime_error(
+                "Redis queue failed-job listing returned an unexpected reply"
+            );
+        }
+
+        std::vector<Envelope> jobs;
+        jobs.reserve(
+            reply->elements
+        );
+
+        for (
+            std::size_t index = 0;
+            index < reply->elements;
+            ++index
+        ) {
+            const auto* item =
+                reply->element[index];
+
+            if (
+                item == nullptr ||
+                item->type !=
+                    REDIS_REPLY_STRING
+            ) {
+                throw std::runtime_error(
+                    "Redis queue failed-job listing contains an invalid entry"
+                );
+            }
+
+            jobs.push_back(
+                decode(
+                    reply_text(
+                        *item
+                    )
+                )
+            );
+        }
+
+        return jobs;
+    }
+
+    [[nodiscard]]
+    std::optional<Envelope>
+    failed_job(
+        std::string_view id
+    ) {
+        if (id.empty()) {
+            return std::nullopt;
+        }
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        auto reply =
+            command({
+                "HGET",
+                failed_key(),
+                id
+            });
+
+        if (
+            reply->type ==
+            REDIS_REPLY_NIL
+        ) {
+            return std::nullopt;
+        }
+
+        if (
+            reply->type !=
+            REDIS_REPLY_STRING
+        ) {
+            throw std::runtime_error(
+                "Redis queue failed-job lookup returned an unexpected reply"
+            );
+        }
+
+        return decode(
+            reply_text(
+                *reply
+            )
+        );
+    }
+
+    bool retry_failed(
+        std::string_view id
+    ) {
+        if (id.empty()) {
+            return false;
+        }
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        auto current =
+            command({
+                "HGET",
+                failed_key(),
+                id
+            });
+
+        if (
+            current->type ==
+            REDIS_REPLY_NIL
+        ) {
+            return false;
+        }
+
+        if (
+            current->type !=
+            REDIS_REPLY_STRING
+        ) {
+            throw std::runtime_error(
+                "Redis queue failed-job retry lookup returned an unexpected reply"
+            );
+        }
+
+        const auto persisted =
+            reply_text(
+                *current
+            );
+
+        auto job =
+            decode(
+                persisted
+            );
+
+        job.attempts = 0;
+        job.reservation.clear();
+
+        const auto reset =
+            encode(job);
+
+        auto reply =
+            eval(
+                retry_failed_script,
+                {
+                    jobs_key(),
+                    ready_key(),
+                    failed_key()
+                },
+                {
+                    std::string{id},
+                    persisted,
+                    reset
+                }
+            );
+
+        require_integer(
+            *reply,
+            "queue failed-job retry"
+        );
+
+        if (reply->integer < 0) {
+            throw std::logic_error(
+                "Cannot retry failed job because its id is already active: " +
+                std::string{id}
+            );
+        }
+
+        return reply->integer == 1;
+    }
+
+    bool forget_failed(
+        std::string_view id
+    ) {
+        if (id.empty()) {
+            return false;
+        }
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        auto reply =
+            command({
+                "HDEL",
+                failed_key(),
+                id
+            });
+
+        require_integer(
+            *reply,
+            "queue failed-job delete"
+        );
+
+        return reply->integer == 1;
     }
 
     void flush() {
