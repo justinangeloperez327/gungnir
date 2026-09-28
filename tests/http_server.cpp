@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <exception>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -13,6 +14,7 @@
 
 #include <gungnir/core/timer.hpp>
 #include <gungnir/http/server.hpp>
+#include <gungnir/observability/observability.hpp>
 #include <gungnir/routing/router.hpp>
 
 #ifdef _WIN32
@@ -383,6 +385,22 @@ int main() {
 
     SocketRuntime socket_runtime;
 
+    auto trace_sink =
+        std::make_shared<
+            observability::
+                MemorySpanSink
+        >();
+
+    auto tracer =
+        std::make_shared<
+            observability::Tracer
+        >(trace_sink);
+
+    observability::
+        set_global_tracer(
+            tracer
+        );
+
     routing::Router router;
 
     std::atomic_bool slow_started{false};
@@ -428,6 +446,17 @@ int main() {
                         10
                     }
                 );
+
+                if (attempt == 0) {
+                    auto child =
+                        observability::
+                            global_tracer()
+                            ->start_span(
+                                "http.test.after_sleep"
+                            );
+
+                    child.end();
+                }
             }
 
             co_return
@@ -645,6 +674,59 @@ int main() {
     }
 
     assert(!server.running());
+
+    const auto spans =
+        trace_sink->spans();
+
+    std::size_t request_spans = 0;
+    const observability::SpanRecord*
+        slow_request = nullptr;
+    const observability::SpanRecord*
+        after_sleep = nullptr;
+
+    for (const auto& span : spans) {
+        if (
+            span.name ==
+            "http.server.request"
+        ) {
+            ++request_spans;
+
+            if (
+                span.attributes.at(
+                    "url.path"
+                ) ==
+                "/slow"
+            ) {
+                slow_request =
+                    &span;
+            }
+        } else if (
+            span.name ==
+            "http.test.after_sleep"
+        ) {
+            after_sleep =
+                &span;
+        }
+    }
+
+    assert(request_spans == 3);
+    assert(slow_request != nullptr);
+    assert(after_sleep != nullptr);
+
+    assert(
+        after_sleep->trace_id ==
+        slow_request->trace_id
+    );
+
+    assert(
+        after_sleep->parent_span_id ==
+        slow_request->span_id
+    );
+
+    observability::
+        set_global_tracer(
+            nullptr
+        );
 
     return 0;
 }
