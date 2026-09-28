@@ -61,6 +61,39 @@ public:
             return false;
         }
 
+        auto span =
+            observability::
+                global_tracer()
+                ->start_span(
+                    "queue.job",
+                    {
+                        {
+                            "messaging.operation",
+                            "process"
+                        },
+                        {
+                            "messaging.message.id",
+                            job->id
+                        },
+                        {
+                            "messaging.destination.name",
+                            job->name
+                        },
+                        {
+                            "messaging.message.retry.count",
+                            std::to_string(
+                                job->attempts
+                            )
+                        }
+                    },
+                    trace_parent(*job)
+                );
+
+        auto span_scope =
+            span.valid()
+                ? span.scope()
+                : observability::Scope{};
+
         const auto found =
             handlers_.find(job->name);
 
@@ -68,11 +101,23 @@ public:
             found ==
             handlers_.end()
         ) {
+            span.error(
+                "No queue handler is registered"
+            );
+
+            span.end();
             driver_->fail(*job);
             return true;
         }
 
         ++job->attempts;
+
+        span.attribute(
+            "messaging.message.retry.count",
+            std::to_string(
+                job->attempts
+            )
+        );
 
         LeaseHeartbeat heartbeat{
             *driver_,
@@ -80,29 +125,58 @@ public:
             options_.lease_renewal_interval
         };
 
+        const auto handle_failure =
+            [&] {
+                if (
+                    job->attempts <
+                    job->max_attempts
+                ) {
+                    const auto delay =
+                        retry_delay(
+                            job->attempts
+                        );
+
+                    driver_->release_after(
+                        std::move(*job),
+                        delay
+                    );
+                } else {
+                    driver_->fail(*job);
+                }
+            };
+
         try {
             found->second(job->payload);
             heartbeat.stop();
+
+            span.status(
+                observability::
+                    SpanStatus::ok
+            );
+
+            span.end();
+
             driver_->acknowledge(*job);
+        } catch (
+            const std::exception& error
+        ) {
+            heartbeat.stop();
+
+            span.error(
+                error.what()
+            );
+
+            span.end();
+            handle_failure();
         } catch (...) {
             heartbeat.stop();
 
-            if (
-                job->attempts <
-                job->max_attempts
-            ) {
-                const auto delay =
-                    retry_delay(
-                        job->attempts
-                    );
+            span.error(
+                "Unknown queue handler exception"
+            );
 
-                driver_->release_after(
-                    std::move(*job),
-                    delay
-                );
-            } else {
-                driver_->fail(*job);
-            }
+            span.end();
+            handle_failure();
         }
 
         return true;
