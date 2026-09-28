@@ -26,7 +26,7 @@ Rows are hydrated through generated model metadata. Persisted models are marked 
 
 `with()` records relationship loading on the query plan. Relationship loading batches keys instead of issuing one query per parent model. Nested eager loading is supported through dotted relation paths.
 
-Relationship definitions and advanced relationship behavior are developed further in Group 14.
+Parent-scoped relationship queries are available through `orm::relation_query(parent, parent.relation)`. Joined relationship queries qualify their columns and preserve empty-parent semantics so an uninitialized key cannot produce an unbounded query.
 
 ## Query observation
 
