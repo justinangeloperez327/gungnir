@@ -363,9 +363,31 @@ constexpr std::string_view push_script =
     "redis.call('RPUSH', KEYS[2], ARGV[1]) "
     "return 1";
 
+constexpr std::string_view push_later_script =
+    "if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 "
+    "or redis.call('HEXISTS', KEYS[3], ARGV[1]) == 1 then "
+    "return 0 end "
+    "redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]) "
+    "local delay = tonumber(ARGV[3]) "
+    "if delay <= 0 then "
+    "redis.call('RPUSH', KEYS[2], ARGV[1]) "
+    "else "
+    "local t = redis.call('TIME') "
+    "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "redis.call('ZADD', KEYS[4], now + delay, ARGV[1]) "
+    "end "
+    "return 1";
+
 constexpr std::string_view pop_script =
     "local t = redis.call('TIME') "
     "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "local due = redis.call('ZRANGEBYSCORE', KEYS[5], '-inf', now) "
+    "for _, id in ipairs(due) do "
+    "redis.call('ZREM', KEYS[5], id) "
+    "if redis.call('HEXISTS', KEYS[1], id) == 1 then "
+    "redis.call('RPUSH', KEYS[2], id) "
+    "end "
+    "end "
     "local expired = redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', now) "
     "for _, id in ipairs(expired) do "
     "redis.call('ZREM', KEYS[3], id) "
@@ -393,13 +415,28 @@ constexpr std::string_view acknowledge_script =
     "redis.call('HDEL', KEYS[1], ARGV[1]) "
     "return 1";
 
-constexpr std::string_view release_script =
+constexpr std::string_view release_after_script =
     "local token = redis.call('HGET', KEYS[4], ARGV[1]) "
     "if not token or token ~= ARGV[2] then return 0 end "
     "redis.call('HSET', KEYS[1], ARGV[1], ARGV[3]) "
     "redis.call('HDEL', KEYS[4], ARGV[1]) "
     "redis.call('ZREM', KEYS[3], ARGV[1]) "
+    "local delay = tonumber(ARGV[4]) "
+    "if delay <= 0 then "
     "redis.call('RPUSH', KEYS[2], ARGV[1]) "
+    "else "
+    "local t = redis.call('TIME') "
+    "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "redis.call('ZADD', KEYS[5], now + delay, ARGV[1]) "
+    "end "
+    "return 1";
+
+constexpr std::string_view renew_script =
+    "local token = redis.call('HGET', KEYS[2], ARGV[1]) "
+    "if not token or token ~= ARGV[2] then return 0 end "
+    "local t = redis.call('TIME') "
+    "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "redis.call('ZADD', KEYS[1], now + tonumber(ARGV[3]), ARGV[1]) "
     "return 1";
 
 constexpr std::string_view fail_script =
