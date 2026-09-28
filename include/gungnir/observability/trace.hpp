@@ -193,6 +193,12 @@ inline Scope activate(
     };
 }
 
+inline void clear_current_context()
+    noexcept {
+    detail::
+        current_trace_context = {};
+}
+
 class Span {
 public:
     Span() = default;
