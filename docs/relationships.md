@@ -54,7 +54,24 @@ The old relation-only helper is intentionally unavailable because relation metad
 
 `BelongsToMany` stores explicit pivot table and key metadata. Eager loading first resolves the pivot rows, then loads related models in a batch.
 
-Pivot mutation operations such as attach, detach, and sync require a database mutation contract and should not be simulated merely by modifying the in-memory relation state.
+Pivot mutations are database-backed and parent-aware:
+
+```cpp
+orm::attach(user, user.roles, {Int64{2}, Int64{3}});
+orm::detach(user, user.roles, Int64{2});
+
+const auto changes = orm::sync(
+    user,
+    user.roles,
+    {Int64{3}, Int64{4}}
+);
+```
+
+`attach` normalizes duplicate requested IDs and inserts pivot rows. `detach` can remove specific related IDs or every pivot row for the parent. `sync` reads the current pivot set, computes attached/detached IDs, and applies the diff on one pinned database transaction. If any sync mutation fails, the transaction rolls back.
+
+Successful pivot mutations unload the in-memory relationship so later access cannot silently return stale data. Pivot operations are reported through the normal ORM query observer.
+
+This contract is relational. MongoDB does not emulate relational pivot writes non-atomically.
 
 ## Through relationships
 
