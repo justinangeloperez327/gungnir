@@ -52,7 +52,7 @@ option(
 
 option(
     GUNGNIR_WITH_REDIS
-    "Build the hiredis Redis cache adapter"
+    "Build the hiredis Redis cache and queue adapters"
     OFF
 )
 option(
