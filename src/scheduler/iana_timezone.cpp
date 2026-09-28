@@ -341,10 +341,20 @@ IanaTimeZone::IanaTimeZone(
             root
         );
 
+    const auto first_component =
+        relative.empty()
+            ? relative.end()
+            : relative.begin();
+
     if (
         relative.empty() ||
-        relative.native().starts_with(
-            ".."
+        (
+            first_component !=
+                relative.end() &&
+            *first_component ==
+                std::filesystem::path{
+                    ".."
+                }
         )
     ) {
         throw std::invalid_argument(
