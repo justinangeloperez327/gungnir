@@ -116,7 +116,7 @@ Response Response::view(
 ) {
     Response response{
         status,
-        gungnir::view::runtime::engine().render(
+        gungnir::view::runtime::engine()->render(
             name,
             data
         )

@@ -33,3 +33,14 @@ View failures use view-specific error types so applications can distinguish miss
 ## Architecture
 
 The current engine is deliberately small. Layouts, includes, components and template compilation should be added through explicit syntax and parsing rather than by growing fragile string replacement rules indefinitely.
+
+
+## Runtime ownership
+
+Each `Application` owns its view engine through shared lifetime ownership. The HTTP server snapshots that engine into each pending request, and `Response::view()` resolves the engine from the active request execution context.
+
+View execution context is propagated across Gungnir executor scheduling and timer suspension, so rendering after `co_await executor.yield()` or `co_await sleep_for(...)` remains attached to the same application.
+
+A process-level fallback engine remains for synchronous compatibility outside request execution, but it is an owned handle rather than a raw pointer. Request-scoped engines take precedence over that fallback.
+
+The view engine synchronizes configuration access. Rendering snapshots the configured root before filesystem access, and changing the root cannot race with the root read itself. Applications should still treat view-root reconfiguration as startup configuration rather than routinely changing it while serving traffic.

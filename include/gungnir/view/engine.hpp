@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <shared_mutex>
 #include <string_view>
 
 #include <gungnir/core/types.hpp>
@@ -13,7 +14,9 @@ public:
     explicit Engine(std::filesystem::path root = "views");
 
     Engine& root(std::filesystem::path value);
-    [[nodiscard]] const std::filesystem::path& root() const noexcept;
+    [[nodiscard]]
+    std::filesystem::path root()
+        const;
 
     [[nodiscard]] String render(
         std::string_view name,
@@ -26,6 +29,7 @@ public:
     ) const;
 
 private:
+    mutable std::shared_mutex mutex_;
     std::filesystem::path root_;
 };
 
