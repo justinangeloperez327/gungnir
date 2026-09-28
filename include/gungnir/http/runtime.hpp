@@ -23,6 +23,13 @@ struct TlsOptions {
         };
 };
 
+struct Http2Options {
+    std::size_t max_concurrent_streams{100};
+    std::size_t max_header_list_bytes{
+        64U * 1024U
+    };
+};
+
 struct RuntimeOptions {
     std::size_t max_request_bytes{1024U * 1024U};
     std::size_t max_header_bytes{64U * 1024U};
@@ -43,6 +50,7 @@ struct RuntimeOptions {
     std::chrono::milliseconds shutdown_timeout{5000};
     bool keep_alive{true};
     std::optional<TlsOptions> tls;
+    std::optional<Http2Options> http2;
 };
 
 enum class HttpVersion {

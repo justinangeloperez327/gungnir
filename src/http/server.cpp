@@ -1,5 +1,10 @@
 #include <gungnir/http/server.hpp>
 
+#ifdef GUNGNIR_WITH_HTTP2
+#include "http2_session.hpp"
+#include <nghttp2/nghttp2.h>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -1434,6 +1439,14 @@ struct PendingWebSocketMessage {
     std::atomic_bool ready{false};
 };
 
+#ifdef GUNGNIR_WITH_HTTP2
+struct PendingHttp2Dispatch {
+    std::int32_t stream_id{0};
+    std::shared_ptr<PendingDispatch>
+        pending;
+};
+#endif
+
 class DispatchTracker {
 public:
     void begin() {
@@ -1744,6 +1757,14 @@ struct ConnectionState {
     bool websocket_close_sent{false};
     bool websocket_close_received{false};
 
+#ifdef GUNGNIR_WITH_HTTP2
+    std::shared_ptr<Http2Session>
+        http2;
+    std::vector<PendingHttp2Dispatch>
+        pending_http2;
+    bool http2_going_away{false};
+#endif
+
 #ifdef GUNGNIR_WITH_TLS
     SslConnection tls{
         nullptr,
@@ -1777,6 +1798,20 @@ void close_connection(
             .websocket_request
             ->cancel();
     }
+
+#ifdef GUNGNIR_WITH_HTTP2
+    for (
+        auto& pending :
+        connection.pending_http2
+    ) {
+        if (pending.pending) {
+            pending.pending->cancel();
+        }
+    }
+
+    connection.pending_http2.clear();
+    connection.http2.reset();
+#endif
 
 #ifdef GUNGNIR_WITH_TLS
     connection.tls.reset();
@@ -1960,6 +1995,13 @@ public:
 #ifdef GUNGNIR_WITH_TLS
             tls_context.reset();
 #endif
+
+            if (options.http2) {
+                throw std::invalid_argument(
+                    "HTTP/2 transport requires TLS configuration"
+                );
+            }
+
             return;
         }
 
@@ -1968,6 +2010,28 @@ public:
             "Gungnir was built without TLS transport support"
         );
 #else
+#ifdef GUNGNIR_WITH_HTTP2
+        if (options.http2) {
+            auto& protocols =
+                options.tls
+                    ->alpn_protocols;
+
+            if (
+                std::find(
+                    protocols.begin(),
+                    protocols.end(),
+                    "h2"
+                ) ==
+                protocols.end()
+            ) {
+                protocols.insert(
+                    protocols.begin(),
+                    "h2"
+                );
+            }
+        }
+#endif
+
         tls_context =
             make_tls_context(
                 *options.tls
@@ -2079,6 +2143,74 @@ public:
 
             connection.last_activity =
                 Clock::now();
+
+#ifdef GUNGNIR_WITH_HTTP2
+            if (options.http2) {
+                const unsigned char*
+                    selected = nullptr;
+
+                unsigned int
+                    selected_length = 0;
+
+                SSL_get0_alpn_selected(
+                    connection.tls.get(),
+                    &selected,
+                    &selected_length
+                );
+
+                const std::string_view
+                    protocol{
+                        reinterpret_cast<
+                            const char*
+                        >(selected),
+                        selected_length
+                    };
+
+                if (protocol == "h2") {
+                    try {
+                        connection.http2 =
+                            std::make_shared<
+                                Http2Session
+                            >(
+                                *options.http2,
+                                options
+                                    .max_request_bytes
+                            );
+
+                        connection.output =
+                            connection.http2
+                                ->next_output();
+
+                        connection.output_offset =
+                            0;
+
+                        connection.phase_started =
+                            Clock::now();
+
+                        observability::
+                            global_meter()
+                            ->counter(
+                                "http.server.protocol.connection.count"
+                            )
+                            .add(
+                                1.0,
+                                {
+                                    {
+                                        "protocol",
+                                        "h2"
+                                    }
+                                }
+                            );
+                    } catch (...) {
+                        close_connection(
+                            connection
+                        );
+
+                        return false;
+                    }
+                }
+            }
+#endif
 
             observability::
                 global_meter()
@@ -3411,6 +3543,408 @@ public:
         }
     }
 
+#ifdef GUNGNIR_WITH_HTTP2
+    void flush_http2_output(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.http2 ||
+            !connection.output.empty()
+        ) {
+            return;
+        }
+
+        try {
+            connection.output =
+                connection.http2
+                    ->next_output();
+
+            connection.output_offset = 0;
+
+            if (!connection.output.empty()) {
+                connection.phase_started =
+                    Clock::now();
+            }
+        } catch (...) {
+            close_connection(
+                connection
+            );
+        }
+    }
+
+    void dispatch_http2_requests(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.http2
+        ) {
+            return;
+        }
+
+        try {
+            for (
+                const auto stream_id :
+                connection.http2
+                    ->take_closed_streams()
+            ) {
+                auto& pending =
+                    connection.pending_http2;
+
+                const auto found =
+                    std::find_if(
+                        pending.begin(),
+                        pending.end(),
+                        [stream_id](
+                            const auto& item
+                        ) {
+                            return
+                                item.stream_id ==
+                                stream_id;
+                        }
+                    );
+
+                if (
+                    found !=
+                    pending.end()
+                ) {
+                    if (found->pending) {
+                        found->pending
+                            ->cancel();
+                    }
+
+                    pending.erase(found);
+                }
+            }
+
+            if (
+                connection
+                    .http2_going_away
+            ) {
+                flush_http2_output(
+                    connection
+                );
+
+                return;
+            }
+
+            auto requests =
+                connection.http2
+                    ->take_requests();
+
+            for (
+                auto& request_data :
+                requests
+            ) {
+                if (
+                    connection.pending_http2
+                        .size() >=
+                    options.http2
+                        ->max_concurrent_streams
+                ) {
+                    connection.http2
+                        ->reset_stream(
+                            request_data
+                                .stream_id,
+                            NGHTTP2_REFUSED_STREAM
+                        );
+
+                    continue;
+                }
+
+                CancellationSource
+                    cancellation;
+
+                Request request{
+                    request_data.method,
+                    std::move(
+                        request_data.path
+                    ),
+                    std::move(
+                        request_data.body
+                    ),
+                    cancellation.token(),
+                    true
+                };
+
+                for (
+                    auto& [name, value] :
+                    request_data.headers
+                ) {
+                    request.set_header(
+                        std::move(name),
+                        std::move(value)
+                    );
+                }
+
+                auto pending =
+                    std::make_shared<
+                        PendingDispatch
+                    >(
+                        std::move(request),
+                        std::move(
+                            cancellation
+                        ),
+                        view_engine
+                    );
+
+                pending->keep_alive = true;
+
+                pending->omit_body =
+                    pending->request.method() ==
+                    Method::head;
+
+                auto task =
+                    router.dispatch(
+                        pending->request
+                    );
+
+                connection
+                    .pending_http2
+                    .push_back({
+                        request_data.stream_id,
+                        pending
+                    });
+
+                settle_dispatch(
+                    std::move(task),
+                    pending,
+                    wakeup,
+                    dispatches
+                );
+            }
+
+            flush_http2_output(
+                connection
+            );
+        } catch (...) {
+            try {
+                connection.http2
+                    ->terminate(
+                        NGHTTP2_INTERNAL_ERROR
+                    );
+
+                connection
+                    .http2_going_away =
+                    true;
+
+                flush_http2_output(
+                    connection
+                );
+            } catch (...) {
+                close_connection(
+                    connection
+                );
+            }
+        }
+    }
+
+    void complete_ready_http2(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.http2
+        ) {
+            return;
+        }
+
+        try {
+            for (
+                const auto stream_id :
+                connection.http2
+                    ->take_closed_streams()
+            ) {
+                auto& items =
+                    connection.pending_http2;
+
+                const auto found =
+                    std::find_if(
+                        items.begin(),
+                        items.end(),
+                        [stream_id](
+                            const auto& item
+                        ) {
+                            return
+                                item.stream_id ==
+                                stream_id;
+                        }
+                    );
+
+                if (
+                    found != items.end()
+                ) {
+                    if (found->pending) {
+                        found->pending
+                            ->cancel();
+                    }
+
+                    items.erase(found);
+                }
+            }
+
+            auto& pending =
+                connection.pending_http2;
+
+            for (
+                auto iterator =
+                    pending.begin();
+                iterator !=
+                    pending.end();
+            ) {
+                if (
+                    !iterator->pending ||
+                    !iterator
+                        ->pending
+                        ->ready.load(
+                            std::memory_order_acquire
+                        )
+                ) {
+                    ++iterator;
+                    continue;
+                }
+
+                auto dispatch =
+                    std::move(
+                        iterator->pending
+                    );
+
+                const auto failed =
+                    dispatch->exception ||
+                    !dispatch->response;
+
+                auto response =
+                    failed
+                    ? error_response(
+                        500,
+                        "Internal Server Error"
+                      )
+                    : std::move(
+                        *dispatch->response
+                      );
+
+                connection.http2
+                    ->submit_response(
+                        iterator->stream_id,
+                        response,
+                        dispatch->omit_body
+                    );
+
+                iterator =
+                    pending.erase(
+                        iterator
+                    );
+            }
+
+            flush_http2_output(
+                connection
+            );
+
+            if (
+                connection
+                    .http2_going_away &&
+                connection.pending_http2
+                    .empty() &&
+                connection.http2
+                    ->active_streams() ==
+                    0 &&
+                connection.output.empty()
+            ) {
+                graceful_close(
+                    connection
+                );
+            }
+        } catch (...) {
+            close_connection(
+                connection
+            );
+        }
+    }
+
+    void http2_read_ready(
+        ConnectionState& connection
+    ) noexcept {
+        if (
+            connection.closing ||
+            !connection.http2
+        ) {
+            return;
+        }
+
+        try {
+            char buffer[16384];
+
+            while (true) {
+                const auto received =
+                    receive_bytes(
+                        connection,
+                        buffer,
+                        sizeof(buffer)
+                    );
+
+                if (
+                    received.state ==
+                    IoState::progress
+                ) {
+                    connection.http2
+                        ->receive(
+                            std::string_view{
+                                buffer,
+                                received.count
+                            }
+                        );
+
+                    connection.last_activity =
+                        Clock::now();
+
+                    dispatch_http2_requests(
+                        connection
+                    );
+
+                    flush_http2_output(
+                        connection
+                    );
+
+                    continue;
+                }
+
+                if (
+                    received.state ==
+                    IoState::would_block
+                ) {
+                    return;
+                }
+
+                close_connection(
+                    connection
+                );
+
+                return;
+            }
+        } catch (...) {
+            try {
+                connection.http2
+                    ->terminate(
+                        NGHTTP2_PROTOCOL_ERROR
+                    );
+
+                connection
+                    .http2_going_away =
+                    true;
+
+                flush_http2_output(
+                    connection
+                );
+            } catch (...) {
+                close_connection(
+                    connection
+                );
+            }
+        }
+    }
+#endif
+
     void reactor_loop() {
         std::optional<
             Clock::time_point
@@ -3444,6 +3978,48 @@ public:
                     auto& connection :
                     connections
                 ) {
+#ifdef GUNGNIR_WITH_HTTP2
+                    if (connection.http2) {
+                        try {
+                            if (
+                                !connection
+                                    .http2_going_away
+                            ) {
+                                connection.http2
+                                    ->graceful_shutdown();
+
+                                connection
+                                    .http2_going_away =
+                                    true;
+                            }
+
+                            flush_http2_output(
+                                connection
+                            );
+
+                            if (
+                                connection
+                                    .pending_http2
+                                    .empty() &&
+                                connection.http2
+                                    ->active_streams() ==
+                                    0 &&
+                                connection.output.empty()
+                            ) {
+                                graceful_close(
+                                    connection
+                                );
+                            }
+                        } catch (...) {
+                            close_connection(
+                                connection
+                            );
+                        }
+
+                        continue;
+                    }
+#endif
+
                     if (connection.websocket) {
                         if (
                             connection
@@ -3547,6 +4123,18 @@ public:
                             .websocket_request
                             ->cancel();
                     }
+
+#ifdef GUNGNIR_WITH_HTTP2
+                    for (
+                        auto& pending :
+                        connection.pending_http2
+                    ) {
+                        if (pending.pending) {
+                            pending.pending
+                                ->cancel();
+                        }
+                    }
+#endif
                 }
 
                 close_all();
@@ -3663,6 +4251,35 @@ public:
                     ) {
                         events |=
                             poll_write_event;
+                    }
+                } else
+#endif
+#ifdef GUNGNIR_WITH_HTTP2
+                if (connection.http2) {
+                    if (
+                        !connection.output.empty()
+                    ) {
+                        events |=
+                            poll_write_event;
+                    }
+
+                    if (
+                        connection.http2
+                            ->want_read() &&
+                        !connection
+                            .http2_going_away
+                    ) {
+                        events |=
+                            poll_read_event;
+                    }
+
+                    if (
+                        events == 0 &&
+                        !connection
+                            .http2_going_away
+                    ) {
+                        events =
+                            poll_read_event;
                     }
                 } else
 #endif
@@ -4048,6 +4665,16 @@ public:
     void read_ready(
         ConnectionState& connection
     ) noexcept {
+#ifdef GUNGNIR_WITH_HTTP2
+        if (connection.http2) {
+            http2_read_ready(
+                connection
+            );
+
+            return;
+        }
+#endif
+
         if (connection.websocket) {
             websocket_read_ready(
                 connection
@@ -4515,6 +5142,12 @@ public:
             complete_ready_websocket(
                 connection
             );
+
+#ifdef GUNGNIR_WITH_HTTP2
+            complete_ready_http2(
+                connection
+            );
+#endif
         }
     }
 
@@ -4529,6 +5162,9 @@ public:
             connection.stream_terminal_queued ||
             connection.websocket ||
             connection.pending_websocket
+#ifdef GUNGNIR_WITH_HTTP2
+            || connection.http2
+#endif
         ) {
             return;
         }
@@ -4683,6 +5319,39 @@ public:
             connection.phase_started =
                 Clock::now();
 
+#ifdef GUNGNIR_WITH_HTTP2
+            if (connection.http2) {
+                connection.close_after_write =
+                    false;
+
+                flush_http2_output(
+                    connection
+                );
+
+                if (
+                    !connection.output.empty()
+                ) {
+                    return;
+                }
+
+                if (
+                    connection
+                        .http2_going_away &&
+                    connection.pending_http2
+                        .empty() &&
+                    connection.http2
+                        ->active_streams() ==
+                        0
+                ) {
+                    graceful_close(
+                        connection
+                    );
+                }
+
+                return;
+            }
+#endif
+
             if (connection.websocket) {
                 connection.close_after_write =
                     false;
@@ -4831,6 +5500,80 @@ public:
             if (connection.closing) {
                 continue;
             }
+
+#ifdef GUNGNIR_WITH_HTTP2
+            if (connection.http2) {
+                auto& pending =
+                    connection.pending_http2;
+
+                for (
+                    auto iterator =
+                        pending.begin();
+                    iterator !=
+                        pending.end();
+                ) {
+                    if (
+                        !iterator->pending ||
+                        now -
+                            iterator->pending
+                                ->metric_started <
+                            options
+                                .request_timeout
+                    ) {
+                        ++iterator;
+                        continue;
+                    }
+
+                    iterator->pending
+                        ->cancel();
+
+                    try {
+                        connection.http2
+                            ->reset_stream(
+                                iterator
+                                    ->stream_id,
+                                NGHTTP2_CANCEL
+                            );
+                    } catch (...) {
+                        close_connection(
+                            connection
+                        );
+
+                        break;
+                    }
+
+                    iterator =
+                        pending.erase(
+                            iterator
+                        );
+                }
+
+                if (connection.closing) {
+                    continue;
+                }
+
+                flush_http2_output(
+                    connection
+                );
+
+                if (
+                    pending.empty() &&
+                    connection.http2
+                        ->active_streams() ==
+                        0 &&
+                    connection.output.empty() &&
+                    now -
+                        connection.last_activity >=
+                        options.idle_timeout
+                ) {
+                    graceful_close(
+                        connection
+                    );
+                }
+
+                continue;
+            }
+#endif
 
             if (connection.pending) {
                 if (
@@ -5058,6 +5801,34 @@ public:
             );
         }
 
+        if (options.http2) {
+            if (
+                options.http2
+                    ->max_concurrent_streams ==
+                0
+            ) {
+                throw std::invalid_argument(
+                    "HTTP/2 max_concurrent_streams must be greater than zero"
+                );
+            }
+
+            if (
+                options.http2
+                    ->max_header_list_bytes ==
+                0
+            ) {
+                throw std::invalid_argument(
+                    "HTTP/2 max_header_list_bytes must be greater than zero"
+                );
+            }
+
+#ifndef GUNGNIR_WITH_HTTP2
+            throw std::logic_error(
+                "HTTP/2 runtime configuration requires a GUNGNIR_WITH_HTTP2 build"
+            );
+#endif
+        }
+
         if (options.tls) {
             const auto& tls =
                 *options.tls;
@@ -5105,12 +5876,22 @@ public:
                     );
                 }
 
-                if (
-                    protocol !=
-                    "http/1.1"
-                ) {
+                bool protocol_supported =
+                    protocol ==
+                    "http/1.1";
+
+#ifdef GUNGNIR_WITH_HTTP2
+                protocol_supported =
+                    protocol_supported ||
+                    (
+                        options.http2 &&
+                        protocol == "h2"
+                    );
+#endif
+
+                if (!protocol_supported) {
                     throw std::invalid_argument(
-                        "The core TLS server currently supports HTTP/1.1 ALPN only"
+                        "TLS ALPN protocol is not enabled by the configured HTTP transports"
                     );
                 }
 

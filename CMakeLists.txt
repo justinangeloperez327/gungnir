@@ -83,6 +83,12 @@ option(
     "Build OpenSSL-backed HTTPS server transport support"
     OFF
 )
+
+option(
+    GUNGNIR_WITH_HTTP2
+    "Build nghttp2-backed HTTP/2 server transport support"
+    OFF
+)
 option(
     GUNGNIR_OTLP_INTEGRATION_TESTS
     "Build live OTLP HTTP integration tests"
@@ -159,6 +165,16 @@ if(
     )
 endif()
 
+if(
+    GUNGNIR_WITH_HTTP2 AND
+    NOT GUNGNIR_WITH_TLS
+)
+    message(
+        FATAL_ERROR
+        "HTTP/2 transport currently requires GUNGNIR_WITH_TLS=ON"
+    )
+endif()
+
 find_package(Threads REQUIRED)
 
 if(GUNGNIR_WITH_POSTGRESQL)
@@ -183,13 +199,21 @@ endif()
 
 if(
     GUNGNIR_WITH_SMTP OR
-    GUNGNIR_WITH_OTLP
+    GUNGNIR_WITH_OTLP OR
+    (
+        GUNGNIR_WITH_HTTP2 AND
+        GUNGNIR_BUILD_TESTS
+    )
 )
     find_package(CURL 7.56 REQUIRED)
 endif()
 
 if(GUNGNIR_WITH_TLS)
     find_package(OpenSSL 3.0 REQUIRED)
+endif()
+
+if(GUNGNIR_WITH_HTTP2)
+    find_package(Nghttp2 REQUIRED)
 endif()
 
 add_library(gungnir
@@ -338,6 +362,26 @@ if(GUNGNIR_WITH_TLS)
         PRIVATE
             OpenSSL::SSL
             OpenSSL::Crypto
+    )
+endif()
+
+if(GUNGNIR_WITH_HTTP2)
+    target_sources(
+        gungnir
+        PRIVATE
+            src/http/http2_session.cpp
+    )
+
+    target_compile_definitions(
+        gungnir
+        PRIVATE
+            GUNGNIR_WITH_HTTP2=1
+    )
+
+    target_link_libraries(
+        gungnir
+        PRIVATE
+            Nghttp2::Nghttp2
     )
 endif()
 
@@ -1031,6 +1075,33 @@ if(GUNGNIR_BUILD_TESTS)
         NAME gungnir.websocket
         COMMAND gungnir_websocket_test
     )
+
+    if(GUNGNIR_WITH_HTTP2)
+        add_executable(
+            gungnir_http2_server_test
+            tests/http2_server.cpp
+        )
+
+        target_link_libraries(
+            gungnir_http2_server_test
+            PRIVATE
+                gungnir::gungnir
+                CURL::libcurl
+                OpenSSL::SSL
+                OpenSSL::Crypto
+        )
+
+        target_compile_features(
+            gungnir_http2_server_test
+            PRIVATE
+                cxx_std_23
+        )
+
+        add_test(
+            NAME gungnir.http2_server
+            COMMAND gungnir_http2_server_test
+        )
+    endif()
 
     if(GUNGNIR_WITH_TLS)
         add_executable(
@@ -1816,6 +1887,15 @@ if(GUNGNIR_WITH_REDIS)
     install(
         FILES
             cmake/FindHiredis.cmake
+        DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir/modules
+    )
+endif()
+
+if(GUNGNIR_WITH_HTTP2)
+    install(
+        FILES
+            cmake/FindNghttp2.cmake
         DESTINATION
             ${CMAKE_INSTALL_LIBDIR}/cmake/Gungnir/modules
     )

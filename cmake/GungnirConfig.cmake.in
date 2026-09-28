@@ -45,6 +45,15 @@ if("@GUNGNIR_WITH_TLS@" STREQUAL "ON")
     find_dependency(OpenSSL 3.0)
 endif()
 
+if("@GUNGNIR_WITH_HTTP2@" STREQUAL "ON")
+    list(
+        PREPEND
+        CMAKE_MODULE_PATH
+        "${CMAKE_CURRENT_LIST_DIR}/modules"
+    )
+    find_dependency(Nghttp2)
+endif()
+
 include(
     "${CMAKE_CURRENT_LIST_DIR}/GungnirTargets.cmake"
 )

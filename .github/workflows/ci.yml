@@ -750,3 +750,39 @@ jobs:
 
       - name: Run installed package consumer
         run: ./build-tls-consumer/gungnir-package-consumer
+
+
+  http2:
+    name: HTTP2 TLS transport
+    runs-on: ubuntu-latest
+    env:
+      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-http2-install
+      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-http2-consumer.cpp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install HTTP2 dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libnghttp2-dev libcurl4-openssl-dev
+      - name: Configure HTTP2 build
+        run: cmake -S . -B build-http2 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX" -DGUNGNIR_BUILD_TOOLS=ON -DGUNGNIR_WITH_TLS=ON -DGUNGNIR_WITH_HTTP2=ON
+      - name: Build HTTP2 server and installable targets
+        run: cmake --build build-http2 --target gungnir gungnir-orm gungnir-language gungnirc gungnir-cli gungnir_http2_server_test --parallel
+      - name: Test HTTP2 transport
+        run: ctest --test-dir build-http2 -R "^gungnir.http2_server$" --output-on-failure
+      - name: Install HTTP2-enabled package
+        run: cmake --install build-http2
+      - name: Transpile HTTP2 package consumer
+        run: >
+          "$GUNGNIR_PREFIX/bin/gungnirc"
+          tests/package-consumer/app.gnr
+          -o "$GUNGNIR_GENERATED_SOURCE"
+      - name: Configure installed package consumer
+        run: >
+          cmake -S tests/package-consumer -B build-http2-consumer
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
+      - name: Build installed package consumer
+        run: cmake --build build-http2-consumer --parallel
+      - name: Run installed package consumer
+        run: ./build-http2-consumer/gungnir-package-consumer

@@ -682,6 +682,20 @@ Application& Application::tls(
     );
 }
 
+Application& Application::http2(
+    http::Http2Options http2_options
+) {
+    auto options =
+        http_runtime();
+
+    options.http2 =
+        std::move(http2_options);
+
+    return http_runtime(
+        std::move(options)
+    );
+}
+
 const http::RuntimeOptions&
 Application::http_runtime()
     const noexcept {
