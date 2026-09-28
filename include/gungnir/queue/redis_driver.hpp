@@ -59,6 +59,11 @@ public:
         Envelope job
     ) override;
 
+    void push_later(
+        Envelope job,
+        std::chrono::milliseconds delay
+    ) override;
+
     [[nodiscard]]
     std::optional<Envelope>
     pop() override;
@@ -69,6 +74,16 @@ public:
 
     void release(
         Envelope job
+    ) override;
+
+    void release_after(
+        Envelope job,
+        std::chrono::milliseconds delay
+    ) override;
+
+    [[nodiscard]]
+    bool renew(
+        const Envelope& job
     ) override;
 
     void fail(
@@ -83,6 +98,9 @@ public:
 
     [[nodiscard]]
     std::size_t reserved();
+
+    [[nodiscard]]
+    std::size_t delayed();
 
     [[nodiscard]]
     std::size_t failed();
