@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <gungnir/observability/trace.hpp>
+#include <gungnir/view/runtime.hpp>
 
 namespace gungnir {
 
@@ -37,6 +38,9 @@ public:
             executor.schedule(handle);
             observability::
                 clear_current_context();
+
+            view::runtime::
+                clear_current();
         }
         void await_resume() const noexcept {}
     };
