@@ -1393,6 +1393,16 @@ void RedisDriver::push(
     );
 }
 
+void RedisDriver::push_later(
+    Envelope job,
+    std::chrono::milliseconds delay
+) {
+    impl_->push_later(
+        std::move(job),
+        delay
+    );
+}
+
 std::optional<Envelope>
 RedisDriver::pop() {
     return impl_->pop();
@@ -1412,6 +1422,22 @@ void RedisDriver::release(
     );
 }
 
+void RedisDriver::release_after(
+    Envelope job,
+    std::chrono::milliseconds delay
+) {
+    impl_->release_after(
+        std::move(job),
+        delay
+    );
+}
+
+bool RedisDriver::renew(
+    const Envelope& job
+) {
+    return impl_->renew(job);
+}
+
 void RedisDriver::fail(
     const Envelope& job
 ) {
@@ -1428,6 +1454,10 @@ std::size_t RedisDriver::pending() {
 
 std::size_t RedisDriver::reserved() {
     return impl_->reserved();
+}
+
+std::size_t RedisDriver::delayed() {
+    return impl_->delayed();
 }
 
 std::size_t RedisDriver::failed() {
