@@ -18,6 +18,7 @@ class AsyncTransaction;
 
 class Manager {
 public:
+    class Impl;
     Manager();
     ~Manager();
 
@@ -91,7 +92,6 @@ public:
     void validate_pools();
 
 private:
-    class Impl;
     std::unique_ptr<Impl> impl_;
 };
 
