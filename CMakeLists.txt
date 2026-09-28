@@ -909,6 +909,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_queue_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.queue COMMAND gungnir_queue_test)
 
+    add_executable(
+        gungnir_observability_test
+        tests/observability.cpp
+    )
+    target_link_libraries(
+        gungnir_observability_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_observability_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.observability
+        COMMAND gungnir_observability_test
+    )
+
     add_executable(gungnir_scheduler_test tests/scheduler.cpp)
     target_link_libraries(gungnir_scheduler_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_scheduler_test PRIVATE cxx_std_23)
