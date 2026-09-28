@@ -33,6 +33,23 @@ user.profile->display_name;
 
 Many relationships are iterable and expose `first()`, `size()`, `empty()`, and `get()` after loading.
 
+## Relationship queries
+
+A relationship query must include the parent model so Gungnir can apply the correct key constraint:
+
+```cpp
+auto posts = orm::relation_query(
+    user,
+    user.posts
+).order_by("created_at").get();
+```
+
+Direct has-one, has-many, and belongs-to queries constrain the related key from the parent model. Many-to-many and through queries generate qualified joins and select only the related table's columns so pivot or bridge columns cannot overwrite model attributes during hydration.
+
+If the parent key is not initialized, Gungnir compiles an explicitly empty relation query (`WHERE 1 = 0` on SQL backends) rather than accidentally widening the query to all rows.
+
+The old relation-only helper is intentionally unavailable because relation metadata alone contains key names, not the parent model's key value, and therefore cannot be scoped safely.
+
 ## Many-to-many
 
 `BelongsToMany` stores explicit pivot table and key metadata. Eager loading first resolves the pivot rows, then loads related models in a batch.
