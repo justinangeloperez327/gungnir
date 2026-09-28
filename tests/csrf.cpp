@@ -271,19 +271,7 @@ int main() {
 
     assert(submitted == 1);
 
-    auto form_post =
-        request_with_session(
-            http::Method::post,
-            "/submit",
-            first_id
-        );
-
-    form_post.set_header(
-        "Content-Type",
-        "application/x-www-form-urlencoded"
-    );
-
-    form_post = Request{
+    Request form_post{
         http::Method::post,
         "/submit",
         "_token=" + first_token
