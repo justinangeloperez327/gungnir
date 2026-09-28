@@ -95,7 +95,8 @@ void validate_header(std::string_view name, std::string_view value) {
 
 Request parse_request(
     std::string_view message,
-    CancellationToken cancellation
+    CancellationToken cancellation,
+    bool secure
 ) {
     const auto header_end = message.find("\r\n\r\n");
     if (header_end == std::string_view::npos) {
@@ -217,7 +218,8 @@ Request parse_request(
         *method,
         std::string{target.empty() ? std::string_view{"/"} : target},
         std::string{body},
-        std::move(cancellation)
+        std::move(cancellation),
+        secure
     };
 
     for (auto& [name, value] : headers) {
