@@ -7,15 +7,18 @@
 #include <condition_variable>
 #include <coroutine>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -25,6 +28,11 @@
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/view/runtime.hpp>
 #include <gungnir/routing/router.hpp>
+
+#ifdef GUNGNIR_WITH_TLS
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -47,6 +55,366 @@ namespace {
 
 constexpr int listen_backlog = 256;
 constexpr int reactor_poll_timeout_ms = 100;
+
+#ifdef GUNGNIR_WITH_TLS
+
+using SslContext =
+    std::unique_ptr<
+        SSL_CTX,
+        decltype(&SSL_CTX_free)
+    >;
+
+using SslConnection =
+    std::unique_ptr<
+        SSL,
+        decltype(&SSL_free)
+    >;
+
+[[nodiscard]]
+std::string openssl_error(
+    std::string_view prefix
+) {
+    std::ostringstream message;
+    message << prefix;
+
+    bool found = false;
+
+    while (true) {
+        const auto code =
+            ERR_get_error();
+
+        if (code == 0) {
+            break;
+        }
+
+        char buffer[
+            256
+        ]{};
+
+        ERR_error_string_n(
+            code,
+            buffer,
+            sizeof(buffer)
+        );
+
+        message <<
+            (found ? "; " : ": ") <<
+            buffer;
+
+        found = true;
+    }
+
+    return message.str();
+}
+
+[[nodiscard]]
+bool alpn_contains(
+    const unsigned char* protocols,
+    unsigned int protocols_length,
+    std::string_view expected
+) noexcept {
+    unsigned int cursor = 0;
+
+    while (cursor < protocols_length) {
+        const auto length =
+            static_cast<unsigned int>(
+                protocols[cursor]
+            );
+
+        ++cursor;
+
+        if (
+            length == 0 ||
+            cursor + length >
+                protocols_length
+        ) {
+            return false;
+        }
+
+        const std::string_view value{
+            reinterpret_cast<
+                const char*
+            >(
+                protocols + cursor
+            ),
+            length
+        };
+
+        if (value == expected) {
+            return true;
+        }
+
+        cursor += length;
+    }
+
+    return false;
+}
+
+int select_alpn(
+    SSL*,
+    const unsigned char** output,
+    unsigned char* output_length,
+    const unsigned char* input,
+    unsigned int input_length,
+    void* context
+) noexcept {
+    const auto* configured =
+        static_cast<
+            const std::vector<
+                std::string
+            >*
+        >(context);
+
+    if (configured == nullptr) {
+        return
+            SSL_TLSEXT_ERR_NOACK;
+    }
+
+    for (
+        const auto& protocol :
+        *configured
+    ) {
+        if (
+            protocol.size() >
+            255 ||
+            !alpn_contains(
+                input,
+                input_length,
+                protocol
+            )
+        ) {
+            continue;
+        }
+
+        *output =
+            reinterpret_cast<
+                const unsigned char*
+            >(
+                protocol.data()
+            );
+
+        *output_length =
+            static_cast<unsigned char>(
+                protocol.size()
+            );
+
+        return
+            SSL_TLSEXT_ERR_OK;
+    }
+
+    return
+        SSL_TLSEXT_ERR_NOACK;
+}
+
+[[nodiscard]]
+SslContext make_tls_context(
+    const TlsOptions& options
+) {
+    ERR_clear_error();
+
+    SslContext context{
+        SSL_CTX_new(
+            TLS_server_method()
+        ),
+        &SSL_CTX_free
+    };
+
+    if (!context) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to create TLS server context"
+            )
+        );
+    }
+
+    if (
+        SSL_CTX_set_min_proto_version(
+            context.get(),
+            TLS1_2_VERSION
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to require TLS 1.2 or newer"
+            )
+        );
+    }
+
+    SSL_CTX_set_options(
+        context.get(),
+        SSL_OP_NO_COMPRESSION
+    );
+
+    if (
+        !options
+            .private_key_password
+            .empty()
+    ) {
+        SSL_CTX_set_default_passwd_cb_userdata(
+            context.get(),
+            const_cast<char*>(
+                options
+                    .private_key_password
+                    .c_str()
+            )
+        );
+
+        SSL_CTX_set_default_passwd_cb(
+            context.get(),
+            [](
+                char* buffer,
+                int size,
+                int,
+                void* userdata
+            ) -> int {
+                if (
+                    buffer == nullptr ||
+                    size <= 0 ||
+                    userdata == nullptr
+                ) {
+                    return 0;
+                }
+
+                const auto* password =
+                    static_cast<
+                        const char*
+                    >(userdata);
+
+                const auto length =
+                    std::min<std::size_t>(
+                        std::strlen(
+                            password
+                        ),
+                        static_cast<
+                            std::size_t
+                        >(size - 1)
+                    );
+
+                std::memcpy(
+                    buffer,
+                    password,
+                    length
+                );
+
+                buffer[length] = '\0';
+
+                return
+                    static_cast<int>(
+                        length
+                    );
+            }
+        );
+    }
+
+    if (
+        SSL_CTX_use_certificate_chain_file(
+            context.get(),
+            options
+                .certificate_chain
+                .c_str()
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to load TLS certificate chain"
+            )
+        );
+    }
+
+    if (
+        SSL_CTX_use_PrivateKey_file(
+            context.get(),
+            options
+                .private_key
+                .c_str(),
+            SSL_FILETYPE_PEM
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "Unable to load TLS private key"
+            )
+        );
+    }
+
+    if (
+        SSL_CTX_check_private_key(
+            context.get()
+        ) != 1
+    ) {
+        throw std::runtime_error(
+            openssl_error(
+                "TLS private key does not match certificate"
+            )
+        );
+    }
+
+    SSL_CTX_set_default_passwd_cb(
+        context.get(),
+        nullptr
+    );
+
+    SSL_CTX_set_default_passwd_cb_userdata(
+        context.get(),
+        nullptr
+    );
+
+    if (
+        !options
+            .client_ca
+            .empty()
+    ) {
+        if (
+            SSL_CTX_load_verify_locations(
+                context.get(),
+                options
+                    .client_ca
+                    .c_str(),
+                nullptr
+            ) != 1
+        ) {
+            throw std::runtime_error(
+                openssl_error(
+                    "Unable to load TLS client CA bundle"
+                )
+            );
+        }
+    }
+
+    if (
+        options
+            .require_client_certificate
+    ) {
+        SSL_CTX_set_verify(
+            context.get(),
+            SSL_VERIFY_PEER |
+                SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+            nullptr
+        );
+    } else {
+        SSL_CTX_set_verify(
+            context.get(),
+            SSL_VERIFY_NONE,
+            nullptr
+        );
+    }
+
+    SSL_CTX_set_alpn_select_cb(
+        context.get(),
+        &select_alpn,
+        const_cast<
+            std::vector<
+                std::string
+            >*
+        >(
+            &options.alpn_protocols
+        )
+    );
+
+    return context;
+}
+
+#endif
 
 class HeaderLimitError final :
     public std::length_error {
