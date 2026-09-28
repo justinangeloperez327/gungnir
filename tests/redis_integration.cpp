@@ -1,6 +1,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
