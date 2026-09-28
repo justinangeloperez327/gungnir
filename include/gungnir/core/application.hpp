@@ -10,6 +10,7 @@
 
 #include <gungnir/config/environment.hpp>
 #include <gungnir/config/repository.hpp>
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/core/container.hpp>
 #include <gungnir/core/lifecycle.hpp>
 #include <gungnir/core/mode.hpp>
@@ -194,6 +195,12 @@ public:
     void listen(
         std::uint16_t port = 8000,
         String host = "127.0.0.1"
+    );
+
+    void listen(
+        std::uint16_t port,
+        String host,
+        CancellationToken cancellation
     );
     void stop() noexcept;
     [[nodiscard]] bool is_running() const noexcept;
