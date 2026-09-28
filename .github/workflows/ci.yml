@@ -717,6 +717,7 @@ jobs:
           gungnir-orm
           gungnir-language
           gungnirc
+          gungnir-cli
           gungnir_tls_server_test
           --parallel
 
