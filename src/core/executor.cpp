@@ -1,4 +1,5 @@
 #include <gungnir/core/executor.hpp>
+#include <gungnir/observability/trace.hpp>
 #include <algorithm>
 #include <stdexcept>
 
@@ -29,9 +30,45 @@ void Executor::join() noexcept {
     running_ = false;
 }
 
-void Executor::post(std::function<void()> work) {
-    if (!work) return;
-    { std::lock_guard lock{mutex_}; if (stopping_) throw std::logic_error("Gungnir executor is stopping"); queue_.push_back(std::move(work)); }
+void Executor::post(
+    std::function<void()> work
+) {
+    if (!work) {
+        return;
+    }
+
+    const auto context =
+        observability::current_context();
+
+    auto wrapped =
+        [
+            context,
+            work = std::move(work)
+        ]() mutable {
+            auto scope =
+                observability::activate(
+                    context
+                );
+
+            work();
+        };
+
+    {
+        std::lock_guard lock{
+            mutex_
+        };
+
+        if (stopping_) {
+            throw std::logic_error(
+                "Gungnir executor is stopping"
+            );
+        }
+
+        queue_.push_back(
+            std::move(wrapped)
+        );
+    }
+
     ready_.notify_one();
 }
 
