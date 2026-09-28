@@ -75,6 +75,55 @@ int main() {
 
     assert(!worker.run_one());
 
+    queue::MemoryDriver delayed_driver;
+    queue::Worker delayed_worker{
+        delayed_driver
+    };
+
+    int delayed_handled = 0;
+
+    delayed_worker.handle(
+        "delayed",
+        [&](
+            std::string_view payload
+        ) {
+            assert(payload == "later");
+            ++delayed_handled;
+        }
+    );
+
+    delayed_driver.push_later(
+        {
+            "delayed-1",
+            "delayed",
+            "later",
+            0,
+            1
+        },
+        30ms
+    );
+
+    assert(
+        delayed_driver.delayed() == 1
+    );
+
+    assert(
+        !delayed_worker.run_one()
+    );
+
+    std::this_thread::sleep_for(
+        40ms
+    );
+
+    assert(
+        delayed_worker.run_one()
+    );
+
+    assert(delayed_handled == 1);
+    assert(
+        delayed_driver.delayed() == 0
+    );
+
     queue::MemoryDriver lifecycle_driver;
 
     queue::WorkerOptions options;
