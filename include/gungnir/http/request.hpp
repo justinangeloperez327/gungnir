@@ -22,6 +22,12 @@ class Session;
 class StartSession;
 }
 
+namespace gungnir::auth {
+struct Identity;
+class Context;
+class AuthenticateSession;
+}
+
 namespace gungnir::routing {
 class Router;
 }
@@ -54,6 +60,13 @@ public:
     [[nodiscard]] bool has_session() const noexcept;
     [[nodiscard]] session::Session& session();
     [[nodiscard]] const session::Session& session() const;
+
+    [[nodiscard]] bool has_auth() const noexcept;
+    [[nodiscard]] auth::Context& auth();
+    [[nodiscard]] const auth::Context& auth() const;
+    [[nodiscard]] bool authenticated() const noexcept;
+    [[nodiscard]] bool guest() const noexcept;
+    [[nodiscard]] const auth::Identity* user() const noexcept;
 
     void set_header(std::string name, std::string value);
     [[nodiscard]] std::string_view header(
@@ -111,6 +124,7 @@ public:
 private:
     friend class gungnir::routing::Router;
     friend class gungnir::session::StartSession;
+    friend class gungnir::auth::AuthenticateSession;
 
     void parse_target();
     void parse_body_input() const;
@@ -121,6 +135,9 @@ private:
     void attach_session(
         std::shared_ptr<session::Session> session
     );
+    void attach_auth(
+        std::shared_ptr<auth::Context> context
+    );
 
     Method method_;
     std::string target_;
@@ -129,6 +146,7 @@ private:
     CancellationToken cancellation_;
     std::shared_ptr<ServiceScope> services_;
     std::shared_ptr<session::Session> session_;
+    std::shared_ptr<auth::Context> auth_;
     Headers headers_;
     Parameters parameters_;
     Input query_;
