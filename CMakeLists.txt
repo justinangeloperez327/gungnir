@@ -575,7 +575,8 @@ if(GUNGNIR_WITH_REDIS)
         gungnir-redis
         src/cache/redis_store.cpp
         src/queue/redis_driver.cpp
-        src/scheduler/redis_lock.cpp
+        src/scheduler/iana_timezone.cpp
+    src/scheduler/redis_lock.cpp
         src/session/redis_store.cpp
     )
 
