@@ -220,11 +220,11 @@ StartSession::handle(
         );
     }
 
+    current->mark_persisted();
+
     store->save(
         *current
     );
-
-    current->mark_persisted();
 
     if (
         created ||
