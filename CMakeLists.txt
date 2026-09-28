@@ -237,7 +237,12 @@ target_compile_features(gungnir PUBLIC cxx_std_23)
 target_link_libraries(gungnir PRIVATE Threads::Threads)
 
 if(WIN32)
-    target_link_libraries(gungnir PRIVATE ws2_32)
+    target_link_libraries(
+        gungnir
+        PRIVATE
+            ws2_32
+            bcrypt
+    )
 endif()
 
 target_include_directories(gungnir
