@@ -2512,26 +2512,16 @@ public:
                         events |=
                             poll_read_event;
                     }
-                } else
-#endif
-                if (connection.pending) {
-                    events =
-                        poll_read_event;
                 } else if (
-                    connection.output.empty()
-                ) {
-                    events =
-                        poll_read_event;
-                } else {
-                    events =
-                        poll_write_event;
-                }
-
-#ifdef GUNGNIR_WITH_TLS
-                if (
                     connection.tls &&
                     connection
-                        .tls_handshake_complete
+                        .tls_handshake_complete &&
+                    (
+                        connection
+                            .tls_want_read ||
+                        connection
+                            .tls_want_write
+                    )
                 ) {
                     if (
                         connection
@@ -2548,8 +2538,20 @@ public:
                         events |=
                             poll_write_event;
                     }
-                }
+                } else
 #endif
+                if (connection.pending) {
+                    events =
+                        poll_read_event;
+                } else if (
+                    connection.output.empty()
+                ) {
+                    events =
+                        poll_read_event;
+                } else {
+                    events =
+                        poll_write_event;
+                }
 
                 descriptors.push_back(
                     PollFd{
@@ -2704,6 +2706,12 @@ public:
                     ) {
                         continue;
                     }
+
+                    read_ready(
+                        connection
+                    );
+
+                    continue;
                 }
 #endif
 
