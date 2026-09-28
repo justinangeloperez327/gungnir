@@ -17,6 +17,25 @@ int main() {
     options.shutdown_timeout = 1s;
     options.poll_interval = 2ms;
 
+    gungnir::CancellationSource
+        pre_cancelled;
+
+    pre_cancelled.cancel();
+
+    gungnir::Application
+        cancelled_application;
+
+    cancelled_application.listen(
+        0,
+        "127.0.0.1",
+        pre_cancelled.token()
+    );
+
+    assert(
+        !cancelled_application
+            .is_running()
+    );
+
     gungnir::Application application;
 
     gungnir::queue::MemoryDriver
