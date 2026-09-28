@@ -67,6 +67,8 @@ public:
     virtual void shutdown() {}
 };
 
+class Tracer;
+
 namespace detail {
 
 inline thread_local TraceContext
@@ -78,8 +80,6 @@ global_tracer_mutex() {
     static std::mutex mutex;
     return mutex;
 }
-
-class Tracer;
 
 [[nodiscard]]
 inline std::shared_ptr<Tracer>&
