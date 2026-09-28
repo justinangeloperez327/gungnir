@@ -3,6 +3,7 @@
 #include <gungnir/database/backend.hpp>
 #include <gungnir/database/compiler.hpp>
 #include <gungnir/database/connection.hpp>
+#include <gungnir/database/db.hpp>
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/error.hpp>
 #include <gungnir/database/query.hpp>
