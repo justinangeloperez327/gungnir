@@ -148,7 +148,9 @@ ShutdownResult RuntimeHost::shutdown() {
     auto result =
         supervisor_.shutdown();
 
-    join();
+    if (result.graceful) {
+        join();
+    }
 
     return result;
 }
