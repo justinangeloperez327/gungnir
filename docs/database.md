@@ -39,6 +39,20 @@ Vendor-specific connection attributes can be supplied through `DB_OPTIONS`. For 
 
 `ConnectionPool` creates a bounded set of connections and distributes acquisitions across them. The current pool is deliberately small and deterministic; production queueing and lease semantics belong to later runtime work rather than being hidden behind a misleading API.
 
+## Cancellation
+
+`Connection::execute(...)` has a cancellation-aware overload that accepts a `CancellationToken`. The connection checks the token before execution, registers the driver's cancellation hook only while that query owns the connection, and re-checks the token after the driver returns. A cancelled operation throws `OperationCancelled` instead of being wrapped as `database::Error`.
+
+```cpp
+auto result = connection->execute(
+    "SELECT * FROM users WHERE email = $1",
+    {email},
+    request.cancellation()
+);
+```
+
+`Driver::cancel()` is the vendor interruption boundary. Drivers that can safely interrupt an in-flight native call may override it. Drivers without a native interruption mechanism still benefit from pre-execution rejection and post-call cancellation detection; Gungnir does not falsely claim that every blocking vendor call can be forcibly aborted.
+
 ## Transactions
 
 `Manager::transaction()` pins work to one connection. `Transaction::run()` commits on success and rolls back on exceptions. Nested transaction/savepoint semantics are explicit driver capabilities and are not emulated by the core.
