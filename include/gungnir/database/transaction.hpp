@@ -4,50 +4,117 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <type_traits>
 #include <utility>
 
+#include <gungnir/core/task.hpp>
 #include <gungnir/database/connection.hpp>
 #include <gungnir/database/runtime.hpp>
 
 namespace gungnir::database {
 
+namespace detail {
+
+template <typename Value>
+struct IsTask :
+    std::false_type {};
+
+template <typename Value>
+struct IsTask<
+    ::gungnir::Task<Value>
+> :
+    std::true_type {};
+
+template <typename Value>
+inline constexpr bool is_task_v =
+    IsTask<
+        std::remove_cvref_t<Value>
+    >::value;
+
+} // namespace detail
+
 class Transaction {
 public:
-    explicit Transaction(std::shared_ptr<Connection> connection);
+    explicit Transaction(
+        std::shared_ptr<Connection> connection
+    );
+
     ~Transaction();
 
-    Transaction(Transaction&& other) noexcept;
-    Transaction& operator=(Transaction&& other) noexcept;
+    Transaction(
+        const Transaction&
+    ) = delete;
 
-    Transaction(const Transaction&) = delete;
-    Transaction& operator=(const Transaction&) = delete;
+    Transaction& operator=(
+        const Transaction&
+    ) = delete;
 
-    [[nodiscard]] Connection& connection() noexcept;
-    [[nodiscard]] const Connection& connection() const noexcept;
+    Transaction(
+        Transaction&&
+    ) = delete;
+
+    Transaction& operator=(
+        Transaction&&
+    ) = delete;
+
+    [[nodiscard]]
+    Connection& connection();
+
+    [[nodiscard]]
+    const Connection& connection() const;
 
     void commit();
     void rollback();
 
     template <typename Callback>
-    auto run(Callback&& callback) {
+    requires (
+        !detail::is_task_v<
+            std::invoke_result_t<
+                Callback&
+            >
+        >
+    )
+    auto run(
+        Callback&& callback
+    ) {
+        ensure_owner();
+
         if (!active_) {
             throw std::logic_error(
                 "Cannot run work on an inactive database transaction"
             );
         }
 
-        runtime::ConnectionScope scope{connection_};
+        runtime::detail::
+            ConnectionScope scope{
+                connection_
+            };
 
         try {
-            using CallbackResult = std::invoke_result_t<Callback&>;
+            using CallbackResult =
+                std::invoke_result_t<
+                    Callback&
+                >;
 
-            if constexpr (std::is_void_v<CallbackResult>) {
-                std::invoke(callback);
+            if constexpr (
+                std::is_void_v<
+                    CallbackResult
+                >
+            ) {
+                std::invoke(
+                    callback
+                );
+
                 commit();
             } else {
-                auto result = std::invoke(callback);
+                auto result =
+                    std::invoke(
+                        callback
+                    );
+
                 commit();
+
                 return result;
             }
         } catch (...) {
@@ -56,11 +123,21 @@ public:
         }
     }
 
-    [[nodiscard]] bool active() const noexcept;
+    [[nodiscard]]
+    bool active()
+        const noexcept;
 
 private:
-    std::shared_ptr<Connection> connection_;
-    std::unique_lock<std::recursive_mutex> lock_;
+    void ensure_owner() const;
+
+    std::shared_ptr<Connection>
+        connection_;
+
+    std::unique_lock<
+        std::recursive_mutex
+    > lock_;
+
+    std::thread::id owner_;
     bool active_{false};
 };
 
