@@ -2498,6 +2498,18 @@ public:
 
             ConnectionState connection;
             connection.socket = client;
+
+#ifdef GUNGNIR_WITH_TLS
+            if (
+                !attach_tls(
+                    connection
+                )
+            ) {
+                close_socket(client);
+                continue;
+            }
+#endif
+
             connection.input.reserve(
                 std::min<std::size_t>(
                     options.max_request_bytes,
