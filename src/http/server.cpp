@@ -3262,7 +3262,14 @@ public:
         auto request =
             wire::parse_request(
                 raw,
-                cancellation.token()
+                cancellation.token(),
+#ifdef GUNGNIR_WITH_TLS
+                static_cast<bool>(
+                    connection.tls
+                )
+#else
+                false
+#endif
             );
 
         ++connection.requests_served;
