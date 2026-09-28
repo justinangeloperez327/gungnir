@@ -513,6 +513,51 @@ public:
         }
     }
 
+    void push_later(
+        Envelope job,
+        std::chrono::milliseconds delay
+    ) {
+        validate_job(job);
+        job.reservation.clear();
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        const auto payload =
+            encode(job);
+
+        auto reply =
+            eval(
+                push_later_script,
+                {
+                    jobs_key(),
+                    ready_key(),
+                    failed_key(),
+                    delayed_key()
+                },
+                {
+                    job.id,
+                    payload,
+                    std::to_string(
+                        delay.count()
+                    )
+                }
+            );
+
+        require_integer(
+            *reply,
+            "queue delayed push"
+        );
+
+        if (reply->integer == 0) {
+            throw std::logic_error(
+                "Queued job id already exists: " +
+                job.id
+            );
+        }
+    }
+
     [[nodiscard]]
     std::optional<Envelope>
     pop() {
@@ -532,7 +577,8 @@ public:
                     jobs_key(),
                     ready_key(),
                     reserved_key(),
-                    leases_key()
+                    leases_key(),
+                    delayed_key()
                 },
                 {
                     std::to_string(
@@ -628,6 +674,16 @@ public:
     void release(
         Envelope job
     ) {
+        release_after(
+            std::move(job),
+            std::chrono::milliseconds{0}
+        );
+    }
+
+    void release_after(
+        Envelope job,
+        std::chrono::milliseconds delay
+    ) {
         validate_job(job);
 
         if (job.reservation.empty()) {
@@ -650,17 +706,21 @@ public:
 
         auto reply =
             eval(
-                release_script,
+                release_after_script,
                 {
                     jobs_key(),
                     ready_key(),
                     reserved_key(),
-                    leases_key()
+                    leases_key(),
+                    delayed_key()
                 },
                 {
                     job.id,
                     reservation,
-                    payload
+                    payload,
+                    std::to_string(
+                        delay.count()
+                    )
                 }
             );
 
@@ -668,6 +728,47 @@ public:
             *reply,
             "queue release"
         );
+    }
+
+    [[nodiscard]]
+    bool renew(
+        const Envelope& job
+    ) {
+        if (
+            job.id.empty() ||
+            job.reservation.empty()
+        ) {
+            return false;
+        }
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        auto reply =
+            eval(
+                renew_script,
+                {
+                    reserved_key(),
+                    leases_key()
+                },
+                {
+                    job.id,
+                    job.reservation,
+                    std::to_string(
+                        settings
+                            .visibility_timeout
+                            .count()
+                    )
+                }
+            );
+
+        require_integer(
+            *reply,
+            "queue lease renewal"
+        );
+
+        return reply->integer == 1;
     }
 
     void fail(
@@ -760,6 +861,18 @@ public:
     }
 
     [[nodiscard]]
+    std::size_t delayed() {
+        std::lock_guard lock{
+            mutex
+        };
+
+        return count(
+            "ZCARD",
+            delayed_key()
+        );
+    }
+
+    [[nodiscard]]
     std::size_t failed() {
         std::lock_guard lock{
             mutex
@@ -783,6 +896,7 @@ public:
                 ready_key(),
                 reserved_key(),
                 leases_key(),
+                delayed_key(),
                 failed_key()
             });
 
@@ -1226,6 +1340,14 @@ private:
         return
             base_key() +
             "leases";
+    }
+
+    [[nodiscard]]
+    std::string delayed_key()
+        const {
+        return
+            base_key() +
+            "delayed";
     }
 
     [[nodiscard]]
