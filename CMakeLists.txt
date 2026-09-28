@@ -452,6 +452,7 @@ if(GUNGNIR_WITH_REDIS)
     add_library(
         gungnir-redis
         src/cache/redis_store.cpp
+        src/queue/redis_driver.cpp
     )
 
     add_library(
