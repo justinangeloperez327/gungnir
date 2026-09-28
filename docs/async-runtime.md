@@ -12,9 +12,9 @@ Group 5 introduces the runtime primitives used to move away from inline coroutin
 
 The HTTP/1.1 listener uses a non-blocking readiness reactor for listener/client sockets, connection state, limits, timeouts, keep-alive, and graceful draining. Route tasks may genuinely suspend: their request state remains owned for the coroutine lifetime, and completion from timer/executor threads signals a reactor wake socket before the response is serialized and written by the reactor thread.
 
-`sleep_for` now submits deadlines to one shared timer scheduler instead of creating a detached OS thread per suspension. The timer thread only tracks deadlines; due coroutine handles are handed to a bounded `Executor` worker pool so user continuations do not block timer bookkeeping.
+`sleep_for` submits deadlines to the shared timer scheduler instead of creating a detached OS thread per suspension. When an HTTP server is active, the HTTP readiness reactor attaches as the timer pump: new deadlines wake the reactor, the next deadline reduces the platform poll timeout, and due timers are dispatched from the reactor loop. Coroutine continuations are still handed to a bounded `Executor` worker pool so user code does not block readiness bookkeeping.
 
-The timer scheduler and socket reactor are still separate readiness systems. A later runtime can unify deadline and socket readiness under one platform event loop without changing controller-facing Gungnir syntax.
+Outside an attached HTTP reactor, the timer scheduler retains a fallback coordinator so standalone `sleep_for(...)` calls continue to work. The fallback coordinator remains parked while the HTTP reactor owns timer readiness.
 
 ## Runtime rules
 
