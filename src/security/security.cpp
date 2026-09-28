@@ -10,6 +10,7 @@
 
 #ifdef _WIN32
 #define NOMINMAX
+#include <windows.h>
 #include <bcrypt.h>
 #elif defined(__linux__)
 #include <sys/random.h>
