@@ -18,6 +18,10 @@ struct Envelope {
     std::string payload;
     unsigned attempts{0};
     unsigned max_attempts{1};
+
+    // Driver-owned lease token. Application code should not
+    // persist or manufacture this value.
+    std::string reservation;
 };
 
 } // namespace gungnir::queue

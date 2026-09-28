@@ -52,7 +52,7 @@ option(
 
 option(
     GUNGNIR_WITH_REDIS
-    "Build the hiredis Redis cache adapter"
+    "Build the hiredis Redis cache and queue adapters"
     OFF
 )
 option(
@@ -452,6 +452,7 @@ if(GUNGNIR_WITH_REDIS)
     add_library(
         gungnir-redis
         src/cache/redis_store.cpp
+        src/queue/redis_driver.cpp
     )
 
     add_library(
