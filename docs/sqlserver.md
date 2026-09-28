@@ -58,3 +58,7 @@ SQL Server DECIMAL/NUMERIC values currently map to `Double` because Gungnir does
 The adapter uses ODBC autocommit control plus `SQLEndTran` for commit and rollback, reports savepoint capability, and uses a lightweight `SELECT 1` health check.
 
 Live integration coverage is enabled with `GUNGNIR_SQLSERVER_INTEGRATION_TESTS=ON`.
+
+## Cancellation
+
+Cancellation-aware execution tracks the active ODBC statement and calls `SQLCancelHandle(SQL_HANDLE_STMT, ...)` from the cancelling thread. The connection layer converts the resulting cancelled operation into `OperationCancelled` for the caller.

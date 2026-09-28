@@ -1,7 +1,10 @@
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <cstdint>
 #include <string>
+#include <thread>
 #include <utility>
 #include <variant>
 
@@ -115,6 +118,51 @@ int main() {
         );
 
     assert(connection->healthy());
+
+    {
+        CancellationSource cancellation;
+        std::atomic_bool cancelled{false};
+
+        const auto started =
+            std::chrono::steady_clock::now();
+
+        std::thread worker{
+            [&] {
+                try {
+                    static_cast<void>(
+                        connection->execute(
+                            "WAITFOR DELAY '00:00:05'; SELECT 1 AS value",
+                            {},
+                            cancellation.token()
+                        )
+                    );
+                } catch (
+                    const OperationCancelled&
+                ) {
+                    cancelled.store(true);
+                }
+            }
+        };
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds{
+                200
+            }
+        );
+
+        cancellation.cancel();
+        worker.join();
+
+        const auto elapsed =
+            std::chrono::steady_clock::now() -
+            started;
+
+        assert(cancelled.load());
+        assert(
+            elapsed <
+            std::chrono::seconds{3}
+        );
+    }
 
     connection->execute(
         "IF OBJECT_ID(N'dbo.gungnir_sqlserver_integration', N'U') "

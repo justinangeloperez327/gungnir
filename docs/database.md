@@ -51,7 +51,7 @@ auto result = connection->execute(
 );
 ```
 
-`Driver::cancel()` is the vendor interruption boundary. Drivers that can safely interrupt an in-flight native call may override it. Drivers without a native interruption mechanism still benefit from pre-execution rejection and post-call cancellation detection; Gungnir does not falsely claim that every blocking vendor call can be forcibly aborted.
+`Driver::cancel()` is the vendor interruption boundary. PostgreSQL and SQL Server provide native interruption in their concrete adapters: PostgreSQL signals its active backend through a separate authenticated connection, while SQL Server cancels the active ODBC statement handle. Drivers without an equivalent safe interruption mechanism still benefit from pre-execution rejection and post-call cancellation detection; Gungnir does not falsely claim that every blocking vendor call can be forcibly aborted.
 
 ## Transactions
 
