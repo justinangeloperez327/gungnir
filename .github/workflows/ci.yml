@@ -640,6 +640,8 @@ jobs:
           cmake --build build-otlp
           --target
           gungnir
+          gungnir-orm
+          gungnir-language
           gungnir-otlp
           gungnir_otlp_test
           --parallel
