@@ -12,6 +12,7 @@
 
 #include <gungnir/core/executor.hpp>
 #include <gungnir/observability/trace.hpp>
+#include <gungnir/view/runtime.hpp>
 
 namespace gungnir {
 
@@ -66,7 +67,8 @@ public:
     void schedule(
         std::chrono::milliseconds duration,
         std::coroutine_handle<> handle,
-        observability::TraceContext trace_context
+        observability::TraceContext trace_context,
+        view::runtime::EngineHandle view_context
     ) {
         if (!handle) {
             return;
@@ -100,6 +102,10 @@ public:
                     .context =
                         std::move(
                             trace_context
+                        ),
+                    .view_context =
+                        std::move(
+                            view_context
                         )
                 }
             );
@@ -295,6 +301,8 @@ private:
         std::coroutine_handle<> handle;
         observability::TraceContext
             context;
+        view::runtime::EngineHandle
+            view_context;
     };
 
     struct Later {
@@ -349,9 +357,14 @@ private:
                 continue;
             }
 
-            auto scope =
+            auto trace_scope =
                 observability::activate(
                     entry.context
+                );
+
+            auto view_scope =
+                view::runtime::activate(
+                    entry.view_context
                 );
 
             try {
@@ -473,11 +486,15 @@ void SleepAwaiter::await_suspend(
         duration_,
         handle,
         observability::
-            current_context()
+            current_context(),
+        view::runtime::current()
     );
 
     observability::
         clear_current_context();
+
+    view::runtime::
+        clear_current();
 }
 
 namespace detail {
