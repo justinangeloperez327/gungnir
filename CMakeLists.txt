@@ -684,6 +684,11 @@ if(GUNGNIR_BUILD_TESTS)
     endif()
     add_test(NAME gungnir.http_reactor COMMAND gungnir_http_reactor_test)
 
+    add_executable(gungnir_timer_runtime_test tests/timer_runtime.cpp)
+    target_link_libraries(gungnir_timer_runtime_test PRIVATE gungnir::gungnir)
+    target_compile_features(gungnir_timer_runtime_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.timer_runtime COMMAND gungnir_timer_runtime_test)
+
     add_executable(gungnir_http_server_test tests/http_server.cpp)
     target_link_libraries(gungnir_http_server_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_http_server_test PRIVATE cxx_std_23)

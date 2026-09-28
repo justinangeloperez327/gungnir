@@ -1,5 +1,6 @@
 #include <gungnir/core/timer.hpp>
 
+#include <algorithm>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -21,10 +22,10 @@ public:
         : executor_{} {
         executor_.start();
 
-        timer_thread_ =
+        fallback_thread_ =
             std::thread{
                 [this] {
-                    run();
+                    run_fallback();
                 }
             };
     }
@@ -36,14 +37,17 @@ public:
             };
 
             stopping_ = true;
+            pump_token_ = 0;
+            pump_context_ = nullptr;
+            pump_wake_ = nullptr;
         }
 
         ready_.notify_all();
 
         if (
-            timer_thread_.joinable()
+            fallback_thread_.joinable()
         ) {
-            timer_thread_.join();
+            fallback_thread_.join();
         }
 
         executor_.stop();
@@ -65,6 +69,11 @@ public:
         if (!handle) {
             return;
         }
+
+        detail::TimerWakeFunction wake =
+            nullptr;
+
+        void* context = nullptr;
 
         {
             std::lock_guard lock{
@@ -88,9 +97,187 @@ public:
                         handle
                 }
             );
+
+            if (pump_token_ != 0) {
+                wake = pump_wake_;
+                context = pump_context_;
+            }
         }
 
-        ready_.notify_one();
+        if (wake != nullptr) {
+            wake(context);
+        } else {
+            ready_.notify_one();
+        }
+    }
+
+    std::uint64_t attach(
+        void* context,
+        detail::TimerWakeFunction wake
+    ) {
+        if (wake == nullptr) {
+            throw std::invalid_argument(
+                "Timer pump wake callback is required"
+            );
+        }
+
+        std::uint64_t token = 0;
+
+        {
+            std::lock_guard lock{
+                mutex_
+            };
+
+            if (stopping_) {
+                throw std::logic_error(
+                    "Gungnir timer scheduler is stopping"
+                );
+            }
+
+            if (pump_token_ != 0) {
+                throw std::logic_error(
+                    "A Gungnir timer pump is already attached"
+                );
+            }
+
+            token =
+                next_pump_token_++;
+
+            if (token == 0) {
+                token =
+                    next_pump_token_++;
+            }
+
+            pump_token_ = token;
+            pump_context_ = context;
+            pump_wake_ = wake;
+        }
+
+        ready_.notify_all();
+
+        wake(context);
+
+        return token;
+    }
+
+    void detach(
+        std::uint64_t token
+    ) noexcept {
+        if (token == 0) {
+            return;
+        }
+
+        bool detached = false;
+
+        {
+            std::lock_guard lock{
+                mutex_
+            };
+
+            if (
+                pump_token_ ==
+                token
+            ) {
+                pump_token_ = 0;
+                pump_context_ = nullptr;
+                pump_wake_ = nullptr;
+                detached = true;
+            }
+        }
+
+        if (detached) {
+            ready_.notify_all();
+        }
+    }
+
+    [[nodiscard]]
+    std::chrono::milliseconds
+    poll_timeout(
+        std::chrono::milliseconds maximum
+    ) {
+        if (
+            maximum.count() <= 0
+        ) {
+            return
+                std::chrono::milliseconds{
+                    0
+                };
+        }
+
+        std::lock_guard lock{
+            mutex_
+        };
+
+        if (
+            pump_token_ == 0 ||
+            timers_.empty()
+        ) {
+            return maximum;
+        }
+
+        const auto now =
+            Clock::now();
+
+        const auto deadline =
+            timers_.top()
+                .deadline;
+
+        if (deadline <= now) {
+            return
+                std::chrono::milliseconds{
+                    0
+                };
+        }
+
+        const auto remaining =
+            deadline - now;
+
+        auto rounded =
+            std::chrono::duration_cast<
+                std::chrono::milliseconds
+            >(remaining);
+
+        if (
+            rounded <
+            remaining
+        ) {
+            rounded +=
+                std::chrono::milliseconds{
+                    1
+                };
+        }
+
+        return std::min(
+            maximum,
+            rounded
+        );
+    }
+
+    void dispatch_due() noexcept {
+        std::vector<
+            std::coroutine_handle<>
+        > due;
+
+        {
+            std::lock_guard lock{
+                mutex_
+            };
+
+            if (
+                pump_token_ == 0
+            ) {
+                return;
+            }
+
+            collect_due_locked(
+                due,
+                Clock::now()
+            );
+        }
+
+        dispatch(
+            due
+        );
     }
 
 private:
@@ -124,7 +311,58 @@ private:
         }
     };
 
-    void run() noexcept {
+    void collect_due_locked(
+        std::vector<
+            std::coroutine_handle<>
+        >& due,
+        Clock::time_point now
+    ) {
+        while (
+            !timers_.empty() &&
+            timers_.top()
+                .deadline <= now
+        ) {
+            due.push_back(
+                timers_.top()
+                    .handle
+            );
+
+            timers_.pop();
+        }
+    }
+
+    void dispatch(
+        const std::vector<
+            std::coroutine_handle<>
+        >& due
+    ) noexcept {
+        for (
+            const auto handle :
+            due
+        ) {
+            if (
+                !handle ||
+                handle.done()
+            ) {
+                continue;
+            }
+
+            try {
+                executor_.schedule(
+                    handle
+                );
+            } catch (...) {
+                if (
+                    handle &&
+                    !handle.done()
+                ) {
+                    handle.resume();
+                }
+            }
+        }
+    }
+
+    void run_fallback() noexcept {
         std::unique_lock lock{
             mutex_
         };
@@ -134,12 +372,26 @@ private:
                 return;
             }
 
+            if (pump_token_ != 0) {
+                ready_.wait(
+                    lock,
+                    [this] {
+                        return
+                            stopping_ ||
+                            pump_token_ == 0;
+                    }
+                );
+
+                continue;
+            }
+
             if (timers_.empty()) {
                 ready_.wait(
                     lock,
                     [this] {
                         return
                             stopping_ ||
+                            pump_token_ != 0 ||
                             !timers_.empty();
                     }
                 );
@@ -167,55 +419,23 @@ private:
                 std::coroutine_handle<>
             > due;
 
-            const auto now =
-                Clock::now();
-
-            while (
-                !timers_.empty() &&
-                timers_.top()
-                    .deadline <= now
-            ) {
-                due.push_back(
-                    timers_.top()
-                        .handle
-                );
-
-                timers_.pop();
-            }
+            collect_due_locked(
+                due,
+                Clock::now()
+            );
 
             lock.unlock();
 
-            for (
-                const auto handle :
+            dispatch(
                 due
-            ) {
-                if (
-                    !handle ||
-                    handle.done()
-                ) {
-                    continue;
-                }
-
-                try {
-                    executor_.schedule(
-                        handle
-                    );
-                } catch (...) {
-                    if (
-                        handle &&
-                        !handle.done()
-                    ) {
-                        handle.resume();
-                    }
-                }
-            }
+            );
 
             lock.lock();
         }
     }
 
     Executor executor_;
-    std::thread timer_thread_;
+    std::thread fallback_thread_;
     std::mutex mutex_;
     std::condition_variable ready_;
     std::priority_queue<
@@ -224,11 +444,18 @@ private:
         Later
     > timers_;
     std::uint64_t sequence_{0};
+    std::uint64_t next_pump_token_{1};
+    std::uint64_t pump_token_{0};
+    void* pump_context_{nullptr};
+    detail::TimerWakeFunction pump_wake_{
+        nullptr
+    };
     bool stopping_{false};
 };
 
 TimerScheduler& timer_scheduler() {
     static TimerScheduler scheduler;
+
     return scheduler;
 }
 
@@ -242,5 +469,41 @@ void SleepAwaiter::await_suspend(
         handle
     );
 }
+
+namespace detail {
+
+std::uint64_t attach_timer_pump(
+    void* context,
+    TimerWakeFunction wake
+) {
+    return timer_scheduler().attach(
+        context,
+        wake
+    );
+}
+
+void detach_timer_pump(
+    std::uint64_t token
+) noexcept {
+    timer_scheduler().detach(
+        token
+    );
+}
+
+std::chrono::milliseconds
+timer_poll_timeout(
+    std::chrono::milliseconds maximum
+) {
+    return
+        timer_scheduler().poll_timeout(
+            maximum
+        );
+}
+
+void dispatch_due_timers() noexcept {
+    timer_scheduler().dispatch_due();
+}
+
+} // namespace detail
 
 } // namespace gungnir

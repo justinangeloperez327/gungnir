@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include <gungnir/core/timer.hpp>
 #include <gungnir/http/message.hpp>
 #include <gungnir/routing/router.hpp>
 
@@ -469,6 +470,18 @@ private:
     };
     bool active_{false};
 };
+
+void wake_timer_pump(
+    void* context
+) noexcept {
+    if (context == nullptr) {
+        return;
+    }
+
+    static_cast<WakeState*>(
+        context
+    )->notify();
+}
 
 using Clock =
     std::chrono::steady_clock;
@@ -1179,8 +1192,28 @@ public:
                 socket_port(socket)
             );
 
+            timer_pump_token =
+                ::gungnir::detail::
+                    attach_timer_pump(
+                        wakeup.get(),
+                        &wake_timer_pump
+                    );
+
             reactor_loop();
+
+            ::gungnir::detail::
+                detach_timer_pump(
+                    timer_pump_token
+                );
+
+            timer_pump_token = 0;
         } catch (...) {
+            ::gungnir::detail::
+                detach_timer_pump(
+                    timer_pump_token
+                );
+
+            timer_pump_token = 0;
             running.store(false);
 
             const auto socket =
@@ -1241,6 +1274,9 @@ public:
         > drain_deadline;
 
         while (true) {
+            ::gungnir::detail::
+                dispatch_due_timers();
+
             complete_ready_handlers();
 
             const auto now =
@@ -1376,11 +1412,21 @@ public:
                 continue;
             }
 
+            const auto timer_timeout =
+                ::gungnir::detail::
+                    timer_poll_timeout(
+                        std::chrono::milliseconds{
+                            reactor_poll_timeout_ms
+                        }
+                    );
+
             const auto status =
                 poll_sockets(
                     descriptors.data(),
                     descriptors.size(),
-                    reactor_poll_timeout_ms
+                    static_cast<int>(
+                        timer_timeout.count()
+                    )
                 );
 
             if (status < 0) {
@@ -1414,6 +1460,10 @@ public:
                 ) != 0
             ) {
                 wakeup->drain();
+
+                ::gungnir::detail::
+                    dispatch_due_timers();
+
                 complete_ready_handlers();
             }
 
@@ -2197,6 +2247,7 @@ public:
         invalid_socket
     };
     std::atomic<std::uint16_t> bound{0};
+    std::uint64_t timer_pump_token{0};
     std::vector<ConnectionState> connections;
 };
 

@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <coroutine>
+#include <cstdint>
 
 namespace gungnir {
 
@@ -37,5 +38,30 @@ inline SleepAwaiter sleep_for(
         duration
     };
 }
+
+namespace detail {
+
+using TimerWakeFunction =
+    void (*)(void*) noexcept;
+
+[[nodiscard]]
+std::uint64_t attach_timer_pump(
+    void* context,
+    TimerWakeFunction wake
+);
+
+void detach_timer_pump(
+    std::uint64_t token
+) noexcept;
+
+[[nodiscard]]
+std::chrono::milliseconds
+timer_poll_timeout(
+    std::chrono::milliseconds maximum
+);
+
+void dispatch_due_timers() noexcept;
+
+} // namespace detail
 
 } // namespace gungnir
