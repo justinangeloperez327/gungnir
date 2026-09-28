@@ -81,3 +81,7 @@ For local plain-HTTP development, set `session::Options::secure` to `false`. Pro
 `MemoryStore` is thread-safe and suitable for tests, local development, and single-process ephemeral deployments. It is not a durable or distributed production session store.
 
 Persistent database/cache-backed stores, expiry/garbage collection, and distributed session lifecycle policies remain separate production-adapter work.
+
+## Authentication integration
+
+Register `session::middleware(...)` before `auth::session(...)`. Authentication stores only the identity ID in session state; the configured identity resolver reloads the current identity on each request. Login, logout, and stale identity resolution trigger session-ID rotation.

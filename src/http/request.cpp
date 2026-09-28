@@ -1,5 +1,6 @@
 #include <gungnir/http/request.hpp>
 
+#include <gungnir/auth/context.hpp>
 #include <gungnir/core/container.hpp>
 #include <gungnir/session/session.hpp>
 
@@ -247,6 +248,47 @@ const session::Session& Request::session() const {
     }
 
     return *session_;
+}
+
+bool Request::has_auth() const noexcept {
+    return static_cast<bool>(auth_);
+}
+
+auth::Context& Request::auth() {
+    if (!auth_) {
+        throw std::logic_error(
+            "HTTP request is not attached to an authentication context"
+        );
+    }
+
+    return *auth_;
+}
+
+const auth::Context& Request::auth() const {
+    if (!auth_) {
+        throw std::logic_error(
+            "HTTP request is not attached to an authentication context"
+        );
+    }
+
+    return *auth_;
+}
+
+bool Request::authenticated() const noexcept {
+    return
+        auth_ &&
+        auth_->check();
+}
+
+bool Request::guest() const noexcept {
+    return !authenticated();
+}
+
+const auth::Identity* Request::user() const noexcept {
+    return
+        auth_
+            ? auth_->user()
+            : nullptr;
 }
 
 void Request::set_header(std::string name, std::string value) {
@@ -600,6 +642,18 @@ void Request::attach_session(
     }
 
     session_ = std::move(session);
+}
+
+void Request::attach_auth(
+    std::shared_ptr<auth::Context> context
+) {
+    if (!context) {
+        throw std::invalid_argument(
+            "HTTP request authentication context is invalid"
+        );
+    }
+
+    auth_ = std::move(context);
 }
 
 void Request::clear_route_parameters() noexcept {

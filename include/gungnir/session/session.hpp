@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <gungnir/security/security.hpp>
+#include <gungnir/security/random.hpp>
 
 namespace gungnir::session {
 
