@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/backend.hpp>
 #include <gungnir/database/result.hpp>
@@ -20,6 +21,8 @@ public:
         const String& statement,
         const std::vector<model::AttributeValue>& bindings = {}
     ) = 0;
+
+    virtual void cancel() noexcept {}
 
     [[nodiscard]] virtual bool supports_transactions() const noexcept {
         return true;
@@ -53,7 +56,8 @@ public:
         Action begin = {},
         Action commit = {},
         Action rollback = {},
-        Ping ping = {}
+        Ping ping = {},
+        Action cancel = {}
     );
 
     [[nodiscard]] Backend backend() const noexcept override;
@@ -66,6 +70,7 @@ public:
     void begin() override;
     void commit() override;
     void rollback() override;
+    void cancel() noexcept override;
     [[nodiscard]] bool ping() override;
 
 private:
@@ -75,6 +80,7 @@ private:
     Action commit_;
     Action rollback_;
     Ping ping_;
+    Action cancel_;
 };
 
 } // namespace gungnir::database

@@ -11,14 +11,16 @@ CallbackDriver::CallbackDriver(
     Action begin,
     Action commit,
     Action rollback,
-    Ping ping
+    Ping ping,
+    Action cancel
 )
     : backend_(backend),
       execute_(std::move(execute)),
       begin_(std::move(begin)),
       commit_(std::move(commit)),
       rollback_(std::move(rollback)),
-      ping_(std::move(ping)) {
+      ping_(std::move(ping)),
+      cancel_(std::move(cancel)) {
     if (!execute_) {
         throw std::invalid_argument(
             "Gungnir database driver requires an execute callback"
@@ -52,6 +54,17 @@ void CallbackDriver::commit() {
 void CallbackDriver::rollback() {
     if (rollback_) {
         rollback_();
+    }
+}
+
+void CallbackDriver::cancel() noexcept {
+    if (!cancel_) {
+        return;
+    }
+
+    try {
+        cancel_();
+    } catch (...) {
     }
 }
 

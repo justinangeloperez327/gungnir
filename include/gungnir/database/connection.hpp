@@ -4,6 +4,7 @@
 #include <mutex>
 #include <vector>
 
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/core/types.hpp>
 #include <gungnir/database/driver.hpp>
 #include <gungnir/database/result.hpp>
@@ -25,7 +26,18 @@ public:
         const std::vector<model::AttributeValue>& bindings = {}
     );
 
+    Result execute(
+        const String& statement,
+        const std::vector<model::AttributeValue>& bindings,
+        const CancellationToken& cancellation
+    );
+
     Result execute(const Query& query);
+
+    Result execute(
+        const Query& query,
+        const CancellationToken& cancellation
+    );
 
     [[nodiscard]] bool supports_transactions() const noexcept;
     [[nodiscard]] bool supports_savepoints() const noexcept;

@@ -3,7 +3,7 @@
 This document records known limitations that should remain visible before a stable release.
 
 - Dependency-injection scoped state and resolution tracking need coroutine-safe ownership.
-- Suspended route handlers and `sleep_for` deadlines now share the HTTP platform readiness loop while the server is active; due continuations are dispatched through the bounded executor pool. Request cancellation is automatically signaled by the HTTP runtime, but lower-level database/filesystem operations are not yet uniformly cancellation-aware.
+- Suspended route handlers and `sleep_for` deadlines now share the HTTP platform readiness loop while the server is active; due continuations are dispatched through the bounded executor pool. Request cancellation propagates into database connection execution through scoped driver cancellation hooks, but native in-flight interruption is adapter-dependent and filesystem/storage operations are not yet uniformly cancellation-aware.
 - The HTTP server does not yet establish production-grade HTTP/2, TLS, WebSocket or asynchronous streaming guarantees.
 - Database runtime state must avoid unsafe global or thread-local assumptions when coroutines can migrate threads.
 - PostgreSQL, MySQL, SQL Server, and MongoDB have concrete client-library adapters. MongoDB replica-set transaction/session support remains incomplete.

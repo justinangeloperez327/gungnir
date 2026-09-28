@@ -33,13 +33,18 @@ Result Connection::execute(
     const std::vector<model::AttributeValue>& bindings
 ) {
     std::lock_guard lock{mutex_};
+
     try {
-        return driver_->execute(statement, bindings);
+        return driver_->execute(
+            statement,
+            bindings
+        );
     } catch (const Error&) {
         throw;
     } catch (const std::exception& error) {
         throw Error{
-            "Database execution failed: " + String{error.what()},
+            "Database execution failed: " +
+                String{error.what()},
             backend(),
             name_,
             statement
@@ -47,8 +52,79 @@ Result Connection::execute(
     }
 }
 
-Result Connection::execute(const Query& query) {
-    return execute(query.statement, query.bindings);
+Result Connection::execute(
+    const String& statement,
+    const std::vector<model::AttributeValue>& bindings,
+    const CancellationToken& cancellation
+) {
+    std::lock_guard lock{mutex_};
+
+    cancellation.throw_if_cancelled();
+
+    auto registration =
+        cancellation.on_cancel(
+            [driver = driver_]() noexcept {
+                driver->cancel();
+            }
+        );
+
+    cancellation.throw_if_cancelled();
+
+    try {
+        auto result =
+            driver_->execute(
+                statement,
+                bindings
+            );
+
+        cancellation.throw_if_cancelled();
+
+        return result;
+    } catch (
+        const OperationCancelled&
+    ) {
+        throw;
+    } catch (const Error&) {
+        if (cancellation.cancelled()) {
+            throw OperationCancelled{};
+        }
+
+        throw;
+    } catch (
+        const std::exception& error
+    ) {
+        if (cancellation.cancelled()) {
+            throw OperationCancelled{};
+        }
+
+        throw Error{
+            "Database execution failed: " +
+                String{error.what()},
+            backend(),
+            name_,
+            statement
+        };
+    }
+}
+
+Result Connection::execute(
+    const Query& query
+) {
+    return execute(
+        query.statement,
+        query.bindings
+    );
+}
+
+Result Connection::execute(
+    const Query& query,
+    const CancellationToken& cancellation
+) {
+    return execute(
+        query.statement,
+        query.bindings,
+        cancellation
+    );
 }
 
 bool Connection::supports_transactions() const noexcept {
