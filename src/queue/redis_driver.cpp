@@ -363,9 +363,31 @@ constexpr std::string_view push_script =
     "redis.call('RPUSH', KEYS[2], ARGV[1]) "
     "return 1";
 
+constexpr std::string_view push_later_script =
+    "if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 "
+    "or redis.call('HEXISTS', KEYS[3], ARGV[1]) == 1 then "
+    "return 0 end "
+    "redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]) "
+    "local delay = tonumber(ARGV[3]) "
+    "if delay <= 0 then "
+    "redis.call('RPUSH', KEYS[2], ARGV[1]) "
+    "else "
+    "local t = redis.call('TIME') "
+    "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "redis.call('ZADD', KEYS[4], now + delay, ARGV[1]) "
+    "end "
+    "return 1";
+
 constexpr std::string_view pop_script =
     "local t = redis.call('TIME') "
     "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "local due = redis.call('ZRANGEBYSCORE', KEYS[5], '-inf', now) "
+    "for _, id in ipairs(due) do "
+    "redis.call('ZREM', KEYS[5], id) "
+    "if redis.call('HEXISTS', KEYS[1], id) == 1 then "
+    "redis.call('RPUSH', KEYS[2], id) "
+    "end "
+    "end "
     "local expired = redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', now) "
     "for _, id in ipairs(expired) do "
     "redis.call('ZREM', KEYS[3], id) "
@@ -393,13 +415,28 @@ constexpr std::string_view acknowledge_script =
     "redis.call('HDEL', KEYS[1], ARGV[1]) "
     "return 1";
 
-constexpr std::string_view release_script =
+constexpr std::string_view release_after_script =
     "local token = redis.call('HGET', KEYS[4], ARGV[1]) "
     "if not token or token ~= ARGV[2] then return 0 end "
     "redis.call('HSET', KEYS[1], ARGV[1], ARGV[3]) "
     "redis.call('HDEL', KEYS[4], ARGV[1]) "
     "redis.call('ZREM', KEYS[3], ARGV[1]) "
+    "local delay = tonumber(ARGV[4]) "
+    "if delay <= 0 then "
     "redis.call('RPUSH', KEYS[2], ARGV[1]) "
+    "else "
+    "local t = redis.call('TIME') "
+    "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "redis.call('ZADD', KEYS[5], now + delay, ARGV[1]) "
+    "end "
+    "return 1";
+
+constexpr std::string_view renew_script =
+    "local token = redis.call('HGET', KEYS[2], ARGV[1]) "
+    "if not token or token ~= ARGV[2] then return 0 end "
+    "local t = redis.call('TIME') "
+    "local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000) "
+    "redis.call('ZADD', KEYS[1], now + tonumber(ARGV[3]), ARGV[1]) "
     "return 1";
 
 constexpr std::string_view fail_script =
@@ -476,6 +513,51 @@ public:
         }
     }
 
+    void push_later(
+        Envelope job,
+        std::chrono::milliseconds delay
+    ) {
+        validate_job(job);
+        job.reservation.clear();
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        const auto payload =
+            encode(job);
+
+        auto reply =
+            eval(
+                push_later_script,
+                {
+                    jobs_key(),
+                    ready_key(),
+                    failed_key(),
+                    delayed_key()
+                },
+                {
+                    job.id,
+                    payload,
+                    std::to_string(
+                        delay.count()
+                    )
+                }
+            );
+
+        require_integer(
+            *reply,
+            "queue delayed push"
+        );
+
+        if (reply->integer == 0) {
+            throw std::logic_error(
+                "Queued job id already exists: " +
+                job.id
+            );
+        }
+    }
+
     [[nodiscard]]
     std::optional<Envelope>
     pop() {
@@ -495,7 +577,8 @@ public:
                     jobs_key(),
                     ready_key(),
                     reserved_key(),
-                    leases_key()
+                    leases_key(),
+                    delayed_key()
                 },
                 {
                     std::to_string(
@@ -591,6 +674,16 @@ public:
     void release(
         Envelope job
     ) {
+        release_after(
+            std::move(job),
+            std::chrono::milliseconds{0}
+        );
+    }
+
+    void release_after(
+        Envelope job,
+        std::chrono::milliseconds delay
+    ) {
         validate_job(job);
 
         if (job.reservation.empty()) {
@@ -613,17 +706,21 @@ public:
 
         auto reply =
             eval(
-                release_script,
+                release_after_script,
                 {
                     jobs_key(),
                     ready_key(),
                     reserved_key(),
-                    leases_key()
+                    leases_key(),
+                    delayed_key()
                 },
                 {
                     job.id,
                     reservation,
-                    payload
+                    payload,
+                    std::to_string(
+                        delay.count()
+                    )
                 }
             );
 
@@ -631,6 +728,47 @@ public:
             *reply,
             "queue release"
         );
+    }
+
+    [[nodiscard]]
+    bool renew(
+        const Envelope& job
+    ) {
+        if (
+            job.id.empty() ||
+            job.reservation.empty()
+        ) {
+            return false;
+        }
+
+        std::lock_guard lock{
+            mutex
+        };
+
+        auto reply =
+            eval(
+                renew_script,
+                {
+                    reserved_key(),
+                    leases_key()
+                },
+                {
+                    job.id,
+                    job.reservation,
+                    std::to_string(
+                        settings
+                            .visibility_timeout
+                            .count()
+                    )
+                }
+            );
+
+        require_integer(
+            *reply,
+            "queue lease renewal"
+        );
+
+        return reply->integer == 1;
     }
 
     void fail(
@@ -723,6 +861,18 @@ public:
     }
 
     [[nodiscard]]
+    std::size_t delayed() {
+        std::lock_guard lock{
+            mutex
+        };
+
+        return count(
+            "ZCARD",
+            delayed_key()
+        );
+    }
+
+    [[nodiscard]]
     std::size_t failed() {
         std::lock_guard lock{
             mutex
@@ -746,6 +896,7 @@ public:
                 ready_key(),
                 reserved_key(),
                 leases_key(),
+                delayed_key(),
                 failed_key()
             });
 
@@ -1192,6 +1343,14 @@ private:
     }
 
     [[nodiscard]]
+    std::string delayed_key()
+        const {
+        return
+            base_key() +
+            "delayed";
+    }
+
+    [[nodiscard]]
     std::string failed_key()
         const {
         return
@@ -1234,6 +1393,16 @@ void RedisDriver::push(
     );
 }
 
+void RedisDriver::push_later(
+    Envelope job,
+    std::chrono::milliseconds delay
+) {
+    impl_->push_later(
+        std::move(job),
+        delay
+    );
+}
+
 std::optional<Envelope>
 RedisDriver::pop() {
     return impl_->pop();
@@ -1253,6 +1422,22 @@ void RedisDriver::release(
     );
 }
 
+void RedisDriver::release_after(
+    Envelope job,
+    std::chrono::milliseconds delay
+) {
+    impl_->release_after(
+        std::move(job),
+        delay
+    );
+}
+
+bool RedisDriver::renew(
+    const Envelope& job
+) {
+    return impl_->renew(job);
+}
+
 void RedisDriver::fail(
     const Envelope& job
 ) {
@@ -1269,6 +1454,10 @@ std::size_t RedisDriver::pending() {
 
 std::size_t RedisDriver::reserved() {
     return impl_->reserved();
+}
+
+std::size_t RedisDriver::delayed() {
+    return impl_->delayed();
 }
 
 std::size_t RedisDriver::failed() {

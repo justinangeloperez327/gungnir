@@ -20,6 +20,7 @@ namespace gungnir::queue {
 
 struct WorkerOptions {
     std::chrono::milliseconds idle_sleep{100};
+    std::chrono::milliseconds lease_renewal_interval{0};
     std::size_t max_jobs{0};
     std::chrono::milliseconds max_runtime{0};
 };
@@ -70,10 +71,19 @@ public:
 
         ++job->attempts;
 
+        LeaseHeartbeat heartbeat{
+            *driver_,
+            *job,
+            options_.lease_renewal_interval
+        };
+
         try {
             found->second(job->payload);
+            heartbeat.stop();
             driver_->acknowledge(*job);
         } catch (...) {
+            heartbeat.stop();
+
             if (
                 job->attempts <
                 job->max_attempts
@@ -237,6 +247,16 @@ private:
 
         if (
             options_
+                .lease_renewal_interval
+                .count() < 0
+        ) {
+            throw std::invalid_argument(
+                "Queue worker lease_renewal_interval cannot be negative"
+            );
+        }
+
+        if (
+            options_
                 .max_runtime
                 .count() < 0
         ) {
@@ -245,6 +265,124 @@ private:
             );
         }
     }
+
+    class LeaseHeartbeat {
+    public:
+        LeaseHeartbeat(
+            Driver& driver,
+            const Envelope& job,
+            std::chrono::milliseconds interval
+        )
+            : driver_(&driver),
+              job_(&job),
+              interval_(interval) {
+            if (interval_.count() <= 0) {
+                return;
+            }
+
+            thread_ =
+                std::thread{
+                    [this] {
+                        loop();
+                    }
+                };
+        }
+
+        LeaseHeartbeat(
+            const LeaseHeartbeat&
+        ) = delete;
+
+        LeaseHeartbeat& operator=(
+            const LeaseHeartbeat&
+        ) = delete;
+
+        ~LeaseHeartbeat() {
+            stop();
+        }
+
+        void stop()
+            noexcept {
+            {
+                std::lock_guard lock{
+                    mutex_
+                };
+
+                stopped_ = true;
+            }
+
+            ready_.notify_all();
+
+            if (
+                thread_.joinable()
+            ) {
+                thread_.join();
+            }
+        }
+
+        [[nodiscard]]
+        bool lost()
+            const noexcept {
+            return
+                lost_.load(
+                    std::memory_order_acquire
+                );
+        }
+
+    private:
+        void loop()
+            noexcept {
+            std::unique_lock lock{
+                mutex_
+            };
+
+            while (!stopped_) {
+                if (
+                    ready_.wait_for(
+                        lock,
+                        interval_,
+                        [this] {
+                            return stopped_;
+                        }
+                    )
+                ) {
+                    return;
+                }
+
+                lock.unlock();
+
+                bool renewed = false;
+
+                try {
+                    renewed =
+                        driver_->renew(
+                            *job_
+                        );
+                } catch (...) {
+                    renewed = false;
+                }
+
+                lock.lock();
+
+                if (!renewed) {
+                    lost_.store(
+                        true,
+                        std::memory_order_release
+                    );
+
+                    return;
+                }
+            }
+        }
+
+        Driver* driver_;
+        const Envelope* job_;
+        std::chrono::milliseconds interval_;
+        std::atomic_bool lost_{false};
+        std::mutex mutex_;
+        std::condition_variable ready_;
+        bool stopped_{false};
+        std::thread thread_;
+    };
 
     void wake()
         noexcept {

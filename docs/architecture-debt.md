@@ -12,7 +12,7 @@ This document records known limitations that should remain visible before a stab
 - View runtime global engine state and filesystem symlink containment require hardening.
 - Local storage rejects existing symlink traversal, canonicalizes containment, uses exclusive same-directory temporary files and atomically replaces completed writes. Race-free containment against concurrent hostile filesystem mutation and full crash-durable directory commits remain separate hardening work.
 - Events currently use named polymorphic events rather than a fully typed dispatch surface.
-- Queue visibility leasing and crash recovery are implemented by the Redis driver. The generic worker now has a long-running loop with cooperative stop/cancellation, idle polling and bounded-run options. Delayed jobs, long-running lease renewal, retry backoff/failed-job administration and multi-process supervision remain incomplete.
+- Queue visibility leasing, delayed delivery, delayed release, crash recovery and reservation-token lease renewal are implemented by the Redis driver. The generic worker has a long-running loop with cooperative stop/cancellation, idle polling, bounded-run options and optional lease heartbeats. Retry backoff/failed-job administration and multi-process supervision remain incomplete.
 - Scheduler provides interval execution, not cron/timezone/distributed locking semantics.
 - Logging provides structured records and sinks, not tracing/metrics exporters.
 - Plugin compatibility expressions are not yet parsed or enforced.

@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
@@ -377,6 +378,179 @@ int main() {
     queue.acknowledge(
         *recovered
     );
+
+    assert(queue.pending() == 0);
+    assert(queue.reserved() == 0);
+
+    queue.push_later(
+        {
+            "job-delayed",
+            "mail.send",
+            "later",
+            0,
+            1
+        },
+        std::chrono::milliseconds{
+            100
+        }
+    );
+
+    assert(queue.pending() == 0);
+    assert(queue.delayed() == 1);
+    assert(!queue.pop());
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            140
+        }
+    );
+
+    auto delayed_job =
+        queue.pop();
+
+    assert(delayed_job);
+    assert(
+        delayed_job->id ==
+        "job-delayed"
+    );
+
+    assert(queue.delayed() == 0);
+    assert(queue.reserved() == 1);
+
+    queue.acknowledge(
+        *delayed_job
+    );
+
+    queue.push({
+        "job-renew",
+        "mail.send",
+        "renew",
+        0,
+        1
+    });
+
+    auto renewable =
+        queue.pop();
+
+    assert(renewable);
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            80
+        }
+    );
+
+    assert(
+        queue.renew(
+            *renewable
+        )
+    );
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            80
+        }
+    );
+
+    assert(!queue.pop());
+    assert(queue.reserved() == 1);
+
+    queue.acknowledge(
+        *renewable
+    );
+
+    assert(
+        !queue.renew(
+            *renewable
+        )
+    );
+
+    assert(queue.reserved() == 0);
+
+    queue.push({
+        "job-heartbeat",
+        "slow",
+        "payload",
+        0,
+        1
+    });
+
+    queue::WorkerOptions
+        heartbeat_options;
+
+    heartbeat_options
+        .lease_renewal_interval =
+        std::chrono::milliseconds{
+            40
+        };
+
+    queue::Worker heartbeat_worker{
+        queue,
+        heartbeat_options
+    };
+
+    std::atomic_bool
+        heartbeat_started{
+            false
+        };
+
+    heartbeat_worker.handle(
+        "slow",
+        [&](
+            std::string_view
+        ) {
+            heartbeat_started.store(
+                true,
+                std::memory_order_release
+            );
+
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds{
+                    300
+                }
+            );
+        }
+    );
+
+    std::thread heartbeat_thread{
+        [&] {
+            assert(
+                heartbeat_worker
+                    .run_one()
+            );
+        }
+    };
+
+    for (
+        int attempt = 0;
+        attempt < 100 &&
+            !heartbeat_started.load(
+                std::memory_order_acquire
+            );
+        ++attempt
+    ) {
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds{
+                5
+            }
+        );
+    }
+
+    assert(
+        heartbeat_started.load(
+            std::memory_order_acquire
+        )
+    );
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds{
+            180
+        }
+    );
+
+    assert(!queue.pop());
+
+    heartbeat_thread.join();
 
     assert(queue.pending() == 0);
     assert(queue.reserved() == 0);
