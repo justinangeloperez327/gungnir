@@ -751,6 +751,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_session_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.session COMMAND gungnir_session_test)
 
+    add_executable(
+        gungnir_session_lifecycle_test
+        tests/session_lifecycle.cpp
+    )
+    target_link_libraries(
+        gungnir_session_lifecycle_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_session_lifecycle_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.session_lifecycle
+        COMMAND gungnir_session_lifecycle_test
+    )
+
     add_executable(gungnir_security_test tests/security.cpp)
     target_link_libraries(gungnir_security_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_security_test PRIVATE cxx_std_23)
