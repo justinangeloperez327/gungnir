@@ -232,7 +232,8 @@ ShutdownResult RuntimeHost::run(
     try {
         application_->listen(
             port,
-            std::move(host)
+            std::move(host),
+            supervisor_.token()
         );
     } catch (...) {
         const auto failure =
