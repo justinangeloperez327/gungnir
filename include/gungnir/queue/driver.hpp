@@ -3,6 +3,8 @@
 #include <chrono>
 #include <optional>
 #include <stdexcept>
+#include <string_view>
+#include <vector>
 #include <utility>
 
 #include <gungnir/queue/job.hpp>
@@ -73,6 +75,32 @@ public:
     virtual void fail(
         const Envelope& job
     ) = 0;
+
+    [[nodiscard]]
+    virtual std::vector<Envelope>
+    failed_jobs() {
+        return {};
+    }
+
+    [[nodiscard]]
+    virtual std::optional<Envelope>
+    failed_job(
+        std::string_view
+    ) {
+        return std::nullopt;
+    }
+
+    virtual bool retry_failed(
+        std::string_view
+    ) {
+        return false;
+    }
+
+    virtual bool forget_failed(
+        std::string_view
+    ) {
+        return false;
+    }
 };
 
 } // namespace gungnir::queue
