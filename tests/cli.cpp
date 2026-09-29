@@ -238,6 +238,20 @@ int main() {
         ) != std::string::npos
     );
 
+    const auto invalid_route = destination / "routes/invalid.gnr";
+    {
+        std::ofstream output{invalid_route};
+        output << "Route::get(\"/missing\", MissingController::index);\n";
+    }
+    bool unresolved_route_failed = false;
+    try {
+        (void) project.assemble();
+    } catch (const std::runtime_error&) {
+        unresolved_route_failed = true;
+    }
+    assert(unresolved_route_failed);
+    std::filesystem::remove(invalid_route);
+
     auto nested =
         Project::open(
             destination /

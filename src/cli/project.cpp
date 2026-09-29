@@ -229,6 +229,7 @@ language::SemanticIndex index_sources(
         };
         index.add(parser.parse().program, path.generic_string());
     }
+    index.closed_world = true;
     return index;
 }
 
