@@ -330,9 +330,25 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 }
                 local_types = scope;
                 immutable_names = constants;
+                auto loop_scope = scope;
+                auto loop_constants = constants;
+                if (statement.kind == StatementKind::loop_ &&
+                    statement.name == "for" &&
+                    !statement.for_binding_name.empty()) {
+                    const auto initial = infer(statement.for_binding_initializer);
+                    loop_scope.insert_or_assign(statement.for_binding_name, initial);
+                    loop_constants.insert(statement.for_binding_name);
+                    local_types = loop_scope;
+                    immutable_names = loop_constants;
+                }
                 const bool has_expression = statement.expression.span.end >
                                             statement.expression.span.begin;
                 const Type value = has_expression ? infer(statement.expression) : Type{};
+                if (statement.kind == StatementKind::loop_ &&
+                    statement.name == "for" && statement.for_parts.size() == 3 &&
+                    statement.for_parts[2].span.end >
+                        statement.for_parts[2].span.begin)
+                    (void) infer(statement.for_parts[2]);
                 if (statement.kind == StatementKind::conditional ||
                     statement.kind == StatementKind::loop_) {
                     if (value.known() &&
@@ -351,10 +367,12 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     constants.insert(statement.name);
                 }
                 if (!statement.children.empty()) {
-                    auto nested = scope;
+                    auto nested = statement.kind == StatementKind::loop_ &&
+                                  statement.name == "for" ? loop_scope : scope;
                     check_body(statement.children, nested,
                                loop_depth + (statement.kind == StatementKind::loop_),
-                               {}, constants);
+                               {}, statement.kind == StatementKind::loop_ &&
+                                   statement.name == "for" ? loop_constants : constants);
                 }
                 if (!statement.alternative.empty()) {
                     auto nested = scope;

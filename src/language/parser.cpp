@@ -623,6 +623,22 @@ std::vector<MethodStatement> Parser::parse_method_body(
                                     end && *end >= part_start &&
                                         tokens_[part_start].lexeme != ";"
                                         ? parse_expression(part_start, *end) : Expression{});
+                                if (statement.for_parts.size() == 1 && end &&
+                                    tokens_[part_start].lexeme == "const") {
+                                    const auto name = next_significant(part_start);
+                                    const auto equals = name
+                                        ? next_significant(*name) : std::nullopt;
+                                    const auto initializer = equals
+                                        ? next_significant(*equals) : std::nullopt;
+                                    if (name && equals && initializer &&
+                                        tokens_[*name].kind == TokenKind::identifier &&
+                                        tokens_[*equals].lexeme == "=" &&
+                                        *initializer <= *end) {
+                                        statement.for_binding_name = tokens_[*name].lexeme;
+                                        statement.for_binding_initializer =
+                                            parse_expression(*initializer, *end);
+                                    }
+                                }
                                 const auto next = next_significant(at);
                                 part_start = next ? *next : *close;
                             }

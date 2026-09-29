@@ -475,8 +475,11 @@ int main() {
     assert(run.body.front().for_parts.size() == 3);
     assert(run.body.front().for_parts[1].kind ==
            gungnir::language::ExpressionKind::literal);
-    assert(gungnir::language::SemanticAnalyzer{}.analyze(
-        for_program, "for.gnr").empty());
+    bool immutable_for_update = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             for_program, "for.gnr"))
+        immutable_for_update |= diagnostic.code == "GNR1320";
+    assert(immutable_for_update);
     const auto lowered_for = gungnir::language::Transpiler{}.transpile(
         "controller Iteration { void run() { "
         "for (const i = 0; i < 3; ) { break; } } }",
@@ -484,6 +487,19 @@ int main() {
     );
     assert(lowered_for.success());
     assert(lowered_for.code.find("for (const auto i = 0;") != std::string::npos);
+    const auto invalid_for_condition = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Loop { void run() { for (const i = 0; i; ) { "
+            "i = 2; } } }"
+        }.tokenize(), "invalid_for.gnr"
+    }.parse().program;
+    bool nonboolean_for = false, changed_for_constant = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             invalid_for_condition, "invalid_for.gnr")) {
+        nonboolean_for |= diagnostic.code == "GNR1311";
+        changed_for_constant |= diagnostic.code == "GNR1320";
+    }
+    assert(nonboolean_for && changed_for_constant);
     const auto invalid_flow = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller InvalidFlow { int choose() { "

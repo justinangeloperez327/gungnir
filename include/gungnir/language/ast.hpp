@@ -77,6 +77,8 @@ struct MethodStatement {
     std::vector<MethodStatement> alternative;
     // For a for-loop: initializer, condition, and update (empty parts omitted).
     std::vector<Expression> for_parts;
+    std::string for_binding_name;
+    Expression for_binding_initializer;
 };
 
 struct FrameworkDeclaration {
