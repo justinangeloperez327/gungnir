@@ -10,6 +10,7 @@
 #include <gungnir/core/backpressure.hpp>
 #include <gungnir/core/cancellation.hpp>
 #include <gungnir/core/executor.hpp>
+#include <gungnir/core/framework_artifacts.hpp>
 #include <gungnir/core/task.hpp>
 #include <gungnir/core/timer.hpp>
 #include <gungnir/core/lifecycle.hpp>

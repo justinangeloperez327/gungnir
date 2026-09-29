@@ -10,11 +10,12 @@ The compiler surface now includes lexical symbol tables, core type inference/ass
 
 Framework-specific lowerers remain responsible for Model, Controller, Middleware, Migration, Validation, View and async syntax while general language analysis is kept reusable.
 
-The lexer classifies Gungnir language words such as `model`, `controller`,
-`middleware`, `migration`, `async`, `await`, `inject`, and scalar field types as
-keywords. The parser builds declaration AST nodes for first-class framework
-declarations before the compatibility lowering path rewrites them into ordinary
-C++ class declarations.
+The lexer classifies Gungnir declaration words such as `model`, `controller`,
+`middleware`, `migration`, `policy`, `event`, `listener`, `notification`,
+and `mail` as language keywords alongside `async`, `await`, `inject`, and
+scalar field types. The parser builds semantic `FrameworkDeclaration` nodes for
+all of these first-class artifacts before lowering them into ordinary C++ class
+declarations.
 
 Group 55 extends that frontend with parser-owned member nodes for model fields,
 model configuration, controller methods, injected dependencies, and model
@@ -23,9 +24,12 @@ relationships. Model lowering consumes `ModelField`, `ModelConfiguration`, and
 types, key overrides, and source spans. Controller dependency lowering consumes
 `InjectDeclaration` nodes. Route declarations are also parser-owned through
 `RouteDeclaration`, including HTTP method, controller action, and optional
-middleware metadata. Async lowering deliberately remains on the existing
-token-aware compatibility pass until coroutine semantics can move into the
-frontend without making generated C++ less inspectable.
+middleware metadata. Middleware, migration, policy, event, listener,
+notification, and mail bodies also expose parser-owned `FrameworkMethod` nodes,
+so their method signatures are available to later semantic passes without
+re-scanning source text. Async expression lowering deliberately remains on the
+existing token-aware compatibility pass until coroutine semantics can move into
+the frontend without making generated C++ less inspectable.
 
 ## Tooling
 
