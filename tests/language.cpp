@@ -477,6 +477,13 @@ int main() {
            gungnir::language::ExpressionKind::literal);
     assert(gungnir::language::SemanticAnalyzer{}.analyze(
         for_program, "for.gnr").empty());
+    const auto lowered_for = gungnir::language::Transpiler{}.transpile(
+        "controller Iteration { void run() { "
+        "for (const i = 0; i < 3; ) { break; } } }",
+        "for_lowering.gnr", {.emit_line_directives = false}
+    );
+    assert(lowered_for.success());
+    assert(lowered_for.code.find("for (const auto i = 0;") != std::string::npos);
     const auto invalid_flow = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller InvalidFlow { int choose() { "

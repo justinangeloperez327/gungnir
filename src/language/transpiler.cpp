@@ -247,6 +247,37 @@ TranspileResult Transpiler::transpile(
         );
     }
 
+    const auto lower_for_initializers = [&](const auto& self,
+                                             const std::vector<MethodStatement>& statements)
+        -> void {
+        for (const auto& statement : statements) {
+            if (statement.kind == StatementKind::loop_ && statement.name == "for" &&
+                !statement.for_parts.empty()) {
+                const auto& initializer = statement.for_parts.front();
+                if (initializer.span.end > initializer.span.begin) {
+                    const auto first = std::find_if(tokens.begin(), tokens.end(),
+                        [&](const Token& token) {
+                            return token.offset == initializer.span.begin &&
+                                   token.lexeme == "const";
+                        });
+                    if (first != tokens.end()) {
+                        edits.push_back(SourceEdit{first->offset,
+                                                   first->offset + first->lexeme.size(),
+                                                   "const auto"});
+                    }
+                }
+            }
+            self(self, statement.children);
+            self(self, statement.alternative);
+        }
+    };
+    for (const auto& node : parsed.program.nodes) {
+        if (const auto* method = std::get_if<FrameworkMethod>(&node))
+            lower_for_initializers(lower_for_initializers, method->body);
+        if (const auto* method = std::get_if<ControllerMethod>(&node))
+            lower_for_initializers(lower_for_initializers, method->body);
+    }
+
     edits.insert(
         edits.end(),
         std::make_move_iterator(model_lowering.edits.begin()),
