@@ -1198,6 +1198,15 @@ Project::assemble() const {
     const auto route_files = source_files(root_ / "routes");
     files.insert(files.end(), route_files.begin(), route_files.end());
     const auto index = index_sources(files);
+    std::vector<String> class_names;
+    class_names.reserve(index.types.size());
+    for (const auto& [name, kind] : index.types) {
+        (void) kind;
+        class_names.push_back(name);
+    }
+    std::sort(class_names.begin(), class_names.end());
+    for (const auto& name : class_names) output += "class " + name + ";\n";
+    if (!class_names.empty()) output += '\n';
 
     for (const auto& directory : source_directories) {
         for (const auto& path : source_files(directory)) {

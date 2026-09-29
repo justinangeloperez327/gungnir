@@ -114,6 +114,7 @@ int main() {
 
     const auto model =
         project.make_model("User");
+    const auto post = project.make_model("Zpost");
 
     const auto controller =
         project.make_controller(
@@ -134,6 +135,7 @@ int main() {
         model.filename() ==
         "user.gnr"
     );
+    assert(post.filename() == "zpost.gnr");
 
     assert(
         controller.filename() ==
@@ -155,6 +157,11 @@ int main() {
             "class User : Model"
         ) != std::string::npos
     );
+    {
+        std::ofstream output{model, std::ios::trunc};
+        output << "model User { string name; "
+                  "posts() { return hasMany<Zpost>(); } }\n";
+    }
 
     assert(
         read(controller).find(
@@ -192,6 +199,10 @@ int main() {
             "gungnir::Model<User>"
         ) != std::string::npos
     );
+    assert(source.find("class Zpost : public gungnir::Model<Zpost>") !=
+           std::string::npos);
+    assert(source.find("gungnir::HasMany<Zpost>") != std::string::npos);
+    assert(source.find("class Zpost;\n") < source.find("class User : public"));
 
     assert(
         source.find(
