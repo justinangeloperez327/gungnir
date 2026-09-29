@@ -74,6 +74,7 @@ private:
     std::vector<Token> tokens_;
     std::string source_name_;
     std::vector<std::unordered_set<std::string>> scopes_;
+    std::unordered_set<std::string> framework_names_;
     ParseResult result_;
 };
 

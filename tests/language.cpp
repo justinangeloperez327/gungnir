@@ -39,6 +39,16 @@ int main() {
     }
 
     assert(found_model_declaration);
+    const auto& model_declaration = std::get<gungnir::language::FrameworkDeclaration>(
+        parsed.program.nodes.front()
+    );
+    assert(model_declaration.span.begin == 0);
+    assert(model_declaration.span.end == std::string{"model User { string name; }"}.size());
+    assert(model_declaration.members.size() == 1);
+    const auto* name_field = std::get_if<gungnir::language::ModelField>(
+        &parsed.program.nodes[model_declaration.members.front()]
+    );
+    assert(name_field && name_field->name == "name");
 
     const auto framework_artifacts =
         gungnir::language::Parser{
@@ -304,6 +314,19 @@ int main() {
 
     assert(!invalid_model.diagnostics.empty());
     assert(invalid_model.diagnostics.front().code == "GNR1001");
+
+    const auto duplicate_declarations = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "model User { string name; }\n"
+            "controller User { Response index() {} }\n"
+        }.tokenize(),
+        "duplicate.gnr"
+    }.parse();
+    bool found_duplicate_declaration = false;
+    for (const auto& diagnostic : duplicate_declarations.diagnostics) {
+        found_duplicate_declaration |= diagnostic.code == "GNR1004";
+    }
+    assert(found_duplicate_declaration);
 
     gungnir::language::Transpiler transpiler;
 

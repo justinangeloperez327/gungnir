@@ -1298,7 +1298,7 @@ void Parser::parse_framework_members(
 
 void Parser::parse_framework_declaration(std::size_t index) {
     const auto kind = framework_kind(tokens_[index].lexeme);
-    if (!kind || !statement_start(index)) {
+    if (!kind || !statement_start(index) || scopes_.size() != 1) {
         return;
     }
 
@@ -1350,10 +1350,22 @@ void Parser::parse_framework_declaration(std::size_t index) {
         return;
     }
 
+    if (!framework_names_.insert(tokens_[*name].lexeme).second) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{source_name_, tokens_[*name].line,
+                           tokens_[*name].column},
+            "Duplicate framework declaration '" + tokens_[*name].lexeme + "'",
+            "GNR1004",
+            "Give each framework declaration a unique name."
+        });
+    }
+
     const auto after_body = next_significant(*body_close);
     const bool has_semicolon =
         after_body && tokens_[*after_body].lexeme == ";";
 
+    const auto declaration_index = result_.program.nodes.size();
     result_.program.nodes.push_back(FrameworkDeclaration{
         token_span(tokens_[index]),
         SourceSpan{
@@ -1373,15 +1385,26 @@ void Parser::parse_framework_declaration(std::size_t index) {
         },
         tokens_[*name].lexeme,
         *kind,
-        !has_semicolon
+        !has_semicolon,
+        SourceSpan{tokens_[index].offset,
+                   tokens_[*body_close].offset + tokens_[*body_close].lexeme.size(),
+                   tokens_[index].line, tokens_[index].column},
+        {}
     });
 
+    const auto members_begin = result_.program.nodes.size();
     parse_framework_members(
         tokens_[*name].lexeme,
         *kind,
         *body,
         *body_close
     );
+    auto& declaration = std::get<FrameworkDeclaration>(
+        result_.program.nodes[declaration_index]
+    );
+    for (auto member = members_begin; member < result_.program.nodes.size(); ++member) {
+        declaration.members.push_back(member);
+    }
 }
 
 void Parser::register_explicit_declaration(std::size_t index) {
@@ -1438,6 +1461,7 @@ void Parser::register_explicit_declaration(std::size_t index) {
 ParseResult Parser::parse() {
     scopes_.clear();
     scopes_.emplace_back();
+    framework_names_.clear();
     result_ = {};
 
     for (std::size_t index = 0; index < tokens_.size(); ++index) {

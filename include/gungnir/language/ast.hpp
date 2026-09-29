@@ -45,6 +45,9 @@ struct FrameworkDeclaration {
     std::string class_name;
     FrameworkBaseKind kind{FrameworkBaseKind::controller};
     bool needs_semicolon{false};
+    // Indices into Program::nodes, preserving the existing flat node API.
+    SourceSpan span;
+    std::vector<std::size_t> members;
 };
 
 struct FrameworkMethod {
