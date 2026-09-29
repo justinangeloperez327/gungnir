@@ -155,7 +155,11 @@ TranspileResult Transpiler::transpile(
     auto parsed = parser.parse();
 
     for (const auto& diagnostic : declaration_parse.diagnostics) {
-        if (diagnostic.code.starts_with("GNR1")) {
+        if (
+            diagnostic.code == "GNR1001" ||
+            diagnostic.code == "GNR1002" ||
+            diagnostic.code == "GNR1003"
+        ) {
             parsed.diagnostics.insert(
                 parsed.diagnostics.begin(),
                 diagnostic
@@ -168,11 +172,12 @@ TranspileResult Transpiler::transpile(
         bootstrap_lowerer.lower(source);
 
     ModelLowerer model_lowerer;
-    auto model_lowering = model_lowerer.lower(source, source_name);
+    auto model_lowering =
+        model_lowerer.lower(source, parsed.program, source_name);
 
     ControllerLowerer controller_lowerer;
     auto controller_lowering =
-        controller_lowerer.lower(source, source_name);
+        controller_lowerer.lower(source, parsed.program, source_name);
 
     AsyncLowerer async_lowerer;
     auto async_lowering =

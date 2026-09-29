@@ -536,6 +536,7 @@ void add_diagnostic(
 
 ModelLoweringResult ModelLowerer::lower(
     std::string_view source,
+    const Program& program,
     std::string source_name
 ) const {
     ModelLoweringResult result;
@@ -606,7 +607,68 @@ ModelLoweringResult ModelLowerer::lower(
             model.needs_semicolon = true;
         }
 
-        std::unordered_set<std::string> field_names;
+        for (const auto& node : program.nodes) {
+            if (
+                const auto* configuration =
+                    std::get_if<ModelConfiguration>(&node)
+            ) {
+                if (configuration->model_name != model.name) {
+                    continue;
+                }
+
+                switch (configuration->kind) {
+                case ModelConfigurationKind::table:
+                    model.table = configuration->value;
+                    break;
+                case ModelConfigurationKind::connection:
+                    model.connection = configuration->value;
+                    break;
+                case ModelConfigurationKind::timestamps:
+                    model.timestamps = configuration->enabled;
+                    break;
+                case ModelConfigurationKind::soft_deletes:
+                    model.soft_deletes = configuration->enabled;
+                    break;
+                }
+
+                result.edits.push_back(SourceEdit{
+                    configuration->span.begin,
+                    configuration->span.end,
+                    {}
+                });
+
+                continue;
+            }
+
+            const auto* field = std::get_if<ModelField>(&node);
+            if (!field || field->model_name != model.name) {
+                continue;
+            }
+
+            const auto scalar = cpp_scalar(field->type_name);
+            if (!scalar) {
+                continue;
+            }
+
+            model.fields.push_back(FieldInfo{
+                field->type_span,
+                field->name,
+                snake_case(field->name),
+                *scalar,
+                field->nullable,
+                field->primary_key,
+                std::nullopt
+            });
+
+            if (field->shorthand) {
+                result.edits.push_back(SourceEdit{
+                    field->type_span.begin,
+                    field->type_span.end,
+                    "gungnir::PrimaryKey<gungnir::Integer> id"
+                });
+            }
+        }
+
         std::size_t cursor = *body_open + 1;
         std::size_t nested_braces = 0;
 
@@ -635,171 +697,6 @@ ModelLoweringResult ModelLowerer::lower(
             if (nested_braces != 0) {
                 ++cursor;
                 continue;
-            }
-
-            // Model configuration: table, connection, timestamps, softDeletes.
-            if (
-                token.word() &&
-                (
-                    token.lexeme == "table" ||
-                    token.lexeme == "connection" ||
-                    token.lexeme == "timestamps" ||
-                    token.lexeme == "softDeletes"
-                )
-            ) {
-                const auto equals = next_significant(tokens, cursor);
-                const auto value = equals
-                    ? next_significant(tokens, *equals)
-                    : std::nullopt;
-                const auto semicolon = value
-                    ? next_significant(tokens, *value)
-                    : std::nullopt;
-
-                if (
-                    equals &&
-                    value &&
-                    semicolon &&
-                    tokens[*equals].lexeme == "=" &&
-                    tokens[*semicolon].lexeme == ";"
-                ) {
-                    if (
-                        token.lexeme == "table" ||
-                        token.lexeme == "connection"
-                    ) {
-                        if (tokens[*value].kind != TokenKind::string_literal) {
-                            add_diagnostic(
-                                result,
-                                source_name,
-                                tokens[*value],
-                                token.lexeme + " must be a string"
-                            );
-                        } else if (token.lexeme == "table") {
-                            model.table = unquote(tokens[*value].lexeme);
-                        } else {
-                            model.connection = unquote(tokens[*value].lexeme);
-                        }
-                    } else {
-                        const bool enabled = tokens[*value].lexeme == "true";
-                        const bool disabled = tokens[*value].lexeme == "false";
-
-                        if (!enabled && !disabled) {
-                            add_diagnostic(
-                                result,
-                                source_name,
-                                tokens[*value],
-                                token.lexeme + " must be true or false"
-                            );
-                        } else if (token.lexeme == "timestamps") {
-                            model.timestamps = enabled;
-                        } else {
-                            model.soft_deletes = enabled;
-                        }
-                    }
-
-                    result.edits.push_back(SourceEdit{
-                        token.offset,
-                        tokens[*semicolon].offset +
-                            tokens[*semicolon].lexeme.size(),
-                        {}
-                    });
-
-                    cursor = *semicolon + 1;
-                    continue;
-                }
-            }
-
-            // Conventional primary key shorthand.
-            if (token.lexeme == "id") {
-                const auto semicolon = next_significant(tokens, cursor);
-                if (semicolon && tokens[*semicolon].lexeme == ";") {
-                    if (field_names.contains("id")) {
-                        add_diagnostic(
-                            result,
-                            source_name,
-                            token,
-                            "Duplicate model field 'id'"
-                        );
-                    } else {
-                        field_names.insert("id");
-                        model.fields.push_back(FieldInfo{
-                            SourceSpan{
-                                token.offset,
-                                token.offset + token.lexeme.size(),
-                                token.line,
-                                token.column
-                            },
-                            "id",
-                            "id",
-                            "gungnir::Integer",
-                            false,
-                            true,
-                            std::nullopt
-                        });
-
-                        result.edits.push_back(SourceEdit{
-                            token.offset,
-                            token.offset + token.lexeme.size(),
-                            "gungnir::PrimaryKey<gungnir::Integer> id"
-                        });
-                    }
-
-                    cursor = *semicolon + 1;
-                    continue;
-                }
-            }
-
-            // Typed model field.
-            if (const auto scalar = cpp_scalar(token.lexeme)) {
-                auto next = next_significant(tokens, cursor);
-                bool nullable = false;
-                if (next && tokens[*next].lexeme == "?") {
-                    nullable = true;
-                    next = next_significant(tokens, *next);
-                }
-
-                if (next && tokens[*next].kind == TokenKind::identifier) {
-                    const auto field_name = tokens[*next].lexeme;
-                    const auto marker = next_significant(tokens, *next);
-
-                    if (
-                        marker &&
-                        (
-                            tokens[*marker].lexeme == ";" ||
-                            tokens[*marker].lexeme == "="
-                        )
-                    ) {
-                        if (field_names.contains(field_name)) {
-                            add_diagnostic(
-                                result,
-                                source_name,
-                                tokens[*next],
-                                "Duplicate model field '" + field_name + "'"
-                            );
-                        } else {
-                            field_names.insert(field_name);
-
-                            FieldInfo field{
-                                SourceSpan{
-                                    token.offset,
-                                    tokens[*next].offset,
-                                    token.line,
-                                    token.column
-                                },
-                                field_name,
-                                snake_case(field_name),
-                                *scalar,
-                                nullable,
-                                field_name == "id",
-                                std::nullopt
-                            };
-
-                            model.fields.push_back(std::move(field));
-                        }
-
-                        cursor = *next + 1;
-                        continue;
-                    }
-                }
             }
 
             // Relationship method:
