@@ -642,6 +642,24 @@ int main() {
              return_call, "return_call.gnr"))
         invalid_call_return |= diagnostic.code == "GNR1306";
     assert(invalid_call_return);
+    const auto scoped_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Scopes { "
+            "int shadow(int value) { if (true) { const value = \"inner\"; "
+            "const value = \"again\"; } return value; } "
+            "int duplicate(int value) { const value = 1; return value; } "
+            "int separate() { if (true) { const item = 1; } "
+            "if (true) { const item = 2; } return 1; } }"
+        }.tokenize(), "scopes.gnr"
+    }.parse().program;
+    unsigned duplicate_locals = 0;
+    bool invalid_shadow_return = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             scoped_program, "scopes.gnr")) {
+        duplicate_locals += diagnostic.code == "GNR1310";
+        invalid_shadow_return |= diagnostic.code == "GNR1306";
+    }
+    assert(duplicate_locals == 2 && !invalid_shadow_return);
     const auto helper_program = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Helper { int calculate(int n) { return n; } }"

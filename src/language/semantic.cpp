@@ -291,9 +291,11 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 return {};
             };
             std::function<void(const std::vector<MethodStatement>&,
-                               std::unordered_map<std::string, Type>&, unsigned)> check_body =
+                               std::unordered_map<std::string, Type>&, unsigned,
+                               std::unordered_set<std::string>)> check_body =
                 [&](const std::vector<MethodStatement>& statements,
-                    std::unordered_map<std::string, Type>& scope, unsigned loop_depth) {
+                    std::unordered_map<std::string, Type>& scope, unsigned loop_depth,
+                    std::unordered_set<std::string> declared_here) {
             for (const auto& statement : statements) {
                 if ((statement.kind == StatementKind::break_ ||
                      statement.kind == StatementKind::continue_) && loop_depth == 0) {
@@ -313,7 +315,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 }
                 if (statement.kind == StatementKind::binding &&
                     !statement.name.empty()) {
-                    if (scope.contains(statement.name)) {
+                    if (!declared_here.insert(statement.name).second) {
                         report(statement.span, "Duplicate local binding '" +
                                statement.name + "'", "GNR1310");
                     }
@@ -322,11 +324,11 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 if (!statement.children.empty()) {
                     auto nested = scope;
                     check_body(statement.children, nested,
-                               loop_depth + (statement.kind == StatementKind::loop_));
+                               loop_depth + (statement.kind == StatementKind::loop_), {});
                 }
                 if (!statement.alternative.empty()) {
                     auto nested = scope;
-                    check_body(statement.alternative, nested, loop_depth);
+                    check_body(statement.alternative, nested, loop_depth, {});
                 }
                 if (statement.kind != StatementKind::return_) continue;
                 if (return_type == "void") {
@@ -344,7 +346,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 }
             }
             };
-            check_body(*body, local_types, 0);
+            auto method_scope = local_types;
+            check_body(*body, method_scope, 0, parameter_names);
         }
     }
 
