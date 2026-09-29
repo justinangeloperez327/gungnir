@@ -40,6 +40,114 @@ int main() {
 
     assert(found_model_declaration);
 
+    const auto grammar_ast =
+        gungnir::language::Parser{
+            gungnir::language::Lexer{
+                "model Account {\n"
+                "    table = \"accounts\";\n"
+                "    connection = \"reporting\";\n"
+                "    timestamps = false;\n"
+                "    softDeletes = true;\n"
+                "    string email;\n"
+                "    string? nickname;\n"
+                "}\n"
+                "controller AccountController {\n"
+                "    inject Clock clock;\n"
+                "    Response index() { return text(\"ok\"); }\n"
+                "    async Response show(Request request) { return text(\"ok\"); }\n"
+                "}\n"
+            }.tokenize(),
+            "grammar_ast.gnr"
+        }.parse();
+
+    assert(grammar_ast.diagnostics.empty());
+
+    bool found_email_field = false;
+    bool found_nullable_field = false;
+    bool found_table_config = false;
+    bool found_timestamps_config = false;
+    bool found_inject = false;
+    bool found_sync_method = false;
+    bool found_async_method = false;
+
+    for (const auto& node : grammar_ast.program.nodes) {
+        if (
+            const auto* field =
+                std::get_if<gungnir::language::ModelField>(&node)
+        ) {
+            found_email_field = found_email_field ||
+                (
+                    field->model_name == "Account" &&
+                    field->type_name == "string" &&
+                    field->name == "email" &&
+                    !field->nullable
+                );
+            found_nullable_field = found_nullable_field ||
+                (
+                    field->model_name == "Account" &&
+                    field->name == "nickname" &&
+                    field->nullable
+                );
+        } else if (
+            const auto* configuration =
+                std::get_if<
+                    gungnir::language::ModelConfiguration
+                >(&node)
+        ) {
+            found_table_config = found_table_config ||
+                (
+                    configuration->model_name == "Account" &&
+                    configuration->kind ==
+                        gungnir::language::ModelConfigurationKind::table &&
+                    configuration->value == "accounts"
+                );
+            found_timestamps_config = found_timestamps_config ||
+                (
+                    configuration->model_name == "Account" &&
+                    configuration->kind ==
+                        gungnir::language::ModelConfigurationKind::timestamps &&
+                    !configuration->enabled
+                );
+        } else if (
+            const auto* injection =
+                std::get_if<
+                    gungnir::language::InjectDeclaration
+                >(&node)
+        ) {
+            found_inject =
+                injection->controller_name == "AccountController" &&
+                injection->type_name == "Clock" &&
+                injection->name == "clock";
+        } else if (
+            const auto* method =
+                std::get_if<
+                    gungnir::language::ControllerMethod
+                >(&node)
+        ) {
+            found_sync_method = found_sync_method ||
+                (
+                    method->controller_name == "AccountController" &&
+                    method->return_type == "Response" &&
+                    method->name == "index" &&
+                    !method->asynchronous
+                );
+            found_async_method = found_async_method ||
+                (
+                    method->controller_name == "AccountController" &&
+                    method->name == "show" &&
+                    method->asynchronous
+                );
+        }
+    }
+
+    assert(found_email_field);
+    assert(found_nullable_field);
+    assert(found_table_config);
+    assert(found_timestamps_config);
+    assert(found_inject);
+    assert(found_sync_method);
+    assert(found_async_method);
+
     const auto invalid_model =
         gungnir::language::Parser{
             gungnir::language::Lexer{

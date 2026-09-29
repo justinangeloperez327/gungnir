@@ -2,7 +2,6 @@
 
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -127,6 +126,7 @@ bool route_method(std::string_view name) {
 
 ControllerLoweringResult ControllerLowerer::lower(
     std::string_view source,
+    const Program& program,
     std::string source_name
 ) const {
     ControllerLoweringResult result;
@@ -194,84 +194,29 @@ ControllerLoweringResult ControllerLowerer::lower(
             controller.needs_semicolon = true;
         }
 
-        std::size_t depth = 0;
-        std::unordered_set<std::string> injected_names;
-
-        for (
-            std::size_t cursor = *body_open + 1;
-            cursor < *body_close;
-            ++cursor
-        ) {
-            const auto& token = tokens[cursor];
-
-            if (token.trivia()) {
-                continue;
-            }
-
-            if (token.lexeme == "{") {
-                ++depth;
-                continue;
-            }
-
-            if (token.lexeme == "}") {
-                if (depth > 0) {
-                    --depth;
-                }
-                continue;
-            }
-
-            if (depth != 0 || token.lexeme != "inject") {
-                continue;
-            }
-
-            const auto type = next_significant(tokens, cursor);
-            const auto field = type
-                ? next_significant(tokens, *type)
-                : std::nullopt;
-            const auto semicolon = field
-                ? next_significant(tokens, *field)
-                : std::nullopt;
+        for (const auto& node : program.nodes) {
+            const auto* declaration =
+                std::get_if<InjectDeclaration>(&node);
 
             if (
-                !type ||
-                !field ||
-                !semicolon ||
-                tokens[*type].kind != TokenKind::identifier ||
-                tokens[*field].kind != TokenKind::identifier ||
-                tokens[*semicolon].lexeme != ";"
+                !declaration ||
+                declaration->controller_name != controller.name
             ) {
-                add_error(
-                    result,
-                    source_name,
-                    token,
-                    "inject requires: inject Type name;"
-                );
-                continue;
-            }
-
-            if (!injected_names.insert(tokens[*field].lexeme).second) {
-                add_error(
-                    result,
-                    source_name,
-                    tokens[*field],
-                    "Duplicate injected dependency '" +
-                        tokens[*field].lexeme + "'"
-                );
                 continue;
             }
 
             controller.injections.push_back(Injection{
-                tokens[*type].lexeme,
-                tokens[*field].lexeme,
-                token.offset,
-                tokens[*field].offset + tokens[*field].lexeme.size()
+                declaration->type_name,
+                declaration->name,
+                declaration->span.begin,
+                declaration->span.end
             });
 
             result.edits.push_back(SourceEdit{
-                token.offset,
-                tokens[*field].offset + tokens[*field].lexeme.size(),
-                "std::shared_ptr<" + tokens[*type].lexeme + "> " +
-                    tokens[*field].lexeme
+                declaration->span.begin,
+                declaration->span.end,
+                "std::shared_ptr<" + declaration->type_name + "> " +
+                    declaration->name
             });
         }
 

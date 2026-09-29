@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include <gungnir/language/ast.hpp>
 #include <gungnir/language/diagnostic.hpp>
 #include <gungnir/language/model_lowering.hpp>
 
@@ -19,6 +20,7 @@ class ControllerLowerer {
 public:
     [[nodiscard]] ControllerLoweringResult lower(
         std::string_view source,
+        const Program& program,
         std::string source_name = "<memory>"
     ) const;
 };

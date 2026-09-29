@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -32,12 +33,34 @@ private:
         std::size_t index
     ) const;
 
+    [[nodiscard]] std::optional<std::size_t> matching_symbol(
+        std::size_t opening,
+        std::string_view open,
+        std::string_view close
+    ) const;
+
     [[nodiscard]] bool statement_start(std::size_t index) const;
     [[nodiscard]] bool declared(const std::string& name) const;
     [[nodiscard]] bool declared_here(const std::string& name) const;
 
     void declare(std::string name);
     void parse_framework_declaration(std::size_t index);
+    void parse_framework_members(
+        const std::string& class_name,
+        FrameworkBaseKind kind,
+        std::size_t body_open,
+        std::size_t body_close
+    );
+    void parse_model_members(
+        const std::string& class_name,
+        std::size_t body_open,
+        std::size_t body_close
+    );
+    void parse_controller_members(
+        const std::string& class_name,
+        std::size_t body_open,
+        std::size_t body_close
+    );
     void register_explicit_declaration(std::size_t index);
     void add_duplicate_diagnostic(const Token& token, const std::string& name);
 
