@@ -305,7 +305,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 const Type value = has_expression ? infer(statement.expression) : Type{};
                 if (statement.kind == StatementKind::conditional ||
                     statement.kind == StatementKind::loop_) {
-                    if (statement.name != "for" && value.known() &&
+                    if (value.known() &&
                         value.kind != TypeKind::boolean) {
                         report(statement.expression.span,
                                "Control-flow condition must be boolean", "GNR1311");

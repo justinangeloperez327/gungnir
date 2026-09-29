@@ -771,7 +771,8 @@ ModelLoweringResult ModelLowerer::lower(
     std::function<void(const std::vector<MethodStatement>&)> lower_body =
         [&](const std::vector<MethodStatement>& body) {
         for (const auto& statement : body) {
-            lower_expression(statement.expression);
+            if (statement.for_parts.empty()) lower_expression(statement.expression);
+            for (const auto& part : statement.for_parts) lower_expression(part);
             lower_body(statement.children);
             lower_body(statement.alternative);
         }

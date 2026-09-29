@@ -440,6 +440,21 @@ int main() {
     assert(choose.body[0].alternative[0].children.size() == 1);
     assert(gungnir::language::SemanticAnalyzer{}.analyze(
         control_program, "flow.gnr").empty());
+    const auto for_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Iteration { void run() { "
+            "for (const i = 0; true; i = i + 1) { break; } } }"
+        }.tokenize(), "for.gnr"
+    }.parse().program;
+    const auto& iteration = std::get<gungnir::language::FrameworkDeclaration>(
+        for_program.nodes.front());
+    const auto& run = std::get<gungnir::language::ControllerMethod>(
+        for_program.nodes[iteration.members.front()]);
+    assert(run.body.front().for_parts.size() == 3);
+    assert(run.body.front().for_parts[1].kind ==
+           gungnir::language::ExpressionKind::literal);
+    assert(gungnir::language::SemanticAnalyzer{}.analyze(
+        for_program, "for.gnr").empty());
     const auto invalid_flow = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller InvalidFlow { int choose() { "

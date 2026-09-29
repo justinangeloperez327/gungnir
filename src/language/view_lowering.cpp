@@ -325,7 +325,8 @@ ViewLoweringResult ViewLowerer::lower(
     std::function<void(const std::vector<MethodStatement>&)> lower_statements =
         [&](const std::vector<MethodStatement>& statements) {
         for (const auto& statement : statements) {
-            lower_expression(statement.expression);
+            if (statement.for_parts.empty()) lower_expression(statement.expression);
+            for (const auto& part : statement.for_parts) lower_expression(part);
             lower_statements(statement.children);
             lower_statements(statement.alternative);
         }

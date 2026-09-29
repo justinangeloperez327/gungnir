@@ -550,8 +550,34 @@ std::vector<MethodStatement> Parser::parse_method_body(
                     const auto close = matching_symbol(*open, "(", ")");
                     const auto first = next_significant(*open);
                     const auto last = close ? previous_significant(*close) : std::nullopt;
-                    if (close && first && last && *first < *close && *last >= *first)
-                        statement.expression = parse_expression(*first, *last);
+                    if (close && first && last && *first < *close && *last >= *first) {
+                        if (control == "for") {
+                            auto part_start = *first;
+                            std::size_t depth = 0;
+                            for (auto at = *first; at <= *last; ++at) {
+                                if (tokens_[at].trivia()) continue;
+                                const auto& symbol = tokens_[at].lexeme;
+                                if (symbol == "(" || symbol == "[" || symbol == "{") ++depth;
+                                else if ((symbol == ")" || symbol == "]" ||
+                                          symbol == "}") && depth > 0) --depth;
+                                if (symbol != ";" || depth != 0) continue;
+                                const auto end = previous_significant(at);
+                                statement.for_parts.push_back(
+                                    end && *end >= part_start &&
+                                        tokens_[part_start].lexeme != ";"
+                                        ? parse_expression(part_start, *end) : Expression{});
+                                const auto next = next_significant(at);
+                                part_start = next ? *next : *close;
+                            }
+                            statement.for_parts.push_back(
+                                part_start < *close
+                                    ? parse_expression(part_start, *last) : Expression{});
+                            if (statement.for_parts.size() == 3)
+                                statement.expression = statement.for_parts[1];
+                        } else {
+                            statement.expression = parse_expression(*first, *last);
+                        }
+                    }
                 }
             }
             if (conditional) {

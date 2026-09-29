@@ -75,6 +75,8 @@ struct MethodStatement {
     std::string name;
     std::vector<MethodStatement> children;
     std::vector<MethodStatement> alternative;
+    // For a for-loop: initializer, condition, and update (empty parts omitted).
+    std::vector<Expression> for_parts;
 };
 
 struct FrameworkDeclaration {

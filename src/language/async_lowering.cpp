@@ -209,7 +209,8 @@ AsyncLoweringResult AsyncLowerer::lower(
                     statement.span.begin, statement.span.begin + 6, "co_return"
                 });
             }
-            lower_expression(statement.expression);
+            if (statement.for_parts.empty()) lower_expression(statement.expression);
+            for (const auto& part : statement.for_parts) lower_expression(part);
             lower_body(statement.children);
             lower_body(statement.alternative);
         }
