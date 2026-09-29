@@ -639,7 +639,7 @@ ModelLoweringResult ModelLowerer::lower(
 
             // Model configuration: table, connection, timestamps, softDeletes.
             if (
-                token.kind == TokenKind::identifier &&
+                token.word() &&
                 (
                     token.lexeme == "table" ||
                     token.lexeme == "connection" ||

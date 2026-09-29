@@ -7,6 +7,7 @@ namespace gungnir::language {
 
 enum class TokenKind {
     identifier,
+    keyword,
     number,
     string_literal,
     character_literal,
@@ -25,6 +26,10 @@ struct Token {
 
     [[nodiscard]] bool trivia() const noexcept {
         return kind == TokenKind::whitespace || kind == TokenKind::comment;
+    }
+
+    [[nodiscard]] bool word() const noexcept {
+        return kind == TokenKind::identifier || kind == TokenKind::keyword;
     }
 };
 

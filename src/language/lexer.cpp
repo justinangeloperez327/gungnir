@@ -2,8 +2,38 @@
 
 #include <cctype>
 #include <string>
+#include <string_view>
 
 namespace gungnir::language {
+
+namespace {
+
+bool keyword(std::string_view value) {
+    return
+        value == "async" ||
+        value == "await" ||
+        value == "bool" ||
+        value == "boolean" ||
+        value == "connection" ||
+        value == "controller" ||
+        value == "double" ||
+        value == "float" ||
+        value == "inject" ||
+        value == "int" ||
+        value == "int64" ||
+        value == "integer" ||
+        value == "middleware" ||
+        value == "migration" ||
+        value == "model" ||
+        value == "softDeletes" ||
+        value == "string" ||
+        value == "table" ||
+        value == "timestamps" ||
+        value == "uint64" ||
+        value == "validation";
+}
+
+} // namespace
 
 Lexer::Lexer(std::string_view source) noexcept : source_(source) {}
 
@@ -189,7 +219,13 @@ std::vector<Token> Lexer::tokenize() const {
                 advance();
             }
 
-            emit(TokenKind::identifier, start, start_line, start_column);
+            const auto lexeme = source_.substr(start, index - start);
+            emit(
+                keyword(lexeme) ? TokenKind::keyword : TokenKind::identifier,
+                start,
+                start_line,
+                start_column
+            );
             continue;
         }
 

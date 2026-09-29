@@ -4,6 +4,49 @@
 
 namespace gungnir::language {
 
+namespace {
+
+std::optional<FrameworkBaseKind> framework_kind(
+    const std::string& lexeme
+) {
+    if (lexeme == "model") {
+        return FrameworkBaseKind::model;
+    }
+
+    if (lexeme == "controller") {
+        return FrameworkBaseKind::controller;
+    }
+
+    if (lexeme == "migration") {
+        return FrameworkBaseKind::migration;
+    }
+
+    if (lexeme == "middleware") {
+        return FrameworkBaseKind::middleware;
+    }
+
+    return std::nullopt;
+}
+
+std::string declaration_name(
+    FrameworkBaseKind kind
+) {
+    switch (kind) {
+    case FrameworkBaseKind::model:
+        return "Model";
+    case FrameworkBaseKind::controller:
+        return "Controller";
+    case FrameworkBaseKind::migration:
+        return "Migration";
+    case FrameworkBaseKind::middleware:
+        return "Middleware";
+    }
+
+    return "Framework";
+}
+
+} // namespace
+
 Parser::Parser(std::vector<Token> tokens, std::string source_name)
     : tokens_(std::move(tokens)),
       source_name_(std::move(source_name)) {}
@@ -81,6 +124,62 @@ void Parser::add_duplicate_diagnostic(
     });
 }
 
+void Parser::parse_framework_declaration(std::size_t index) {
+    const auto kind = framework_kind(tokens_[index].lexeme);
+    if (!kind || !statement_start(index)) {
+        return;
+    }
+
+    const auto name = next_significant(index);
+    if (!name || tokens_[*name].kind != TokenKind::identifier) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[index].line,
+                tokens_[index].column
+            },
+            declaration_name(*kind) + " declaration requires a name",
+            "GNR1001",
+            "Use syntax like '" + tokens_[index].lexeme + " User { }'."
+        });
+        return;
+    }
+
+    const auto body = next_significant(*name);
+    if (!body || tokens_[*body].lexeme != "{") {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[*name].line,
+                tokens_[*name].column
+            },
+            declaration_name(*kind) + " declaration requires a body",
+            "GNR1002",
+            "Add a '{ ... }' body after the declaration name."
+        });
+        return;
+    }
+
+    result_.program.nodes.push_back(FrameworkDeclaration{
+        SourceSpan{
+            tokens_[index].offset,
+            tokens_[index].offset + tokens_[index].lexeme.size(),
+            tokens_[index].line,
+            tokens_[index].column
+        },
+        SourceSpan{
+            tokens_[*name].offset + tokens_[*name].lexeme.size(),
+            tokens_[*name].offset + tokens_[*name].lexeme.size(),
+            tokens_[*name].line,
+            tokens_[*name].column + tokens_[*name].lexeme.size()
+        },
+        tokens_[*name].lexeme,
+        *kind
+    });
+}
+
 void Parser::register_explicit_declaration(std::size_t index) {
     if (!statement_start(index)) {
         return;
@@ -155,6 +254,8 @@ ParseResult Parser::parse() {
             }
             continue;
         }
+
+        parse_framework_declaration(index);
 
         if (token.lexeme == "class") {
             const auto class_name = next_significant(index);

@@ -167,7 +167,7 @@ AsyncLoweringResult AsyncLowerer::lower(
 
     for (std::size_t index = 0; index < tokens.size(); ++index) {
         if (
-            tokens[index].kind != TokenKind::identifier ||
+            !tokens[index].word() ||
             tokens[index].lexeme != "async"
         ) {
             continue;
@@ -278,9 +278,7 @@ AsyncLoweringResult AsyncLowerer::lower(
             cursor < *body_close;
             ++cursor
         ) {
-            if (
-                tokens[cursor].kind != TokenKind::identifier
-            ) {
+            if (!tokens[cursor].word()) {
                 continue;
             }
 
@@ -371,7 +369,7 @@ AsyncLoweringResult AsyncLowerer::lower(
     // await outside an async function is a language error.
     for (std::size_t index = 0; index < tokens.size(); ++index) {
         if (
-            tokens[index].kind == TokenKind::identifier &&
+            tokens[index].word() &&
             tokens[index].lexeme == "await" &&
             !containing_async_function(index, functions)
         ) {
