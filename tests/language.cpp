@@ -660,6 +660,21 @@ int main() {
         invalid_shadow_return |= diagnostic.code == "GNR1306";
     }
     assert(duplicate_locals == 2 && !invalid_shadow_return);
+    const auto return_paths = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Paths { "
+            "int missing(bool flag) { if (flag) { return 1; } } "
+            "int complete(bool flag) { if (flag) { return 1; } "
+            "else { return 2; } } "
+            "int trailing(bool flag) { if (flag) { return 1; } return 2; } "
+            "int loop(bool flag) { while (flag) { return 1; } } }"
+        }.tokenize(), "paths.gnr"
+    }.parse().program;
+    unsigned missing_paths = 0;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             return_paths, "paths.gnr"))
+        missing_paths += diagnostic.code == "GNR1319";
+    assert(missing_paths == 2);
     const auto helper_program = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Helper { int calculate(int n) { return n; } }"

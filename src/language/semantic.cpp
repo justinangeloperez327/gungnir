@@ -348,6 +348,35 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             };
             auto method_scope = local_types;
             check_body(*body, method_scope, 0, parameter_names);
+            // A loop may never run; only an unconditional return or both
+            // branches of a conditional guarantee a returned value.
+            std::function<bool(const std::vector<MethodStatement>&)> returns_on_all_paths =
+                [&](const std::vector<MethodStatement>& statements) {
+                    for (const auto& statement : statements) {
+                        if (statement.kind == StatementKind::return_) return true;
+                        if (statement.kind == StatementKind::block &&
+                            returns_on_all_paths(statement.children)) return true;
+                        if (statement.kind == StatementKind::conditional &&
+                            !statement.alternative.empty() &&
+                            returns_on_all_paths(statement.children) &&
+                            returns_on_all_paths(statement.alternative)) return true;
+                    }
+                    return false;
+                };
+            std::function<bool(const std::vector<MethodStatement>&)> contains_return =
+                [&](const std::vector<MethodStatement>& statements) {
+                    for (const auto& statement : statements) {
+                        if (statement.kind == StatementKind::return_ ||
+                            contains_return(statement.children) ||
+                            contains_return(statement.alternative)) return true;
+                    }
+                    return false;
+                };
+            if (return_type != "void" && contains_return(*body) &&
+                !returns_on_all_paths(*body)) {
+                report(span, "Non-void method may finish without returning a value",
+                       "GNR1319");
+            }
         }
     }
 
