@@ -16,6 +16,14 @@ keywords. The parser builds declaration AST nodes for first-class framework
 declarations before the compatibility lowering path rewrites them into ordinary
 C++ class declarations.
 
+Group 55 extends that frontend with parser-owned member nodes for model fields,
+model configuration, controller methods, and injected dependencies. Model field
+and configuration lowering now consumes `ModelField` and `ModelConfiguration`
+nodes, while controller dependency lowering consumes `InjectDeclaration` nodes.
+Relationship, route, and async lowering deliberately remain on the existing
+token-aware compatibility passes until their ownership and coroutine semantics
+can move into the frontend without making generated C++ less inspectable.
+
 ## Tooling
 
 `gungnirc --check file.gnr` performs language validation.
@@ -26,7 +34,8 @@ Diagnostics can carry stable codes and hints and are rendered with source locati
 
 Framework declaration diagnostics use stable `GNR1xxx` codes. For example,
 `GNR1001` reports a missing declaration name and `GNR1002` reports a missing
-declaration body.
+declaration body. Model member diagnostics use `GNR11xx`, and controller injection
+diagnostics use `GNR12xx`.
 
 The LanguageServer service exposes compiler diagnostics and framework hover information as a foundation for a full JSON-RPC Language Server Protocol transport.
 
