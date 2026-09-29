@@ -14,7 +14,7 @@ gungnir::Task<gungnir::Response> load_response() {
     co_return gungnir::Response::text("async");
 }
 
-class AsyncController : Controller
+controller AsyncController
 {
     async Response index()
     {
