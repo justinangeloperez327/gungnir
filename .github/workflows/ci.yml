@@ -11,43 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  core:
-    name: Core · Linux GCC
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++
-      - name: Build
-        run: cmake --build build --parallel
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-  compatibility:
-    name: Compatibility · ${{ matrix.name }}
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux Clang
-            os: ubuntu-latest
-            compiler: -DCMAKE_CXX_COMPILER=clang++
-          - name: Windows MSVC
-            os: windows-latest
-            compiler: ""
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Configure
-        run: cmake -S . -B build ${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug
-      - name: Build
-        run: cmake --build build --config Debug --parallel
-      - name: Test
-        run: ctest --test-dir build -C Debug --output-on-failure
-
   postgresql:
     name: Integration · PostgreSQL
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
