@@ -697,6 +697,19 @@ int main() {
              return_paths, "paths.gnr"))
         missing_paths += diagnostic.code == "GNR1319";
     assert(missing_paths == 2);
+    const auto constant_assignments = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Constants { void run(int mutableValue) { "
+            "const value = 1; value = 2; "
+            "if (true) { value = 3; const inner = 1; inner = 2; } "
+            "mutableValue = 4; } }"
+        }.tokenize(), "constants.gnr"
+    }.parse().program;
+    unsigned immutable_assignments = 0;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             constant_assignments, "constants.gnr"))
+        immutable_assignments += diagnostic.code == "GNR1320";
+    assert(immutable_assignments == 3);
     const auto helper_program = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Helper { int calculate(int n) { return n; } }"

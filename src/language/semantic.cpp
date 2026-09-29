@@ -196,6 +196,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 );
             }
             TypeSystem type_system;
+            std::unordered_set<std::string> immutable_names;
             std::function<Type(const Expression&)> infer =
                 [&](const Expression& expression) -> Type {
                 if (expression.kind == ExpressionKind::literal)
@@ -260,6 +261,11 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     const auto rhs = infer(expression.arguments[1]);
                     const auto& op = expression.text;
                     if (op == "=") {
+                        if (expression.arguments[0].kind == ExpressionKind::name &&
+                            immutable_names.contains(expression.arguments[0].text)) {
+                            report(expression.span, "Cannot assign to constant '" +
+                                   expression.arguments[0].text + "'", "GNR1320");
+                        }
                         if (lhs.known() && rhs.known() &&
                             !type_system.assignable(lhs, rhs))
                             report(expression.span, "Assignment type mismatch", "GNR1316");
@@ -305,16 +311,19 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             };
             std::function<void(const std::vector<MethodStatement>&,
                                std::unordered_map<std::string, Type>&, unsigned,
+                               std::unordered_set<std::string>,
                                std::unordered_set<std::string>)> check_body =
                 [&](const std::vector<MethodStatement>& statements,
                     std::unordered_map<std::string, Type>& scope, unsigned loop_depth,
-                    std::unordered_set<std::string> declared_here) {
+                    std::unordered_set<std::string> declared_here,
+                    std::unordered_set<std::string> constants) {
             for (const auto& statement : statements) {
                 if ((statement.kind == StatementKind::break_ ||
                      statement.kind == StatementKind::continue_) && loop_depth == 0) {
                     report(statement.span, "Loop control outside a loop", "GNR1313");
                 }
                 local_types = scope;
+                immutable_names = constants;
                 const bool has_expression = statement.expression.span.end >
                                             statement.expression.span.begin;
                 const Type value = has_expression ? infer(statement.expression) : Type{};
@@ -333,15 +342,17 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                                statement.name + "'", "GNR1310");
                     }
                     scope.insert_or_assign(statement.name, value);
+                    constants.insert(statement.name);
                 }
                 if (!statement.children.empty()) {
                     auto nested = scope;
                     check_body(statement.children, nested,
-                               loop_depth + (statement.kind == StatementKind::loop_), {});
+                               loop_depth + (statement.kind == StatementKind::loop_),
+                               {}, constants);
                 }
                 if (!statement.alternative.empty()) {
                     auto nested = scope;
-                    check_body(statement.alternative, nested, loop_depth, {});
+                    check_body(statement.alternative, nested, loop_depth, {}, constants);
                 }
                 if (statement.kind != StatementKind::return_) continue;
                 if (return_type == "void") {
@@ -360,7 +371,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             }
             };
             auto method_scope = local_types;
-            check_body(*body, method_scope, 0, parameter_names);
+            check_body(*body, method_scope, 0, parameter_names, {});
             // A loop may never run; only an unconditional return or both
             // branches of a conditional guarantee a returned value.
             std::function<bool(const std::vector<MethodStatement>&)> returns_on_all_paths =
