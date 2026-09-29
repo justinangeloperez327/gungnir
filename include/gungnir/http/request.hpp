@@ -10,6 +10,7 @@
 #include <gungnir/core/cancellation.hpp>
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/method.hpp>
+#include <gungnir/http/request_stream.hpp>
 #include <gungnir/validation/rules.hpp>
 #include <gungnir/validation/result.hpp>
 
@@ -52,6 +53,12 @@ public:
     [[nodiscard]] std::string_view target() const noexcept;
     [[nodiscard]] std::string_view path() const noexcept;
     [[nodiscard]] std::string_view body() const noexcept;
+
+    [[nodiscard]]
+    std::shared_ptr<RequestBodyStream>
+    body_stream()
+        const noexcept;
+
     [[nodiscard]] bool cancelled() const noexcept;
     [[nodiscard]] bool secure() const noexcept;
     [[nodiscard]] CancellationToken cancellation() const noexcept;
@@ -147,6 +154,8 @@ private:
     std::string target_;
     std::string path_;
     std::string body_;
+    std::shared_ptr<RequestBodyStream>
+        body_stream_;
     std::string client_ip_;
     CancellationToken cancellation_;
     bool secure_{false};

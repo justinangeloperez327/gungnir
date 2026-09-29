@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -116,8 +117,10 @@ public:
     };
 
     struct ResponseBody {
-        std::string body;
+        std::deque<std::string>
+            chunks;
         std::size_t offset{0};
+        bool eof{false};
     };
 
     Impl(
@@ -654,8 +657,23 @@ public:
             return 0;
         }
 
+        if (body->chunks.empty()) {
+            if (body->eof) {
+                *data_flags |=
+                    NGHTTP2_DATA_FLAG_EOF;
+
+                return 0;
+            }
+
+            return
+                NGHTTP2_ERR_DEFERRED;
+        }
+
+        auto& chunk =
+            body->chunks.front();
+
         const auto remaining =
-            body->body.size() -
+            chunk.size() -
             body->offset;
 
         const auto count =
@@ -667,7 +685,7 @@ public:
         if (count != 0) {
             std::memcpy(
                 buffer,
-                body->body.data() +
+                chunk.data() +
                     body->offset,
                 count
             );
@@ -677,7 +695,15 @@ public:
 
         if (
             body->offset >=
-            body->body.size()
+            chunk.size()
+        ) {
+            body->chunks.pop_front();
+            body->offset = 0;
+        }
+
+        if (
+            body->eof &&
+            body->chunks.empty()
         ) {
             *data_flags |=
                 NGHTTP2_DATA_FLAG_EOF;
@@ -837,13 +863,20 @@ void Http2Session::submit_response(
     Response effective =
         response;
 
-    if (
-        effective.streaming() ||
-        effective.websocket_upgrade()
-    ) {
+    if (effective.streaming()) {
+        submit_stream_response(
+            stream_id,
+            effective,
+            omit_body
+        );
+
+        return;
+    }
+
+    if (effective.websocket_upgrade()) {
         effective =
             Response::text(
-                "HTTP/2 response mode is not supported for this route",
+                "HTTP/2 WebSocket extended CONNECT is not enabled for this route",
                 501
             );
     }
@@ -947,10 +980,13 @@ void Http2Session::submit_response(
                 Impl::ResponseBody
             >();
 
-        body->body =
+        body->chunks.push_back(
             std::string{
                 effective.body()
-            };
+            }
+        );
+
+        body->eof = true;
 
         provider.source.ptr =
             body.get();
@@ -985,6 +1021,222 @@ void Http2Session::submit_response(
         throw std::runtime_error(
             std::string{
                 "Unable to submit HTTP/2 response: "
+            } +
+            nghttp2_strerror(status)
+        );
+    }
+}
+
+void Http2Session::submit_stream_response(
+    std::int32_t stream_id,
+    const Response& response,
+    bool omit_body
+) {
+    std::vector<std::string>
+        names;
+
+    std::vector<std::string>
+        values;
+
+    names.reserve(
+        response.headers().size() +
+        response.cookies().size() +
+        1
+    );
+
+    values.reserve(
+        names.capacity()
+    );
+
+    names.push_back(
+        ":status"
+    );
+
+    values.push_back(
+        std::to_string(
+            response.status()
+        )
+    );
+
+    for (
+        const auto& [name, value] :
+        response.headers()
+    ) {
+        if (
+            connection_specific(name) ||
+            name == "content-length" ||
+            name == "transfer-encoding"
+        ) {
+            continue;
+        }
+
+        names.push_back(name);
+        values.push_back(value);
+    }
+
+    for (
+        const auto& cookie :
+        response.cookies()
+    ) {
+        names.push_back(
+            "set-cookie"
+        );
+
+        values.push_back(
+            serialize_cookie(cookie)
+        );
+    }
+
+    std::vector<nghttp2_nv>
+        headers;
+
+    headers.reserve(
+        names.size()
+    );
+
+    for (
+        std::size_t index = 0;
+        index < names.size();
+        ++index
+    ) {
+        headers.push_back(
+            Impl::nv(
+                names[index],
+                values[index]
+            )
+        );
+    }
+
+    nghttp2_data_provider
+        provider{};
+
+    nghttp2_data_provider*
+        provider_ptr = nullptr;
+
+    if (!omit_body) {
+        auto body =
+            std::make_unique<
+                Impl::ResponseBody
+            >();
+
+        provider.source.ptr =
+            body.get();
+
+        provider.read_callback =
+            &Impl::read_response_body;
+
+        impl_->response_bodies
+            .insert_or_assign(
+                stream_id,
+                std::move(body)
+            );
+
+        provider_ptr =
+            &provider;
+    }
+
+    const auto status =
+        nghttp2_submit_response(
+            impl_->session.get(),
+            stream_id,
+            headers.data(),
+            headers.size(),
+            provider_ptr
+        );
+
+    if (status != 0) {
+        impl_->response_bodies.erase(
+            stream_id
+        );
+
+        throw std::runtime_error(
+            std::string{
+                "Unable to submit HTTP/2 streaming response: "
+            } +
+            nghttp2_strerror(status)
+        );
+    }
+}
+
+void Http2Session::push_stream_chunk(
+    std::int32_t stream_id,
+    std::string chunk
+) {
+    if (chunk.empty()) {
+        return;
+    }
+
+    const auto found =
+        impl_->response_bodies.find(
+            stream_id
+        );
+
+    if (
+        found ==
+        impl_->response_bodies.end()
+    ) {
+        throw std::logic_error(
+            "HTTP/2 stream response body is not active"
+        );
+    }
+
+    found->second
+        ->chunks
+        .push_back(
+            std::move(chunk)
+        );
+
+    const auto status =
+        nghttp2_session_resume_data(
+            impl_->session.get(),
+            stream_id
+        );
+
+    if (
+        status != 0 &&
+        status !=
+            NGHTTP2_ERR_INVALID_ARGUMENT
+    ) {
+        throw std::runtime_error(
+            std::string{
+                "Unable to resume HTTP/2 response DATA: "
+            } +
+            nghttp2_strerror(status)
+        );
+    }
+}
+
+void Http2Session::finish_stream(
+    std::int32_t stream_id
+) {
+    const auto found =
+        impl_->response_bodies.find(
+            stream_id
+        );
+
+    if (
+        found ==
+        impl_->response_bodies.end()
+    ) {
+        return;
+    }
+
+    found->second->eof = true;
+
+    const auto status =
+        nghttp2_session_resume_data(
+            impl_->session.get(),
+            stream_id
+        );
+
+    if (
+        status != 0 &&
+        status !=
+            NGHTTP2_ERR_INVALID_ARGUMENT
+    ) {
+        throw std::runtime_error(
+            std::string{
+                "Unable to finish HTTP/2 response DATA: "
             } +
             nghttp2_strerror(status)
         );

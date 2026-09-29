@@ -41,6 +41,41 @@ std::size_t checked_pool_size(
     );
 }
 
+std::chrono::milliseconds
+checked_milliseconds(
+    Int64 value,
+    std::string_view key
+) {
+    if (value <= 0) {
+        throw std::out_of_range(
+            String{key} +
+            " must be greater than zero"
+        );
+    }
+
+    return
+        std::chrono::milliseconds{
+            value
+        };
+}
+
+std::size_t checked_nonnegative(
+    Int64 value,
+    std::string_view key
+) {
+    if (value < 0) {
+        throw std::out_of_range(
+            String{key} +
+            " must not be negative"
+        );
+    }
+
+    return
+        static_cast<std::size_t>(
+            value
+        );
+}
+
 std::uint16_t checked_port(
     Int64 value
 ) {
@@ -181,6 +216,33 @@ Settings settings_from(
                 "database.pool_size",
                 1
             )
+        );
+
+    settings.pool_acquire_timeout =
+        checked_milliseconds(
+            config.integer(
+                "database.pool_acquire_timeout_ms",
+                5000
+            ),
+            "database.pool_acquire_timeout_ms"
+        );
+
+    settings.pool_validation_interval =
+        checked_milliseconds(
+            config.integer(
+                "database.pool_validation_interval_ms",
+                30000
+            ),
+            "database.pool_validation_interval_ms"
+        );
+
+    settings.pool_reconnect_attempts =
+        checked_nonnegative(
+            config.integer(
+                "database.pool_reconnect_attempts",
+                1
+            ),
+            "database.pool_reconnect_attempts"
         );
 
     settings.port =

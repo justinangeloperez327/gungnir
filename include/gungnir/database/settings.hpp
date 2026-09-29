@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -19,6 +20,15 @@ struct Settings {
     String username;
     String password;
     std::size_t pool_size{1};
+    std::chrono::milliseconds
+        pool_acquire_timeout{
+            std::chrono::seconds{5}
+        };
+    std::chrono::milliseconds
+        pool_validation_interval{
+            std::chrono::seconds{30}
+        };
+    std::size_t pool_reconnect_attempts{1};
     String options;
 };
 

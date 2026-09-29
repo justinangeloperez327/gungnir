@@ -453,6 +453,144 @@ void Connection::rollback() {
     driver_->rollback();
 }
 
+TransactionToken
+Connection::begin_scope() {
+    std::lock_guard lock{
+        mutex_
+    };
+
+    if (transaction_depth_ == 0) {
+        driver_->begin();
+        transaction_depth_ = 1;
+
+        return {
+            .root = true,
+            .savepoint = {}
+        };
+    }
+
+    if (!supports_savepoints()) {
+        throw std::logic_error(
+            "Nested database transactions require savepoint support"
+        );
+    }
+
+    auto savepoint =
+        next_savepoint_name();
+
+    switch (backend()) {
+    case Backend::mssql:
+        driver_->execute(
+            "SAVE TRANSACTION " +
+            savepoint
+        );
+        break;
+
+    case Backend::postgresql:
+    case Backend::mysql:
+        driver_->execute(
+            "SAVEPOINT " +
+            savepoint
+        );
+        break;
+
+    case Backend::mongodb:
+        throw std::logic_error(
+            "MongoDB nested transactions use session semantics rather than SQL savepoints"
+        );
+    }
+
+    ++transaction_depth_;
+
+    return {
+        .root = false,
+        .savepoint =
+            std::move(savepoint)
+    };
+}
+
+void Connection::commit_scope(
+    const TransactionToken& token
+) {
+    std::lock_guard lock{
+        mutex_
+    };
+
+    if (transaction_depth_ == 0) {
+        return;
+    }
+
+    if (token.root) {
+        driver_->commit();
+        transaction_depth_ = 0;
+        return;
+    }
+
+    if (
+        backend() ==
+            Backend::postgresql ||
+        backend() ==
+            Backend::mysql
+    ) {
+        driver_->execute(
+            "RELEASE SAVEPOINT " +
+            token.savepoint
+        );
+    }
+
+    --transaction_depth_;
+}
+
+void Connection::rollback_scope(
+    const TransactionToken& token
+) {
+    std::lock_guard lock{
+        mutex_
+    };
+
+    if (transaction_depth_ == 0) {
+        return;
+    }
+
+    if (token.root) {
+        driver_->rollback();
+        transaction_depth_ = 0;
+        return;
+    }
+
+    switch (backend()) {
+    case Backend::mssql:
+        driver_->execute(
+            "ROLLBACK TRANSACTION " +
+            token.savepoint
+        );
+        break;
+
+    case Backend::postgresql:
+    case Backend::mysql:
+        driver_->execute(
+            "ROLLBACK TO SAVEPOINT " +
+            token.savepoint
+        );
+        break;
+
+    case Backend::mongodb:
+        break;
+    }
+
+    --transaction_depth_;
+}
+
+String Connection::next_savepoint_name() {
+    ++savepoint_sequence_;
+
+    return
+        "gungnir_sp_" +
+        std::to_string(
+            savepoint_sequence_
+        );
+}
+
 bool Connection::healthy() {
     std::lock_guard lock{mutex_};
     return driver_->ping();

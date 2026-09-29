@@ -12,39 +12,79 @@ std::atomic<Manager*> active_manager{
     nullptr
 };
 
-thread_local std::shared_ptr<
-    Connection
-> scoped_connection;
+thread_local ConnectionHandle
+    current_connection;
 
 } // namespace
 
 namespace detail {
 
 ConnectionScope::ConnectionScope(
-    std::shared_ptr<Connection> connection
-)
+    ConnectionHandle connection
+) noexcept
     : previous_(
         std::move(
-            scoped_connection
+            current_connection
         )
-      ) {
-    if (!connection) {
-        throw std::invalid_argument(
-            "Database connection scope requires a connection"
-        );
+      ),
+      active_(true) {
+    current_connection =
+        std::move(connection);
+}
+
+ConnectionScope::ConnectionScope(
+    ConnectionScope&& other
+) noexcept
+    : previous_(
+        std::move(
+            other.previous_
+        )
+      ),
+      active_(
+        std::exchange(
+            other.active_,
+            false
+        )
+      ) {}
+
+ConnectionScope&
+ConnectionScope::operator=(
+    ConnectionScope&& other
+) noexcept {
+    if (this == &other) {
+        return *this;
     }
 
-    scoped_connection =
+    reset();
+
+    previous_ =
         std::move(
-            connection
+            other.previous_
         );
+
+    active_ =
+        std::exchange(
+            other.active_,
+            false
+        );
+
+    return *this;
 }
 
 ConnectionScope::~ConnectionScope() {
-    scoped_connection =
-        std::move(
-            previous_
-        );
+    reset();
+}
+
+void ConnectionScope::reset()
+    noexcept {
+    if (!active_) {
+        return;
+    }
+
+    current_connection =
+        std::move(previous_);
+
+    active_ = false;
 }
 
 } // namespace detail
@@ -58,16 +98,18 @@ void use(
     );
 }
 
-void clear() noexcept {
+void clear()
+    noexcept {
     active_manager.store(
         nullptr,
         std::memory_order_release
     );
 
-    scoped_connection.reset();
+    current_connection.reset();
 }
 
-bool configured() noexcept {
+bool configured()
+    noexcept {
     return
         active_manager.load(
             std::memory_order_acquire
@@ -99,20 +141,72 @@ Manager& manager() {
     return *current;
 }
 
-std::shared_ptr<Connection>
-connection(
+ConnectionHandle current()
+    noexcept {
+    return current_connection;
+}
+
+detail::ConnectionScope activate(
+    ConnectionHandle connection
+) noexcept {
+    return
+        detail::ConnectionScope{
+            std::move(connection)
+        };
+}
+
+void clear_current()
+    noexcept {
+    current_connection.reset();
+}
+
+ConnectionHandle connection(
     std::string_view name
 ) {
     if (
-        scoped_connection &&
-        scoped_connection->name() ==
+        current_connection &&
+        current_connection->name() ==
             name
     ) {
-        return scoped_connection;
+        return current_connection;
     }
 
     return
         manager().connection(
+            name
+        );
+}
+
+ConnectionHandle read_connection(
+    std::string_view name
+) {
+    if (
+        current_connection &&
+        current_connection->name() ==
+            name
+    ) {
+        return current_connection;
+    }
+
+    return
+        manager().read_connection(
+            name
+        );
+}
+
+ConnectionHandle write_connection(
+    std::string_view name
+) {
+    if (
+        current_connection &&
+        current_connection->name() ==
+            name
+    ) {
+        return current_connection;
+    }
+
+    return
+        manager().write_connection(
             name
         );
 }

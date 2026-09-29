@@ -1,10 +1,9 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <stdexcept>
-#include <thread>
 #include <type_traits>
 #include <utility>
 
@@ -32,7 +31,30 @@ inline constexpr bool is_task_v =
         std::remove_cvref_t<Value>
     >::value;
 
+template <typename Value>
+struct TaskValue;
+
+template <typename Value>
+struct TaskValue<
+    ::gungnir::Task<Value>
+> {
+    using type = Value;
+};
+
+template <typename Value>
+using task_value_t =
+    typename TaskValue<
+        std::remove_cvref_t<Value>
+    >::type;
+
 } // namespace detail
+
+struct AsyncTransactionOptions {
+    std::chrono::milliseconds
+        timeout{
+            std::chrono::seconds{30}
+        };
+};
 
 class Transaction {
 public:
@@ -62,7 +84,8 @@ public:
     Connection& connection();
 
     [[nodiscard]]
-    const Connection& connection() const;
+    const Connection& connection()
+        const;
 
     void commit();
     void rollback();
@@ -78,8 +101,6 @@ public:
     auto run(
         Callback&& callback
     ) {
-        ensure_owner();
-
         if (!active_) {
             throw std::logic_error(
                 "Cannot run work on an inactive database transaction"
@@ -125,19 +146,132 @@ public:
 
     [[nodiscard]]
     bool active()
-        const;
+        const noexcept;
 
 private:
-    void ensure_owner() const;
+    std::shared_ptr<Connection>
+        connection_;
+    TransactionToken token_;
+    bool active_{false};
+};
+
+class AsyncTransaction {
+public:
+    explicit AsyncTransaction(
+        std::shared_ptr<Connection> connection,
+        AsyncTransactionOptions options = {}
+    );
+
+    ~AsyncTransaction();
+
+    AsyncTransaction(
+        const AsyncTransaction&
+    ) = delete;
+
+    AsyncTransaction& operator=(
+        const AsyncTransaction&
+    ) = delete;
+
+    AsyncTransaction(
+        AsyncTransaction&&
+    ) = delete;
+
+    AsyncTransaction& operator=(
+        AsyncTransaction&&
+    ) = delete;
+
+    [[nodiscard]]
+    Connection& connection();
+
+    [[nodiscard]]
+    const Connection& connection()
+        const;
+
+    void commit();
+    void rollback();
+
+    [[nodiscard]]
+    bool active()
+        const noexcept;
+
+    [[nodiscard]]
+    bool expired()
+        const noexcept;
+
+    template <typename Callback>
+    requires detail::is_task_v<
+        std::invoke_result_t<
+            Callback&
+        >
+    >
+    auto run(
+        Callback&& callback
+    ) -> Task<
+        detail::task_value_t<
+            std::invoke_result_t<
+                Callback&
+            >
+        >
+    > {
+        using CallbackTask =
+            std::invoke_result_t<
+                Callback&
+            >;
+
+        using Result =
+            detail::task_value_t<
+                CallbackTask
+            >;
+
+        if (!active_) {
+            throw std::logic_error(
+                "Cannot run work on an inactive async database transaction"
+            );
+        }
+
+        runtime::detail::
+            ConnectionScope scope{
+                connection_
+            };
+
+        try {
+            if constexpr (
+                std::is_void_v<Result>
+            ) {
+                co_await std::invoke(
+                    callback
+                );
+
+                ensure_not_expired();
+                commit();
+                co_return;
+            } else {
+                auto result =
+                    co_await std::invoke(
+                        callback
+                    );
+
+                ensure_not_expired();
+                commit();
+
+                co_return result;
+            }
+        } catch (...) {
+            rollback();
+            throw;
+        }
+    }
+
+private:
+    void ensure_not_expired()
+        const;
 
     std::shared_ptr<Connection>
         connection_;
-
-    std::unique_lock<
-        std::recursive_mutex
-    > lock_;
-
-    std::thread::id owner_;
+    TransactionToken token_;
+    AsyncTransactionOptions options_;
+    std::chrono::steady_clock::time_point
+        started_;
     bool active_{false};
 };
 

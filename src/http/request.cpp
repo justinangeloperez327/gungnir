@@ -177,6 +177,18 @@ Request::Request(
       body_(std::move(body)),
       cancellation_(std::move(cancellation)),
       secure_(secure) {
+    body_stream_ =
+        std::make_shared<
+            RequestBodyStream
+        >(cancellation_);
+
+    if (!body_.empty()) {
+        body_stream_->feed(
+            body_
+        );
+    }
+
+    body_stream_->close();
     parse_target();
 }
 
@@ -194,6 +206,12 @@ std::string_view Request::path() const noexcept {
 
 std::string_view Request::body() const noexcept {
     return body_;
+}
+
+std::shared_ptr<RequestBodyStream>
+Request::body_stream()
+    const noexcept {
+    return body_stream_;
 }
 
 bool Request::cancelled() const noexcept {

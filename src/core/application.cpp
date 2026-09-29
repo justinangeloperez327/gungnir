@@ -144,6 +144,27 @@ void apply_environment_defaults(
                 "DB_POOL_SIZE",
                 1
             )
+        )
+        .set(
+            "database.pool_acquire_timeout_ms",
+            environment.integer(
+                "DB_POOL_ACQUIRE_TIMEOUT_MS",
+                5000
+            )
+        )
+        .set(
+            "database.pool_validation_interval_ms",
+            environment.integer(
+                "DB_POOL_VALIDATION_INTERVAL_MS",
+                30000
+            )
+        )
+        .set(
+            "database.pool_reconnect_attempts",
+            environment.integer(
+                "DB_POOL_RECONNECT_ATTEMPTS",
+                1
+            )
         );
 
     const auto database_port =
@@ -590,7 +611,16 @@ Application& Application::configure_database() {
         impl_->drivers->bind(
             settings
         ),
-        settings.pool_size
+        database::PoolOptions{
+            .size =
+                settings.pool_size,
+            .acquire_timeout =
+                settings.pool_acquire_timeout,
+            .validation_interval =
+                settings.pool_validation_interval,
+            .reconnect_attempts =
+                settings.pool_reconnect_attempts
+        }
     );
 
     return *this;

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <gungnir/core/executor.hpp>
+#include <gungnir/database/runtime.hpp>
 #include <gungnir/observability/trace.hpp>
 #include <gungnir/view/runtime.hpp>
 
@@ -68,7 +69,9 @@ public:
         std::chrono::milliseconds duration,
         std::coroutine_handle<> handle,
         observability::TraceContext trace_context,
-        view::runtime::EngineHandle view_context
+        view::runtime::EngineHandle view_context,
+        database::runtime::ConnectionHandle
+            database_context
     ) {
         if (!handle) {
             return;
@@ -106,6 +109,10 @@ public:
                     .view_context =
                         std::move(
                             view_context
+                        ),
+                    .database_context =
+                        std::move(
+                            database_context
                         )
                 }
             );
@@ -303,6 +310,8 @@ private:
             context;
         view::runtime::EngineHandle
             view_context;
+        database::runtime::ConnectionHandle
+            database_context;
     };
 
     struct Later {
@@ -365,6 +374,11 @@ private:
             auto view_scope =
                 view::runtime::activate(
                     entry.view_context
+                );
+
+            auto database_scope =
+                database::runtime::activate(
+                    entry.database_context
                 );
 
             try {
@@ -487,13 +501,17 @@ void SleepAwaiter::await_suspend(
         handle,
         observability::
             current_context(),
-        view::runtime::current()
+        view::runtime::current(),
+        database::runtime::current()
     );
 
     observability::
         clear_current_context();
 
     view::runtime::
+        clear_current();
+
+    database::runtime::
         clear_current();
 }
 

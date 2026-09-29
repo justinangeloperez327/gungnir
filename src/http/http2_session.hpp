@@ -63,6 +63,21 @@ public:
         bool omit_body = false
     );
 
+    void submit_stream_response(
+        std::int32_t stream_id,
+        const Response& response,
+        bool omit_body = false
+    );
+
+    void push_stream_chunk(
+        std::int32_t stream_id,
+        std::string chunk
+    );
+
+    void finish_stream(
+        std::int32_t stream_id
+    );
+
     void reset_stream(
         std::int32_t stream_id,
         std::uint32_t error_code

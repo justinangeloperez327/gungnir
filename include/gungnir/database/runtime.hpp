@@ -2,19 +2,25 @@
 
 #include <memory>
 #include <string_view>
+#include <utility>
 
 #include <gungnir/database/connection.hpp>
 #include <gungnir/database/manager.hpp>
 
 namespace gungnir::database::runtime {
 
+using ConnectionHandle =
+    std::shared_ptr<Connection>;
+
 namespace detail {
 
 class ConnectionScope {
 public:
+    ConnectionScope() = default;
+
     explicit ConnectionScope(
-        std::shared_ptr<Connection> connection
-    );
+        ConnectionHandle connection
+    ) noexcept;
 
     ~ConnectionScope();
 
@@ -27,15 +33,19 @@ public:
     ) = delete;
 
     ConnectionScope(
-        ConnectionScope&&
-    ) = delete;
+        ConnectionScope&& other
+    ) noexcept;
 
     ConnectionScope& operator=(
-        ConnectionScope&&
-    ) = delete;
+        ConnectionScope&& other
+    ) noexcept;
+
+    void reset()
+        noexcept;
 
 private:
-    std::shared_ptr<Connection> previous_;
+    ConnectionHandle previous_;
+    bool active_{false};
 };
 
 } // namespace detail
@@ -55,7 +65,29 @@ bool using_manager(
 Manager& manager();
 
 [[nodiscard]]
-std::shared_ptr<Connection> connection(
+ConnectionHandle current()
+    noexcept;
+
+[[nodiscard]]
+detail::ConnectionScope activate(
+    ConnectionHandle connection
+) noexcept;
+
+void clear_current()
+    noexcept;
+
+[[nodiscard]]
+ConnectionHandle connection(
+    std::string_view name = "default"
+);
+
+[[nodiscard]]
+ConnectionHandle read_connection(
+    std::string_view name = "default"
+);
+
+[[nodiscard]]
+ConnectionHandle write_connection(
     std::string_view name = "default"
 );
 
