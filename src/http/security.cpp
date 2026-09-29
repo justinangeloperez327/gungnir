@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -75,6 +76,49 @@ void validate_csrf_options(
     }
 }
 
+std::string_view trim(
+    std::string_view value
+) {
+    while (
+        !value.empty() &&
+        std::isspace(
+            static_cast<unsigned char>(
+                value.front()
+            )
+        ) != 0
+    ) {
+        value.remove_prefix(1);
+    }
+
+    while (
+        !value.empty() &&
+        std::isspace(
+            static_cast<unsigned char>(
+                value.back()
+            )
+        ) != 0
+    ) {
+        value.remove_suffix(1);
+    }
+
+    return value;
+}
+
+std::string forwarded_for_client(
+    std::string_view value
+) {
+    const auto comma =
+        value.find(',');
+
+    return std::string{
+        trim(
+            comma == std::string_view::npos
+                ? value
+                : value.substr(0, comma)
+        )
+    };
+}
+
 } // namespace
 
 MiddlewareHandler cors(CorsOptions options) {
@@ -134,12 +178,62 @@ MiddlewareHandler request_timing() {
     };
 }
 
+MiddlewareHandler trusted_proxies(
+    TrustedProxyOptions options
+) {
+    return [
+        options = std::move(options)
+    ](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        const auto peer =
+            std::string{
+                request.client_ip()
+            };
+
+        if (
+            !peer.empty() &&
+            options.proxies.contains(peer)
+        ) {
+            auto forwarded =
+                forwarded_for_client(
+                    request.header(
+                        "x-forwarded-for"
+                    )
+                );
+
+            if (forwarded.empty()) {
+                forwarded =
+                    std::string{
+                        trim(
+                            request.header(
+                                "x-real-ip"
+                            )
+                        )
+                    };
+            }
+
+            if (!forwarded.empty()) {
+                request.client_ip(
+                    std::move(forwarded)
+                );
+            }
+        }
+
+        co_return co_await next(request);
+    };
+}
+
 MiddlewareHandler rate_limit(RateLimitOptions options) {
     struct Bucket { std::size_t count{}; std::chrono::steady_clock::time_point reset{}; };
     auto buckets = std::make_shared<std::unordered_map<std::string, Bucket>>();
     auto mutex = std::make_shared<std::mutex>();
     return [options, buckets, mutex](Request& request, Next next) -> Task<Response> {
-        const auto key = std::string{request.header("x-forwarded-for")};
+        auto key = std::string{request.client_ip()};
+        if (key.empty()) {
+            key = "unknown-client";
+        }
         const auto now = std::chrono::steady_clock::now();
         {
             std::lock_guard lock{*mutex};

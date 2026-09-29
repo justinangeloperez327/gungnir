@@ -45,6 +45,15 @@ MiddlewareHandler request_id();
 [[nodiscard]]
 MiddlewareHandler request_timing();
 
+struct TrustedProxyOptions {
+    std::unordered_set<std::string> proxies;
+};
+
+[[nodiscard]]
+MiddlewareHandler trusted_proxies(
+    TrustedProxyOptions options
+);
+
 struct RateLimitOptions {
     std::size_t requests{60};
     std::chrono::seconds window{60};

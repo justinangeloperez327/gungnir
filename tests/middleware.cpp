@@ -1,4 +1,5 @@
 #include <cassert>
+#include <chrono>
 #include <coroutine>
 #include <memory>
 #include <string>
@@ -150,6 +151,117 @@ int main() {
     assert(
         trace->entries[3] ==
         "global:after"
+    );
+
+    auto terminal =
+        [](gungnir::Request&) -> gungnir::Task<gungnir::Response> {
+            co_return gungnir::Response::text(
+                "ok"
+            );
+        };
+
+    auto limiter =
+        gungnir::http::rate_limit(
+            gungnir::http::RateLimitOptions{
+                .requests = 1,
+                .window = std::chrono::seconds{60}
+            }
+        );
+
+    gungnir::Request first_limited{
+        gungnir::http::Method::get,
+        "/limited"
+    };
+
+    first_limited.client_ip(
+        "203.0.113.10"
+    );
+    first_limited.set_header(
+        "X-Forwarded-For",
+        "198.51.100.1"
+    );
+
+    assert(
+        sync_wait(
+            limiter(first_limited, terminal)
+        ).status() == 200
+    );
+
+    gungnir::Request spoofed_same_client{
+        gungnir::http::Method::get,
+        "/limited"
+    };
+
+    spoofed_same_client.client_ip(
+        "203.0.113.10"
+    );
+    spoofed_same_client.set_header(
+        "X-Forwarded-For",
+        "198.51.100.2"
+    );
+
+    assert(
+        sync_wait(
+            limiter(spoofed_same_client, terminal)
+        ).status() == 429
+    );
+
+    auto trust_proxy =
+        gungnir::http::trusted_proxies(
+            gungnir::http::TrustedProxyOptions{
+                .proxies = {
+                    "127.0.0.1"
+                }
+            }
+        );
+
+    gungnir::Request proxied{
+        gungnir::http::Method::get,
+        "/proxied"
+    };
+
+    proxied.client_ip(
+        "127.0.0.1"
+    );
+    proxied.set_header(
+        "X-Forwarded-For",
+        "198.51.100.77, 127.0.0.1"
+    );
+
+    assert(
+        sync_wait(
+            trust_proxy(proxied, terminal)
+        ).status() == 200
+    );
+    assert(
+        proxied.client_ip() ==
+        "198.51.100.77"
+    );
+
+    gungnir::Request untrusted_proxy{
+        gungnir::http::Method::get,
+        "/proxied"
+    };
+
+    untrusted_proxy.client_ip(
+        "203.0.113.50"
+    );
+    untrusted_proxy.set_header(
+        "X-Forwarded-For",
+        "198.51.100.88"
+    );
+
+    assert(
+        sync_wait(
+            trust_proxy(
+                untrusted_proxy,
+                terminal
+            )
+        ).status() == 200
+    );
+    assert(
+        untrusted_proxy.client_ip() ==
+        "203.0.113.50"
     );
 
     return 0;

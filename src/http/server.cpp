@@ -45,6 +45,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
+#include <arpa/inet.h>
 #include <cerrno>
 #include <fcntl.h>
 #include <netdb.h>
@@ -1332,6 +1333,56 @@ std::uint16_t socket_port(
     );
 }
 
+std::string socket_ip(
+    const sockaddr_storage& address
+) {
+    char buffer[INET6_ADDRSTRLEN]{};
+
+    if (
+        address.ss_family ==
+        AF_INET
+    ) {
+        const auto* value =
+            reinterpret_cast<
+                const sockaddr_in*
+            >(&address);
+
+        if (
+            inet_ntop(
+                AF_INET,
+                &value->sin_addr,
+                buffer,
+                sizeof(buffer)
+            )
+        ) {
+            return buffer;
+        }
+    }
+
+    if (
+        address.ss_family ==
+        AF_INET6
+    ) {
+        const auto* value =
+            reinterpret_cast<
+                const sockaddr_in6*
+            >(&address);
+
+        if (
+            inet_ntop(
+                AF_INET6,
+                &value->sin6_addr,
+                buffer,
+                sizeof(buffer)
+            )
+        ) {
+            return buffer;
+        }
+    }
+
+    return {};
+}
+
 Response error_response(
     int status,
     std::string body
@@ -1726,6 +1777,7 @@ DetachedTask settle_websocket_message(
 
 struct ConnectionState {
     NativeSocket socket{invalid_socket};
+    std::string client_ip;
     std::string input;
     std::string output;
     std::size_t output_offset{0};
@@ -3668,6 +3720,10 @@ public:
                     true
                 };
 
+                request.client_ip(
+                    connection.client_ip
+                );
+
                 for (
                     auto& [name, value] :
                     request_data.headers
@@ -4588,11 +4644,27 @@ public:
                 return;
             }
 
+            sockaddr_storage peer_address{};
+
+#ifdef _WIN32
+            int peer_length =
+                static_cast<int>(
+                    sizeof(peer_address)
+                );
+#else
+            socklen_t peer_length =
+                static_cast<socklen_t>(
+                    sizeof(peer_address)
+                );
+#endif
+
             const auto client =
                 ::accept(
                     active,
-                    nullptr,
-                    nullptr
+                    reinterpret_cast<
+                        sockaddr*
+                    >(&peer_address),
+                    &peer_length
                 );
 
             if (
@@ -4637,6 +4709,10 @@ public:
 
             ConnectionState connection;
             connection.socket = client;
+            connection.client_ip =
+                socket_ip(
+                    peer_address
+                );
 
 #ifdef GUNGNIR_WITH_TLS
             if (
@@ -5210,6 +5286,10 @@ public:
                 false
 #endif
             );
+
+        request.client_ip(
+            connection.client_ip
+        );
 
         ++connection.requests_served;
 

@@ -31,6 +31,24 @@ Framework-generated response metadata must not allow CRLF injection.
 
 Client-supplied `X-Forwarded-For` is not trustworthy by itself. Rate limiting and client-IP resolution must only honor forwarding headers after a trusted-proxy boundary has been configured.
 
+Use `gungnir::http::trusted_proxies()` before `gungnir::http::rate_limit()` when an application is intentionally deployed behind a known reverse proxy:
+
+```cpp
+router.use(
+    gungnir::http::trusted_proxies({
+        .proxies = {
+            "127.0.0.1"
+        }
+    })
+);
+
+router.use(
+    gungnir::http::rate_limit()
+);
+```
+
+Without trusted proxy configuration, `rate_limit()` uses the socket peer IP recorded by the server and ignores spoofable forwarding headers.
+
 ## CSRF
 
 CSRF protection depends on session lifecycle, token generation, token rotation, and request/session binding. It belongs with the session implementation rather than a fake standalone token check.
