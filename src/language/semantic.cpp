@@ -75,6 +75,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
         });
     };
 
+    std::unordered_set<std::string> declarations_in_file;
     for (const auto& node : program.nodes) {
         const auto* base = std::get_if<FrameworkBase>(&node);
         const auto* framework = std::get_if<FrameworkDeclaration>(&node);
@@ -83,6 +84,11 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
         const auto& declaration_name = base
             ? base->class_name : framework->class_name;
         const auto declaration_kind = base ? base->kind : framework->kind;
+        if (!declarations_in_file.insert(declaration_name).second) {
+            report(base ? base->span : framework->span,
+                   "Duplicate framework declaration '" + declaration_name +
+                       "' in this file", "GNR1314");
+        }
         const auto& declared_in = index.declaration_sources.at(declaration_name);
         if (declared_in.size() > 1 &&
             declared_in.contains(std::string{source_name})) {
@@ -119,11 +125,18 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     report(span, "Unknown related model '" +
                                  relation->related_type + "'", "GNR1308");
                 }
-                if (project && project->closed_world &&
-                    !relation->through_type.empty() &&
-                    !types.contains(relation->through_type)) {
-                    report(span, "Unknown through model '" +
-                                 relation->through_type + "'", "GNR1308");
+                if (!relation->through_type.empty()) {
+                    const auto through = types.find(relation->through_type);
+                    if (through != types.end() &&
+                        through->second != FrameworkBaseKind::model) {
+                        report(span, "Through relationship type '" +
+                                     relation->through_type + "' is not a model",
+                               "GNR1303");
+                    } else if (project && project->closed_world &&
+                               through == types.end()) {
+                        report(span, "Unknown through model '" +
+                                     relation->through_type + "'", "GNR1308");
+                    }
                 }
             } else if (const auto* injection =
                            std::get_if<InjectDeclaration>(&member)) {

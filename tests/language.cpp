@@ -617,6 +617,28 @@ int main() {
              colliding_model.program, "duplicate_model.gnr", &duplicate_project))
         duplicate_project_type |= diagnostic.code == "GNR1314";
     assert(duplicate_project_type);
+    const auto same_file_declarations = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "model Same {} controller Same {}"
+        }.tokenize(), "same_file.gnr"
+    }.parse().program;
+    unsigned same_file_duplicates = 0;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             same_file_declarations, "same_file.gnr"))
+        same_file_duplicates += diagnostic.code == "GNR1314";
+    assert(same_file_duplicates == 1);
+    const auto through_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "model Post {} controller AccountController {} "
+            "model User { posts() { return hasManyThrough<Post, "
+            "AccountController>(); } }"
+        }.tokenize(), "through.gnr"
+    }.parse().program;
+    bool invalid_through_type = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             through_program, "through.gnr"))
+        invalid_through_type |= diagnostic.code == "GNR1303";
+    assert(invalid_through_type);
     const auto call_source = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Calculator { int doubleValue(int n) { return n + n; } "
