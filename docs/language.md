@@ -49,12 +49,12 @@ users = User::where("active", true).get();
 The parser tracks lexical scopes. A visible binding is reassigned instead of
 being redeclared.
 
-## Framework classes
+## Framework declarations
 
-Gungnir hides CRTP and framework namespace mechanics.
+Gungnir uses first-class framework declarations and hides C++ class inheritance, CRTP, and framework namespace mechanics.
 
 ```gungnir
-class User : Model
+model User
 {
 }
 ```
@@ -67,7 +67,7 @@ class User : public gungnir::Model<User>
 }
 ```
 
-The same convention currently applies to `Controller` and `Migration`.
+The same convention applies to `controller`, `migration`, and `middleware`. Native C++ `class X : Model` syntax remains an interoperability detail rather than the normal Gungnir application convention.
 
 ## Diagnostics
 
@@ -116,7 +116,7 @@ need to spell CRTP, Field templates, PrimaryKey templates, Fillable metadata,
 or generated attribute tuples.
 
 ```gungnir
-class User : Model
+model User
 {
     string name;
     string email;
@@ -146,7 +146,7 @@ Supported scalar field keywords are `string`, `int`/`integer`, `int64`,
 Configuration is convention-first:
 
 ```gungnir
-class AuditUser : Model
+model AuditUser
 {
     table = "legacy_users";
     connection = "reporting";
@@ -220,7 +220,7 @@ Gungnir controllers are public application-facing classes by convention. The
 language frontend inserts the native C++ access and construction plumbing.
 
 ```gungnir
-class UserController : Controller
+controller UserController
 {
     Response index()
     {
@@ -293,7 +293,7 @@ Gungnir exposes language-level `async` and `await` while keeping C++
 coroutine mechanics in generated code.
 
 ```gungnir
-class UserController : Controller
+controller UserController
 {
     async Response index()
     {
@@ -478,7 +478,7 @@ Global middleware is registered on the application and route middleware is
 attached to an individual route.
 
 \`\`\`gungnir
-class AuthMiddleware : Middleware
+middleware AuthMiddleware
 {
     async Response handle(Request request, Next next)
     {
