@@ -660,6 +660,37 @@ int main() {
         missing_argument |= diagnostic.code == "GNR1317";
     }
     assert(wrong_argument && missing_argument);
+    const auto named_types = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "model User {} model Post {} "
+            "controller Types { User identity(User user) { return user; } "
+            "User wrong(Post post) { return post; } "
+            "User call(Post post) { return identity(post); } }"
+        }.tokenize(), "named_types.gnr"
+    }.parse().program;
+    bool wrong_named_return = false, wrong_named_argument = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             named_types, "named_types.gnr")) {
+        wrong_named_return |= diagnostic.code == "GNR1306";
+        wrong_named_argument |= diagnostic.code == "GNR1318";
+    }
+    assert(wrong_named_return && wrong_named_argument);
+    const auto external_models = gungnir::language::Parser{
+        gungnir::language::Lexer{"model User {} model Post {}"}.tokenize(),
+        "external_models.gnr"
+    }.parse().program;
+    const auto external_controller = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Types { User wrong(Post post) { return post; } }"
+        }.tokenize(), "external_controller.gnr"
+    }.parse().program;
+    gungnir::language::SemanticIndex named_index;
+    named_index.add(external_models, "external_models.gnr");
+    bool wrong_cross_file_return = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             external_controller, "external_controller.gnr", &named_index))
+        wrong_cross_file_return |= diagnostic.code == "GNR1306";
+    assert(wrong_cross_file_return);
     const auto return_call = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Calculator { int value() { return 2; } "

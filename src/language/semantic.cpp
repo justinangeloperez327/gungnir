@@ -65,6 +65,12 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
     index.add(program, source_name);
     const auto& types = index.types;
     auto& actions = index.actions;
+    const auto resolve_type = [&](std::string_view name) {
+        auto type = scalar_type(name);
+        if (!type.known() && types.contains(std::string{name}))
+            type = {TypeKind::named, std::string{name}, false};
+        return type;
+    };
 
     const auto report = [&](SourceSpan span, std::string message,
                             std::string code) {
@@ -192,7 +198,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             std::unordered_map<std::string, Type> local_types;
             for (const auto& parameter : *parameters) {
                 local_types.insert_or_assign(
-                    parameter.name, scalar_type(parameter.type_name)
+                    parameter.name, resolve_type(parameter.type_name)
                 );
             }
             TypeSystem type_system;
@@ -230,12 +236,12 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                         bool compatible = true;
                         for (std::size_t argument = 0; argument < count; ++argument) {
                             if (!type_system.assignable(
-                                    scalar_type(signature.parameters[argument]),
+                                    resolve_type(signature.parameters[argument]),
                                     infer(expression.arguments[argument + 1]))) {
                                 compatible = false;
                             }
                         }
-                        if (compatible) return scalar_type(signature.return_type);
+                        if (compatible) return resolve_type(signature.return_type);
                     }
                     report(expression.span,
                            matching_arity ? "Call argument type mismatch" :
@@ -363,7 +369,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     report(statement.span,
                            "Non-void method must return a value", "GNR1312");
                 } else if (value.known() &&
-                           !type_system.assignable(scalar_type(return_type), value)) {
+                           !type_system.assignable(resolve_type(return_type), value)) {
                     report(statement.span,
                            "Return value does not match '" + return_type +
                                "'", "GNR1306");

@@ -35,7 +35,8 @@ public:
     [[nodiscard]] bool assignable(const Type& target, const Type& value) const noexcept {
         if (!target.known() || !value.known()) return true;
         if (value.kind == TypeKind::null_) return target.nullable || target.kind == TypeKind::optional;
-        if (target.kind == value.kind) return true;
+        if (target.kind == value.kind)
+            return target.kind != TypeKind::named || target.name == value.name;
         return target.kind == TypeKind::decimal && value.kind == TypeKind::integer;
     }
 };
