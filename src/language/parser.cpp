@@ -308,13 +308,22 @@ std::vector<MethodParameter> Parser::parse_parameters(
     return parameters;
 }
 
-Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
+Expression Parser::parse_expression(std::size_t first, std::size_t last) {
     std::vector<std::size_t> significant;
     for (auto i = first; i <= last; ++i) {
         if (!tokens_[i].trivia()) significant.push_back(i);
     }
     const auto value = [&](std::size_t i) -> const std::string& {
         return tokens_[significant[i]].lexeme;
+    };
+    const auto error = [&](std::size_t i, std::string message,
+                           std::string code = "GNR1010") {
+        const auto& token = tokens_[significant[i]];
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{source_name_, token.line, token.column},
+            std::move(message), std::move(code), {}
+        });
     };
     const auto make = [&](std::size_t begin, std::size_t end,
                           ExpressionKind kind, std::string text = {}) {
@@ -334,15 +343,53 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
         if (op == "*" || op == "/" || op == "%") return 7;
         return 0;
     };
+    std::vector<std::string_view> delimiters;
+    for (std::size_t i = 0; i < significant.size(); ++i) {
+        const auto& symbol = value(i);
+        if (symbol == "(" || symbol == "[" || symbol == "{") {
+            delimiters.push_back(symbol);
+        } else if (symbol == ")" || symbol == "]" || symbol == "}") {
+            const bool matches = !delimiters.empty() &&
+                ((delimiters.back() == "(" && symbol == ")") ||
+                 (delimiters.back() == "[" && symbol == "]") ||
+                 (delimiters.back() == "{" && symbol == "}"));
+            if (!matches) {
+                error(i, "Unexpected closing delimiter", "GNR1011");
+                break;
+            }
+            delimiters.pop_back();
+        }
+    }
+    if (!delimiters.empty())
+        error(0, "Expression has an unclosed delimiter", "GNR1011");
+    if (significant.size() > 1) {
+        const auto last = significant.size() - 1;
+        const auto& tail = value(last);
+        const bool postfix = last > 0 &&
+            tokens_[significant[last - 1]].offset +
+                tokens_[significant[last - 1]].lexeme.size() ==
+                tokens_[significant[last]].offset &&
+            ((tail == "+" && value(last - 1) == "+") ||
+             (tail == "-" && value(last - 1) == "-"));
+        if (!postfix && (tail == "=" || tail == "+" || tail == "-" ||
+                         tail == "*" || tail == "/" || tail == "%" ||
+                         tail == "&" || tail == "|" || tail == "!"))
+            error(last, "Operator is missing its right operand", "GNR1012");
+    }
     std::function<Expression(std::size_t, std::size_t)> parse =
         [&](std::size_t begin, std::size_t end) -> Expression {
         auto raw = make(begin, end, ExpressionKind::raw, value(begin));
         if (begin + 1 == end) {
             const auto& token = tokens_[significant[begin]];
+            if (!token.word() && token.kind != TokenKind::string_literal &&
+                token.kind != TokenKind::number &&
+                token.kind != TokenKind::character_literal)
+                error(begin, "Expected an expression");
             raw.kind = token.kind == TokenKind::string_literal ||
                        token.kind == TokenKind::number || value(begin) == "true" ||
                        value(begin) == "false" || value(begin) == "null"
-                       ? ExpressionKind::literal : ExpressionKind::name;
+                       ? ExpressionKind::literal : token.word()
+                       ? ExpressionKind::name : ExpressionKind::raw;
             return raw;
         }
         // Split at the weakest operator outside nested delimiters.
@@ -362,11 +409,14 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
             if (parens || brackets || braces || i == begin || i + 1 == end)
                 continue;
             std::size_t width = 1;
-            if (i + 1 < end) {
+            if (i + 1 < end &&
+                tokens_[significant[i]].offset + tokens_[significant[i]].lexeme.size() ==
+                    tokens_[significant[i + 1]].offset) {
                 const auto combined = op + value(i + 1);
                 if (combined == "&&" || combined == "||" || combined == "==" ||
                     combined == "!=" || combined == "<=" || combined == ">=" ||
-                    combined == "->" || combined == "::") {
+                    combined == "->" || combined == "::" ||
+                    combined == "++" || combined == "--") {
                     op = combined;
                     width = 2;
                 }
@@ -405,7 +455,11 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
             auto start = begin + 1;
             int depth = 0;
             const auto append_entry = [&](std::size_t finish) {
-                if (start >= finish) return;
+                if (start >= finish) {
+                    if (finish < end - 1)
+                        error(finish, "Object entry is missing a key and value");
+                    return;
+                }
                 for (auto colon = start + 1; colon + 1 < finish; ++colon) {
                     if (value(colon) != ":") continue;
                     auto entry = make(start, finish, ExpressionKind::entry);
@@ -414,6 +468,7 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
                     result.arguments.push_back(std::move(entry));
                     return;
                 }
+                error(start, "Object entry requires a key, ':' and value");
                 result.kind = ExpressionKind::raw;
                 result.arguments.clear();
             };
@@ -438,6 +493,7 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
                 else if (value(i) == ")" || value(i) == "]" || value(i) == "}") --depth;
                 if (value(i) == "," && depth == 0) {
                     if (start < i) result.arguments.push_back(parse(start, i));
+                    else error(i, "List element is missing");
                     start = i + 1;
                 }
             }
@@ -459,6 +515,7 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
                     else if (value(j) == ")" || value(j) == "]" || value(j) == "}") --depth;
                     if (value(j) == "," && depth == 0) {
                         if (start < j) result.arguments.push_back(parse(start, j));
+                        else error(j, "Call argument is missing");
                         start = j + 1;
                     }
                 }
@@ -499,7 +556,7 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
 
 std::vector<MethodStatement> Parser::parse_method_body(
     std::size_t opening, std::size_t closing
-) const {
+) {
     std::vector<MethodStatement> statements;
     auto start = next_significant(opening);
     while (start && *start < closing) {

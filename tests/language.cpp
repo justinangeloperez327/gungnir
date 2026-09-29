@@ -50,6 +50,28 @@ int main() {
     assert(load.body[0].expression.arguments.front().text == "::");
     assert(load.body[1].expression.kind == gungnir::language::ExpressionKind::binary);
     assert(load.body[1].expression.text == "&&");
+    const auto malformed_expressions = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller BadExpressions { void run() { "
+            "const values = [1,,2]; const x = 1 +; "
+            "return view(\"page\", { \"x\" 1 }); } }"
+        }.tokenize(), "bad_expressions.gnr"
+    }.parse();
+    bool missing_list_element = false, missing_object_colon = false;
+    bool missing_operand = false;
+    for (const auto& diagnostic : malformed_expressions.diagnostics) {
+        missing_list_element |= diagnostic.message == "List element is missing";
+        missing_object_colon |= diagnostic.message ==
+            "Object entry requires a key, ':' and value";
+        missing_operand |= diagnostic.code == "GNR1012";
+    }
+    assert(missing_list_element && missing_object_colon && missing_operand);
+    const auto native_postfix = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Native { int next(int value) { return value++; } }"
+        }.tokenize(), "native.gnr"
+    }.parse();
+    assert(native_postfix.diagnostics.empty());
     const auto expression_diagnostics = gungnir::language::SemanticAnalyzer{}.analyze(
         expression_program, "expressions.gnr");
     bool invalid_arithmetic_return = false;
