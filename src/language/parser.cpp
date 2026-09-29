@@ -28,6 +28,26 @@ std::optional<FrameworkBaseKind> framework_kind(
         return FrameworkBaseKind::middleware;
     }
 
+    if (lexeme == "policy") {
+        return FrameworkBaseKind::policy;
+    }
+
+    if (lexeme == "event") {
+        return FrameworkBaseKind::event;
+    }
+
+    if (lexeme == "listener") {
+        return FrameworkBaseKind::listener;
+    }
+
+    if (lexeme == "notification") {
+        return FrameworkBaseKind::notification;
+    }
+
+    if (lexeme == "mail") {
+        return FrameworkBaseKind::mail;
+    }
+
     return std::nullopt;
 }
 
@@ -171,6 +191,16 @@ std::string declaration_name(
         return "Migration";
     case FrameworkBaseKind::middleware:
         return "Middleware";
+    case FrameworkBaseKind::policy:
+        return "Policy";
+    case FrameworkBaseKind::event:
+        return "Event";
+    case FrameworkBaseKind::listener:
+        return "Listener";
+    case FrameworkBaseKind::notification:
+        return "Notification";
+    case FrameworkBaseKind::mail:
+        return "Mail";
     }
 
     return "Framework";
@@ -1164,6 +1194,84 @@ void Parser::parse_route_declaration(
     });
 }
 
+void Parser::parse_framework_methods(
+    const std::string& class_name,
+    FrameworkBaseKind kind,
+    std::size_t body_open,
+    std::size_t body_close
+) {
+    for (auto cursor = body_open + 1; cursor < body_close; ++cursor) {
+        const auto& token = tokens_[cursor];
+        if (token.trivia()) {
+            continue;
+        }
+
+        std::size_t return_type = cursor;
+        bool asynchronous = false;
+
+        if (token.lexeme == "async") {
+            asynchronous = true;
+            const auto next = next_significant(cursor);
+            if (!next || *next >= body_close) {
+                continue;
+            }
+            return_type = *next;
+        }
+
+        if (!tokens_[return_type].word()) {
+            continue;
+        }
+
+        const auto name = next_significant(return_type);
+        const auto open = name ? next_significant(*name) : std::nullopt;
+
+        if (
+            !name || !open || *open >= body_close ||
+            tokens_[*name].kind != TokenKind::identifier ||
+            tokens_[*open].lexeme != "("
+        ) {
+            continue;
+        }
+
+        const auto close = matching_symbol(*open, "(", ")");
+        if (!close || *close >= body_close) {
+            continue;
+        }
+
+        const auto method_open = next_significant(*close);
+        if (
+            !method_open || *method_open >= body_close ||
+            tokens_[*method_open].lexeme != "{"
+        ) {
+            continue;
+        }
+
+        const auto method_close = matching_symbol(*method_open, "{", "}");
+        if (!method_close || *method_close > body_close) {
+            continue;
+        }
+
+        result_.program.nodes.push_back(FrameworkMethod{
+            SourceSpan{
+                token.offset,
+                tokens_[*method_close].offset +
+                    tokens_[*method_close].lexeme.size(),
+                token.line,
+                token.column
+            },
+            token_span(tokens_[return_type]),
+            token_span(tokens_[*name]),
+            class_name,
+            kind,
+            tokens_[return_type].lexeme,
+            tokens_[*name].lexeme,
+            asynchronous
+        });
+
+        cursor = *method_close;
+    }
+}
+
 void Parser::parse_framework_members(
     const std::string& class_name,
     FrameworkBaseKind kind,
@@ -1177,7 +1285,15 @@ void Parser::parse_framework_members(
 
     if (kind == FrameworkBaseKind::controller) {
         parse_controller_members(class_name, body_open, body_close);
+        return;
     }
+
+    parse_framework_methods(
+        class_name,
+        kind,
+        body_open,
+        body_close
+    );
 }
 
 void Parser::parse_framework_declaration(std::size_t index) {
@@ -1234,6 +1350,10 @@ void Parser::parse_framework_declaration(std::size_t index) {
         return;
     }
 
+    const auto after_body = next_significant(*body_close);
+    const bool has_semicolon =
+        after_body && tokens_[*after_body].lexeme == ";";
+
     result_.program.nodes.push_back(FrameworkDeclaration{
         token_span(tokens_[index]),
         SourceSpan{
@@ -1242,8 +1362,18 @@ void Parser::parse_framework_declaration(std::size_t index) {
             tokens_[*name].line,
             tokens_[*name].column + tokens_[*name].lexeme.size()
         },
+        SourceSpan{
+            tokens_[*body_close].offset +
+                tokens_[*body_close].lexeme.size(),
+            tokens_[*body_close].offset +
+                tokens_[*body_close].lexeme.size(),
+            tokens_[*body_close].line,
+            tokens_[*body_close].column +
+                tokens_[*body_close].lexeme.size()
+        },
         tokens_[*name].lexeme,
-        *kind
+        *kind,
+        !has_semicolon
     });
 
     parse_framework_members(
@@ -1359,6 +1489,16 @@ ParseResult Parser::parse() {
                 kind = FrameworkBaseKind::migration;
             } else if (tokens_[*base].lexeme == "Middleware") {
                 kind = FrameworkBaseKind::middleware;
+            } else if (tokens_[*base].lexeme == "Policy") {
+                kind = FrameworkBaseKind::policy;
+            } else if (tokens_[*base].lexeme == "Event") {
+                kind = FrameworkBaseKind::event;
+            } else if (tokens_[*base].lexeme == "Listener") {
+                kind = FrameworkBaseKind::listener;
+            } else if (tokens_[*base].lexeme == "Notification") {
+                kind = FrameworkBaseKind::notification;
+            } else if (tokens_[*base].lexeme == "Mail") {
+                kind = FrameworkBaseKind::mail;
             } else {
                 framework_base = false;
             }

@@ -24,7 +24,12 @@ enum class FrameworkBaseKind {
     model,
     controller,
     migration,
-    middleware
+    middleware,
+    policy,
+    event,
+    listener,
+    notification,
+    mail
 };
 
 struct FrameworkBase {
@@ -36,8 +41,21 @@ struct FrameworkBase {
 struct FrameworkDeclaration {
     SourceSpan keyword_span;
     SourceSpan name_end_span;
+    SourceSpan body_end_span;
     std::string class_name;
     FrameworkBaseKind kind{FrameworkBaseKind::controller};
+    bool needs_semicolon{false};
+};
+
+struct FrameworkMethod {
+    SourceSpan span;
+    SourceSpan return_type_span;
+    SourceSpan name_span;
+    std::string owner_name;
+    FrameworkBaseKind owner_kind{FrameworkBaseKind::controller};
+    std::string return_type;
+    std::string name;
+    bool asynchronous{false};
 };
 
 struct ModelField {
@@ -130,6 +148,7 @@ using Node = std::variant<
     InferredBinding,
     FrameworkBase,
     FrameworkDeclaration,
+    FrameworkMethod,
     ModelField,
     ModelConfiguration,
     ModelRelationship,
