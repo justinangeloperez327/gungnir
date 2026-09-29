@@ -1,5 +1,8 @@
 #include <gungnir/language/parser.hpp>
 
+#include <optional>
+#include <string_view>
+#include <unordered_set>
 #include <utility>
 
 namespace gungnir::language {
@@ -26,6 +29,64 @@ std::optional<FrameworkBaseKind> framework_kind(
     }
 
     return std::nullopt;
+}
+
+std::optional<ModelConfigurationKind> model_configuration_kind(
+    std::string_view lexeme
+) {
+    if (lexeme == "table") {
+        return ModelConfigurationKind::table;
+    }
+
+    if (lexeme == "connection") {
+        return ModelConfigurationKind::connection;
+    }
+
+    if (lexeme == "timestamps") {
+        return ModelConfigurationKind::timestamps;
+    }
+
+    if (lexeme == "softDeletes") {
+        return ModelConfigurationKind::soft_deletes;
+    }
+
+    return std::nullopt;
+}
+
+bool scalar_type(std::string_view lexeme) {
+    return
+        lexeme == "string" ||
+        lexeme == "int" ||
+        lexeme == "integer" ||
+        lexeme == "int64" ||
+        lexeme == "uint64" ||
+        lexeme == "bool" ||
+        lexeme == "boolean" ||
+        lexeme == "float" ||
+        lexeme == "double";
+}
+
+std::string unquote(std::string_view value) {
+    if (
+        value.size() >= 2 &&
+        (
+            (value.front() == '"' && value.back() == '"') ||
+            (value.front() == '\'' && value.back() == '\'')
+        )
+    ) {
+        return std::string{value.substr(1, value.size() - 2)};
+    }
+
+    return std::string{value};
+}
+
+SourceSpan token_span(const Token& token) {
+    return SourceSpan{
+        token.offset,
+        token.offset + token.lexeme.size(),
+        token.line,
+        token.column
+    };
 }
 
 std::string declaration_name(
@@ -81,6 +142,38 @@ std::optional<std::size_t> Parser::previous_significant(
     return std::nullopt;
 }
 
+std::optional<std::size_t> Parser::matching_symbol(
+    std::size_t opening,
+    std::string_view open,
+    std::string_view close
+) const {
+    std::size_t depth = 0;
+
+    for (auto index = opening; index < tokens_.size(); ++index) {
+        if (tokens_[index].trivia()) {
+            continue;
+        }
+
+        if (tokens_[index].lexeme == open) {
+            ++depth;
+            continue;
+        }
+
+        if (tokens_[index].lexeme == close) {
+            if (depth == 0) {
+                return std::nullopt;
+            }
+
+            --depth;
+            if (depth == 0) {
+                return index;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
 bool Parser::statement_start(std::size_t index) const {
     const auto previous = previous_significant(index);
     if (!previous) {
@@ -124,6 +217,388 @@ void Parser::add_duplicate_diagnostic(
     });
 }
 
+void Parser::parse_model_members(
+    const std::string& class_name,
+    std::size_t body_open,
+    std::size_t body_close
+) {
+    std::unordered_set<std::string> field_names;
+
+    for (auto cursor = body_open + 1; cursor < body_close; ++cursor) {
+        const auto& token = tokens_[cursor];
+
+        if (token.trivia()) {
+            continue;
+        }
+
+        const auto configuration =
+            model_configuration_kind(token.lexeme);
+
+        if (configuration) {
+            const auto equals = next_significant(cursor);
+            const auto value =
+                equals ? next_significant(*equals) : std::nullopt;
+            const auto semicolon =
+                value ? next_significant(*value) : std::nullopt;
+
+            if (
+                !equals ||
+                !value ||
+                !semicolon ||
+                *semicolon >= body_close ||
+                tokens_[*equals].lexeme != "=" ||
+                tokens_[*semicolon].lexeme != ";"
+            ) {
+                result_.diagnostics.push_back(Diagnostic{
+                    DiagnosticLevel::error,
+                    SourceLocation{source_name_, token.line, token.column},
+                    "Invalid model configuration '" + token.lexeme + "'",
+                    "GNR1101",
+                    "Use '" + token.lexeme + " = value;'."
+                });
+                continue;
+            }
+
+            const bool string_configuration =
+                *configuration == ModelConfigurationKind::table ||
+                *configuration == ModelConfigurationKind::connection;
+
+            if (
+                string_configuration &&
+                tokens_[*value].kind != TokenKind::string_literal
+            ) {
+                result_.diagnostics.push_back(Diagnostic{
+                    DiagnosticLevel::error,
+                    SourceLocation{
+                        source_name_,
+                        tokens_[*value].line,
+                        tokens_[*value].column
+                    },
+                    token.lexeme + " must be a string",
+                    "GNR1102",
+                    "Use a quoted string value."
+                });
+                cursor = *semicolon;
+                continue;
+            }
+
+            const bool enabled = tokens_[*value].lexeme == "true";
+            const bool disabled = tokens_[*value].lexeme == "false";
+
+            if (!string_configuration && !enabled && !disabled) {
+                result_.diagnostics.push_back(Diagnostic{
+                    DiagnosticLevel::error,
+                    SourceLocation{
+                        source_name_,
+                        tokens_[*value].line,
+                        tokens_[*value].column
+                    },
+                    token.lexeme + " must be true or false",
+                    "GNR1103",
+                    "Use a boolean literal."
+                });
+                cursor = *semicolon;
+                continue;
+            }
+
+            result_.program.nodes.push_back(ModelConfiguration{
+                SourceSpan{
+                    token.offset,
+                    tokens_[*semicolon].offset +
+                        tokens_[*semicolon].lexeme.size(),
+                    token.line,
+                    token.column
+                },
+                class_name,
+                *configuration,
+                string_configuration
+                    ? unquote(tokens_[*value].lexeme)
+                    : tokens_[*value].lexeme,
+                enabled
+            });
+
+            cursor = *semicolon;
+            continue;
+        }
+
+        if (token.lexeme == "id") {
+            const auto semicolon = next_significant(cursor);
+
+            if (
+                semicolon &&
+                *semicolon < body_close &&
+                tokens_[*semicolon].lexeme == ";"
+            ) {
+                if (!field_names.insert("id").second) {
+                    result_.diagnostics.push_back(Diagnostic{
+                        DiagnosticLevel::error,
+                        SourceLocation{source_name_, token.line, token.column},
+                        "Duplicate model field 'id'",
+                        "GNR1110",
+                        "Declare each model field only once."
+                    });
+                } else {
+                    result_.program.nodes.push_back(ModelField{
+                        SourceSpan{
+                            token.offset,
+                            tokens_[*semicolon].offset +
+                                tokens_[*semicolon].lexeme.size(),
+                            token.line,
+                            token.column
+                        },
+                        token_span(token),
+                        class_name,
+                        "integer",
+                        "id",
+                        false,
+                        true,
+                        true
+                    });
+                }
+
+                cursor = *semicolon;
+                continue;
+            }
+        }
+
+        if (!scalar_type(token.lexeme)) {
+            continue;
+        }
+
+        auto name = next_significant(cursor);
+        bool nullable = false;
+
+        if (name && tokens_[*name].lexeme == "?") {
+            nullable = true;
+            name = next_significant(*name);
+        }
+
+        if (
+            !name ||
+            *name >= body_close ||
+            tokens_[*name].kind != TokenKind::identifier
+        ) {
+            continue;
+        }
+
+        const auto marker = next_significant(*name);
+        if (
+            !marker ||
+            *marker >= body_close ||
+            (
+                tokens_[*marker].lexeme != ";" &&
+                tokens_[*marker].lexeme != "="
+            )
+        ) {
+            continue;
+        }
+
+        const auto field_name = tokens_[*name].lexeme;
+
+        if (!field_names.insert(field_name).second) {
+            result_.diagnostics.push_back(Diagnostic{
+                DiagnosticLevel::error,
+                SourceLocation{
+                    source_name_,
+                    tokens_[*name].line,
+                    tokens_[*name].column
+                },
+                "Duplicate model field '" + field_name + "'",
+                "GNR1110",
+                "Declare each model field only once."
+            });
+            continue;
+        }
+
+        result_.program.nodes.push_back(ModelField{
+            SourceSpan{
+                token.offset,
+                tokens_[*name].offset + tokens_[*name].lexeme.size(),
+                token.line,
+                token.column
+            },
+            SourceSpan{
+                token.offset,
+                tokens_[*name].offset,
+                token.line,
+                token.column
+            },
+            class_name,
+            token.lexeme,
+            field_name,
+            nullable,
+            field_name == "id",
+            false
+        });
+
+        cursor = *name;
+    }
+}
+
+void Parser::parse_controller_members(
+    const std::string& class_name,
+    std::size_t body_open,
+    std::size_t body_close
+) {
+    std::unordered_set<std::string> injected_names;
+
+    for (auto cursor = body_open + 1; cursor < body_close; ++cursor) {
+        const auto& token = tokens_[cursor];
+
+        if (token.trivia()) {
+            continue;
+        }
+
+        if (token.lexeme == "inject") {
+            const auto type = next_significant(cursor);
+            const auto name =
+                type ? next_significant(*type) : std::nullopt;
+            const auto semicolon =
+                name ? next_significant(*name) : std::nullopt;
+
+            if (
+                !type ||
+                !name ||
+                !semicolon ||
+                *semicolon >= body_close ||
+                !tokens_[*type].word() ||
+                tokens_[*name].kind != TokenKind::identifier ||
+                tokens_[*semicolon].lexeme != ";"
+            ) {
+                result_.diagnostics.push_back(Diagnostic{
+                    DiagnosticLevel::error,
+                    SourceLocation{source_name_, token.line, token.column},
+                    "inject requires: inject Type name;",
+                    "GNR1201",
+                    "Declare an injected dependency with a type and field name."
+                });
+                continue;
+            }
+
+            if (!injected_names.insert(tokens_[*name].lexeme).second) {
+                result_.diagnostics.push_back(Diagnostic{
+                    DiagnosticLevel::error,
+                    SourceLocation{
+                        source_name_,
+                        tokens_[*name].line,
+                        tokens_[*name].column
+                    },
+                    "Duplicate injected dependency '" +
+                        tokens_[*name].lexeme + "'",
+                    "GNR1202",
+                    "Use a unique name for each injected dependency."
+                });
+                cursor = *semicolon;
+                continue;
+            }
+
+            result_.program.nodes.push_back(InjectDeclaration{
+                SourceSpan{
+                    token.offset,
+                    tokens_[*name].offset + tokens_[*name].lexeme.size(),
+                    token.line,
+                    token.column
+                },
+                token_span(tokens_[*type]),
+                token_span(tokens_[*name]),
+                class_name,
+                tokens_[*type].lexeme,
+                tokens_[*name].lexeme
+            });
+
+            cursor = *semicolon;
+            continue;
+        }
+
+        std::size_t return_type = cursor;
+        bool asynchronous = false;
+
+        if (token.lexeme == "async") {
+            asynchronous = true;
+            const auto next = next_significant(cursor);
+
+            if (!next || *next >= body_close) {
+                continue;
+            }
+
+            return_type = *next;
+        }
+
+        if (!tokens_[return_type].word()) {
+            continue;
+        }
+
+        const auto name = next_significant(return_type);
+        const auto open =
+            name ? next_significant(*name) : std::nullopt;
+
+        if (
+            !name ||
+            !open ||
+            *open >= body_close ||
+            tokens_[*name].kind != TokenKind::identifier ||
+            tokens_[*open].lexeme != "("
+        ) {
+            continue;
+        }
+
+        const auto close = matching_symbol(*open, "(", ")");
+        if (!close || *close >= body_close) {
+            continue;
+        }
+
+        const auto method_open = next_significant(*close);
+        if (
+            !method_open ||
+            *method_open >= body_close ||
+            tokens_[*method_open].lexeme != "{"
+        ) {
+            continue;
+        }
+
+        const auto method_close =
+            matching_symbol(*method_open, "{", "}");
+
+        if (!method_close || *method_close > body_close) {
+            continue;
+        }
+
+        result_.program.nodes.push_back(ControllerMethod{
+            SourceSpan{
+                token.offset,
+                tokens_[*method_close].offset +
+                    tokens_[*method_close].lexeme.size(),
+                token.line,
+                token.column
+            },
+            token_span(tokens_[return_type]),
+            token_span(tokens_[*name]),
+            class_name,
+            tokens_[return_type].lexeme,
+            tokens_[*name].lexeme,
+            asynchronous
+        });
+
+        cursor = *method_close;
+    }
+}
+
+void Parser::parse_framework_members(
+    const std::string& class_name,
+    FrameworkBaseKind kind,
+    std::size_t body_open,
+    std::size_t body_close
+) {
+    if (kind == FrameworkBaseKind::model) {
+        parse_model_members(class_name, body_open, body_close);
+        return;
+    }
+
+    if (kind == FrameworkBaseKind::controller) {
+        parse_controller_members(class_name, body_open, body_close);
+    }
+}
+
 void Parser::parse_framework_declaration(std::size_t index) {
     const auto kind = framework_kind(tokens_[index].lexeme);
     if (!kind || !statement_start(index)) {
@@ -162,13 +637,24 @@ void Parser::parse_framework_declaration(std::size_t index) {
         return;
     }
 
+    const auto body_close = matching_symbol(*body, "{", "}");
+    if (!body_close) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[*body].line,
+                tokens_[*body].column
+            },
+            declaration_name(*kind) + " body is missing a closing brace",
+            "GNR1003",
+            "Close the declaration body with '}'."
+        });
+        return;
+    }
+
     result_.program.nodes.push_back(FrameworkDeclaration{
-        SourceSpan{
-            tokens_[index].offset,
-            tokens_[index].offset + tokens_[index].lexeme.size(),
-            tokens_[index].line,
-            tokens_[index].column
-        },
+        token_span(tokens_[index]),
         SourceSpan{
             tokens_[*name].offset + tokens_[*name].lexeme.size(),
             tokens_[*name].offset + tokens_[*name].lexeme.size(),
@@ -178,6 +664,13 @@ void Parser::parse_framework_declaration(std::size_t index) {
         tokens_[*name].lexeme,
         *kind
     });
+
+    parse_framework_members(
+        tokens_[*name].lexeme,
+        *kind,
+        *body,
+        *body_close
+    );
 }
 
 void Parser::register_explicit_declaration(std::size_t index) {
@@ -269,7 +762,7 @@ ParseResult Parser::parse() {
             }
 
             const auto base = next_significant(*colon);
-            if (!base || tokens_[*base].kind != TokenKind::identifier) {
+            if (!base || !tokens_[*base].word()) {
                 continue;
             }
 
@@ -290,15 +783,25 @@ ParseResult Parser::parse() {
 
             if (framework_base) {
                 result_.program.nodes.push_back(FrameworkBase{
-                    SourceSpan{
-                        tokens_[*base].offset,
-                        tokens_[*base].offset + tokens_[*base].lexeme.size(),
-                        tokens_[*base].line,
-                        tokens_[*base].column
-                    },
+                    token_span(tokens_[*base]),
                     tokens_[*class_name].lexeme,
                     kind
                 });
+
+                const auto body = next_significant(*base);
+                if (body && tokens_[*body].lexeme == "{") {
+                    const auto body_close =
+                        matching_symbol(*body, "{", "}");
+
+                    if (body_close) {
+                        parse_framework_members(
+                            tokens_[*class_name].lexeme,
+                            kind,
+                            *body,
+                            *body_close
+                        );
+                    }
+                }
             }
 
             continue;

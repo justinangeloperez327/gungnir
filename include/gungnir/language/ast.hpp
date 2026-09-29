@@ -40,7 +40,60 @@ struct FrameworkDeclaration {
     FrameworkBaseKind kind{FrameworkBaseKind::controller};
 };
 
-using Node = std::variant<InferredBinding, FrameworkBase, FrameworkDeclaration>;
+struct ModelField {
+    SourceSpan declaration_span;
+    SourceSpan type_span;
+    std::string model_name;
+    std::string type_name;
+    std::string name;
+    bool nullable{false};
+    bool primary_key{false};
+    bool shorthand{false};
+};
+
+enum class ModelConfigurationKind {
+    table,
+    connection,
+    timestamps,
+    soft_deletes
+};
+
+struct ModelConfiguration {
+    SourceSpan span;
+    std::string model_name;
+    ModelConfigurationKind kind{ModelConfigurationKind::table};
+    std::string value;
+    bool enabled{false};
+};
+
+struct ControllerMethod {
+    SourceSpan span;
+    SourceSpan return_type_span;
+    SourceSpan name_span;
+    std::string controller_name;
+    std::string return_type;
+    std::string name;
+    bool asynchronous{false};
+};
+
+struct InjectDeclaration {
+    SourceSpan span;
+    SourceSpan type_span;
+    SourceSpan name_span;
+    std::string controller_name;
+    std::string type_name;
+    std::string name;
+};
+
+using Node = std::variant<
+    InferredBinding,
+    FrameworkBase,
+    FrameworkDeclaration,
+    ModelField,
+    ModelConfiguration,
+    ControllerMethod,
+    InjectDeclaration
+>;
 
 struct Program {
     std::vector<Node> nodes;
