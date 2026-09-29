@@ -13,6 +13,41 @@ namespace gungnir::config {
 
 namespace {
 
+std::optional<String> process_environment_value(
+    const String& key
+) {
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t size = 0;
+
+    if (
+        _dupenv_s(
+            &value,
+            &size,
+            key.c_str()
+        ) != 0 ||
+        value == nullptr
+    ) {
+        return std::nullopt;
+    }
+
+    String result{value};
+    std::free(value);
+
+    return result;
+#else
+    const char* value = std::getenv(
+        key.c_str()
+    );
+
+    if (value == nullptr) {
+        return std::nullopt;
+    }
+
+    return String{value};
+#endif
+}
+
 std::string_view trim(std::string_view value) {
     while (
         !value.empty() &&
@@ -361,10 +396,10 @@ std::optional<String> Environment::find(
     const String owned_key{key};
 
     if (
-        const char* process_value =
-            std::getenv(owned_key.c_str())
+        const auto process_value =
+            process_environment_value(owned_key)
     ) {
-        return String{process_value};
+        return process_value;
     }
 
     const auto found =
