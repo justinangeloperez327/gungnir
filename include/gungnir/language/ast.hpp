@@ -33,7 +33,14 @@ struct FrameworkBase {
     FrameworkBaseKind kind{FrameworkBaseKind::controller};
 };
 
-using Node = std::variant<InferredBinding, FrameworkBase>;
+struct FrameworkDeclaration {
+    SourceSpan keyword_span;
+    SourceSpan name_end_span;
+    std::string class_name;
+    FrameworkBaseKind kind{FrameworkBaseKind::controller};
+};
+
+using Node = std::variant<InferredBinding, FrameworkBase, FrameworkDeclaration>;
 
 struct Program {
     std::vector<Node> nodes;

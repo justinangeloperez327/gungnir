@@ -1,9 +1,56 @@
 #include <cassert>
 #include <string>
+#include <variant>
 
 #include <gungnir/language/language.hpp>
 
 int main() {
+    const auto tokens =
+        gungnir::language::Lexer{
+            "model User { string name; }\n"
+        }.tokenize();
+
+    assert(tokens[0].kind == gungnir::language::TokenKind::keyword);
+    assert(tokens[0].lexeme == "model");
+    assert(tokens[2].kind == gungnir::language::TokenKind::identifier);
+    assert(tokens[2].lexeme == "User");
+
+    auto parsed =
+        gungnir::language::Parser{
+            tokens,
+            "tokens.gnr"
+        }.parse();
+
+    assert(parsed.diagnostics.empty());
+
+    bool found_model_declaration = false;
+    for (const auto& node : parsed.program.nodes) {
+        if (
+            const auto* declaration =
+                std::get_if<
+                    gungnir::language::FrameworkDeclaration
+                >(&node)
+        ) {
+            found_model_declaration =
+                declaration->class_name == "User" &&
+                declaration->kind ==
+                    gungnir::language::FrameworkBaseKind::model;
+        }
+    }
+
+    assert(found_model_declaration);
+
+    const auto invalid_model =
+        gungnir::language::Parser{
+            gungnir::language::Lexer{
+                "model { string name; }\n"
+            }.tokenize(),
+            "bad_model.gnr"
+        }.parse();
+
+    assert(!invalid_model.diagnostics.empty());
+    assert(invalid_model.diagnostics.front().code == "GNR1001");
+
     gungnir::language::Transpiler transpiler;
 
     const auto immutable = transpiler.transpile(

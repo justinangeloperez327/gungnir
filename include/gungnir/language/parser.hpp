@@ -37,6 +37,7 @@ private:
     [[nodiscard]] bool declared_here(const std::string& name) const;
 
     void declare(std::string name);
+    void parse_framework_declaration(std::size_t index);
     void register_explicit_declaration(std::size_t index);
     void add_duplicate_diagnostic(const Token& token, const std::string& name);
 

@@ -10,6 +10,12 @@ The compiler surface now includes lexical symbol tables, core type inference/ass
 
 Framework-specific lowerers remain responsible for Model, Controller, Middleware, Migration, Validation, View and async syntax while general language analysis is kept reusable.
 
+The lexer classifies Gungnir language words such as `model`, `controller`,
+`middleware`, `migration`, `async`, `await`, `inject`, and scalar field types as
+keywords. The parser builds declaration AST nodes for first-class framework
+declarations before the compatibility lowering path rewrites them into ordinary
+C++ class declarations.
+
 ## Tooling
 
 `gungnirc --check file.gnr` performs language validation.
@@ -17,6 +23,10 @@ Framework-specific lowerers remain responsible for Model, Controller, Middleware
 `gungnirc --format file.gnr` formats Gungnir source without transpiling it. The formatter tokenizes first so braces in strings and comments are not interpreted as structural syntax.
 
 Diagnostics can carry stable codes and hints and are rendered with source location and a source-line marker.
+
+Framework declaration diagnostics use stable `GNR1xxx` codes. For example,
+`GNR1001` reports a missing declaration name and `GNR1002` reports a missing
+declaration body.
 
 The LanguageServer service exposes compiler diagnostics and framework hover information as a foundation for a full JSON-RPC Language Server Protocol transport.
 

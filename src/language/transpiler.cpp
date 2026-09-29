@@ -41,87 +41,6 @@ std::string escape_line_file(std::string value) {
     return escaped;
 }
 
-std::string normalize_framework_declarations(std::string_view source) {
-    Lexer lexer{source};
-    const auto tokens = lexer.tokenize();
-
-    struct DeclarationEdit {
-        std::size_t begin;
-        std::size_t end;
-        std::string replacement;
-    };
-
-    std::vector<DeclarationEdit> edits;
-
-    const auto next_significant = [&](std::size_t index) -> std::optional<std::size_t> {
-        for (auto cursor = index + 1; cursor < tokens.size(); ++cursor) {
-            if (!tokens[cursor].trivia() && tokens[cursor].kind != TokenKind::end) {
-                return cursor;
-            }
-        }
-        return std::nullopt;
-    };
-
-    for (std::size_t index = 0; index < tokens.size(); ++index) {
-        if (tokens[index].kind != TokenKind::identifier) {
-            continue;
-        }
-
-        std::string base;
-        if (tokens[index].lexeme == "model") {
-            base = "Model";
-        } else if (tokens[index].lexeme == "controller") {
-            base = "Controller";
-        } else if (tokens[index].lexeme == "migration") {
-            base = "Migration";
-        } else if (tokens[index].lexeme == "middleware") {
-            base = "Middleware";
-        } else {
-            continue;
-        }
-
-        const auto name = next_significant(index);
-        const auto body = name ? next_significant(*name) : std::nullopt;
-        if (
-            !name ||
-            !body ||
-            tokens[*name].kind != TokenKind::identifier ||
-            tokens[*body].lexeme != "{"
-        ) {
-            continue;
-        }
-
-        edits.push_back(DeclarationEdit{
-            tokens[index].offset,
-            tokens[index].offset + tokens[index].lexeme.size(),
-            "class"
-        });
-        edits.push_back(DeclarationEdit{
-            tokens[*name].offset + tokens[*name].lexeme.size(),
-            tokens[*name].offset + tokens[*name].lexeme.size(),
-            " : " + base
-        });
-    }
-
-    if (edits.empty()) {
-        return std::string{source};
-    }
-
-    std::sort(edits.begin(), edits.end(), [](const auto& left, const auto& right) {
-        return left.begin < right.begin;
-    });
-
-    std::string output;
-    std::size_t cursor = 0;
-    for (const auto& edit : edits) {
-        output.append(source.substr(cursor, edit.begin - cursor));
-        output += edit.replacement;
-        cursor = edit.end;
-    }
-    output.append(source.substr(cursor));
-    return output;
-}
-
 std::string framework_base(const FrameworkBase& node) {
     switch (node.kind) {
     case FrameworkBaseKind::model:
@@ -135,6 +54,68 @@ std::string framework_base(const FrameworkBase& node) {
     }
 
     return {};
+}
+
+std::string framework_short_base(FrameworkBaseKind kind) {
+    switch (kind) {
+    case FrameworkBaseKind::model:
+        return "Model";
+    case FrameworkBaseKind::controller:
+        return "Controller";
+    case FrameworkBaseKind::migration:
+        return "Migration";
+    case FrameworkBaseKind::middleware:
+        return "Middleware";
+    }
+
+    return {};
+}
+
+std::string normalize_framework_declarations(
+    std::string_view source,
+    const Program& program
+) {
+    std::vector<SourceEdit> edits;
+
+    for (const auto& node : program.nodes) {
+        if (const auto* declaration =
+                std::get_if<FrameworkDeclaration>(&node)) {
+            edits.push_back(SourceEdit{
+                declaration->keyword_span.begin,
+                declaration->keyword_span.end,
+                "class"
+            });
+            edits.push_back(SourceEdit{
+                declaration->name_end_span.begin,
+                declaration->name_end_span.end,
+                " : " + framework_short_base(declaration->kind)
+            });
+        }
+    }
+
+    if (edits.empty()) {
+        return std::string{source};
+    }
+
+    std::sort(
+        edits.begin(),
+        edits.end(),
+        [](const SourceEdit& left, const SourceEdit& right) {
+            return left.begin < right.begin;
+        }
+    );
+
+    std::string output;
+    std::size_t cursor = 0;
+
+    for (const auto& edit : edits) {
+        output.append(source.substr(cursor, edit.begin - cursor));
+        output += edit.replacement;
+        cursor = edit.end;
+    }
+
+    output.append(source.substr(cursor));
+    return output;
 }
 
 } // namespace
@@ -154,12 +135,33 @@ TranspileResult Transpiler::transpile(
     std::string source_name,
     TranspileOptions options
 ) const {
-    const auto normalized_source = normalize_framework_declarations(source);
+    Lexer declaration_lexer{source};
+    Parser declaration_parser{
+        declaration_lexer.tokenize(),
+        source_name
+    };
+    auto declaration_parse =
+        declaration_parser.parse();
+
+    const auto normalized_source =
+        normalize_framework_declarations(
+            source,
+            declaration_parse.program
+        );
     source = normalized_source;
 
     Lexer lexer{source};
     Parser parser{lexer.tokenize(), source_name};
     auto parsed = parser.parse();
+
+    for (const auto& diagnostic : declaration_parse.diagnostics) {
+        if (diagnostic.code.starts_with("GNR1")) {
+            parsed.diagnostics.insert(
+                parsed.diagnostics.begin(),
+                diagnostic
+            );
+        }
+    }
 
     BootstrapLowerer bootstrap_lowerer;
     auto bootstrap_lowering =
