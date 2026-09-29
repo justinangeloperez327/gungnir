@@ -16,8 +16,9 @@ struct SemanticIndex {
     bool closed_world{false};
     std::unordered_map<std::string, FrameworkBaseKind> types;
     std::unordered_map<std::string, std::unordered_set<std::string>> actions;
+    std::unordered_map<std::string, std::unordered_set<std::string>> declaration_sources;
 
-    void add(const Program& program);
+    void add(const Program& program, std::string_view source_name = "<memory>");
 };
 
 class SemanticAnalyzer {

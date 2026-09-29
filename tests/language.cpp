@@ -22,12 +22,50 @@ int main() {
            sum.arguments[1].text == "*");
     assert(calculate.body.back().expression.kind ==
            gungnir::language::ExpressionKind::group);
+    const auto list_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Lists { void build() { const values = [1, add(2, 3)]; } }"
+        }.tokenize(), "lists.gnr"
+    }.parse().program;
+    const auto& lists = std::get<gungnir::language::FrameworkDeclaration>(
+        list_program.nodes.front());
+    const auto& build = std::get<gungnir::language::ControllerMethod>(
+        list_program.nodes[lists.members.front()]);
+    assert(build.body.front().expression.kind ==
+           gungnir::language::ExpressionKind::list);
+    assert(build.body.front().expression.arguments.size() == 2);
+    const auto access_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Access { void load() { const users = User::all(); "
+            "const active = true && false; } }"
+        }.tokenize(), "access.gnr"
+    }.parse().program;
+    const auto& access = std::get<gungnir::language::FrameworkDeclaration>(
+        access_program.nodes.front());
+    const auto& load = std::get<gungnir::language::ControllerMethod>(
+        access_program.nodes[access.members.front()]);
+    assert(load.body[0].expression.kind == gungnir::language::ExpressionKind::call);
+    assert(load.body[0].expression.arguments.front().kind ==
+           gungnir::language::ExpressionKind::member);
+    assert(load.body[0].expression.arguments.front().text == "::");
+    assert(load.body[1].expression.kind == gungnir::language::ExpressionKind::binary);
+    assert(load.body[1].expression.text == "&&");
     const auto expression_diagnostics = gungnir::language::SemanticAnalyzer{}.analyze(
         expression_program, "expressions.gnr");
     bool invalid_arithmetic_return = false;
     for (const auto& diagnostic : expression_diagnostics)
         invalid_arithmetic_return |= diagnostic.code == "GNR1306";
     assert(invalid_arithmetic_return);
+    const auto operand_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Operands { bool check() { return true && 1; } }"
+        }.tokenize(), "operands.gnr"
+    }.parse().program;
+    bool operand_error = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             operand_program, "operands.gnr"))
+        operand_error |= diagnostic.code == "GNR1316";
+    assert(operand_error);
 
     const auto tokens =
         gungnir::language::Lexer{
@@ -530,6 +568,18 @@ int main() {
     project_index.add(shared_controller.program);
     project_index.add(shared_model.program);
     project_index.closed_world = true;
+    const auto colliding_model = gungnir::language::Parser{
+        gungnir::language::Lexer{"model Post { string label; }"}.tokenize(),
+        "duplicate_model.gnr"
+    }.parse();
+    gungnir::language::SemanticIndex duplicate_project;
+    duplicate_project.add(shared_model.program, "models.gnr");
+    duplicate_project.add(colliding_model.program, "duplicate_model.gnr");
+    bool duplicate_project_type = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             colliding_model.program, "duplicate_model.gnr", &duplicate_project))
+        duplicate_project_type |= diagnostic.code == "GNR1314";
+    assert(duplicate_project_type);
     const auto cross_file_route = gungnir::language::Transpiler{}.transpile(
         "Route::get(\"/posts\", PostsController::index);",
         "routes.gnr",
@@ -965,6 +1015,15 @@ int main() {
             "co_return text(request.parameter(\"id\"));"
         ) != std::string::npos
     );
+    const auto nested_async = transpiler.transpile(
+        "controller NestedAsync { async Response show(bool ready) { "
+        "if (ready) { return await load(); } "
+        "return text(\"wait\"); } }",
+        "nested_async.gnr", {.emit_line_directives = false}
+    );
+    assert(nested_async.success());
+    assert(nested_async.code.find("co_return co_await load();") !=
+           std::string::npos);
 
     const auto sync_request = transpiler.transpile(
         "controller RequestController {\n"

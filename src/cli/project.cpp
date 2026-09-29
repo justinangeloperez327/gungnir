@@ -227,7 +227,7 @@ language::SemanticIndex index_sources(
         language::Parser parser{
             language::Lexer{source}.tokenize(), path.generic_string()
         };
-        index.add(parser.parse().program);
+        index.add(parser.parse().program, path.generic_string());
     }
     return index;
 }

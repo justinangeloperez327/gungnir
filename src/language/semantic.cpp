@@ -26,7 +26,7 @@ Type scalar_type(std::string_view name) {
 
 } // namespace
 
-void SemanticIndex::add(const Program& program) {
+void SemanticIndex::add(const Program& program, std::string_view source_name) {
     for (const auto& node : program.nodes) {
         const auto* base = std::get_if<FrameworkBase>(&node);
         const auto* framework = std::get_if<FrameworkDeclaration>(&node);
@@ -35,6 +35,7 @@ void SemanticIndex::add(const Program& program) {
         const auto kind = base ? base->kind : framework->kind;
         const auto& members = base ? base->members : framework->members;
         types.emplace(name, kind);
+        declaration_sources[name].insert(std::string{source_name});
         if (kind != FrameworkBaseKind::controller) continue;
         for (const auto index : members) {
             const auto& member = program.nodes[index];
@@ -51,7 +52,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
 ) const {
     std::vector<Diagnostic> diagnostics;
     SemanticIndex index = project ? *project : SemanticIndex{};
-    index.add(program);
+    index.add(program, source_name);
     const auto& types = index.types;
     auto& actions = index.actions;
 
@@ -72,6 +73,13 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
         const auto& declaration_name = base
             ? base->class_name : framework->class_name;
         const auto declaration_kind = base ? base->kind : framework->kind;
+        const auto& declared_in = index.declaration_sources.at(declaration_name);
+        if (declared_in.size() > 1 &&
+            declared_in.contains(std::string{source_name})) {
+            report(base ? base->span : framework->span,
+                   "Duplicate framework declaration '" + declaration_name +
+                       "' across project files", "GNR1314");
+        }
 
         std::unordered_set<std::string> member_names;
         std::unordered_set<std::string> method_signatures;
@@ -190,21 +198,47 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     const auto lhs = infer(expression.arguments[0]);
                     const auto rhs = infer(expression.arguments[1]);
                     const auto& op = expression.text;
-                    if (op == "=") return rhs;
+                    if (op == "=") {
+                        if (lhs.known() && rhs.known() &&
+                            !type_system.assignable(lhs, rhs))
+                            report(expression.span, "Assignment type mismatch", "GNR1316");
+                        return rhs;
+                    }
                     if (!lhs.known() || !rhs.known()) return {};
-                    if (op == "==" || op == "!=" || op == "<" || op == ">" ||
-                        op == "<=" || op == ">=" || op == "&&" || op == "||")
-                        return {TypeKind::boolean, "bool", false};
-                    if (op == "+" && lhs.kind == TypeKind::string &&
-                        rhs.kind == TypeKind::string) return lhs;
                     const bool lhs_numeric = lhs.kind == TypeKind::integer ||
                                              lhs.kind == TypeKind::decimal;
                     const bool rhs_numeric = rhs.kind == TypeKind::integer ||
                                              rhs.kind == TypeKind::decimal;
+                    if (op == "&&" || op == "||") {
+                        if (lhs.kind == TypeKind::boolean &&
+                            rhs.kind == TypeKind::boolean)
+                            return {TypeKind::boolean, "bool", false};
+                        report(expression.span, "Logical operands must be boolean", "GNR1316");
+                        return {};
+                    }
+                    if (op == "==" || op == "!=") {
+                        if (type_system.assignable(lhs, rhs) ||
+                            type_system.assignable(rhs, lhs))
+                            return {TypeKind::boolean, "bool", false};
+                        report(expression.span, "Incompatible comparison operands", "GNR1316");
+                        return {};
+                    }
+                    if (op == "<" || op == ">" || op == "<=" || op == ">=") {
+                        if ((lhs_numeric && rhs_numeric) ||
+                            (lhs.kind == TypeKind::string && rhs.kind == TypeKind::string))
+                            return {TypeKind::boolean, "bool", false};
+                        report(expression.span, "Incompatible comparison operands", "GNR1316");
+                        return {};
+                    }
+                    if (op == "+" && lhs.kind == TypeKind::string &&
+                        rhs.kind == TypeKind::string) return lhs;
                     if (lhs_numeric && rhs_numeric)
                         return lhs.kind == TypeKind::decimal || rhs.kind == TypeKind::decimal
                             ? Type{TypeKind::decimal, "decimal", false}
                             : lhs;
+                    if (op == "+" || op == "-" || op == "*" || op == "/" ||
+                        op == "%")
+                        report(expression.span, "Arithmetic operands must be numeric", "GNR1316");
                 }
                 return {};
             };

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <gungnir/language/diagnostic.hpp>
+#include <gungnir/language/ast.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/token.hpp>
 
@@ -23,6 +24,11 @@ public:
     ) const;
     [[nodiscard]] AsyncLoweringResult lower(
         const std::vector<Token>& tokens,
+        std::string source_name = "<memory>"
+    ) const;
+    [[nodiscard]] AsyncLoweringResult lower(
+        const std::vector<Token>& tokens,
+        const Program& program,
         std::string source_name = "<memory>"
     ) const;
 };

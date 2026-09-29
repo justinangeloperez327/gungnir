@@ -53,7 +53,7 @@ struct MethodParameter {
 
 enum class ExpressionKind {
     name, literal, call, raw, unary, binary, member, subscript, group,
-    object, entry
+    object, entry, list
 };
 
 struct Expression {

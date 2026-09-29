@@ -94,15 +94,15 @@ TranspileResult Transpiler::transpile(
 
     ModelLowerer model_lowerer;
     auto model_lowering =
-        model_lowerer.lower(source, parsed.program, source_name);
+        model_lowerer.lower(source, parsed.program, tokens, source_name);
 
     ControllerLowerer controller_lowerer;
     auto controller_lowering =
-        controller_lowerer.lower(source, parsed.program, source_name);
+        controller_lowerer.lower(source, parsed.program, tokens, source_name);
 
     AsyncLowerer async_lowerer;
     auto async_lowering =
-        async_lowerer.lower(tokens, source_name);
+        async_lowerer.lower(tokens, parsed.program, source_name);
 
     ViewLowerer view_lowerer;
     auto view_lowering =
@@ -113,6 +113,7 @@ TranspileResult Transpiler::transpile(
         middleware_lowerer.lower(
             source,
             parsed.program,
+            tokens,
             source_name
         );
 
@@ -121,15 +122,13 @@ TranspileResult Transpiler::transpile(
         migration_lowerer.lower(
             source,
             parsed.program,
+            tokens,
             source_name
         );
 
     ValidationLowerer validation_lowerer;
     auto validation_lowering =
-        validation_lowerer.lower(
-            source,
-            source_name
-        );
+        validation_lowerer.lower(source, tokens, parsed.program, source_name);
 
     parsed.diagnostics.insert(
         parsed.diagnostics.end(),

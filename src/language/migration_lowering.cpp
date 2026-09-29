@@ -40,10 +40,14 @@ MigrationLoweringResult MigrationLowerer::lower(
     std::string_view source, const Program& program,
     std::string source_name
 ) const {
-    MigrationLoweringResult result;
+    return lower(source, program, Lexer{source}.tokenize(), std::move(source_name));
+}
 
-    Lexer lexer{source};
-    const auto tokens = lexer.tokenize();
+MigrationLoweringResult MigrationLowerer::lower(
+    std::string_view source, const Program& program,
+    const std::vector<Token>& tokens, std::string source_name
+) const {
+    MigrationLoweringResult result;
 
     for (const auto& node : program.nodes) {
         const auto* base = std::get_if<FrameworkBase>(&node);

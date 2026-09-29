@@ -347,10 +347,12 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
         }
         // Split at the weakest operator outside nested delimiters.
         std::size_t split = end;
+        std::size_t split_width = 1;
+        std::string split_operator;
         int weakest = 8;
         int parens = 0, brackets = 0, braces = 0;
         for (auto i = begin; i < end; ++i) {
-            const auto& op = value(i);
+            std::string op = value(i);
             if (op == "(") ++parens;
             else if (op == ")") --parens;
             else if (op == "[") ++brackets;
@@ -359,16 +361,30 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
             else if (op == "}") --braces;
             if (parens || brackets || braces || i == begin || i + 1 == end)
                 continue;
+            std::size_t width = 1;
+            if (i + 1 < end) {
+                const auto combined = op + value(i + 1);
+                if (combined == "&&" || combined == "||" || combined == "==" ||
+                    combined == "!=" || combined == "<=" || combined == ">=" ||
+                    combined == "->" || combined == "::") {
+                    op = combined;
+                    width = 2;
+                }
+            }
             const int rank = precedence(op);
-            if (rank && (rank < weakest || (rank == weakest && rank != 1))) {
+            if (rank && i + width < end &&
+                (rank < weakest || (rank == weakest && rank != 1))) {
                 weakest = rank;
                 split = i;
+                split_width = width;
+                split_operator = op;
             }
+            i += width - 1;
         }
         if (split != end) {
-            auto result = make(begin, end, ExpressionKind::binary, value(split));
+            auto result = make(begin, end, ExpressionKind::binary, split_operator);
             result.arguments.push_back(parse(begin, split));
-            result.arguments.push_back(parse(split + 1, end));
+            result.arguments.push_back(parse(split + split_width, end));
             return result;
         }
         if (value(begin) == "!" || value(begin) == "-" || value(begin) == "+" ||
@@ -412,6 +428,22 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
             append_entry(end - 1);
             return result;
         }
+        if (value(begin) == "[" && value(end - 1) == "]" &&
+            matching_symbol(significant[begin], "[", "]") == significant[end - 1]) {
+            auto result = make(begin, end, ExpressionKind::list);
+            auto start = begin + 1;
+            int depth = 0;
+            for (auto i = start; i < end - 1; ++i) {
+                if (value(i) == "(" || value(i) == "[" || value(i) == "{") ++depth;
+                else if (value(i) == ")" || value(i) == "]" || value(i) == "}") --depth;
+                if (value(i) == "," && depth == 0) {
+                    if (start < i) result.arguments.push_back(parse(start, i));
+                    start = i + 1;
+                }
+            }
+            if (start < end - 1) result.arguments.push_back(parse(start, end - 1));
+            return result;
+        }
         // A postfix operation must close at the end of this expression.
         if (value(end - 1) == ")") {
             for (auto i = begin + 1; i + 1 < end; ++i) {
@@ -445,8 +477,16 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
                 return result;
             }
         }
-        if (end >= begin + 3 && (value(end - 2) == "." ||
-            value(end - 2) == "->" || value(end - 2) == "::")) {
+        if (end >= begin + 4 &&
+            ((value(end - 3) == "-" && value(end - 2) == ">") ||
+             (value(end - 3) == ":" && value(end - 2) == ":"))) {
+            auto result = make(begin, end, ExpressionKind::member,
+                               value(end - 3) + value(end - 2));
+            result.arguments.push_back(parse(begin, end - 3));
+            result.arguments.push_back(parse(end - 1, end));
+            return result;
+        }
+        if (end >= begin + 3 && value(end - 2) == ".") {
             auto result = make(begin, end, ExpressionKind::member, value(end - 2));
             result.arguments.push_back(parse(begin, end - 2));
             result.arguments.push_back(parse(end - 1, end));

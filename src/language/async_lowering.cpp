@@ -1,8 +1,11 @@
 #include <gungnir/language/async_lowering.hpp>
 
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -165,14 +168,90 @@ AsyncLoweringResult AsyncLowerer::lower(
     const std::vector<Token>& tokens,
     std::string source_name
 ) const {
+    return lower(tokens, Program{}, std::move(source_name));
+}
+
+AsyncLoweringResult AsyncLowerer::lower(
+    const std::vector<Token>& tokens,
+    const Program& program,
+    std::string source_name
+) const {
     AsyncLoweringResult result;
 
     std::vector<AsyncFunction> functions;
+    std::unordered_set<std::size_t> lowered_words;
+    std::unordered_map<std::size_t, std::size_t> token_indices;
+    token_indices.reserve(tokens.size());
+    for (std::size_t index = 0; index < tokens.size(); ++index)
+        token_indices.emplace(tokens[index].offset, index);
+    const auto at_offset = [&](std::size_t offset) -> std::optional<std::size_t> {
+        const auto found = token_indices.find(offset);
+        return found == token_indices.end()
+            ? std::nullopt : std::optional<std::size_t>{found->second};
+    };
+    std::function<void(const Expression&)> lower_expression =
+        [&](const Expression& expression) {
+        if (expression.kind == ExpressionKind::unary &&
+            expression.text == "await" &&
+            lowered_words.insert(expression.span.begin).second) {
+            result.edits.push_back(SourceEdit{
+                expression.span.begin, expression.span.begin + 5, "co_await"
+            });
+        }
+        for (const auto& child : expression.arguments) lower_expression(child);
+    };
+    std::function<void(const std::vector<MethodStatement>&)> lower_body =
+        [&](const std::vector<MethodStatement>& statements) {
+        for (const auto& statement : statements) {
+            if (statement.kind == StatementKind::return_ &&
+                lowered_words.insert(statement.span.begin).second) {
+                result.edits.push_back(SourceEdit{
+                    statement.span.begin, statement.span.begin + 6, "co_return"
+                });
+            }
+            lower_expression(statement.expression);
+            lower_body(statement.children);
+            lower_body(statement.alternative);
+        }
+    };
+    const auto lower_method = [&](const auto& method) {
+        if (!method.asynchronous) return;
+        const auto start = at_offset(method.span.begin);
+        const auto return_type = at_offset(method.return_type_span.begin);
+        const auto name = at_offset(method.name_span.begin);
+        if (!start || !return_type || !name ||
+            tokens[*start].lexeme != "async") return;
+        const auto open = next_significant(tokens, *name);
+        const auto close = open ? matching_symbol(tokens, *open, "(", ")")
+                                : std::nullopt;
+        const auto body_open = close ? next_significant(tokens, *close)
+                                     : std::nullopt;
+        const auto body_close = body_open
+            ? matching_symbol(tokens, *body_open, "{", "}") : std::nullopt;
+        if (!open || !close || !body_open || !body_close) return;
+        functions.push_back(AsyncFunction{
+            *start, *return_type, *name, *open, *close, *body_open, *body_close
+        });
+        lowered_words.insert(method.span.begin);
+        result.edits.push_back(SourceEdit{
+            method.span.begin, method.return_type_span.end,
+            "gungnir::Task<" + qualify_framework_type(method.return_type) + ">"
+        });
+        lower_request_parameters(result, tokens, *open, *close);
+        lower_body(method.body);
+    };
+    for (const auto& node : program.nodes) {
+        if (const auto* method = std::get_if<FrameworkMethod>(&node))
+            lower_method(*method);
+        if (const auto* method = std::get_if<ControllerMethod>(&node))
+            lower_method(*method);
+    }
 
     for (std::size_t index = 0; index < tokens.size(); ++index) {
         if (
             !tokens[index].word() ||
-            tokens[index].lexeme != "async"
+            tokens[index].lexeme != "async" ||
+            lowered_words.contains(tokens[index].offset)
         ) {
             continue;
         }
@@ -287,12 +366,14 @@ AsyncLoweringResult AsyncLowerer::lower(
             }
 
             if (tokens[cursor].lexeme == "await") {
+                if (!lowered_words.insert(tokens[cursor].offset).second) continue;
                 result.edits.push_back(SourceEdit{
                     tokens[cursor].offset,
                     tokens[cursor].offset + tokens[cursor].lexeme.size(),
                     "co_await"
                 });
             } else if (tokens[cursor].lexeme == "return") {
+                if (!lowered_words.insert(tokens[cursor].offset).second) continue;
                 result.edits.push_back(SourceEdit{
                     tokens[cursor].offset,
                     tokens[cursor].offset + tokens[cursor].lexeme.size(),
@@ -302,6 +383,23 @@ AsyncLoweringResult AsyncLowerer::lower(
         }
 
         index = *body_close;
+    }
+
+    // Preserve native C++ escape expressions inside AST-recognized methods.
+    for (const auto& function : functions) {
+        for (auto cursor = function.body_open + 1;
+             cursor < function.body_close; ++cursor) {
+            if (!tokens[cursor].word() ||
+                !lowered_words.insert(tokens[cursor].offset).second) continue;
+            if (tokens[cursor].lexeme == "await" ||
+                tokens[cursor].lexeme == "return") {
+                result.edits.push_back(SourceEdit{
+                    tokens[cursor].offset,
+                    tokens[cursor].offset + tokens[cursor].lexeme.size(),
+                    tokens[cursor].lexeme == "await" ? "co_await" : "co_return"
+                });
+            }
+        }
     }
 
     // Clean framework types from normal controller-style signatures too.
