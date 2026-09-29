@@ -208,15 +208,36 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 }
                 return {};
             };
-            for (const auto& statement : *body) {
+            std::function<void(const std::vector<MethodStatement>&,
+                               std::unordered_map<std::string, Type>&)> check_body =
+                [&](const std::vector<MethodStatement>& statements,
+                    std::unordered_map<std::string, Type>& scope) {
+            for (const auto& statement : statements) {
+                local_types = scope;
                 const Type value = infer(statement.expression);
+                if (statement.kind == StatementKind::conditional ||
+                    statement.kind == StatementKind::loop_) {
+                    if (statement.name != "for" && value.known() &&
+                        value.kind != TypeKind::boolean) {
+                        report(statement.expression.span,
+                               "Control-flow condition must be boolean", "GNR1311");
+                    }
+                }
                 if (statement.kind == StatementKind::binding &&
                     !statement.name.empty()) {
-                    if (local_types.contains(statement.name)) {
+                    if (scope.contains(statement.name)) {
                         report(statement.span, "Duplicate local binding '" +
                                statement.name + "'", "GNR1310");
                     }
-                    local_types.insert_or_assign(statement.name, value);
+                    scope.insert_or_assign(statement.name, value);
+                }
+                if (!statement.children.empty()) {
+                    auto nested = scope;
+                    check_body(statement.children, nested);
+                }
+                if (!statement.alternative.empty()) {
+                    auto nested = scope;
+                    check_body(statement.alternative, nested);
                 }
                 if (statement.kind != StatementKind::return_) continue;
                 if (return_type == "void") {
@@ -229,6 +250,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                                "'", "GNR1306");
                 }
             }
+            };
+            check_body(*body, local_types);
         }
     }
 

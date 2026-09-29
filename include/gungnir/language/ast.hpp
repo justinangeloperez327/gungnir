@@ -61,13 +61,15 @@ struct Expression {
     // For operators and postfix expressions, arguments contain operands in source order.
 };
 
-enum class StatementKind { return_, binding, expression, block };
+enum class StatementKind { return_, binding, expression, block, conditional, loop_ };
 
 struct MethodStatement {
     SourceSpan span;
     StatementKind kind{StatementKind::expression};
     Expression expression;
     std::string name;
+    std::vector<MethodStatement> children;
+    std::vector<MethodStatement> alternative;
 };
 
 struct FrameworkDeclaration {

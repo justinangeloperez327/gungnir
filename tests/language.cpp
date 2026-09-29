@@ -369,9 +369,45 @@ int main() {
     );
     assert(nested_method.body.size() == 2);
     assert(nested_method.body[0].kind ==
-           gungnir::language::StatementKind::block);
+           gungnir::language::StatementKind::conditional);
+    assert(nested_method.body[0].children.size() == 1);
+    assert(nested_method.body[0].children[0].kind ==
+           gungnir::language::StatementKind::return_);
     assert(nested_method.body[1].kind ==
            gungnir::language::StatementKind::return_);
+
+    const auto control_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Flow { int choose(bool ready) { "
+            "if (ready) { const x = 1; return x; } "
+            "else { while (false) { return 2; } return 3; } "
+            "return 4; } }"
+        }.tokenize(), "flow.gnr"
+    }.parse().program;
+    const auto& flow = std::get<gungnir::language::FrameworkDeclaration>(
+        control_program.nodes.front());
+    const auto& choose = std::get<gungnir::language::ControllerMethod>(
+        control_program.nodes[flow.members.front()]);
+    assert(choose.body.size() == 2);
+    assert(choose.body[0].alternative.size() == 2);
+    assert(choose.body[0].alternative[0].kind ==
+           gungnir::language::StatementKind::loop_);
+    assert(choose.body[0].alternative[0].children.size() == 1);
+    assert(gungnir::language::SemanticAnalyzer{}.analyze(
+        control_program, "flow.gnr").empty());
+    const auto invalid_flow = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller InvalidFlow { int choose() { "
+            "if (1) { return true; } else { return 2; } } }"
+        }.tokenize(), "invalid_flow.gnr"
+    }.parse().program;
+    bool condition_error = false, nested_return_error = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             invalid_flow, "invalid_flow.gnr")) {
+        condition_error |= diagnostic.code == "GNR1311";
+        nested_return_error |= diagnostic.code == "GNR1306";
+    }
+    assert(condition_error && nested_return_error);
 
     const auto invalid_model =
         gungnir::language::Parser{

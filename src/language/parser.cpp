@@ -456,13 +456,68 @@ std::vector<MethodStatement> Parser::parse_method_body(
             cursor = *next;
         }
         if (block) {
-            statements.push_back(MethodStatement{
+            auto brace = *start;
+            while (brace < cursor && tokens_[brace].lexeme != "{") {
+                const auto next = next_significant(brace);
+                if (!next) break;
+                brace = *next;
+            }
+            const auto control = tokens_[*start].lexeme;
+            const bool conditional = control == "if";
+            const bool loop = control == "while" || control == "for";
+            MethodStatement statement{
                 SourceSpan{tokens_[*start].offset,
                            tokens_[cursor].offset + tokens_[cursor].lexeme.size(),
                            tokens_[*start].line, tokens_[*start].column},
-                StatementKind::block,
+                conditional ? StatementKind::conditional :
+                    loop ? StatementKind::loop_ : StatementKind::block,
                 parse_expression(*start, cursor)
-            });
+            };
+            statement.name = control;
+            if (brace < cursor) {
+                statement.children = parse_method_body(brace, cursor);
+                const auto open = next_significant(*start);
+                if ((conditional || loop) && open && tokens_[*open].lexeme == "(") {
+                    const auto close = matching_symbol(*open, "(", ")");
+                    const auto first = next_significant(*open);
+                    const auto last = close ? previous_significant(*close) : std::nullopt;
+                    if (close && first && last && *first < *close && *last >= *first)
+                        statement.expression = parse_expression(*first, *last);
+                }
+            }
+            if (conditional) {
+                const auto otherwise = next_significant(cursor);
+                if (otherwise && *otherwise < closing &&
+                    tokens_[*otherwise].lexeme == "else") {
+                    const auto branch = next_significant(*otherwise);
+                    if (branch && tokens_[*branch].lexeme == "{") {
+                        const auto end = matching_symbol(*branch, "{", "}");
+                        if (end && *end < closing) {
+                            statement.alternative = parse_method_body(*branch, *end);
+                            cursor = *end;
+                            statement.span.end = tokens_[cursor].offset +
+                                                 tokens_[cursor].lexeme.size();
+                        }
+                    } else if (branch && tokens_[*branch].lexeme == "if") {
+                        // Parse an else-if as a nested conditional without copying tokens.
+                        auto nested = *branch;
+                        while (nested < closing && tokens_[nested].lexeme != "{") {
+                            const auto next = next_significant(nested);
+                            if (!next) break;
+                            nested = *next;
+                        }
+                        const auto end = nested < closing
+                            ? matching_symbol(nested, "{", "}") : std::nullopt;
+                        if (end && *end < closing) {
+                            statement.alternative = parse_method_body(*otherwise, *end + 1);
+                            cursor = *end;
+                            statement.span.end = tokens_[cursor].offset +
+                                                 tokens_[cursor].lexeme.size();
+                        }
+                    }
+                }
+            }
+            statements.push_back(std::move(statement));
         } else if (tokens_[cursor].lexeme == ";") {
             const auto expression_start = next_significant(*start);
             const auto expression_end = previous_significant(cursor);
