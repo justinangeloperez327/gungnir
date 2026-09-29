@@ -274,6 +274,138 @@ std::optional<std::size_t> Parser::matching_symbol(
     return std::nullopt;
 }
 
+std::vector<MethodParameter> Parser::parse_parameters(
+    std::size_t opening, std::size_t closing
+) const {
+    std::vector<MethodParameter> parameters;
+    auto first = next_significant(opening);
+    while (first && *first < closing) {
+        auto last = *first;
+        auto cursor = next_significant(last);
+        std::size_t nested = 0;
+        while (cursor && *cursor < closing) {
+            const auto& value = tokens_[*cursor].lexeme;
+            if (value == "<" || value == "(" || value == "[") {
+                ++nested;
+            } else if (value == ">" || value == ")" || value == "]") {
+                if (nested > 0) --nested;
+            }
+            if (value == "," && nested == 0) break;
+            last = *cursor;
+            cursor = next_significant(last);
+        }
+        if (*first != last && tokens_[last].kind == TokenKind::identifier) {
+            parameters.push_back(MethodParameter{
+                SourceSpan{tokens_[*first].offset,
+                           tokens_[last].offset + tokens_[last].lexeme.size(),
+                           tokens_[*first].line, tokens_[*first].column},
+                tokens_[*first].lexeme, tokens_[last].lexeme
+            });
+        }
+        first = cursor ? next_significant(*cursor) : std::nullopt;
+    }
+    return parameters;
+}
+
+Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
+    Expression expression{
+        SourceSpan{tokens_[first].offset,
+                   tokens_[last].offset + tokens_[last].lexeme.size(),
+                   tokens_[first].line, tokens_[first].column},
+        ExpressionKind::raw, tokens_[first].lexeme, {}
+    };
+    if (first == last) {
+        expression.kind = tokens_[first].kind == TokenKind::string_literal ||
+                          tokens_[first].kind == TokenKind::number ||
+                          tokens_[first].lexeme == "true" ||
+                          tokens_[first].lexeme == "false" ||
+                          tokens_[first].lexeme == "null"
+                              ? ExpressionKind::literal : ExpressionKind::name;
+        return expression;
+    }
+    const auto open = next_significant(first);
+    if (open && tokens_[*open].lexeme == "(" &&
+        matching_symbol(*open, "(", ")") == last) {
+        expression.kind = ExpressionKind::call;
+        auto argument = next_significant(*open);
+        while (argument && *argument < last) {
+            auto end = *argument;
+            auto next = next_significant(end);
+            std::size_t depth = 0;
+            while (next && *next < last) {
+                if (tokens_[*next].lexeme == "(") ++depth;
+                if (tokens_[*next].lexeme == ")" && depth > 0) --depth;
+                if (tokens_[*next].lexeme == "," && depth == 0) break;
+                end = *next;
+                next = next_significant(end);
+            }
+            expression.arguments.push_back(parse_expression(*argument, end));
+            argument = next ? next_significant(*next) : std::nullopt;
+        }
+    }
+    return expression;
+}
+
+std::vector<MethodStatement> Parser::parse_method_body(
+    std::size_t opening, std::size_t closing
+) const {
+    std::vector<MethodStatement> statements;
+    auto start = next_significant(opening);
+    while (start && *start < closing) {
+        auto cursor = *start;
+        std::size_t braces = 0;
+        std::size_t parentheses = 0;
+        bool block = false;
+        while (cursor < closing) {
+            const auto& value = tokens_[cursor].lexeme;
+            if (value == "(") ++parentheses;
+            if (value == ")" && parentheses > 0) --parentheses;
+            if (value == "{") ++braces;
+            if (value == "}" && braces > 0) {
+                --braces;
+                if (braces == 0 && parentheses == 0) {
+                    block = true;
+                    break;
+                }
+            }
+            if (value == ";" && braces == 0 && parentheses == 0) break;
+            const auto next = next_significant(cursor);
+            if (!next || *next >= closing) break;
+            cursor = *next;
+        }
+        if (block) {
+            statements.push_back(MethodStatement{
+                SourceSpan{tokens_[*start].offset,
+                           tokens_[cursor].offset + tokens_[cursor].lexeme.size(),
+                           tokens_[*start].line, tokens_[*start].column},
+                StatementKind::block,
+                parse_expression(*start, cursor)
+            });
+        } else if (tokens_[cursor].lexeme == ";") {
+            const auto expression_start = next_significant(*start);
+            const auto expression_end = previous_significant(cursor);
+            const auto kind = tokens_[*start].lexeme == "return"
+                ? StatementKind::return_
+                : tokens_[*start].lexeme == "const"
+                    ? StatementKind::binding : StatementKind::expression;
+            if (expression_start && expression_end &&
+                *expression_start <= *expression_end) {
+                statements.push_back(MethodStatement{
+                    SourceSpan{tokens_[*start].offset,
+                               tokens_[cursor].offset + 1,
+                               tokens_[*start].line, tokens_[*start].column},
+                    kind,
+                    parse_expression(kind == StatementKind::return_
+                                         ? *expression_start : *start,
+                                     *expression_end)
+                });
+            }
+        }
+        start = next_significant(cursor);
+    }
+    return statements;
+}
+
 bool Parser::statement_start(std::size_t index) const {
     const auto previous = previous_significant(index);
     if (!previous) {
@@ -947,7 +1079,9 @@ void Parser::parse_controller_members(
             class_name,
             tokens_[return_type].lexeme,
             tokens_[*name].lexeme,
-            asynchronous
+            asynchronous,
+            parse_parameters(*open, *close),
+            parse_method_body(*method_open, *method_close)
         });
 
         cursor = *method_close;
@@ -1265,7 +1399,9 @@ void Parser::parse_framework_methods(
             kind,
             tokens_[return_type].lexeme,
             tokens_[*name].lexeme,
-            asynchronous
+            asynchronous,
+            parse_parameters(*open, *close),
+            parse_method_body(*method_open, *method_close)
         });
 
         cursor = *method_close;
@@ -1528,6 +1664,7 @@ ParseResult Parser::parse() {
             }
 
             if (framework_base) {
+                const auto base_index = result_.program.nodes.size();
                 result_.program.nodes.push_back(FrameworkBase{
                     token_span(tokens_[*base]),
                     tokens_[*class_name].lexeme,
@@ -1540,12 +1677,26 @@ ParseResult Parser::parse() {
                         matching_symbol(*body, "{", "}");
 
                     if (body_close) {
+                        const auto members_begin = result_.program.nodes.size();
                         parse_framework_members(
                             tokens_[*class_name].lexeme,
                             kind,
                             *body,
                             *body_close
                         );
+                        auto& declaration = std::get<FrameworkBase>(
+                            result_.program.nodes[base_index]
+                        );
+                        declaration.declaration_span = SourceSpan{
+                            token.offset,
+                            tokens_[*body_close].offset +
+                                tokens_[*body_close].lexeme.size(),
+                            token.line, token.column
+                        };
+                        for (auto member = members_begin;
+                             member < result_.program.nodes.size(); ++member) {
+                            declaration.members.push_back(member);
+                        }
                     }
                 }
             }

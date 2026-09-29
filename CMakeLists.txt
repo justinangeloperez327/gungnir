@@ -283,6 +283,7 @@ add_library(gungnir-language
     src/language/migration_lowering.cpp
     src/language/model_lowering.cpp
     src/language/parser.cpp
+    src/language/semantic.cpp
     src/language/transpiler.cpp
     src/language/validation_lowering.cpp
     src/language/view_lowering.cpp

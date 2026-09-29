@@ -165,6 +165,17 @@ ControllerLoweringResult ControllerLowerer::lower(
             continue;
         }
 
+        const FrameworkBase* declaration = nullptr;
+        for (const auto& node : program.nodes) {
+            const auto* candidate = std::get_if<FrameworkBase>(&node);
+            if (candidate && candidate->kind == FrameworkBaseKind::controller &&
+                candidate->span.begin == tokens[*base].offset) {
+                declaration = candidate;
+                break;
+            }
+        }
+        if (!declaration) continue;
+
         const auto body_open = next_significant(tokens, *base);
         if (!body_open || tokens[*body_open].lexeme != "{") {
             add_error(
@@ -203,14 +214,12 @@ ControllerLoweringResult ControllerLowerer::lower(
             controller.needs_semicolon = true;
         }
 
-        for (const auto& node : program.nodes) {
+        for (const auto member_index : declaration->members) {
+            const auto& node = program.nodes[member_index];
             const auto* declaration =
                 std::get_if<InjectDeclaration>(&node);
 
-            if (
-                !declaration ||
-                declaration->controller_name != controller.name
-            ) {
+            if (!declaration) {
                 continue;
             }
 

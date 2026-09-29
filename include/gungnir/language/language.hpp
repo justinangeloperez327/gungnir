@@ -15,6 +15,7 @@
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/module.hpp>
 #include <gungnir/language/parser.hpp>
+#include <gungnir/language/semantic.hpp>
 #include <gungnir/language/spec.hpp>
 #include <gungnir/language/symbol.hpp>
 #include <gungnir/language/type_system.hpp>

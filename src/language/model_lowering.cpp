@@ -550,6 +550,17 @@ ModelLoweringResult ModelLowerer::lower(
             continue;
         }
 
+        const FrameworkBase* declaration = nullptr;
+        for (const auto& node : program.nodes) {
+            const auto* candidate = std::get_if<FrameworkBase>(&node);
+            if (candidate && candidate->kind == FrameworkBaseKind::model &&
+                candidate->span.begin == tokens[*base].offset) {
+                declaration = candidate;
+                break;
+            }
+        }
+        if (!declaration) continue;
+
         const auto body_open = next_significant(tokens, *base);
         if (!body_open || tokens[*body_open].lexeme != "{") {
             add_diagnostic(
@@ -589,14 +600,12 @@ ModelLoweringResult ModelLowerer::lower(
             model.needs_semicolon = true;
         }
 
-        for (const auto& node : program.nodes) {
+        for (const auto member_index : declaration->members) {
+            const auto& node = program.nodes[member_index];
             if (
                 const auto* configuration =
                     std::get_if<ModelConfiguration>(&node)
             ) {
-                if (configuration->model_name != model.name) {
-                    continue;
-                }
 
                 switch (configuration->kind) {
                 case ModelConfigurationKind::table:
@@ -626,9 +635,6 @@ ModelLoweringResult ModelLowerer::lower(
                 const auto* relationship =
                     std::get_if<ModelRelationship>(&node)
             ) {
-                if (relationship->model_name != model.name) {
-                    continue;
-                }
 
                 auto constructor_args = default_relation_args(
                     relationship->kind,
@@ -669,7 +675,7 @@ ModelLoweringResult ModelLowerer::lower(
             }
 
             const auto* field = std::get_if<ModelField>(&node);
-            if (!field || field->model_name != model.name) {
+            if (!field) {
                 continue;
             }
 

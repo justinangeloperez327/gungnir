@@ -42,6 +42,15 @@ private:
     [[nodiscard]] bool statement_start(std::size_t index) const;
     [[nodiscard]] bool declared(const std::string& name) const;
     [[nodiscard]] bool declared_here(const std::string& name) const;
+    [[nodiscard]] std::vector<MethodParameter> parse_parameters(
+        std::size_t opening, std::size_t closing
+    ) const;
+    [[nodiscard]] std::vector<MethodStatement> parse_method_body(
+        std::size_t opening, std::size_t closing
+    ) const;
+    [[nodiscard]] Expression parse_expression(
+        std::size_t first, std::size_t last
+    ) const;
 
     void declare(std::string name);
     void parse_framework_declaration(std::size_t index);

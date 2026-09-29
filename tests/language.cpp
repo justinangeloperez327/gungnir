@@ -304,6 +304,51 @@ int main() {
     assert(found_async_method);
     assert(found_route);
 
+    bool linked_controller_method = false;
+    for (const auto& node : grammar_ast.program.nodes) {
+        const auto* declaration =
+            std::get_if<gungnir::language::FrameworkDeclaration>(&node);
+        if (!declaration || declaration->class_name != "AccountController") {
+            continue;
+        }
+        for (const auto member_index : declaration->members) {
+            const auto* method = std::get_if<gungnir::language::ControllerMethod>(
+                &grammar_ast.program.nodes[member_index]
+            );
+            if (method && method->name == "show") {
+                linked_controller_method = method->parameters.size() == 1 &&
+                    method->parameters[0].type_name == "Request" &&
+                    method->parameters[0].name == "request" &&
+                    method->body.size() == 1 &&
+                    method->body[0].kind ==
+                        gungnir::language::StatementKind::return_ &&
+                    method->body[0].expression.kind ==
+                        gungnir::language::ExpressionKind::call;
+            }
+        }
+    }
+    assert(linked_controller_method);
+
+    const auto nested_body = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Nested { Response index() { "
+            "if (ready) { return text(\"yes\"); } "
+            "return view(\"page\", { \"ready\": ready }); } }"
+        }.tokenize(), "nested.gnr"
+    }.parse();
+    const auto& nested_declaration =
+        std::get<gungnir::language::FrameworkDeclaration>(
+            nested_body.program.nodes.front()
+        );
+    const auto& nested_method = std::get<gungnir::language::ControllerMethod>(
+        nested_body.program.nodes[nested_declaration.members.front()]
+    );
+    assert(nested_method.body.size() == 2);
+    assert(nested_method.body[0].kind ==
+           gungnir::language::StatementKind::block);
+    assert(nested_method.body[1].kind ==
+           gungnir::language::StatementKind::return_);
+
     const auto invalid_model =
         gungnir::language::Parser{
             gungnir::language::Lexer{
@@ -328,6 +373,42 @@ int main() {
     }
     assert(found_duplicate_declaration);
 
+    const auto semantic_input = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Example {\n"
+            "    void run(int value, int value) { return 1; }\n"
+            "    void run(int value) {}\n"
+            "    void run(int value) {}\n"
+            "}\n"
+        }.tokenize(), "semantic.gnr"
+    }.parse();
+    const auto semantic_errors = gungnir::language::SemanticAnalyzer{}.analyze(
+        semantic_input.program, "semantic.gnr"
+    );
+    bool duplicate_parameter = false;
+    bool duplicate_method = false;
+    bool invalid_return = false;
+    for (const auto& diagnostic : semantic_errors) {
+        duplicate_parameter |= diagnostic.code == "GNR1302";
+        duplicate_method |= diagnostic.code == "GNR1301";
+        invalid_return |= diagnostic.code == "GNR1304";
+    }
+    assert(duplicate_parameter && duplicate_method && invalid_return);
+
+    const auto invalid_semantics = gungnir::language::Transpiler{}.transpile(
+        "controller Example { bool show() { return \"wrong\"; } }\n"
+        "Route::get(\"/missing\", Example::missing);\n",
+        "invalid_semantics.gnr",
+        {.emit_line_directives = false}
+    );
+    bool wrong_return_type = false;
+    bool missing_action = false;
+    for (const auto& diagnostic : invalid_semantics.diagnostics) {
+        wrong_return_type |= diagnostic.code == "GNR1306";
+        missing_action |= diagnostic.code == "GNR1307";
+    }
+    assert(wrong_return_type && missing_action);
+
     gungnir::language::Transpiler transpiler;
 
     const auto artifact_declarations = transpiler.transpile(
@@ -343,27 +424,27 @@ int main() {
     assert(artifact_declarations.success());
     assert(
         artifact_declarations.code.find(
-            "class UserPolicy : public gungnir::Policy {};"
+            "class UserPolicy : public gungnir::Policy {\npublic:\n};"
         ) != std::string::npos
     );
     assert(
         artifact_declarations.code.find(
-            "class UserCreated : public gungnir::Event {};"
+            "class UserCreated : public gungnir::Event {\npublic:\n};"
         ) != std::string::npos
     );
     assert(
         artifact_declarations.code.find(
-            "class SendWelcome : public gungnir::Listener {};"
+            "class SendWelcome : public gungnir::Listener {\npublic:\n};"
         ) != std::string::npos
     );
     assert(
         artifact_declarations.code.find(
-            "class WelcomeNotification : public gungnir::Notification {};"
+            "class WelcomeNotification : public gungnir::Notification {\npublic:\n};"
         ) != std::string::npos
     );
     assert(
         artifact_declarations.code.find(
-            "class WelcomeMail : public gungnir::Mail {};"
+            "class WelcomeMail : public gungnir::Mail {\npublic:\n};"
         ) != std::string::npos
     );
 

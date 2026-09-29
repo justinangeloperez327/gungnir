@@ -36,6 +36,31 @@ struct FrameworkBase {
     SourceSpan span;
     std::string class_name;
     FrameworkBaseKind kind{FrameworkBaseKind::controller};
+    SourceSpan declaration_span;
+    std::vector<std::size_t> members;
+};
+
+struct MethodParameter {
+    SourceSpan span;
+    std::string type_name;
+    std::string name;
+};
+
+enum class ExpressionKind { name, literal, call, raw };
+
+struct Expression {
+    SourceSpan span;
+    ExpressionKind kind{ExpressionKind::raw};
+    std::string text;
+    std::vector<Expression> arguments;
+};
+
+enum class StatementKind { return_, binding, expression, block };
+
+struct MethodStatement {
+    SourceSpan span;
+    StatementKind kind{StatementKind::expression};
+    Expression expression;
 };
 
 struct FrameworkDeclaration {
@@ -59,6 +84,8 @@ struct FrameworkMethod {
     std::string return_type;
     std::string name;
     bool asynchronous{false};
+    std::vector<MethodParameter> parameters;
+    std::vector<MethodStatement> body;
 };
 
 struct ModelField {
@@ -114,6 +141,8 @@ struct ControllerMethod {
     std::string return_type;
     std::string name;
     bool asynchronous{false};
+    std::vector<MethodParameter> parameters;
+    std::vector<MethodStatement> body;
 };
 
 struct InjectDeclaration {

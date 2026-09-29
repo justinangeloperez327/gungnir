@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <gungnir/language/diagnostic.hpp>
+#include <gungnir/language/ast.hpp>
 #include <gungnir/language/model_lowering.hpp>
 
 namespace gungnir::language {
@@ -18,6 +19,10 @@ class MigrationLowerer {
 public:
     [[nodiscard]] MigrationLoweringResult lower(
         std::string_view source,
+        std::string source_name = "<memory>"
+    ) const;
+    [[nodiscard]] MigrationLoweringResult lower(
+        std::string_view source, const Program& program,
         std::string source_name = "<memory>"
     ) const;
 };

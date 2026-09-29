@@ -19,6 +19,7 @@
 #include <gungnir/language/migration_lowering.hpp>
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
+#include <gungnir/language/semantic.hpp>
 #include <gungnir/language/validation_lowering.hpp>
 #include <gungnir/language/view_lowering.hpp>
 
@@ -181,6 +182,11 @@ TranspileResult Transpiler::transpile(
     Lexer lexer{source};
     Parser parser{lexer.tokenize(), source_name};
     auto parsed = parser.parse();
+    auto semantic_diagnostics = SemanticAnalyzer{}.analyze(
+        parsed.program, source_name
+    );
+    parsed.diagnostics.insert(parsed.diagnostics.end(),
+        semantic_diagnostics.begin(), semantic_diagnostics.end());
 
     for (const auto& diagnostic : declaration_parse.diagnostics) {
         if (
@@ -219,6 +225,7 @@ TranspileResult Transpiler::transpile(
     auto middleware_lowering =
         middleware_lowerer.lower(
             source,
+            parsed.program,
             source_name
         );
 
@@ -226,6 +233,7 @@ TranspileResult Transpiler::transpile(
     auto migration_lowering =
         migration_lowerer.lower(
             source,
+            parsed.program,
             source_name
         );
 
@@ -308,6 +316,18 @@ TranspileResult Transpiler::transpile(
                         value.span.end,
                         framework_base(value)
                     });
+                    if (value.kind != FrameworkBaseKind::model &&
+                        value.kind != FrameworkBaseKind::controller &&
+                        value.kind != FrameworkBaseKind::migration &&
+                        value.kind != FrameworkBaseKind::middleware &&
+                        value.declaration_span.end > value.span.end) {
+                        const auto body = source.find('{', value.span.end);
+                        if (body != std::string_view::npos &&
+                            body < value.declaration_span.end) {
+                            edits.push_back(SourceEdit{body + 1, body + 1,
+                                                       "\npublic:\n"});
+                        }
+                    }
                 }
             },
             node
