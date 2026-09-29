@@ -17,14 +17,19 @@ bool keyword(std::string_view value) {
         value == "connection" ||
         value == "controller" ||
         value == "double" ||
+        value == "event" ||
         value == "float" ||
         value == "inject" ||
         value == "int" ||
         value == "int64" ||
         value == "integer" ||
+        value == "listener" ||
+        value == "mail" ||
         value == "middleware" ||
         value == "migration" ||
         value == "model" ||
+        value == "notification" ||
+        value == "policy" ||
         value == "softDeletes" ||
         value == "string" ||
         value == "table" ||

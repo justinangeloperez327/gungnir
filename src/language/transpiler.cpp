@@ -51,6 +51,16 @@ std::string framework_base(const FrameworkBase& node) {
         return "public gungnir::Migration";
     case FrameworkBaseKind::middleware:
         return "public gungnir::Middleware";
+    case FrameworkBaseKind::policy:
+        return "public gungnir::Policy";
+    case FrameworkBaseKind::event:
+        return "public gungnir::Event";
+    case FrameworkBaseKind::listener:
+        return "public gungnir::Listener";
+    case FrameworkBaseKind::notification:
+        return "public gungnir::Notification";
+    case FrameworkBaseKind::mail:
+        return "public gungnir::Mail";
     }
 
     return {};
@@ -66,6 +76,16 @@ std::string framework_short_base(FrameworkBaseKind kind) {
         return "Migration";
     case FrameworkBaseKind::middleware:
         return "Middleware";
+    case FrameworkBaseKind::policy:
+        return "Policy";
+    case FrameworkBaseKind::event:
+        return "Event";
+    case FrameworkBaseKind::listener:
+        return "Listener";
+    case FrameworkBaseKind::notification:
+        return "Notification";
+    case FrameworkBaseKind::mail:
+        return "Mail";
     }
 
     return {};
@@ -90,6 +110,14 @@ std::string normalize_framework_declarations(
                 declaration->name_end_span.end,
                 " : " + framework_short_base(declaration->kind)
             });
+
+            if (declaration->needs_semicolon) {
+                edits.push_back(SourceEdit{
+                    declaration->body_end_span.begin,
+                    declaration->body_end_span.end,
+                    ";"
+                });
+            }
         }
     }
 

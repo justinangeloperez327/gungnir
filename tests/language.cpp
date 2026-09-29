@@ -40,6 +40,114 @@ int main() {
 
     assert(found_model_declaration);
 
+    const auto framework_artifacts =
+        gungnir::language::Parser{
+            gungnir::language::Lexer{
+                "middleware AuthMiddleware {\n"
+                "    async Response handle(Request request, Next next) {}\n"
+                "}\n"
+                "migration CreateUsersTable {\n"
+                "    void up() {}\n"
+                "    void down() {}\n"
+                "}\n"
+                "policy UserPolicy { bool view() { return true; } }\n"
+                "event UserCreated { string name() { return \"user.created\"; } }\n"
+                "listener SendWelcome { void handle(UserCreated event) {} }\n"
+                "notification WelcomeNotification { string name() { return \"welcome\"; } }\n"
+                "mail WelcomeMail { void build() {} }\n"
+            }.tokenize(),
+            "framework_artifacts.gnr"
+        }.parse();
+
+    assert(framework_artifacts.diagnostics.empty());
+
+    bool found_middleware_declaration = false;
+    bool found_migration_declaration = false;
+    bool found_policy_declaration = false;
+    bool found_event_declaration = false;
+    bool found_listener_declaration = false;
+    bool found_notification_declaration = false;
+    bool found_mail_declaration = false;
+    bool found_middleware_method = false;
+    bool found_migration_method = false;
+    bool found_listener_method = false;
+
+    for (const auto& node : framework_artifacts.program.nodes) {
+        if (
+            const auto* declaration =
+                std::get_if<
+                    gungnir::language::FrameworkDeclaration
+                >(&node)
+        ) {
+            switch (declaration->kind) {
+            case gungnir::language::FrameworkBaseKind::middleware:
+                found_middleware_declaration = true;
+                break;
+            case gungnir::language::FrameworkBaseKind::migration:
+                found_migration_declaration = true;
+                break;
+            case gungnir::language::FrameworkBaseKind::policy:
+                found_policy_declaration = true;
+                break;
+            case gungnir::language::FrameworkBaseKind::event:
+                found_event_declaration = true;
+                break;
+            case gungnir::language::FrameworkBaseKind::listener:
+                found_listener_declaration = true;
+                break;
+            case gungnir::language::FrameworkBaseKind::notification:
+                found_notification_declaration = true;
+                break;
+            case gungnir::language::FrameworkBaseKind::mail:
+                found_mail_declaration = true;
+                break;
+            default:
+                break;
+            }
+        } else if (
+            const auto* method =
+                std::get_if<
+                    gungnir::language::FrameworkMethod
+                >(&node)
+        ) {
+            found_middleware_method =
+                found_middleware_method ||
+                (
+                    method->owner_kind ==
+                        gungnir::language::FrameworkBaseKind::middleware &&
+                    method->name == "handle" &&
+                    method->asynchronous
+                );
+
+            found_migration_method =
+                found_migration_method ||
+                (
+                    method->owner_kind ==
+                        gungnir::language::FrameworkBaseKind::migration &&
+                    method->name == "up"
+                );
+
+            found_listener_method =
+                found_listener_method ||
+                (
+                    method->owner_kind ==
+                        gungnir::language::FrameworkBaseKind::listener &&
+                    method->name == "handle"
+                );
+        }
+    }
+
+    assert(found_middleware_declaration);
+    assert(found_migration_declaration);
+    assert(found_policy_declaration);
+    assert(found_event_declaration);
+    assert(found_listener_declaration);
+    assert(found_notification_declaration);
+    assert(found_mail_declaration);
+    assert(found_middleware_method);
+    assert(found_migration_method);
+    assert(found_listener_method);
+
     const auto grammar_ast =
         gungnir::language::Parser{
             gungnir::language::Lexer{
@@ -198,6 +306,43 @@ int main() {
     assert(invalid_model.diagnostics.front().code == "GNR1001");
 
     gungnir::language::Transpiler transpiler;
+
+    const auto artifact_declarations = transpiler.transpile(
+        "policy UserPolicy {}\n"
+        "event UserCreated {}\n"
+        "listener SendWelcome {}\n"
+        "notification WelcomeNotification {}\n"
+        "mail WelcomeMail {}\n",
+        "artifacts.gnr",
+        {.emit_line_directives = false}
+    );
+
+    assert(artifact_declarations.success());
+    assert(
+        artifact_declarations.code.find(
+            "class UserPolicy : public gungnir::Policy {};"
+        ) != std::string::npos
+    );
+    assert(
+        artifact_declarations.code.find(
+            "class UserCreated : public gungnir::Event {};"
+        ) != std::string::npos
+    );
+    assert(
+        artifact_declarations.code.find(
+            "class SendWelcome : public gungnir::Listener {};"
+        ) != std::string::npos
+    );
+    assert(
+        artifact_declarations.code.find(
+            "class WelcomeNotification : public gungnir::Notification {};"
+        ) != std::string::npos
+    );
+    assert(
+        artifact_declarations.code.find(
+            "class WelcomeMail : public gungnir::Mail {};"
+        ) != std::string::npos
+    );
 
     const auto immutable = transpiler.transpile(
         "const users = User::all();\n",

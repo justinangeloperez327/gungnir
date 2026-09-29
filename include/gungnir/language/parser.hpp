@@ -46,6 +46,12 @@ private:
     void declare(std::string name);
     void parse_framework_declaration(std::size_t index);
     void parse_route_declaration(std::size_t index);
+    void parse_framework_methods(
+        const std::string& class_name,
+        FrameworkBaseKind kind,
+        std::size_t body_open,
+        std::size_t body_close
+    );
     void parse_framework_members(
         const std::string& class_name,
         FrameworkBaseKind kind,
