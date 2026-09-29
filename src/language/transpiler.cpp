@@ -39,6 +39,87 @@ std::string escape_line_file(std::string value) {
     return escaped;
 }
 
+std::string normalize_framework_declarations(std::string_view source) {
+    Lexer lexer{source};
+    const auto tokens = lexer.tokenize();
+
+    struct DeclarationEdit {
+        std::size_t begin;
+        std::size_t end;
+        std::string replacement;
+    };
+
+    std::vector<DeclarationEdit> edits;
+
+    const auto next_significant = [&](std::size_t index) -> std::optional<std::size_t> {
+        for (auto cursor = index + 1; cursor < tokens.size(); ++cursor) {
+            if (!tokens[cursor].trivia() && tokens[cursor].kind != TokenKind::end) {
+                return cursor;
+            }
+        }
+        return std::nullopt;
+    };
+
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        if (tokens[index].kind != TokenKind::identifier) {
+            continue;
+        }
+
+        std::string base;
+        if (tokens[index].lexeme == "model") {
+            base = "Model";
+        } else if (tokens[index].lexeme == "controller") {
+            base = "Controller";
+        } else if (tokens[index].lexeme == "migration") {
+            base = "Migration";
+        } else if (tokens[index].lexeme == "middleware") {
+            base = "Middleware";
+        } else {
+            continue;
+        }
+
+        const auto name = next_significant(index);
+        const auto body = name ? next_significant(*name) : std::nullopt;
+        if (
+            !name ||
+            !body ||
+            tokens[*name].kind != TokenKind::identifier ||
+            tokens[*body].lexeme != "{"
+        ) {
+            continue;
+        }
+
+        edits.push_back(DeclarationEdit{
+            tokens[index].offset,
+            tokens[index].offset + tokens[index].lexeme.size(),
+            "class"
+        });
+        edits.push_back(DeclarationEdit{
+            tokens[*name].offset + tokens[*name].lexeme.size(),
+            tokens[*name].offset + tokens[*name].lexeme.size(),
+            " : " + base
+        });
+    }
+
+    if (edits.empty()) {
+        return std::string{source};
+    }
+
+    std::sort(edits.begin(), edits.end(), [](const auto& left, const auto& right) {
+        return left.begin < right.begin;
+    });
+
+    std::string output;
+    std::size_t cursor = 0;
+    for (const auto& edit : edits) {
+        output.append(source.substr(cursor, edit.begin - cursor));
+        output += edit.replacement;
+        cursor = edit.end;
+    }
+    output.append(source.substr(cursor));
+    return output;
+}
+
 std::string framework_base(const FrameworkBase& node) {
     switch (node.kind) {
     case FrameworkBaseKind::model:
@@ -71,6 +152,9 @@ TranspileResult Transpiler::transpile(
     std::string source_name,
     TranspileOptions options
 ) const {
+    const auto normalized_source = normalize_framework_declarations(source);
+    source = normalized_source;
+
     Lexer lexer{source};
     Parser parser{lexer.tokenize(), source_name};
     auto parsed = parser.parse();
