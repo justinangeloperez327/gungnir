@@ -452,6 +452,8 @@ std::string_view Request::bearer_token() const noexcept {
     const auto value = authorization();
     return value.starts_with("Bearer ") ? value.substr(7) : std::string_view{};
 }
+std::string_view Request::client_ip() const noexcept { return client_ip_; }
+void Request::client_ip(std::string value) { client_ip_ = std::move(value); }
 
 std::string Request::input(std::string_view name) const {
     parse_body_input();

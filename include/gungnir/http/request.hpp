@@ -112,6 +112,8 @@ public:
     [[nodiscard]] std::string_view authorization() const noexcept;
     [[nodiscard]] bool bearer_authenticated() const noexcept;
     [[nodiscard]] std::string_view bearer_token() const noexcept;
+    [[nodiscard]] std::string_view client_ip() const noexcept;
+    void client_ip(std::string value);
 
     [[nodiscard]] std::string input(std::string_view name) const;
     [[nodiscard]] bool has(std::string_view name) const;
@@ -154,6 +156,7 @@ private:
     std::string body_;
     std::shared_ptr<RequestBodyStream>
         body_stream_;
+    std::string client_ip_;
     CancellationToken cancellation_;
     bool secure_{false};
     std::shared_ptr<ServiceScope> services_;

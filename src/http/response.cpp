@@ -27,6 +27,62 @@ std::string normalize_header_name(std::string_view name) {
     return normalized;
 }
 
+std::string safe_download_filename(
+    std::string_view filename
+) {
+    std::string safe;
+    safe.reserve(filename.size());
+
+    for (const auto character : filename) {
+        const auto value =
+            static_cast<unsigned char>(
+                character
+            );
+
+        if (
+            value < 0x20 ||
+            value == 0x7f ||
+            character == '"' ||
+            character == '\\' ||
+            character == '/' ||
+            character == ';'
+        ) {
+            safe.push_back('_');
+        } else {
+            safe.push_back(character);
+        }
+    }
+
+    while (
+        !safe.empty() &&
+        (
+            safe.front() == '.' ||
+            std::isspace(
+                static_cast<unsigned char>(
+                    safe.front()
+                )
+            ) != 0
+        )
+    ) {
+        safe.erase(safe.begin());
+    }
+
+    while (
+        !safe.empty() &&
+        std::isspace(
+            static_cast<unsigned char>(
+                safe.back()
+            )
+        ) != 0
+    ) {
+        safe.pop_back();
+    }
+
+    return safe.empty()
+        ? std::string{"download"}
+        : safe;
+}
+
 } // namespace
 
 Response::Response(int status, std::string body)
@@ -248,7 +304,12 @@ Response Response::html(std::string body, int status) {
 Response Response::download(std::string body, std::string filename, std::string content_type, int status) {
     Response response{status, std::move(body)};
     response.header("content-type", std::move(content_type));
-    response.header("content-disposition", "attachment; filename=\"" + filename + "\"");
+    response.header(
+        "content-disposition",
+        "attachment; filename=\"" +
+            safe_download_filename(filename) +
+            "\""
+    );
     return response;
 }
 

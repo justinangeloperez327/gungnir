@@ -33,6 +33,7 @@
 #include <gungnir/http/runtime.hpp>
 #include <gungnir/http/response.hpp>
 #include <gungnir/http/request.hpp>
+#include <gungnir/http/security.hpp>
 #include <gungnir/http/cookie.hpp>
 #include <gungnir/migration/migrations.hpp>
 #include <gungnir/mail/mail.hpp>

@@ -151,5 +151,45 @@ int main() {
         Response::no_content().status() == 204
     );
 
+    Request identified{
+        http::Method::get,
+        "/client"
+    };
+
+    identified.client_ip(
+        "198.51.100.25"
+    );
+
+    assert(
+        identified.client_ip() ==
+        "198.51.100.25"
+    );
+
+    const auto unsafe_download =
+        Response::download(
+            "payload",
+            "../report\";x=.txt"
+        );
+
+    assert(
+        unsafe_download.header(
+            "Content-Disposition"
+        ) ==
+        "attachment; filename=\"_report__x=.txt\""
+    );
+
+    const auto fallback_download =
+        Response::download(
+            "payload",
+            ".."
+        );
+
+    assert(
+        fallback_download.header(
+            "Content-Disposition"
+        ) ==
+        "attachment; filename=\"download\""
+    );
+
     return 0;
 }
