@@ -250,17 +250,17 @@ String transpile_file(
         );
 
     if (!result.success()) {
-        String message{
-            "Unable to transpile "
-        };
-
+        String message{"Unable to transpile "};
         message += path.string();
-
-        if (!result.diagnostics.empty()) {
-            message += ": ";
-            message +=
-                result.diagnostics.front()
-                    .message;
+        const auto error = std::find_if(result.diagnostics.begin(),
+            result.diagnostics.end(), [](const language::Diagnostic& diagnostic) {
+                return diagnostic.level == language::DiagnosticLevel::error;
+            });
+        if (error != result.diagnostics.end()) {
+            message += ":" + std::to_string(error->location.line) + ":" +
+                       std::to_string(error->location.column);
+            if (!error->code.empty()) message += " [" + error->code + "]";
+            message += ": " + error->message;
         }
 
         throw std::runtime_error(

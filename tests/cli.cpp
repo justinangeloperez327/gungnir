@@ -246,8 +246,11 @@ int main() {
     bool unresolved_route_failed = false;
     try {
         (void) project.assemble();
-    } catch (const std::runtime_error&) {
-        unresolved_route_failed = true;
+    } catch (const std::runtime_error& error) {
+        const std::string message = error.what();
+        unresolved_route_failed = message.find("invalid.gnr:1:") !=
+                                      std::string::npos &&
+                                  message.find("[GNR1309]") != std::string::npos;
     }
     assert(unresolved_route_failed);
     std::filesystem::remove(invalid_route);
