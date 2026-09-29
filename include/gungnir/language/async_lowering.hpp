@@ -6,6 +6,7 @@
 
 #include <gungnir/language/diagnostic.hpp>
 #include <gungnir/language/model_lowering.hpp>
+#include <gungnir/language/token.hpp>
 
 namespace gungnir::language {
 
@@ -18,6 +19,10 @@ class AsyncLowerer {
 public:
     [[nodiscard]] AsyncLoweringResult lower(
         std::string_view source,
+        std::string source_name = "<memory>"
+    ) const;
+    [[nodiscard]] AsyncLoweringResult lower(
+        const std::vector<Token>& tokens,
         std::string source_name = "<memory>"
     ) const;
 };

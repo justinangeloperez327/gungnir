@@ -83,8 +83,8 @@ TranspileResult Transpiler::transpile(
     std::string source_name,
     TranspileOptions options
 ) const {
-    Lexer lexer{source};
-    Parser parser{lexer.tokenize(), source_name};
+    const auto tokens = Lexer{source}.tokenize();
+    Parser parser{tokens, source_name};
     auto parsed = parser.parse();
     auto semantic_diagnostics = SemanticAnalyzer{}.analyze(
         parsed.program, source_name, options.semantic_index
@@ -102,11 +102,11 @@ TranspileResult Transpiler::transpile(
 
     AsyncLowerer async_lowerer;
     auto async_lowering =
-        async_lowerer.lower(source, source_name);
+        async_lowerer.lower(tokens, source_name);
 
     ViewLowerer view_lowerer;
     auto view_lowering =
-        view_lowerer.lower(source, parsed.program, source_name);
+        view_lowerer.lower(source, parsed.program, tokens, source_name);
 
     MiddlewareLowerer middleware_lowerer;
     auto middleware_lowering =

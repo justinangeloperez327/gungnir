@@ -158,10 +158,14 @@ AsyncLoweringResult AsyncLowerer::lower(
     std::string_view source,
     std::string source_name
 ) const {
-    AsyncLoweringResult result;
+    return lower(Lexer{source}.tokenize(), std::move(source_name));
+}
 
-    Lexer lexer{source};
-    const auto tokens = lexer.tokenize();
+AsyncLoweringResult AsyncLowerer::lower(
+    const std::vector<Token>& tokens,
+    std::string source_name
+) const {
+    AsyncLoweringResult result;
 
     std::vector<AsyncFunction> functions;
 

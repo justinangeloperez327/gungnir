@@ -259,6 +259,15 @@ ViewLoweringResult ViewLowerer::lower(
     const Program& program,
     std::string source_name
 ) const {
+    return lower(source, program, Lexer{source}.tokenize(), std::move(source_name));
+}
+
+ViewLoweringResult ViewLowerer::lower(
+    std::string_view source,
+    const Program& program,
+    const std::vector<Token>& tokens,
+    std::string source_name
+) const {
     ViewLoweringResult result;
     std::unordered_set<std::size_t> handled_calls;
     std::function<void(const Expression&)> lower_expression =
@@ -318,9 +327,6 @@ ViewLoweringResult ViewLowerer::lower(
         if (const auto* method = std::get_if<ControllerMethod>(&node))
             lower_statements(method->body);
     }
-
-    Lexer lexer{source};
-    const auto tokens = lexer.tokenize();
 
     for (std::size_t index = 0; index < tokens.size(); ++index) {
         if (
