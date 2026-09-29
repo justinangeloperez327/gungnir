@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <concepts>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <gungnir/language/ast.hpp>
 #include <gungnir/language/async_lowering.hpp>
