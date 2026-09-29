@@ -3906,6 +3906,12 @@ public:
                         connection
                     );
 
+                    if (
+                        !connection.output.empty()
+                    ) {
+                        return;
+                    }
+
                     continue;
                 }
 
