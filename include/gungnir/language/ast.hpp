@@ -51,7 +51,10 @@ struct MethodParameter {
     std::string name;
 };
 
-enum class ExpressionKind { name, literal, call, raw, unary, binary, member, subscript, group };
+enum class ExpressionKind {
+    name, literal, call, raw, unary, binary, member, subscript, group,
+    object, entry
+};
 
 struct Expression {
     SourceSpan span;

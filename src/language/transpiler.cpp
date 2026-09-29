@@ -106,7 +106,7 @@ TranspileResult Transpiler::transpile(
 
     ViewLowerer view_lowerer;
     auto view_lowering =
-        view_lowerer.lower(source, source_name);
+        view_lowerer.lower(source, parsed.program, source_name);
 
     MiddlewareLowerer middleware_lowerer;
     auto middleware_lowering =

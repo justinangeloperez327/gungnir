@@ -1,6 +1,8 @@
 #include <gungnir/language/view_lowering.hpp>
 
 #include <optional>
+#include <functional>
+#include <unordered_set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -249,7 +251,73 @@ ViewLoweringResult ViewLowerer::lower(
     std::string_view source,
     std::string source_name
 ) const {
+    return lower(source, Program{}, std::move(source_name));
+}
+
+ViewLoweringResult ViewLowerer::lower(
+    std::string_view source,
+    const Program& program,
+    std::string source_name
+) const {
     ViewLoweringResult result;
+    std::unordered_set<std::size_t> handled_calls;
+    std::function<void(const Expression&)> lower_expression =
+        [&](const Expression& expression) {
+        if (expression.kind == ExpressionKind::call &&
+            expression.arguments.size() >= 3 &&
+            expression.arguments.front().kind == ExpressionKind::name &&
+            expression.arguments.front().text == "view" &&
+            expression.arguments[2].kind == ExpressionKind::object) {
+            const auto& object = expression.arguments[2];
+            handled_calls.insert(expression.arguments.front().span.begin);
+            result.edits.push_back(SourceEdit{
+                object.span.begin, object.span.begin + 1, "gungnir::view::Data{"
+            });
+            for (std::size_t i = 0; i < object.arguments.size(); ++i) {
+                const auto& entry = object.arguments[i];
+                if (entry.kind != ExpressionKind::entry ||
+                    entry.arguments.size() != 2) continue;
+                const auto& key = entry.arguments[0];
+                const auto& value = entry.arguments[1];
+                if (key.kind != ExpressionKind::literal ||
+                    key.text.empty() || key.text.front() != '"') {
+                    result.diagnostics.push_back(Diagnostic{
+                        DiagnosticLevel::error,
+                        SourceLocation{source_name, key.span.line, key.span.column},
+                        "View data keys must be string literals"
+                    });
+                    continue;
+                }
+                const auto colon = source.find(':', key.span.end);
+                if (colon == std::string_view::npos || colon >= value.span.begin)
+                    continue;
+                result.edits.push_back(SourceEdit{key.span.begin, key.span.begin, "{"});
+                result.edits.push_back(SourceEdit{colon, colon + 1, ","});
+                auto end = object.span.end - 1;
+                if (i + 1 < object.arguments.size()) {
+                    const auto comma = source.find(',', entry.span.end);
+                    if (comma != std::string_view::npos &&
+                        comma < object.arguments[i + 1].span.begin) end = comma;
+                }
+                result.edits.push_back(SourceEdit{end, end, "}"});
+            }
+        }
+        for (const auto& argument : expression.arguments) lower_expression(argument);
+    };
+    std::function<void(const std::vector<MethodStatement>&)> lower_statements =
+        [&](const std::vector<MethodStatement>& statements) {
+        for (const auto& statement : statements) {
+            lower_expression(statement.expression);
+            lower_statements(statement.children);
+            lower_statements(statement.alternative);
+        }
+    };
+    for (const auto& node : program.nodes) {
+        if (const auto* method = std::get_if<FrameworkMethod>(&node))
+            lower_statements(method->body);
+        if (const auto* method = std::get_if<ControllerMethod>(&node))
+            lower_statements(method->body);
+    }
 
     Lexer lexer{source};
     const auto tokens = lexer.tokenize();
@@ -257,7 +325,8 @@ ViewLoweringResult ViewLowerer::lower(
     for (std::size_t index = 0; index < tokens.size(); ++index) {
         if (
             tokens[index].kind != TokenKind::identifier ||
-            tokens[index].lexeme != "view"
+            tokens[index].lexeme != "view" ||
+            handled_calls.contains(tokens[index].offset)
         ) {
             continue;
         }

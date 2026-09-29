@@ -375,6 +375,13 @@ int main() {
            gungnir::language::StatementKind::return_);
     assert(nested_method.body[1].kind ==
            gungnir::language::StatementKind::return_);
+    const auto& view_call = nested_method.body[1].expression;
+    assert(view_call.kind == gungnir::language::ExpressionKind::call);
+    assert(view_call.arguments.size() == 3);
+    assert(view_call.arguments[2].kind == gungnir::language::ExpressionKind::object);
+    assert(view_call.arguments[2].arguments.size() == 1);
+    assert(view_call.arguments[2].arguments[0].kind ==
+           gungnir::language::ExpressionKind::entry);
 
     const auto control_program = gungnir::language::Parser{
         gungnir::language::Lexer{

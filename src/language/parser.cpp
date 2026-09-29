@@ -383,6 +383,35 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
             if (begin + 2 < end) result.arguments.push_back(parse(begin + 1, end - 1));
             return result;
         }
+        if (value(begin) == "{" && value(end - 1) == "}" &&
+            matching_symbol(significant[begin], "{", "}") == significant[end - 1]) {
+            auto result = make(begin, end, ExpressionKind::object);
+            auto start = begin + 1;
+            int depth = 0;
+            const auto append_entry = [&](std::size_t finish) {
+                if (start >= finish) return;
+                for (auto colon = start + 1; colon + 1 < finish; ++colon) {
+                    if (value(colon) != ":") continue;
+                    auto entry = make(start, finish, ExpressionKind::entry);
+                    entry.arguments.push_back(parse(start, colon));
+                    entry.arguments.push_back(parse(colon + 1, finish));
+                    result.arguments.push_back(std::move(entry));
+                    return;
+                }
+                result.kind = ExpressionKind::raw;
+                result.arguments.clear();
+            };
+            for (auto i = start; i < end - 1; ++i) {
+                if (value(i) == "(" || value(i) == "[" || value(i) == "{") ++depth;
+                else if (value(i) == ")" || value(i) == "]" || value(i) == "}") --depth;
+                if (value(i) == "," && depth == 0) {
+                    append_entry(i);
+                    start = i + 1;
+                }
+            }
+            append_entry(end - 1);
+            return result;
+        }
         // A postfix operation must close at the end of this expression.
         if (value(end - 1) == ")") {
             for (auto i = begin + 1; i + 1 < end; ++i) {
