@@ -66,6 +66,25 @@ struct ModelConfiguration {
     bool enabled{false};
 };
 
+enum class ModelRelationshipKind {
+    has_one,
+    has_many,
+    belongs_to,
+    belongs_to_many,
+    has_one_through,
+    has_many_through
+};
+
+struct ModelRelationship {
+    SourceSpan span;
+    std::string model_name;
+    std::string name;
+    ModelRelationshipKind kind{ModelRelationshipKind::has_many};
+    std::string related_type;
+    std::string through_type;
+    std::vector<std::string> arguments;
+};
+
 struct ControllerMethod {
     SourceSpan span;
     SourceSpan return_type_span;
@@ -91,6 +110,7 @@ using Node = std::variant<
     FrameworkDeclaration,
     ModelField,
     ModelConfiguration,
+    ModelRelationship,
     ControllerMethod,
     InjectDeclaration
 >;
