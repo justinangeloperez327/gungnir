@@ -1,6 +1,6 @@
 #include <gungnir/language/migration_lowering.hpp>
 
-#include <optional>
+#include <algorithm>
 #include <string_view>
 #include <vector>
 
@@ -8,24 +8,6 @@
 #include <gungnir/language/parser.hpp>
 
 namespace gungnir::language {
-
-namespace {
-
-std::optional<std::size_t> next_significant(
-    const std::vector<Token>& tokens,
-    std::size_t index
-) {
-    for (auto cursor = index + 1; cursor < tokens.size(); ++cursor) {
-        if (!tokens[cursor].trivia() && tokens[cursor].kind != TokenKind::end) {
-            return cursor;
-        }
-    }
-
-    return std::nullopt;
-}
-
-
-} // namespace
 
 MigrationLoweringResult
 MigrationLowerer::lower(
@@ -71,14 +53,18 @@ MigrationLoweringResult MigrationLowerer::lower(
         const auto body_close = span.end - 1;
         result.edits.push_back(SourceEdit{body_open + 1, body_open + 1,
                                           "\npublic:\n"});
-        for (std::size_t index = 0; index < tokens.size(); ++index) {
-            if (tokens[index].offset != body_close) continue;
-            const auto next = next_significant(tokens, index);
-            if (!next || tokens[*next].lexeme != ";") {
-                result.edits.push_back(SourceEdit{body_close + 1,
-                                                   body_close + 1, ";"});
-            }
-            break;
+        bool needs_semicolon = framework && framework->needs_semicolon;
+        if (base) {
+            const auto next = std::find_if(tokens.begin(), tokens.end(),
+                [&](const Token& token) {
+                    return token.offset > body_close && !token.trivia() &&
+                           token.kind != TokenKind::end;
+                });
+            needs_semicolon = next == tokens.end() || next->lexeme != ";";
+        }
+        if (needs_semicolon) {
+            result.edits.push_back(SourceEdit{body_close + 1,
+                                               body_close + 1, ";"});
         }
     }
 

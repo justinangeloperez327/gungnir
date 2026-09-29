@@ -1296,6 +1296,13 @@ int main() {
             "};"
         ) != std::string::npos
     );
+    const auto terminated_migration = transpiler.transpile(
+        "migration Existing {} /* kept */ ;\n",
+        "terminated_migration.gnr",
+        {.emit_line_directives = false}
+    );
+    assert(terminated_migration.success());
+    assert(terminated_migration.code.find("} /* kept */ ;") != std::string::npos);
 
     const auto invalid_await = transpiler.transpile(
         "void load() {\n"
