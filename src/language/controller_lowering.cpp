@@ -1,6 +1,8 @@
 #include <gungnir/language/controller_lowering.hpp>
 
 #include <algorithm>
+#include <functional>
+#include <unordered_set>
 
 #include <optional>
 #include <string>
@@ -174,6 +176,47 @@ ControllerLoweringResult ControllerLowerer::lower(
             });
         }
 
+        std::unordered_set<std::size_t> lowered_dots;
+        std::function<void(const Expression&)> lower_expression =
+            [&](const Expression& expression) {
+            if (expression.kind == ExpressionKind::member &&
+                expression.text == "." && expression.arguments.size() == 2 &&
+                expression.arguments[0].kind == ExpressionKind::name) {
+                const auto& object = expression.arguments[0];
+                const auto injected = std::find_if(
+                    controller.injections.begin(), controller.injections.end(),
+                    [&](const Injection& value) { return value.name == object.text; }
+                );
+                if (injected != controller.injections.end()) {
+                    const auto dot = std::find_if(tokens.begin(), tokens.end(),
+                        [&](const Token& token) {
+                            return token.offset >= object.span.end &&
+                                   token.offset < expression.arguments[1].span.begin &&
+                                   token.lexeme == ".";
+                        });
+                    if (dot != tokens.end() &&
+                        lowered_dots.insert(dot->offset).second)
+                        result.edits.push_back(SourceEdit{
+                            dot->offset, dot->offset + 1, "->"
+                        });
+                }
+            }
+            for (const auto& child : expression.arguments) lower_expression(child);
+        };
+        std::function<void(const std::vector<MethodStatement>&)> lower_body =
+            [&](const std::vector<MethodStatement>& statements) {
+            for (const auto& statement : statements) {
+                lower_expression(statement.expression);
+                lower_body(statement.children);
+                lower_body(statement.alternative);
+            }
+        };
+        for (const auto member_index : members) {
+            if (const auto* method = std::get_if<ControllerMethod>(
+                    &program.nodes[member_index]))
+                lower_body(method->body);
+        }
+
         for (const auto& injection : controller.injections) {
             for (
                 std::size_t cursor = static_cast<std::size_t>(body_open - tokens.begin()) + 1;
@@ -195,7 +238,8 @@ ControllerLoweringResult ControllerLowerer::lower(
                 }
 
                 const auto dot = next_significant(tokens, cursor);
-                if (dot && tokens[*dot].lexeme == ".") {
+                if (dot && tokens[*dot].lexeme == "." &&
+                    !lowered_dots.contains(tokens[*dot].offset)) {
                     result.edits.push_back(SourceEdit{
                         tokens[*dot].offset,
                         tokens[*dot].offset + 1,

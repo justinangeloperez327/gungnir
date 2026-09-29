@@ -218,7 +218,17 @@ ValidationLoweringResult ValidationLowerer::lower(
     const Program& program, std::string source_name
 ) const {
     ValidationLoweringResult result;
+    (void) source;
     std::unordered_set<std::size_t> handled_calls;
+    const auto symbol_between = [&](std::size_t begin, std::size_t end,
+                                    std::string_view symbol) -> std::optional<std::size_t> {
+        for (const auto& token : tokens) {
+            if (token.offset >= end) break;
+            if (token.offset >= begin && token.lexeme == symbol)
+                return token.offset;
+        }
+        return std::nullopt;
+    };
     std::function<void(const Expression&)> lower_expression =
         [&](const Expression& expression) {
         if (expression.kind == ExpressionKind::call &&
@@ -259,16 +269,15 @@ ValidationLoweringResult ValidationLowerer::lower(
                         diagnostic(value, "Validation rules must be string literals");
                         continue;
                     }
-                    const auto colon = source.find(':', key.span.end);
-                    if (colon == std::string_view::npos || colon >= value.span.begin)
-                        continue;
+                    const auto colon = symbol_between(key.span.end, value.span.begin, ":");
+                    if (!colon) continue;
                     result.edits.push_back(SourceEdit{key.span.begin, key.span.begin, "{"});
-                    result.edits.push_back(SourceEdit{colon, colon + 1, ","});
+                    result.edits.push_back(SourceEdit{*colon, *colon + 1, ","});
                     auto end = value.span.end;
                     if (i + 1 < object.arguments.size()) {
-                        const auto comma = source.find(',', value.span.end);
-                        if (comma != std::string_view::npos &&
-                            comma < object.arguments[i + 1].span.begin) end = comma;
+                        const auto comma = symbol_between(
+                            value.span.end, object.arguments[i + 1].span.begin, ",");
+                        if (comma) end = *comma;
                     }
                     result.edits.push_back(SourceEdit{end, end, "}"});
                 }

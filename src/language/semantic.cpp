@@ -36,11 +36,21 @@ void SemanticIndex::add(const Program& program, std::string_view source_name) {
         const auto& members = base ? base->members : framework->members;
         types.emplace(name, kind);
         declaration_sources[name].insert(std::string{source_name});
-        if (kind != FrameworkBaseKind::controller) continue;
-        for (const auto index : members) {
-            const auto& member = program.nodes[index];
+        for (const auto member_index : members) {
+            const auto& member = program.nodes[member_index];
             if (const auto* method = std::get_if<ControllerMethod>(&member)) {
                 actions[name].insert(method->name);
+                MethodSignature signature;
+                signature.return_type = method->return_type;
+                for (const auto& parameter : method->parameters)
+                    signature.parameters.push_back(parameter.type_name);
+                methods[name + "::" + method->name].push_back(std::move(signature));
+            } else if (const auto* method = std::get_if<FrameworkMethod>(&member)) {
+                MethodSignature signature;
+                signature.return_type = method->return_type;
+                for (const auto& parameter : method->parameters)
+                    signature.parameters.push_back(parameter.type_name);
+                methods[name + "::" + method->name].push_back(std::move(signature));
             }
         }
     }
@@ -84,8 +94,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
         std::unordered_set<std::string> member_names;
         std::unordered_set<std::string> method_signatures;
         std::unordered_set<std::string> method_names;
-        for (const auto index : members) {
-            const auto& member = program.nodes[index];
+        for (const auto member_index : members) {
+            const auto& member = program.nodes[member_index];
             std::string name;
             SourceSpan span;
             const FrameworkMethod* framework_method =
@@ -180,6 +190,44 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 if (expression.kind == ExpressionKind::name) {
                     const auto found = local_types.find(expression.text);
                     return found == local_types.end() ? Type{} : found->second;
+                }
+                if (expression.kind == ExpressionKind::call &&
+                    !expression.arguments.empty()) {
+                    const auto& callee = expression.arguments.front();
+                    std::string owner = declaration_name;
+                    std::string method_name;
+                    if (callee.kind == ExpressionKind::name) {
+                        method_name = callee.text;
+                    } else if (callee.kind == ExpressionKind::member &&
+                               callee.text == "::" &&
+                               callee.arguments.size() == 2 &&
+                               callee.arguments[0].kind == ExpressionKind::name &&
+                               callee.arguments[1].kind == ExpressionKind::name) {
+                        owner = callee.arguments[0].text;
+                        method_name = callee.arguments[1].text;
+                    }
+                    const auto found = index.methods.find(owner + "::" + method_name);
+                    if (method_name.empty() || found == index.methods.end()) return {};
+                    const auto count = expression.arguments.size() - 1;
+                    bool matching_arity = false;
+                    for (const auto& signature : found->second) {
+                        if (signature.parameters.size() != count) continue;
+                        matching_arity = true;
+                        bool compatible = true;
+                        for (std::size_t argument = 0; argument < count; ++argument) {
+                            if (!type_system.assignable(
+                                    scalar_type(signature.parameters[argument]),
+                                    infer(expression.arguments[argument + 1]))) {
+                                compatible = false;
+                            }
+                        }
+                        if (compatible) return scalar_type(signature.return_type);
+                    }
+                    report(expression.span,
+                           matching_arity ? "Call argument type mismatch" :
+                                            "Call argument count mismatch",
+                           matching_arity ? "GNR1318" : "GNR1317");
+                    return {};
                 }
                 if (expression.kind == ExpressionKind::group &&
                     !expression.arguments.empty()) return infer(expression.arguments.front());

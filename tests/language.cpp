@@ -580,6 +580,46 @@ int main() {
              colliding_model.program, "duplicate_model.gnr", &duplicate_project))
         duplicate_project_type |= diagnostic.code == "GNR1314";
     assert(duplicate_project_type);
+    const auto call_source = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Calculator { int doubleValue(int n) { return n + n; } "
+            "int bad() { return doubleValue(\"wrong\"); } "
+            "int missing() { return doubleValue(); } }"
+        }.tokenize(), "calls.gnr"
+    }.parse().program;
+    bool wrong_argument = false, missing_argument = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             call_source, "calls.gnr")) {
+        wrong_argument |= diagnostic.code == "GNR1318";
+        missing_argument |= diagnostic.code == "GNR1317";
+    }
+    assert(wrong_argument && missing_argument);
+    const auto return_call = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Calculator { int value() { return 2; } "
+            "bool invalid() { return value(); } }"
+        }.tokenize(), "return_call.gnr"
+    }.parse().program;
+    bool invalid_call_return = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             return_call, "return_call.gnr"))
+        invalid_call_return |= diagnostic.code == "GNR1306";
+    assert(invalid_call_return);
+    const auto helper_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Helper { int calculate(int n) { return n; } }"
+        }.tokenize(), "helper.gnr"
+    }.parse().program;
+    const auto caller_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Caller { int run() { return Helper::calculate(3); } }"
+        }.tokenize(), "caller.gnr"
+    }.parse().program;
+    gungnir::language::SemanticIndex call_index;
+    call_index.add(helper_program, "helper.gnr");
+    call_index.add(caller_program, "caller.gnr");
+    assert(gungnir::language::SemanticAnalyzer{}.analyze(
+        caller_program, "caller.gnr", &call_index).empty());
     const auto cross_file_route = gungnir::language::Transpiler{}.transpile(
         "Route::get(\"/posts\", PostsController::index);",
         "routes.gnr",
@@ -1198,6 +1238,13 @@ int main() {
         view_data.code.find("\"count\"") !=
         std::string::npos
     );
+    const auto commented_view = transpiler.transpile(
+        "controller Comments { Response show() { "
+        "return view(\"page\", { \"x\" /* : , */ : 1, \"y\": 2 }); } }",
+        "commented_view.gnr", {.emit_line_directives = false}
+    );
+    assert(commented_view.success());
+    assert(commented_view.code.find("/* : , */ , 1}") != std::string::npos);
     assert(
         view_data.code.find("users.count()") !=
         std::string::npos

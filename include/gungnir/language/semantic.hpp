@@ -12,11 +12,16 @@
 namespace gungnir::language {
 
 struct SemanticIndex {
+    struct MethodSignature {
+        std::vector<std::string> parameters;
+        std::string return_type;
+    };
     // Enable unresolved reference diagnostics for closed Gungnir projects.
     bool closed_world{false};
     std::unordered_map<std::string, FrameworkBaseKind> types;
     std::unordered_map<std::string, std::unordered_set<std::string>> actions;
     std::unordered_map<std::string, std::unordered_set<std::string>> declaration_sources;
+    std::unordered_map<std::string, std::vector<MethodSignature>> methods;
 
     void add(const Program& program, std::string_view source_name = "<memory>");
 };

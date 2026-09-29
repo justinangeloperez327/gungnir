@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -744,8 +745,47 @@ ModelLoweringResult ModelLowerer::lower(
         {"relationLoaded", "relation_loaded"}
     };
 
+    std::unordered_set<std::size_t> lowered_aliases;
+    std::function<void(const Expression&)> lower_expression =
+        [&](const Expression& expression) {
+        if (expression.kind == ExpressionKind::call &&
+            !expression.arguments.empty()) {
+            const auto& callee = expression.arguments.front();
+            if (callee.kind == ExpressionKind::member &&
+                callee.arguments.size() == 2 &&
+                callee.arguments[1].kind == ExpressionKind::name) {
+                const auto& name = callee.arguments[1];
+                const auto found = aliases.find(name.text);
+                const bool route = callee.arguments[0].kind == ExpressionKind::name &&
+                    callee.arguments[0].text == "Route";
+                if (found != aliases.end() && !route &&
+                    lowered_aliases.insert(name.span.begin).second) {
+                    result.edits.push_back(SourceEdit{
+                        name.span.begin, name.span.end, found->second
+                    });
+                }
+            }
+        }
+        for (const auto& child : expression.arguments) lower_expression(child);
+    };
+    std::function<void(const std::vector<MethodStatement>&)> lower_body =
+        [&](const std::vector<MethodStatement>& body) {
+        for (const auto& statement : body) {
+            lower_expression(statement.expression);
+            lower_body(statement.children);
+            lower_body(statement.alternative);
+        }
+    };
+    for (const auto& node : program.nodes) {
+        if (const auto* method = std::get_if<FrameworkMethod>(&node))
+            lower_body(method->body);
+        if (const auto* method = std::get_if<ControllerMethod>(&node))
+            lower_body(method->body);
+    }
+
     for (std::size_t index = 0; index < tokens.size(); ++index) {
-        if (tokens[index].kind != TokenKind::identifier) {
+        if (tokens[index].kind != TokenKind::identifier ||
+            lowered_aliases.contains(tokens[index].offset)) {
             continue;
         }
 
