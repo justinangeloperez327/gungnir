@@ -1,6 +1,7 @@
 #include <gungnir/language/parser.hpp>
 
 #include <optional>
+#include <functional>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
@@ -308,42 +309,123 @@ std::vector<MethodParameter> Parser::parse_parameters(
 }
 
 Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
-    Expression expression{
-        SourceSpan{tokens_[first].offset,
-                   tokens_[last].offset + tokens_[last].lexeme.size(),
-                   tokens_[first].line, tokens_[first].column},
-        ExpressionKind::raw, tokens_[first].lexeme, {}
+    std::vector<std::size_t> significant;
+    for (auto i = first; i <= last; ++i) {
+        if (!tokens_[i].trivia()) significant.push_back(i);
+    }
+    const auto value = [&](std::size_t i) -> const std::string& {
+        return tokens_[significant[i]].lexeme;
     };
-    if (first == last) {
-        expression.kind = tokens_[first].kind == TokenKind::string_literal ||
-                          tokens_[first].kind == TokenKind::number ||
-                          tokens_[first].lexeme == "true" ||
-                          tokens_[first].lexeme == "false" ||
-                          tokens_[first].lexeme == "null"
-                              ? ExpressionKind::literal : ExpressionKind::name;
-        return expression;
-    }
-    const auto open = next_significant(first);
-    if (open && tokens_[*open].lexeme == "(" &&
-        matching_symbol(*open, "(", ")") == last) {
-        expression.kind = ExpressionKind::call;
-        auto argument = next_significant(*open);
-        while (argument && *argument < last) {
-            auto end = *argument;
-            auto next = next_significant(end);
-            std::size_t depth = 0;
-            while (next && *next < last) {
-                if (tokens_[*next].lexeme == "(") ++depth;
-                if (tokens_[*next].lexeme == ")" && depth > 0) --depth;
-                if (tokens_[*next].lexeme == "," && depth == 0) break;
-                end = *next;
-                next = next_significant(end);
-            }
-            expression.arguments.push_back(parse_expression(*argument, end));
-            argument = next ? next_significant(*next) : std::nullopt;
+    const auto make = [&](std::size_t begin, std::size_t end,
+                          ExpressionKind kind, std::string text = {}) {
+        const auto& start = tokens_[significant[begin]];
+        const auto& finish = tokens_[significant[end - 1]];
+        return Expression{SourceSpan{start.offset,
+                          finish.offset + finish.lexeme.size(),
+                          start.line, start.column}, kind, std::move(text), {}};
+    };
+    const auto precedence = [](std::string_view op) {
+        if (op == "=") return 1;
+        if (op == "||") return 2;
+        if (op == "&&") return 3;
+        if (op == "==" || op == "!=") return 4;
+        if (op == "<" || op == ">" || op == "<=" || op == ">=") return 5;
+        if (op == "+" || op == "-") return 6;
+        if (op == "*" || op == "/" || op == "%") return 7;
+        return 0;
+    };
+    std::function<Expression(std::size_t, std::size_t)> parse =
+        [&](std::size_t begin, std::size_t end) -> Expression {
+        auto raw = make(begin, end, ExpressionKind::raw, value(begin));
+        if (begin + 1 == end) {
+            const auto& token = tokens_[significant[begin]];
+            raw.kind = token.kind == TokenKind::string_literal ||
+                       token.kind == TokenKind::number || value(begin) == "true" ||
+                       value(begin) == "false" || value(begin) == "null"
+                       ? ExpressionKind::literal : ExpressionKind::name;
+            return raw;
         }
-    }
-    return expression;
+        // Split at the weakest operator outside nested delimiters.
+        std::size_t split = end;
+        int weakest = 8;
+        int parens = 0, brackets = 0, braces = 0;
+        for (auto i = begin; i < end; ++i) {
+            const auto& op = value(i);
+            if (op == "(") ++parens;
+            else if (op == ")") --parens;
+            else if (op == "[") ++brackets;
+            else if (op == "]") --brackets;
+            else if (op == "{") ++braces;
+            else if (op == "}") --braces;
+            if (parens || brackets || braces || i == begin || i + 1 == end)
+                continue;
+            const int rank = precedence(op);
+            if (rank && rank <= weakest) {
+                weakest = rank;
+                split = i;
+            }
+        }
+        if (split != end) {
+            auto result = make(begin, end, ExpressionKind::binary, value(split));
+            result.arguments.push_back(parse(begin, split));
+            result.arguments.push_back(parse(split + 1, end));
+            return result;
+        }
+        if (value(begin) == "!" || value(begin) == "-" || value(begin) == "+" ||
+            value(begin) == "await") {
+            auto result = make(begin, end, ExpressionKind::unary, value(begin));
+            result.arguments.push_back(parse(begin + 1, end));
+            return result;
+        }
+        if (value(begin) == "(" && value(end - 1) == ")" &&
+            matching_symbol(significant[begin], "(", ")") == significant[end - 1]) {
+            auto result = make(begin, end, ExpressionKind::group);
+            if (begin + 2 < end) result.arguments.push_back(parse(begin + 1, end - 1));
+            return result;
+        }
+        // A postfix operation must close at the end of this expression.
+        if (value(end - 1) == ")") {
+            for (auto i = begin + 1; i + 1 < end; ++i) {
+                if (value(i) != "(" ||
+                    matching_symbol(significant[i], "(", ")") != significant[end - 1])
+                    continue;
+                auto result = make(begin, end, ExpressionKind::call);
+                result.arguments.push_back(parse(begin, i));
+                auto start = i + 1;
+                int depth = 0;
+                for (auto j = start; j < end - 1; ++j) {
+                    if (value(j) == "(" || value(j) == "[" || value(j) == "{") ++depth;
+                    else if (value(j) == ")" || value(j) == "]" || value(j) == "}") --depth;
+                    if (value(j) == "," && depth == 0) {
+                        if (start < j) result.arguments.push_back(parse(start, j));
+                        start = j + 1;
+                    }
+                }
+                if (start < end - 1) result.arguments.push_back(parse(start, end - 1));
+                return result;
+            }
+        }
+        if (value(end - 1) == "]") {
+            for (auto i = begin + 1; i + 1 < end; ++i) {
+                if (value(i) != "[" ||
+                    matching_symbol(significant[i], "[", "]") != significant[end - 1])
+                    continue;
+                auto result = make(begin, end, ExpressionKind::subscript);
+                result.arguments.push_back(parse(begin, i));
+                if (i + 1 < end - 1) result.arguments.push_back(parse(i + 1, end - 1));
+                return result;
+            }
+        }
+        if (end >= begin + 3 && (value(end - 2) == "." ||
+            value(end - 2) == "->" || value(end - 2) == "::")) {
+            auto result = make(begin, end, ExpressionKind::member, value(end - 2));
+            result.arguments.push_back(parse(begin, end - 2));
+            result.arguments.push_back(parse(end - 1, end));
+            return result;
+        }
+        return raw; // Native C++ interoperability remains source-preserving.
+    };
+    return parse(0, significant.size());
 }
 
 std::vector<MethodStatement> Parser::parse_method_body(
@@ -1618,6 +1700,16 @@ ParseResult Parser::parse() {
 
         if (token.trivia() || token.kind == TokenKind::end) {
             continue;
+        }
+
+        if (token.kind == TokenKind::identifier && token.lexeme == "Application") {
+            const auto previous = previous_significant(index);
+            if (!previous || tokens_[*previous].lexeme != ":") {
+                result_.program.nodes.push_back(ApplicationReference{
+                    SourceSpan{token.offset, token.offset + token.lexeme.size(),
+                               token.line, token.column}
+                });
+            }
         }
 
         if (token.lexeme == "{") {

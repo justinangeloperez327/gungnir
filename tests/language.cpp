@@ -5,6 +5,30 @@
 #include <gungnir/language/language.hpp>
 
 int main() {
+    const auto expression_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Math { int calculate(int n) { const x = n + 2 * 3; "
+            "return (x - 1); } int invalid() { return 1 + 2.5; } }"
+        }.tokenize(), "expressions.gnr"
+    }.parse().program;
+    const auto& math = std::get<gungnir::language::FrameworkDeclaration>(
+        expression_program.nodes.front());
+    const auto& calculate = std::get<gungnir::language::ControllerMethod>(
+        expression_program.nodes[math.members.front()]);
+    assert(calculate.body.size() == 2);
+    const auto& sum = calculate.body.front().expression;
+    assert(sum.kind == gungnir::language::ExpressionKind::binary && sum.text == "+");
+    assert(sum.arguments[1].kind == gungnir::language::ExpressionKind::binary &&
+           sum.arguments[1].text == "*");
+    assert(calculate.body.back().expression.kind ==
+           gungnir::language::ExpressionKind::group);
+    const auto expression_diagnostics = gungnir::language::SemanticAnalyzer{}.analyze(
+        expression_program, "expressions.gnr");
+    bool invalid_arithmetic_return = false;
+    for (const auto& diagnostic : expression_diagnostics)
+        invalid_arithmetic_return |= diagnostic.code == "GNR1306";
+    assert(invalid_arithmetic_return);
+
     const auto tokens =
         gungnir::language::Lexer{
             "model User { string name; }\n"

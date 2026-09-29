@@ -2,6 +2,7 @@
 #include <gungnir/language/type_system.hpp>
 
 #include <string>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -164,16 +165,57 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 );
             }
             TypeSystem type_system;
-            for (const auto& statement : *body) {
-                Type value;
-                if (statement.expression.kind == ExpressionKind::literal) {
-                    value = type_system.infer_literal(statement.expression.text);
-                } else if (statement.expression.kind == ExpressionKind::name) {
-                    const auto found = local_types.find(statement.expression.text);
-                    if (found != local_types.end()) value = found->second;
+            std::function<Type(const Expression&)> infer =
+                [&](const Expression& expression) -> Type {
+                if (expression.kind == ExpressionKind::literal)
+                    return type_system.infer_literal(expression.text);
+                if (expression.kind == ExpressionKind::name) {
+                    const auto found = local_types.find(expression.text);
+                    return found == local_types.end() ? Type{} : found->second;
                 }
+                if (expression.kind == ExpressionKind::group &&
+                    !expression.arguments.empty()) return infer(expression.arguments.front());
+                if (expression.kind == ExpressionKind::unary &&
+                    !expression.arguments.empty()) {
+                    const auto operand = infer(expression.arguments.front());
+                    if (expression.text == "!")
+                        return operand.kind == TypeKind::boolean
+                            ? Type{TypeKind::boolean, "bool", false} : Type{};
+                    if (expression.text == "-" || expression.text == "+")
+                        return operand.kind == TypeKind::integer ||
+                               operand.kind == TypeKind::decimal ? operand : Type{};
+                }
+                if (expression.kind == ExpressionKind::binary &&
+                    expression.arguments.size() == 2) {
+                    const auto lhs = infer(expression.arguments[0]);
+                    const auto rhs = infer(expression.arguments[1]);
+                    const auto& op = expression.text;
+                    if (op == "=") return rhs;
+                    if (!lhs.known() || !rhs.known()) return {};
+                    if (op == "==" || op == "!=" || op == "<" || op == ">" ||
+                        op == "<=" || op == ">=" || op == "&&" || op == "||")
+                        return {TypeKind::boolean, "bool", false};
+                    if (op == "+" && lhs.kind == TypeKind::string &&
+                        rhs.kind == TypeKind::string) return lhs;
+                    const bool lhs_numeric = lhs.kind == TypeKind::integer ||
+                                             lhs.kind == TypeKind::decimal;
+                    const bool rhs_numeric = rhs.kind == TypeKind::integer ||
+                                             rhs.kind == TypeKind::decimal;
+                    if (lhs_numeric && rhs_numeric)
+                        return lhs.kind == TypeKind::decimal || rhs.kind == TypeKind::decimal
+                            ? Type{TypeKind::decimal, "decimal", false}
+                            : lhs;
+                }
+                return {};
+            };
+            for (const auto& statement : *body) {
+                const Type value = infer(statement.expression);
                 if (statement.kind == StatementKind::binding &&
                     !statement.name.empty()) {
+                    if (local_types.contains(statement.name)) {
+                        report(statement.span, "Duplicate local binding '" +
+                               statement.name + "'", "GNR1310");
+                    }
                     local_types.insert_or_assign(statement.name, value);
                 }
                 if (statement.kind != StatementKind::return_) continue;

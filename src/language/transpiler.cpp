@@ -12,7 +12,6 @@
 
 #include <gungnir/language/ast.hpp>
 #include <gungnir/language/async_lowering.hpp>
-#include <gungnir/language/bootstrap_lowering.hpp>
 #include <gungnir/language/controller_lowering.hpp>
 #include <gungnir/language/lexer.hpp>
 #include <gungnir/language/middleware_lowering.hpp>
@@ -92,10 +91,6 @@ TranspileResult Transpiler::transpile(
     );
     parsed.diagnostics.insert(parsed.diagnostics.end(),
         semantic_diagnostics.begin(), semantic_diagnostics.end());
-
-    BootstrapLowerer bootstrap_lowerer;
-    auto bootstrap_lowering =
-        bootstrap_lowerer.lower(source);
 
     ModelLowerer model_lowerer;
     auto model_lowering =
@@ -181,7 +176,6 @@ TranspileResult Transpiler::transpile(
     std::vector<SourceEdit> edits;
     edits.reserve(
         parsed.program.nodes.size() +
-        bootstrap_lowering.edits.size() +
         model_lowering.edits.size() +
         controller_lowering.edits.size() +
         async_lowering.edits.size() +
@@ -201,6 +195,10 @@ TranspileResult Transpiler::transpile(
                         value.span.begin,
                         value.span.end,
                         value.immutable ? "const auto " : "auto "
+                    });
+                } else if constexpr (std::same_as<NodeType, ApplicationReference>) {
+                    edits.push_back(SourceEdit{
+                        value.span.begin, value.span.end, "gungnir::Application"
                     });
                 } else if constexpr (std::same_as<NodeType, FrameworkDeclaration>) {
                     edits.push_back(SourceEdit{
@@ -249,12 +247,6 @@ TranspileResult Transpiler::transpile(
             node
         );
     }
-
-    edits.insert(
-        edits.end(),
-        std::make_move_iterator(bootstrap_lowering.edits.begin()),
-        std::make_move_iterator(bootstrap_lowering.edits.end())
-    );
 
     edits.insert(
         edits.end(),

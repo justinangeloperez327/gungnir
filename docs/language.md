@@ -727,6 +727,14 @@ changing the migration CLI contract.
 
 Gungnir language version 1.0 defines the application-facing contract independently from generated C++23. Stable language features include inferred mutable and immutable bindings, framework classes, modules/imports, optional values, collection syntax, and async/await semantics.
 
+### Declaration and expression grammar
+
+The framework declaration forms are `model`, `controller`, `migration`, `middleware`, `policy`, `event`, `listener`, `notification`, and `mail`, followed by a name and a brace-delimited body. Model fields, relationships, configuration entries, controller methods and injections, and route declarations have dedicated AST nodes. Member indices in a declaration refer to nodes in the same program. Method parameters and top-level method statements retain source spans.
+
+The expression AST recognizes names and literals; parenthesized, unary (`!`, `+`, `-`, `await`), binary (`=`, `||`, `&&`, comparisons, arithmetic), member (`.`, `->`, `::`), subscript, and call expressions. Binary precedence runs from assignment (lowest) through logical OR, logical AND, equality, comparison, addition, and multiplication (highest). Calls store their callee as the first child, followed by arguments. Nested native C++ constructs that do not match this grammar remain source-preserving `raw` expressions; the compiler does not claim type safety for those expressions.
+
+Semantic checks cover duplicate members and parameters, duplicate local bindings, known scalar return types, route actions, and project-indexed relationship targets. Unknown native C++ types and calls remain available for interoperability. Code generation preserves source spans while lowering framework declarations, bindings, and application references from AST nodes; specialized framework lowerers still handle other constructs. These limits define the current implementation boundary of the 1.0 contract.
+
 Canonical module names are dot-separated. For example, `app.models.user` maps to `app/models/user.gnr`. Imports may carry an alias. Resolution, dependency ordering, cycle diagnostics, and incremental compilation are compiler responsibilities rather than application-runtime behavior.
 
 The language reserves the concepts `module`, `import`, `as`, `interface`, `enum`, `async`, `await`, `const`, `true`, `false`, and `null` for Gungnir semantics. Syntax additions should be additive where practical. Stable syntax should receive a migration/deprecation path before removal.

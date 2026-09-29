@@ -20,6 +20,10 @@ struct InferredBinding {
     bool immutable{false};
 };
 
+struct ApplicationReference {
+    SourceSpan span;
+};
+
 enum class FrameworkBaseKind {
     model,
     controller,
@@ -47,13 +51,14 @@ struct MethodParameter {
     std::string name;
 };
 
-enum class ExpressionKind { name, literal, call, raw };
+enum class ExpressionKind { name, literal, call, raw, unary, binary, member, subscript, group };
 
 struct Expression {
     SourceSpan span;
     ExpressionKind kind{ExpressionKind::raw};
     std::string text;
     std::vector<Expression> arguments;
+    // For operators and postfix expressions, arguments contain operands in source order.
 };
 
 enum class StatementKind { return_, binding, expression, block };
@@ -181,6 +186,7 @@ struct RouteDeclaration {
 
 using Node = std::variant<
     InferredBinding,
+    ApplicationReference,
     FrameworkBase,
     FrameworkDeclaration,
     FrameworkMethod,
