@@ -8,8 +8,11 @@
 
 namespace gungnir::language {
 
+struct SemanticIndex;
+
 struct TranspileOptions {
     bool emit_line_directives{true};
+    const SemanticIndex* semantic_index{nullptr};
 };
 
 struct TranspileResult {

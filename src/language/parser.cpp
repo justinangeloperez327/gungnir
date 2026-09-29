@@ -390,14 +390,26 @@ std::vector<MethodStatement> Parser::parse_method_body(
                     ? StatementKind::binding : StatementKind::expression;
             if (expression_start && expression_end &&
                 *expression_start <= *expression_end) {
+                auto value_start = kind == StatementKind::return_
+                    ? *expression_start : *start;
+                std::string binding_name;
+                if (kind == StatementKind::binding) {
+                    const auto equals = next_significant(*expression_start);
+                    if (equals && tokens_[*equals].lexeme == "=") {
+                        const auto initializer = next_significant(*equals);
+                        if (initializer && *initializer < cursor) {
+                            binding_name = tokens_[*expression_start].lexeme;
+                            value_start = *initializer;
+                        }
+                    }
+                }
                 statements.push_back(MethodStatement{
                     SourceSpan{tokens_[*start].offset,
                                tokens_[cursor].offset + 1,
                                tokens_[*start].line, tokens_[*start].column},
                     kind,
-                    parse_expression(kind == StatementKind::return_
-                                         ? *expression_start : *start,
-                                     *expression_end)
+                    parse_expression(value_start, *expression_end),
+                    std::move(binding_name)
                 });
             }
         }
@@ -1525,7 +1537,8 @@ void Parser::parse_framework_declaration(std::size_t index) {
         SourceSpan{tokens_[index].offset,
                    tokens_[*body_close].offset + tokens_[*body_close].lexeme.size(),
                    tokens_[index].line, tokens_[index].column},
-        {}
+        {},
+        token_span(tokens_[*body])
     });
 
     const auto members_begin = result_.program.nodes.size();
@@ -1693,6 +1706,7 @@ ParseResult Parser::parse() {
                                 tokens_[*body_close].lexeme.size(),
                             token.line, token.column
                         };
+                        declaration.body_open_span = token_span(tokens_[*body]);
                         for (auto member = members_begin;
                              member < result_.program.nodes.size(); ++member) {
                             declaration.members.push_back(member);

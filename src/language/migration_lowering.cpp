@@ -46,22 +46,25 @@ MigrationLoweringResult MigrationLowerer::lower(
     const auto tokens = lexer.tokenize();
 
     for (const auto& node : program.nodes) {
-        const auto* declaration = std::get_if<FrameworkBase>(&node);
-        if (!declaration || declaration->kind != FrameworkBaseKind::migration) {
+        const auto* base = std::get_if<FrameworkBase>(&node);
+        const auto* framework = std::get_if<FrameworkDeclaration>(&node);
+        if ((!base || base->kind != FrameworkBaseKind::migration) &&
+            (!framework || framework->kind != FrameworkBaseKind::migration)) {
             continue;
         }
-        const auto body_open = source.find('{', declaration->span.end);
-        if (body_open == std::string_view::npos ||
-            body_open >= declaration->declaration_span.end) {
+        const auto span = base ? base->declaration_span : framework->span;
+        const auto keyword = base ? base->span : framework->keyword_span;
+        const auto body = base ? base->body_open_span : framework->body_open_span;
+        const auto body_open = body.begin;
+        if (body.end == 0 || body_open >= span.end || span.end == 0) {
             result.diagnostics.push_back(Diagnostic{
                 DiagnosticLevel::error,
-                SourceLocation{source_name, declaration->span.line,
-                               declaration->span.column},
+                SourceLocation{source_name, keyword.line, keyword.column},
                 "Migration declaration requires a body"
             });
             continue;
         }
-        const auto body_close = declaration->declaration_span.end - 1;
+        const auto body_close = span.end - 1;
         result.edits.push_back(SourceEdit{body_open + 1, body_open + 1,
                                           "\npublic:\n"});
         for (std::size_t index = 0; index < tokens.size(); ++index) {

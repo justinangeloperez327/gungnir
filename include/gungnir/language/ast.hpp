@@ -38,6 +38,7 @@ struct FrameworkBase {
     FrameworkBaseKind kind{FrameworkBaseKind::controller};
     SourceSpan declaration_span;
     std::vector<std::size_t> members;
+    SourceSpan body_open_span;
 };
 
 struct MethodParameter {
@@ -61,6 +62,7 @@ struct MethodStatement {
     SourceSpan span;
     StatementKind kind{StatementKind::expression};
     Expression expression;
+    std::string name;
 };
 
 struct FrameworkDeclaration {
@@ -73,6 +75,7 @@ struct FrameworkDeclaration {
     // Indices into Program::nodes, preserving the existing flat node API.
     SourceSpan span;
     std::vector<std::size_t> members;
+    SourceSpan body_open_span;
 };
 
 struct FrameworkMethod {

@@ -42,10 +42,10 @@ std::string escape_line_file(std::string value) {
     return escaped;
 }
 
-std::string framework_base(const FrameworkBase& node) {
-    switch (node.kind) {
+std::string framework_base(FrameworkBaseKind kind, std::string_view name) {
+    switch (kind) {
     case FrameworkBaseKind::model:
-        return "public gungnir::Model<" + node.class_name + ">";
+        return "public gungnir::Model<" + std::string{name} + ">";
     case FrameworkBaseKind::controller:
         return "public gungnir::Controller";
     case FrameworkBaseKind::migration:
@@ -67,86 +67,6 @@ std::string framework_base(const FrameworkBase& node) {
     return {};
 }
 
-std::string framework_short_base(FrameworkBaseKind kind) {
-    switch (kind) {
-    case FrameworkBaseKind::model:
-        return "Model";
-    case FrameworkBaseKind::controller:
-        return "Controller";
-    case FrameworkBaseKind::migration:
-        return "Migration";
-    case FrameworkBaseKind::middleware:
-        return "Middleware";
-    case FrameworkBaseKind::policy:
-        return "Policy";
-    case FrameworkBaseKind::event:
-        return "Event";
-    case FrameworkBaseKind::listener:
-        return "Listener";
-    case FrameworkBaseKind::notification:
-        return "Notification";
-    case FrameworkBaseKind::mail:
-        return "Mail";
-    }
-
-    return {};
-}
-
-std::string normalize_framework_declarations(
-    std::string_view source,
-    const Program& program
-) {
-    std::vector<SourceEdit> edits;
-
-    for (const auto& node : program.nodes) {
-        if (const auto* declaration =
-                std::get_if<FrameworkDeclaration>(&node)) {
-            edits.push_back(SourceEdit{
-                declaration->keyword_span.begin,
-                declaration->keyword_span.end,
-                "class"
-            });
-            edits.push_back(SourceEdit{
-                declaration->name_end_span.begin,
-                declaration->name_end_span.end,
-                " : " + framework_short_base(declaration->kind)
-            });
-
-            if (declaration->needs_semicolon) {
-                edits.push_back(SourceEdit{
-                    declaration->body_end_span.begin,
-                    declaration->body_end_span.end,
-                    ";"
-                });
-            }
-        }
-    }
-
-    if (edits.empty()) {
-        return std::string{source};
-    }
-
-    std::sort(
-        edits.begin(),
-        edits.end(),
-        [](const SourceEdit& left, const SourceEdit& right) {
-            return left.begin < right.begin;
-        }
-    );
-
-    std::string output;
-    std::size_t cursor = 0;
-
-    for (const auto& edit : edits) {
-        output.append(source.substr(cursor, edit.begin - cursor));
-        output += edit.replacement;
-        cursor = edit.end;
-    }
-
-    output.append(source.substr(cursor));
-    return output;
-}
-
 } // namespace
 
 bool TranspileResult::success() const noexcept {
@@ -164,42 +84,14 @@ TranspileResult Transpiler::transpile(
     std::string source_name,
     TranspileOptions options
 ) const {
-    Lexer declaration_lexer{source};
-    Parser declaration_parser{
-        declaration_lexer.tokenize(),
-        source_name
-    };
-    auto declaration_parse =
-        declaration_parser.parse();
-
-    const auto normalized_source =
-        normalize_framework_declarations(
-            source,
-            declaration_parse.program
-        );
-    source = normalized_source;
-
     Lexer lexer{source};
     Parser parser{lexer.tokenize(), source_name};
     auto parsed = parser.parse();
     auto semantic_diagnostics = SemanticAnalyzer{}.analyze(
-        parsed.program, source_name
+        parsed.program, source_name, options.semantic_index
     );
     parsed.diagnostics.insert(parsed.diagnostics.end(),
         semantic_diagnostics.begin(), semantic_diagnostics.end());
-
-    for (const auto& diagnostic : declaration_parse.diagnostics) {
-        if (
-            diagnostic.code == "GNR1001" ||
-            diagnostic.code == "GNR1002" ||
-            diagnostic.code == "GNR1003"
-        ) {
-            parsed.diagnostics.insert(
-                parsed.diagnostics.begin(),
-                diagnostic
-            );
-        }
-    }
 
     BootstrapLowerer bootstrap_lowerer;
     auto bootstrap_lowering =
@@ -310,23 +202,47 @@ TranspileResult Transpiler::transpile(
                         value.span.end,
                         value.immutable ? "const auto " : "auto "
                     });
+                } else if constexpr (std::same_as<NodeType, FrameworkDeclaration>) {
+                    edits.push_back(SourceEdit{
+                        value.keyword_span.begin, value.keyword_span.end, "class"
+                    });
+                    edits.push_back(SourceEdit{
+                        value.name_end_span.begin, value.name_end_span.end,
+                        " : " + framework_base(value.kind, value.class_name)
+                    });
+                    if (value.needs_semicolon &&
+                        value.kind != FrameworkBaseKind::model &&
+                        value.kind != FrameworkBaseKind::controller &&
+                        value.kind != FrameworkBaseKind::migration &&
+                        value.kind != FrameworkBaseKind::middleware) {
+                        edits.push_back(SourceEdit{
+                            value.body_end_span.begin, value.body_end_span.end, ";"
+                        });
+                    }
+                    if (value.kind != FrameworkBaseKind::model &&
+                        value.kind != FrameworkBaseKind::controller &&
+                        value.kind != FrameworkBaseKind::migration &&
+                        value.kind != FrameworkBaseKind::middleware) {
+                        edits.push_back(SourceEdit{
+                            value.body_open_span.end, value.body_open_span.end,
+                            "\npublic:\n"
+                        });
+                    }
                 } else if constexpr (std::same_as<NodeType, FrameworkBase>) {
                     edits.push_back(SourceEdit{
                         value.span.begin,
                         value.span.end,
-                        framework_base(value)
+                        framework_base(value.kind, value.class_name)
                     });
                     if (value.kind != FrameworkBaseKind::model &&
                         value.kind != FrameworkBaseKind::controller &&
                         value.kind != FrameworkBaseKind::migration &&
                         value.kind != FrameworkBaseKind::middleware &&
                         value.declaration_span.end > value.span.end) {
-                        const auto body = source.find('{', value.span.end);
-                        if (body != std::string_view::npos &&
-                            body < value.declaration_span.end) {
-                            edits.push_back(SourceEdit{body + 1, body + 1,
-                                                       "\npublic:\n"});
-                        }
+                        edits.push_back(SourceEdit{
+                            value.body_open_span.end, value.body_open_span.end,
+                            "\npublic:\n"
+                        });
                     }
                 }
             },

@@ -1,4 +1,5 @@
 #include <gungnir/language/semantic.hpp>
+#include <gungnir/language/type_system.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -7,20 +8,51 @@
 
 namespace gungnir::language {
 
-std::vector<Diagnostic> SemanticAnalyzer::analyze(
-    const Program& program, std::string_view source_name
-) const {
-    std::vector<Diagnostic> diagnostics;
-    std::unordered_map<std::string, FrameworkBaseKind> types;
-    std::unordered_map<std::string, std::unordered_set<std::string>> actions;
+namespace {
+
+Type scalar_type(std::string_view name) {
+    if (name == "string") return {TypeKind::string, "string", false};
+    if (name == "bool" || name == "boolean") {
+        return {TypeKind::boolean, "bool", false};
+    }
+    if (name == "int" || name == "integer" || name == "int64" ||
+        name == "uint64") return {TypeKind::integer, "int", false};
+    if (name == "float" || name == "double") {
+        return {TypeKind::decimal, "decimal", false};
+    }
+    return {};
+}
+
+} // namespace
+
+void SemanticIndex::add(const Program& program) {
     for (const auto& node : program.nodes) {
-        if (const auto* declaration = std::get_if<FrameworkBase>(&node)) {
-            types.emplace(declaration->class_name, declaration->kind);
-        } else if (const auto* declaration =
-                       std::get_if<FrameworkDeclaration>(&node)) {
-            types.emplace(declaration->class_name, declaration->kind);
+        const auto* base = std::get_if<FrameworkBase>(&node);
+        const auto* framework = std::get_if<FrameworkDeclaration>(&node);
+        if (!base && !framework) continue;
+        const auto& name = base ? base->class_name : framework->class_name;
+        const auto kind = base ? base->kind : framework->kind;
+        const auto& members = base ? base->members : framework->members;
+        types.emplace(name, kind);
+        if (kind != FrameworkBaseKind::controller) continue;
+        for (const auto index : members) {
+            const auto& member = program.nodes[index];
+            if (const auto* method = std::get_if<ControllerMethod>(&member)) {
+                actions[name].insert(method->name);
+            }
         }
     }
+}
+
+std::vector<Diagnostic> SemanticAnalyzer::analyze(
+    const Program& program, std::string_view source_name,
+    const SemanticIndex* project
+) const {
+    std::vector<Diagnostic> diagnostics;
+    SemanticIndex index = project ? *project : SemanticIndex{};
+    index.add(program);
+    const auto& types = index.types;
+    auto& actions = index.actions;
 
     const auto report = [&](SourceSpan span, std::string message,
                             std::string code) {
@@ -63,6 +95,16 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 if (found != types.end() && found->second != FrameworkBaseKind::model) {
                     report(span, "Relationship type '" + relation->related_type +
                                  "' is not a model", "GNR1303");
+                } else if (project && project->closed_world &&
+                           found == types.end()) {
+                    report(span, "Unknown related model '" +
+                                 relation->related_type + "'", "GNR1308");
+                }
+                if (project && project->closed_world &&
+                    !relation->through_type.empty() &&
+                    !types.contains(relation->through_type)) {
+                    report(span, "Unknown through model '" +
+                                 relation->through_type + "'", "GNR1308");
                 }
             } else if (const auto* injection =
                            std::get_if<InjectDeclaration>(&member)) {
@@ -115,37 +157,34 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             }
             const auto& return_type = framework_method
                 ? framework_method->return_type : controller_method->return_type;
-            if (return_type == "void") {
-                for (const auto& statement : *body) {
-                    if (statement.kind == StatementKind::return_) {
-                        report(statement.span,
-                               "Void method cannot return a value", "GNR1304");
-                    }
+            std::unordered_map<std::string, Type> local_types;
+            for (const auto& parameter : *parameters) {
+                local_types.insert_or_assign(
+                    parameter.name, scalar_type(parameter.type_name)
+                );
+            }
+            TypeSystem type_system;
+            for (const auto& statement : *body) {
+                Type value;
+                if (statement.expression.kind == ExpressionKind::literal) {
+                    value = type_system.infer_literal(statement.expression.text);
+                } else if (statement.expression.kind == ExpressionKind::name) {
+                    const auto found = local_types.find(statement.expression.text);
+                    if (found != local_types.end()) value = found->second;
                 }
-            } else {
-                for (const auto& statement : *body) {
-                    if (statement.kind != StatementKind::return_ ||
-                        statement.expression.kind != ExpressionKind::literal) {
-                        continue;
-                    }
-                    const auto& value = statement.expression.text;
-                    const bool boolean = value == "true" || value == "false";
-                    const bool string = !value.empty() && value.front() == '"';
-                    const bool number = !value.empty() &&
-                        value.front() >= '0' && value.front() <= '9';
-                    const bool mismatch =
-                        ((return_type == "bool" || return_type == "boolean") &&
-                         !boolean) ||
-                        (return_type == "string" && !string) ||
-                        ((return_type == "int" || return_type == "integer" ||
-                          return_type == "int64" || return_type == "uint64" ||
-                          return_type == "float" || return_type == "double") &&
-                         !number);
-                    if (mismatch) {
-                        report(statement.span,
-                               "Return value does not match '" + return_type +
-                                   "'", "GNR1306");
-                    }
+                if (statement.kind == StatementKind::binding &&
+                    !statement.name.empty()) {
+                    local_types.insert_or_assign(statement.name, value);
+                }
+                if (statement.kind != StatementKind::return_) continue;
+                if (return_type == "void") {
+                    report(statement.span,
+                           "Void method cannot return a value", "GNR1304");
+                } else if (value.known() &&
+                           !type_system.assignable(scalar_type(return_type), value)) {
+                    report(statement.span,
+                           "Return value does not match '" + return_type +
+                               "'", "GNR1306");
                 }
             }
         }
@@ -155,7 +194,10 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
         const auto* route = std::get_if<RouteDeclaration>(&node);
         if (!route) continue;
         const auto found = types.find(route->controller_name);
-        if (found != types.end() && found->second != FrameworkBaseKind::controller) {
+        if (project && project->closed_world && found == types.end()) {
+            report(route->route_span, "Unknown controller '" +
+                        route->controller_name + "'", "GNR1309");
+        } else if (found != types.end() && found->second != FrameworkBaseKind::controller) {
             report(route->route_span, "Route target '" + route->controller_name +
                         "' is not a controller", "GNR1305");
         } else if (found != types.end() &&

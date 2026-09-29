@@ -408,6 +408,67 @@ int main() {
         missing_action |= diagnostic.code == "GNR1307";
     }
     assert(wrong_return_type && missing_action);
+    const auto inferred_return = gungnir::language::Transpiler{}.transpile(
+        "controller Example { bool show() { "
+        "const answer = \"yes\"; return answer; } }",
+        "inferred_return.gnr",
+        {.emit_line_directives = false}
+    );
+    bool wrong_inferred_return = false;
+    for (const auto& diagnostic : inferred_return.diagnostics) {
+        wrong_inferred_return |= diagnostic.code == "GNR1306";
+    }
+    assert(wrong_inferred_return);
+
+    const auto shared_controller = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller PostsController { Response index() {} }"
+        }.tokenize(), "controllers.gnr"
+    }.parse();
+    const auto shared_model = gungnir::language::Parser{
+        gungnir::language::Lexer{"model Post { string title; }"}.tokenize(),
+        "models.gnr"
+    }.parse();
+    gungnir::language::SemanticIndex project_index;
+    project_index.add(shared_controller.program);
+    project_index.add(shared_model.program);
+    project_index.closed_world = true;
+    const auto cross_file_route = gungnir::language::Transpiler{}.transpile(
+        "Route::get(\"/posts\", PostsController::index);",
+        "routes.gnr",
+        {.emit_line_directives = false, .semantic_index = &project_index}
+    );
+    assert(cross_file_route.success());
+    const auto missing_cross_file_action =
+        gungnir::language::Transpiler{}.transpile(
+        "Route::get(\"/posts\", PostsController::missing);",
+        "routes.gnr",
+        {.emit_line_directives = false, .semantic_index = &project_index}
+    );
+    assert(!missing_cross_file_action.success());
+    bool missing_project_action = false;
+    for (const auto& diagnostic : missing_cross_file_action.diagnostics) {
+        missing_project_action |= diagnostic.code == "GNR1307";
+    }
+    assert(missing_project_action);
+    const auto cross_file_relationship =
+        gungnir::language::Transpiler{}.transpile(
+            "model User { posts() { return hasMany<Post>(); } }",
+            "users.gnr",
+            {.emit_line_directives = false, .semantic_index = &project_index}
+        );
+    assert(cross_file_relationship.success());
+    const auto missing_related_model =
+        gungnir::language::Transpiler{}.transpile(
+            "model User { posts() { return hasMany<MissingPost>(); } }",
+            "users.gnr",
+            {.emit_line_directives = false, .semantic_index = &project_index}
+        );
+    bool unknown_related_type = false;
+    for (const auto& diagnostic : missing_related_model.diagnostics) {
+        unknown_related_type |= diagnostic.code == "GNR1308";
+    }
+    assert(unknown_related_type);
 
     gungnir::language::Transpiler transpiler;
 

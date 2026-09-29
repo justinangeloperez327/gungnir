@@ -1,5 +1,7 @@
 #include <gungnir/language/controller_lowering.hpp>
 
+#include <algorithm>
+
 #include <optional>
 #include <string>
 #include <utility>
@@ -40,48 +42,9 @@ std::optional<std::size_t> next_significant(
     return std::nullopt;
 }
 
-std::optional<std::size_t> matching_symbol(
-    const std::vector<Token>& tokens,
-    std::size_t opening,
-    std::string_view open,
-    std::string_view close
-) {
-    std::size_t depth = 0;
 
-    for (auto index = opening; index < tokens.size(); ++index) {
-        if (tokens[index].trivia()) {
-            continue;
-        }
 
-        if (tokens[index].lexeme == open) {
-            ++depth;
-        } else if (tokens[index].lexeme == close) {
-            if (depth == 0) {
-                return std::nullopt;
-            }
 
-            --depth;
-            if (depth == 0) {
-                return index;
-            }
-        }
-    }
-
-    return std::nullopt;
-}
-
-void add_error(
-    ControllerLoweringResult& result,
-    const std::string& file,
-    const Token& token,
-    std::string message
-) {
-    result.diagnostics.push_back(Diagnostic{
-        DiagnosticLevel::error,
-        SourceLocation{file, token.line, token.column},
-        std::move(message)
-    });
-}
 
 std::string controller_prelude(const ControllerInfo& controller) {
     std::string result{"\npublic:\n"};
@@ -140,81 +103,49 @@ ControllerLoweringResult ControllerLowerer::lower(
 ) const {
     ControllerLoweringResult result;
 
+    (void) source_name;
     Lexer lexer{source};
     const auto tokens = lexer.tokenize();
 
     std::vector<ControllerInfo> controllers;
 
-    for (std::size_t index = 0; index < tokens.size(); ++index) {
-        if (tokens[index].trivia() || tokens[index].lexeme != "class") {
+    for (const auto& node : program.nodes) {
+        const auto* base = std::get_if<FrameworkBase>(&node);
+        const auto* framework = std::get_if<FrameworkDeclaration>(&node);
+        const auto kind = base ? base->kind : framework
+            ? framework->kind : FrameworkBaseKind::model;
+        if (kind != FrameworkBaseKind::controller || (!base && !framework)) {
             continue;
         }
-
-        const auto name = next_significant(tokens, index);
-        const auto colon = name ? next_significant(tokens, *name) : std::nullopt;
-        const auto base = colon ? next_significant(tokens, *colon) : std::nullopt;
-
-        if (
-            !name ||
-            !colon ||
-            !base ||
-            tokens[*name].kind != TokenKind::identifier ||
-            tokens[*colon].lexeme != ":" ||
-            tokens[*base].lexeme != "Controller"
-        ) {
+        const auto& members = base ? base->members : framework->members;
+        const auto& name = base ? base->class_name : framework->class_name;
+        const auto span = base ? base->declaration_span : framework->span;
+        const auto body = base ? base->body_open_span
+            : framework->body_open_span;
+        const auto body_offset = body.begin;
+        if (body.end == 0 || body_offset >= span.end || span.end == 0) {
             continue;
         }
-
-        const FrameworkBase* declaration = nullptr;
-        for (const auto& node : program.nodes) {
-            const auto* candidate = std::get_if<FrameworkBase>(&node);
-            if (candidate && candidate->kind == FrameworkBaseKind::controller &&
-                candidate->span.begin == tokens[*base].offset) {
-                declaration = candidate;
-                break;
-            }
-        }
-        if (!declaration) continue;
-
-        const auto body_open = next_significant(tokens, *base);
-        if (!body_open || tokens[*body_open].lexeme != "{") {
-            add_error(
-                result,
-                source_name,
-                tokens[*base],
-                "Controller declaration requires a body"
-            );
-            continue;
-        }
-
-        const auto body_close = matching_symbol(tokens, *body_open, "{", "}");
-        if (!body_close) {
-            add_error(
-                result,
-                source_name,
-                tokens[*body_open],
-                "Controller body is missing a closing brace"
-            );
-            continue;
-        }
-
+        const auto body_open = std::find_if(tokens.begin(), tokens.end(),
+            [&](const Token& token) { return token.offset == body_offset; });
+        const auto body_close = std::find_if(tokens.begin(), tokens.end(),
+            [&](const Token& token) { return token.offset == span.end - 1; });
+        if (body_open == tokens.end() || body_close == tokens.end()) continue;
         ControllerInfo controller;
-        controller.name = tokens[*name].lexeme;
-        controller.body_open_end =
-            tokens[*body_open].offset + tokens[*body_open].lexeme.size();
-        controller.body_close_offset = tokens[*body_close].offset;
-
-        const auto after_close = next_significant(tokens, *body_close);
-        if (after_close && tokens[*after_close].lexeme == ";") {
+        controller.name = name;
+        controller.body_open_end = body_offset + 1;
+        controller.body_close_offset = body_close->offset;
+        controller.metadata_offset = span.end;
+        const auto after = next_significant(tokens,
+            static_cast<std::size_t>(body_close - tokens.begin()));
+        if (after && tokens[*after].lexeme == ";") {
             controller.metadata_offset =
-                tokens[*after_close].offset + tokens[*after_close].lexeme.size();
+                tokens[*after].offset + tokens[*after].lexeme.size();
         } else {
-            controller.metadata_offset =
-                tokens[*body_close].offset + tokens[*body_close].lexeme.size();
             controller.needs_semicolon = true;
         }
 
-        for (const auto member_index : declaration->members) {
+        for (const auto member_index : members) {
             const auto& node = program.nodes[member_index];
             const auto* declaration =
                 std::get_if<InjectDeclaration>(&node);
@@ -240,8 +171,8 @@ ControllerLoweringResult ControllerLowerer::lower(
 
         for (const auto& injection : controller.injections) {
             for (
-                std::size_t cursor = *body_open + 1;
-                cursor < *body_close;
+                std::size_t cursor = static_cast<std::size_t>(body_open - tokens.begin()) + 1;
+                cursor < static_cast<std::size_t>(body_close - tokens.begin());
                 ++cursor
             ) {
                 if (
@@ -284,7 +215,6 @@ ControllerLoweringResult ControllerLowerer::lower(
         }
 
         controllers.push_back(std::move(controller));
-        index = *body_close;
     }
 
     for (const auto& node : program.nodes) {

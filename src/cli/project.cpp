@@ -17,6 +17,8 @@
 #endif
 
 #include <gungnir/language/lexer.hpp>
+#include <gungnir/language/parser.hpp>
+#include <gungnir/language/semantic.hpp>
 #include <gungnir/language/transpiler.hpp>
 
 namespace gungnir::cli {
@@ -216,8 +218,23 @@ source_files(
     return files;
 }
 
+language::SemanticIndex index_sources(
+    const std::vector<std::filesystem::path>& files
+) {
+    language::SemanticIndex index;
+    for (const auto& path : files) {
+        const auto source = read_file(path);
+        language::Parser parser{
+            language::Lexer{source}.tokenize(), path.generic_string()
+        };
+        index.add(parser.parse().program);
+    }
+    return index;
+}
+
 String transpile_file(
-    const std::filesystem::path& path
+    const std::filesystem::path& path,
+    const language::SemanticIndex* index = nullptr
 ) {
     language::Transpiler transpiler;
 
@@ -227,7 +244,8 @@ String transpile_file(
     const auto result =
         transpiler.transpile(
             source,
-            path.generic_string()
+            path.generic_string(),
+            {.semantic_index = index}
         );
 
     if (!result.success()) {
@@ -1034,6 +1052,7 @@ Project::assemble_migrations() const {
             "database" /
             "migrations"
         );
+    const auto index = index_sources(files);
 
     String output;
 
@@ -1053,7 +1072,7 @@ Project::assemble_migrations() const {
             migration_class_name(path)
         );
 
-        output += transpile_file(path);
+        output += transpile_file(path, &index);
         output += "\n\n";
     }
 
@@ -1170,9 +1189,18 @@ Project::assemble() const {
         root_ / "app" / "controllers"
     };
 
+    std::vector<std::filesystem::path> files;
+    for (const auto& directory : source_directories) {
+        const auto found = source_files(directory);
+        files.insert(files.end(), found.begin(), found.end());
+    }
+    const auto route_files = source_files(root_ / "routes");
+    files.insert(files.end(), route_files.begin(), route_files.end());
+    const auto index = index_sources(files);
+
     for (const auto& directory : source_directories) {
         for (const auto& path : source_files(directory)) {
-            output += transpile_file(path);
+            output += transpile_file(path, &index);
             output += "\n\n";
         }
     }
@@ -1182,8 +1210,8 @@ Project::assemble() const {
         "{\n"
         "    auto app = gungnir::Application::create();\n\n";
 
-    for (const auto& path : source_files(root_ / "routes")) {
-        const auto routes = transpile_file(path);
+    for (const auto& path : route_files) {
+        const auto routes = transpile_file(path, &index);
         std::size_t start = 0;
 
         while (start < routes.size()) {
