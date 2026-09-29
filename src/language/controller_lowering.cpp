@@ -110,16 +110,25 @@ std::string controller_prelude(const ControllerInfo& controller) {
     return result;
 }
 
-bool route_method(std::string_view name) {
-    return
-        name == "get" ||
-        name == "post" ||
-        name == "put" ||
-        name == "patch" ||
-        name == "delete" ||
-        name == "remove" ||
-        name == "options" ||
-        name == "head";
+std::string route_method_name(RouteMethodKind method) {
+    switch (method) {
+    case RouteMethodKind::get:
+        return "get";
+    case RouteMethodKind::post:
+        return "post";
+    case RouteMethodKind::put:
+        return "put";
+    case RouteMethodKind::patch:
+        return "patch";
+    case RouteMethodKind::remove:
+        return "remove";
+    case RouteMethodKind::options:
+        return "options";
+    case RouteMethodKind::head:
+        return "head";
+    }
+
+    return {};
 }
 
 } // namespace
@@ -269,184 +278,41 @@ ControllerLoweringResult ControllerLowerer::lower(
         index = *body_close;
     }
 
-    // Route::get("/users", UserController::index)
-    // -> gungnir::Route::get<UserController>(
-    //        "/users", &UserController::index
-    //    )
-    for (std::size_t index = 0; index < tokens.size(); ++index) {
-        if (
-            tokens[index].kind != TokenKind::identifier ||
-            tokens[index].lexeme != "Route"
-        ) {
-            continue;
-        }
+    for (const auto& node : program.nodes) {
+        const auto* route =
+            std::get_if<RouteDeclaration>(&node);
 
-        const auto colon_one = next_significant(tokens, index);
-        const auto colon_two = colon_one
-            ? next_significant(tokens, *colon_one)
-            : std::nullopt;
-        const auto method = colon_two
-            ? next_significant(tokens, *colon_two)
-            : std::nullopt;
-        const auto open = method
-            ? next_significant(tokens, *method)
-            : std::nullopt;
-
-        if (
-            !colon_one ||
-            !colon_two ||
-            !method ||
-            !open ||
-            tokens[*colon_one].lexeme != ":" ||
-            tokens[*colon_two].lexeme != ":" ||
-            !route_method(tokens[*method].lexeme) ||
-            tokens[*open].lexeme != "("
-        ) {
-            continue;
-        }
-
-        const auto close = matching_symbol(tokens, *open, "(", ")");
-        if (!close) {
-            add_error(
-                result,
-                source_name,
-                tokens[*open],
-                "Route call is missing a closing parenthesis"
-            );
-            continue;
-        }
-
-        std::optional<std::size_t> comma;
-        std::size_t nested = 0;
-
-        for (auto cursor = *open + 1; cursor < *close; ++cursor) {
-            if (tokens[cursor].trivia()) {
-                continue;
-            }
-
-            if (tokens[cursor].lexeme == "(") {
-                ++nested;
-            } else if (tokens[cursor].lexeme == ")") {
-                if (nested > 0) {
-                    --nested;
-                }
-            } else if (tokens[cursor].lexeme == "," && nested == 0) {
-                comma = cursor;
-                break;
-            }
-        }
-
-        if (!comma) {
-            continue;
-        }
-
-        const auto controller = next_significant(tokens, *comma);
-        const auto handler_colon_one = controller
-            ? next_significant(tokens, *controller)
-            : std::nullopt;
-        const auto handler_colon_two = handler_colon_one
-            ? next_significant(tokens, *handler_colon_one)
-            : std::nullopt;
-        const auto action = handler_colon_two
-            ? next_significant(tokens, *handler_colon_two)
-            : std::nullopt;
-
-        if (
-            !controller ||
-            !handler_colon_one ||
-            !handler_colon_two ||
-            !action ||
-            tokens[*controller].kind != TokenKind::identifier ||
-            tokens[*handler_colon_one].lexeme != ":" ||
-            tokens[*handler_colon_two].lexeme != ":" ||
-            tokens[*action].kind != TokenKind::identifier
-        ) {
+        if (!route) {
             continue;
         }
 
         result.edits.push_back(SourceEdit{
-            tokens[index].offset,
-            tokens[index].offset + tokens[index].lexeme.size(),
+            route->route_span.begin,
+            route->route_span.end,
             "gungnir::Route"
         });
 
         result.edits.push_back(SourceEdit{
-            tokens[*method].offset + tokens[*method].lexeme.size(),
-            tokens[*method].offset + tokens[*method].lexeme.size(),
-            "<" + tokens[*controller].lexeme + ">"
+            route->method_span.begin,
+            route->method_span.end,
+            route_method_name(route->method) +
+                "<" + route->controller_name + ">"
         });
 
         result.edits.push_back(SourceEdit{
-            tokens[*controller].offset,
-            tokens[*controller].offset,
+            route->handler_prefix_span.begin,
+            route->handler_prefix_span.end,
             "&"
         });
 
-        const auto route_dot =
-            next_significant(tokens, *close);
-        const auto middleware_name = route_dot
-            ? next_significant(tokens, *route_dot)
-            : std::nullopt;
-        const auto middleware_open = middleware_name
-            ? next_significant(tokens, *middleware_name)
-            : std::nullopt;
-
-        if (
-            route_dot &&
-            middleware_name &&
-            middleware_open &&
-            tokens[*route_dot].lexeme == "." &&
-            tokens[*middleware_name].lexeme == "middleware" &&
-            tokens[*middleware_open].lexeme == "("
-        ) {
-            const auto middleware_close =
-                matching_symbol(
-                    tokens,
-                    *middleware_open,
-                    "(",
-                    ")"
-                );
-
-            if (middleware_close) {
-                const auto middleware_type =
-                    next_significant(
-                        tokens,
-                        *middleware_open
-                    );
-
-                if (
-                    middleware_type &&
-                    *middleware_type < *middleware_close &&
-                    tokens[*middleware_type].kind ==
-                        TokenKind::identifier
-                ) {
-                    const auto after_type =
-                        next_significant(
-                            tokens,
-                            *middleware_type
-                        );
-
-                    if (
-                        !after_type ||
-                        *after_type == *middleware_close
-                    ) {
-                        result.edits.push_back(SourceEdit{
-                            tokens[*middleware_name].offset,
-                            tokens[*middleware_close].offset +
-                                tokens[*middleware_close].lexeme.size(),
-                            "middleware<" +
-                                tokens[*middleware_type].lexeme +
-                                ">()"
-                        });
-
-                        index = *middleware_close;
-                        continue;
-                    }
-                }
-            }
+        if (route->has_middleware) {
+            result.edits.push_back(SourceEdit{
+                route->middleware_span.begin,
+                route->middleware_span.end,
+                "middleware<" +
+                    route->middleware_type + ">()"
+            });
         }
-
-        index = *close;
     }
 
     return result;

@@ -21,10 +21,11 @@ model configuration, controller methods, injected dependencies, and model
 relationships. Model lowering consumes `ModelField`, `ModelConfiguration`, and
 `ModelRelationship` nodes, including relationship kind, related/through model
 types, key overrides, and source spans. Controller dependency lowering consumes
-`InjectDeclaration` nodes. Route and async lowering deliberately remain on the
-existing token-aware compatibility passes until their ownership and coroutine
-semantics can move into the frontend without making generated C++ less
-inspectable.
+`InjectDeclaration` nodes. Route declarations are also parser-owned through
+`RouteDeclaration`, including HTTP method, controller action, and optional
+middleware metadata. Async lowering deliberately remains on the existing
+token-aware compatibility pass until coroutine semantics can move into the
+frontend without making generated C++ less inspectable.
 
 ## Tooling
 
@@ -37,8 +38,8 @@ Diagnostics can carry stable codes and hints and are rendered with source locati
 Framework declaration diagnostics use stable `GNR1xxx` codes. For example,
 `GNR1001` reports a missing declaration name and `GNR1002` reports a missing
 declaration body. Model member diagnostics use `GNR11xx`, including `GNR1120`-
-`GNR1124` for semantic relationship declarations, and controller injection
-diagnostics use `GNR12xx`.
+`GNR1124` for semantic relationship declarations, controller injection
+diagnostics use `GNR12xx`, and route diagnostics use `GNR13xx`.
 
 The LanguageServer service exposes compiler diagnostics and framework hover information as a foundation for a full JSON-RPC Language Server Protocol transport.
 

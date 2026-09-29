@@ -57,6 +57,8 @@ int main() {
                 "    Response index() { return text(\"ok\"); }\n"
                 "    async Response show(Request request) { return text(\"ok\"); }\n"
                 "}\n"
+                "Route::get(\"/accounts\", AccountController::index)"
+                ".middleware(AuthMiddleware);\n"
             }.tokenize(),
             "grammar_ast.gnr"
         }.parse();
@@ -71,6 +73,7 @@ int main() {
     bool found_inject = false;
     bool found_sync_method = false;
     bool found_async_method = false;
+    bool found_route = false;
 
     for (const auto& node : grammar_ast.program.nodes) {
         if (
@@ -137,6 +140,21 @@ int main() {
                 injection->type_name == "Clock" &&
                 injection->name == "clock";
         } else if (
+            const auto* route =
+                std::get_if<
+                    gungnir::language::RouteDeclaration
+                >(&node)
+        ) {
+            found_route = found_route ||
+                (
+                    route->method ==
+                        gungnir::language::RouteMethodKind::get &&
+                    route->controller_name == "AccountController" &&
+                    route->action_name == "index" &&
+                    route->has_middleware &&
+                    route->middleware_type == "AuthMiddleware"
+                );
+        } else if (
             const auto* method =
                 std::get_if<
                     gungnir::language::ControllerMethod
@@ -166,6 +184,7 @@ int main() {
     assert(found_inject);
     assert(found_sync_method);
     assert(found_async_method);
+    assert(found_route);
 
     const auto invalid_model =
         gungnir::language::Parser{

@@ -104,6 +104,28 @@ struct InjectDeclaration {
     std::string name;
 };
 
+enum class RouteMethodKind {
+    get,
+    post,
+    put,
+    patch,
+    remove,
+    options,
+    head
+};
+
+struct RouteDeclaration {
+    SourceSpan route_span;
+    SourceSpan method_span;
+    SourceSpan handler_prefix_span;
+    SourceSpan middleware_span;
+    RouteMethodKind method{RouteMethodKind::get};
+    std::string controller_name;
+    std::string action_name;
+    std::string middleware_type;
+    bool has_middleware{false};
+};
+
 using Node = std::variant<
     InferredBinding,
     FrameworkBase,
@@ -112,7 +134,8 @@ using Node = std::variant<
     ModelConfiguration,
     ModelRelationship,
     ControllerMethod,
-    InjectDeclaration
+    InjectDeclaration,
+    RouteDeclaration
 >;
 
 struct Program {

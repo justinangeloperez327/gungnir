@@ -53,6 +53,40 @@ std::optional<ModelConfigurationKind> model_configuration_kind(
     return std::nullopt;
 }
 
+std::optional<RouteMethodKind> route_method_kind(
+    std::string_view lexeme
+) {
+    if (lexeme == "get") {
+        return RouteMethodKind::get;
+    }
+
+    if (lexeme == "post") {
+        return RouteMethodKind::post;
+    }
+
+    if (lexeme == "put") {
+        return RouteMethodKind::put;
+    }
+
+    if (lexeme == "patch") {
+        return RouteMethodKind::patch;
+    }
+
+    if (lexeme == "delete" || lexeme == "remove") {
+        return RouteMethodKind::remove;
+    }
+
+    if (lexeme == "options") {
+        return RouteMethodKind::options;
+    }
+
+    if (lexeme == "head") {
+        return RouteMethodKind::head;
+    }
+
+    return std::nullopt;
+}
+
 std::optional<ModelRelationshipKind> model_relationship_kind(
     std::string_view lexeme
 ) {
@@ -890,6 +924,246 @@ void Parser::parse_controller_members(
     }
 }
 
+void Parser::parse_route_declaration(
+    std::size_t index
+) {
+    const auto& route = tokens_[index];
+    if (route.lexeme != "Route") {
+        return;
+    }
+
+    const auto colon_one = next_significant(index);
+    const auto colon_two =
+        colon_one ? next_significant(*colon_one) : std::nullopt;
+    const auto method =
+        colon_two ? next_significant(*colon_two) : std::nullopt;
+    const auto open =
+        method ? next_significant(*method) : std::nullopt;
+
+    if (
+        !colon_one ||
+        !colon_two ||
+        !method ||
+        !open ||
+        tokens_[*colon_one].lexeme != ":" ||
+        tokens_[*colon_two].lexeme != ":" ||
+        tokens_[*open].lexeme != "("
+    ) {
+        return;
+    }
+
+    const auto method_kind =
+        route_method_kind(tokens_[*method].lexeme);
+    if (!method_kind) {
+        return;
+    }
+
+    const auto close = matching_symbol(*open, "(", ")");
+    if (!close) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[*open].line,
+                tokens_[*open].column
+            },
+            "Route call is missing a closing parenthesis",
+            "GNR1301",
+            "Close the Route call with ')'."
+        });
+        return;
+    }
+
+    std::optional<std::size_t> comma;
+    std::size_t nested_parentheses = 0;
+    std::size_t nested_braces = 0;
+    std::size_t nested_brackets = 0;
+
+    for (auto cursor = *open + 1; cursor < *close; ++cursor) {
+        if (tokens_[cursor].trivia()) {
+            continue;
+        }
+
+        const auto& lexeme = tokens_[cursor].lexeme;
+
+        if (lexeme == "(") {
+            ++nested_parentheses;
+        } else if (lexeme == ")") {
+            if (nested_parentheses > 0) {
+                --nested_parentheses;
+            }
+        } else if (lexeme == "{") {
+            ++nested_braces;
+        } else if (lexeme == "}") {
+            if (nested_braces > 0) {
+                --nested_braces;
+            }
+        } else if (lexeme == "[") {
+            ++nested_brackets;
+        } else if (lexeme == "]") {
+            if (nested_brackets > 0) {
+                --nested_brackets;
+            }
+        } else if (
+            lexeme == "," &&
+            nested_parentheses == 0 &&
+            nested_braces == 0 &&
+            nested_brackets == 0
+        ) {
+            comma = cursor;
+            break;
+        }
+    }
+
+    if (!comma) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                route.line,
+                route.column
+            },
+            "Route requires a URI and controller action",
+            "GNR1302",
+            "Use Route::get(\"/path\", Controller::action)."
+        });
+        return;
+    }
+
+    const auto controller = next_significant(*comma);
+    const auto handler_colon_one =
+        controller ? next_significant(*controller) : std::nullopt;
+    const auto handler_colon_two =
+        handler_colon_one
+            ? next_significant(*handler_colon_one)
+            : std::nullopt;
+    const auto action =
+        handler_colon_two
+            ? next_significant(*handler_colon_two)
+            : std::nullopt;
+
+    if (
+        !controller ||
+        !handler_colon_one ||
+        !handler_colon_two ||
+        !action ||
+        *action >= *close ||
+        tokens_[*controller].kind != TokenKind::identifier ||
+        tokens_[*handler_colon_one].lexeme != ":" ||
+        tokens_[*handler_colon_two].lexeme != ":" ||
+        tokens_[*action].kind != TokenKind::identifier
+    ) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[*comma].line,
+                tokens_[*comma].column
+            },
+            "Route handler must be a controller action",
+            "GNR1303",
+            "Use a handler like UserController::index."
+        });
+        return;
+    }
+
+    SourceSpan middleware_span{};
+    std::string middleware_type;
+    bool has_middleware = false;
+
+    const auto route_dot = next_significant(*close);
+    const auto middleware_name =
+        route_dot ? next_significant(*route_dot) : std::nullopt;
+    const auto middleware_open =
+        middleware_name
+            ? next_significant(*middleware_name)
+            : std::nullopt;
+
+    if (
+        route_dot &&
+        middleware_name &&
+        middleware_open &&
+        tokens_[*route_dot].lexeme == "." &&
+        tokens_[*middleware_name].lexeme == "middleware" &&
+        tokens_[*middleware_open].lexeme == "("
+    ) {
+        const auto middleware_close =
+            matching_symbol(*middleware_open, "(", ")");
+
+        if (!middleware_close) {
+            result_.diagnostics.push_back(Diagnostic{
+                DiagnosticLevel::error,
+                SourceLocation{
+                    source_name_,
+                    tokens_[*middleware_open].line,
+                    tokens_[*middleware_open].column
+                },
+                "Route middleware call is missing a closing parenthesis",
+                "GNR1304",
+                "Close the middleware call with ')'."
+            });
+            return;
+        }
+
+        const auto middleware_type_index =
+            next_significant(*middleware_open);
+        const auto after_type =
+            middleware_type_index
+                ? next_significant(*middleware_type_index)
+                : std::nullopt;
+
+        if (
+            !middleware_type_index ||
+            *middleware_type_index >= *middleware_close ||
+            tokens_[*middleware_type_index].kind !=
+                TokenKind::identifier ||
+            !after_type ||
+            *after_type != *middleware_close
+        ) {
+            result_.diagnostics.push_back(Diagnostic{
+                DiagnosticLevel::error,
+                SourceLocation{
+                    source_name_,
+                    tokens_[*middleware_open].line,
+                    tokens_[*middleware_open].column
+                },
+                "Route middleware requires one middleware type",
+                "GNR1305",
+                "Use .middleware(AuthMiddleware)."
+            });
+            return;
+        }
+
+        middleware_span = SourceSpan{
+            tokens_[*middleware_name].offset,
+            tokens_[*middleware_close].offset +
+                tokens_[*middleware_close].lexeme.size(),
+            tokens_[*middleware_name].line,
+            tokens_[*middleware_name].column
+        };
+        middleware_type =
+            tokens_[*middleware_type_index].lexeme;
+        has_middleware = true;
+    }
+
+    result_.program.nodes.push_back(RouteDeclaration{
+        token_span(route),
+        token_span(tokens_[*method]),
+        SourceSpan{
+            tokens_[*controller].offset,
+            tokens_[*controller].offset,
+            tokens_[*controller].line,
+            tokens_[*controller].column
+        },
+        middleware_span,
+        *method_kind,
+        tokens_[*controller].lexeme,
+        tokens_[*action].lexeme,
+        middleware_type,
+        has_middleware
+    });
+}
+
 void Parser::parse_framework_members(
     const std::string& class_name,
     FrameworkBaseKind kind,
@@ -1056,6 +1330,7 @@ ParseResult Parser::parse() {
         }
 
         parse_framework_declaration(index);
+        parse_route_declaration(index);
 
         if (token.lexeme == "class") {
             const auto class_name = next_significant(index);
