@@ -192,18 +192,6 @@ std::string pluralize(std::string value) {
     return value + "s";
 }
 
-std::string unquote(std::string_view value) {
-    if (
-        value.size() >= 2 &&
-        ((value.front() == '"' && value.back() == '"') ||
-         (value.front() == '\'' && value.back() == '\''))
-    ) {
-        return std::string{value.substr(1, value.size() - 2)};
-    }
-
-    return std::string{value};
-}
-
 std::optional<std::string> cpp_scalar(std::string_view type) {
     if (type == "string") {
         return "gungnir::String";
@@ -249,27 +237,23 @@ std::string join_quoted(const std::vector<std::string>& values) {
 }
 
 std::string relation_factory_type(
-    std::string_view factory,
+    ModelRelationshipKind kind,
     std::string_view related,
     std::string_view through = {}
 ) {
-    if (factory == "hasOne") {
+    switch (kind) {
+    case ModelRelationshipKind::has_one:
         return "gungnir::HasOne<" + std::string{related} + ">";
-    }
-    if (factory == "hasMany") {
+    case ModelRelationshipKind::has_many:
         return "gungnir::HasMany<" + std::string{related} + ">";
-    }
-    if (factory == "belongsTo") {
+    case ModelRelationshipKind::belongs_to:
         return "gungnir::BelongsTo<" + std::string{related} + ">";
-    }
-    if (factory == "belongsToMany") {
+    case ModelRelationshipKind::belongs_to_many:
         return "gungnir::BelongsToMany<" + std::string{related} + ">";
-    }
-    if (factory == "hasOneThrough") {
+    case ModelRelationshipKind::has_one_through:
         return "gungnir::HasOneThrough<" + std::string{related} + ", " +
                std::string{through} + ">";
-    }
-    if (factory == "hasManyThrough") {
+    case ModelRelationshipKind::has_many_through:
         return "gungnir::HasManyThrough<" + std::string{related} + ", " +
                std::string{through} + ">";
     }
@@ -278,7 +262,7 @@ std::string relation_factory_type(
 }
 
 std::vector<std::string> default_relation_args(
-    std::string_view factory,
+    ModelRelationshipKind kind,
     std::string_view owner,
     std::string_view related,
     std::string_view through
@@ -287,15 +271,13 @@ std::vector<std::string> default_relation_args(
     const auto related_key = snake_case(related) + "_id";
     const auto through_key = snake_case(through) + "_id";
 
-    if (factory == "hasOne" || factory == "hasMany") {
+    switch (kind) {
+    case ModelRelationshipKind::has_one:
+    case ModelRelationshipKind::has_many:
         return {owner_key, "id"};
-    }
-
-    if (factory == "belongsTo") {
+    case ModelRelationshipKind::belongs_to:
         return {related_key, "id"};
-    }
-
-    if (factory == "belongsToMany") {
+    case ModelRelationshipKind::belongs_to_many: {
         auto first = snake_case(owner);
         auto second = snake_case(related);
 
@@ -314,8 +296,8 @@ std::vector<std::string> default_relation_args(
             "id"
         };
     }
-
-    if (factory == "hasOneThrough" || factory == "hasManyThrough") {
+    case ModelRelationshipKind::has_one_through:
+    case ModelRelationshipKind::has_many_through:
         return {
             owner_key,
             through_key,
@@ -640,6 +622,52 @@ ModelLoweringResult ModelLowerer::lower(
                 continue;
             }
 
+            if (
+                const auto* relationship =
+                    std::get_if<ModelRelationship>(&node)
+            ) {
+                if (relationship->model_name != model.name) {
+                    continue;
+                }
+
+                auto constructor_args = default_relation_args(
+                    relationship->kind,
+                    model.name,
+                    relationship->related_type,
+                    relationship->through_type
+                );
+                overlay_args(
+                    constructor_args,
+                    relationship->arguments
+                );
+
+                RelationInfo relation;
+                relation.method_span = relationship->span;
+                relation.name = relationship->name;
+                relation.backing_name =
+                    "__gungnir_relation_" + relationship->name;
+                relation.cpp_type = relation_factory_type(
+                    relationship->kind,
+                    relationship->related_type,
+                    relationship->through_type
+                );
+                relation.constructor_args =
+                    std::move(constructor_args);
+
+                if (
+                    relationship->kind ==
+                    ModelRelationshipKind::belongs_to
+                ) {
+                    relation.belongs_to_type =
+                        relationship->related_type;
+                    relation.belongs_to_foreign_key =
+                        relation.constructor_args.front();
+                }
+
+                model.relations.push_back(std::move(relation));
+                continue;
+            }
+
             const auto* field = std::get_if<ModelField>(&node);
             if (!field || field->model_name != model.name) {
                 continue;
@@ -667,214 +695,6 @@ ModelLoweringResult ModelLowerer::lower(
                     "gungnir::PrimaryKey<gungnir::Integer> id"
                 });
             }
-        }
-
-        std::size_t cursor = *body_open + 1;
-        std::size_t nested_braces = 0;
-
-        while (cursor < *body_close) {
-            const auto& token = tokens[cursor];
-
-            if (token.trivia()) {
-                ++cursor;
-                continue;
-            }
-
-            if (token.lexeme == "{") {
-                ++nested_braces;
-                ++cursor;
-                continue;
-            }
-
-            if (token.lexeme == "}") {
-                if (nested_braces > 0) {
-                    --nested_braces;
-                }
-                ++cursor;
-                continue;
-            }
-
-            if (nested_braces != 0) {
-                ++cursor;
-                continue;
-            }
-
-            // Relationship method:
-            // posts() { return hasMany<Post>(); }
-            if (token.kind == TokenKind::identifier) {
-                const auto open_paren = next_significant(tokens, cursor);
-                const auto close_paren = open_paren
-                    ? next_significant(tokens, *open_paren)
-                    : std::nullopt;
-                const auto method_open = close_paren
-                    ? next_significant(tokens, *close_paren)
-                    : std::nullopt;
-
-                if (
-                    open_paren &&
-                    close_paren &&
-                    method_open &&
-                    tokens[*open_paren].lexeme == "(" &&
-                    tokens[*close_paren].lexeme == ")" &&
-                    tokens[*method_open].lexeme == "{"
-                ) {
-                    const auto method_close = matching_symbol(
-                        tokens,
-                        *method_open,
-                        "{",
-                        "}"
-                    );
-
-                    if (method_close && *method_close < *body_close) {
-                        auto returned = next_significant(tokens, *method_open);
-
-                        if (
-                            returned &&
-                            tokens[*returned].lexeme == "return"
-                        ) {
-                            const auto factory = next_significant(tokens, *returned);
-                            const auto angle_open = factory
-                                ? next_significant(tokens, *factory)
-                                : std::nullopt;
-                            const auto related = angle_open
-                                ? next_significant(tokens, *angle_open)
-                                : std::nullopt;
-
-                            if (
-                                factory &&
-                                angle_open &&
-                                related &&
-                                tokens[*angle_open].lexeme == "<" &&
-                                tokens[*related].kind == TokenKind::identifier
-                            ) {
-                                const auto factory_name = tokens[*factory].lexeme;
-                                const bool known_factory =
-                                    factory_name == "hasOne" ||
-                                    factory_name == "hasMany" ||
-                                    factory_name == "belongsTo" ||
-                                    factory_name == "belongsToMany" ||
-                                    factory_name == "hasOneThrough" ||
-                                    factory_name == "hasManyThrough";
-
-                                if (known_factory) {
-                                    std::string through_type;
-                                    auto angle_close =
-                                        next_significant(tokens, *related);
-
-                                    if (
-                                        angle_close &&
-                                        tokens[*angle_close].lexeme == ","
-                                    ) {
-                                        const auto through =
-                                            next_significant(tokens, *angle_close);
-                                        if (
-                                            through &&
-                                            tokens[*through].kind ==
-                                                TokenKind::identifier
-                                        ) {
-                                            through_type =
-                                                tokens[*through].lexeme;
-                                            angle_close =
-                                                next_significant(tokens, *through);
-                                        }
-                                    }
-
-                                    if (
-                                        angle_close &&
-                                        tokens[*angle_close].lexeme == ">"
-                                    ) {
-                                        const auto args_open =
-                                            next_significant(tokens, *angle_close);
-                                        const auto args_close = args_open
-                                            ? matching_symbol(
-                                                tokens,
-                                                *args_open,
-                                                "(",
-                                                ")"
-                                            )
-                                            : std::nullopt;
-
-                                        if (
-                                            args_open &&
-                                            args_close &&
-                                            tokens[*args_open].lexeme == "("
-                                        ) {
-                                            std::vector<std::string> provided_args;
-
-                                            for (
-                                                auto arg = *args_open + 1;
-                                                arg < *args_close;
-                                                ++arg
-                                            ) {
-                                                if (tokens[arg].trivia()) {
-                                                    continue;
-                                                }
-
-                                                if (
-                                                    tokens[arg].kind ==
-                                                    TokenKind::string_literal
-                                                ) {
-                                                    provided_args.push_back(
-                                                        unquote(tokens[arg].lexeme)
-                                                    );
-                                                }
-                                            }
-
-                                            auto defaults = default_relation_args(
-                                                factory_name,
-                                                model.name,
-                                                tokens[*related].lexeme,
-                                                through_type
-                                            );
-                                            overlay_args(defaults, provided_args);
-
-                                            RelationInfo relation;
-                                            relation.method_span = SourceSpan{
-                                                token.offset,
-                                                tokens[*method_close].offset +
-                                                    tokens[*method_close].lexeme.size(),
-                                                token.line,
-                                                token.column
-                                            };
-                                            relation.name = token.lexeme;
-                                            relation.backing_name =
-                                                "__gungnir_relation_" +
-                                                token.lexeme;
-                                            relation.cpp_type =
-                                                relation_factory_type(
-                                                    factory_name,
-                                                    tokens[*related].lexeme,
-                                                    through_type
-                                                );
-                                            relation.constructor_args =
-                                                std::move(defaults);
-
-                                            if (factory_name == "belongsTo") {
-                                                relation.belongs_to_type =
-                                                    tokens[*related].lexeme;
-                                                relation.belongs_to_foreign_key =
-                                                    relation.constructor_args.front();
-                                            }
-
-                                            model.relations.push_back(
-                                                std::move(relation)
-                                            );
-
-                                            cursor = *method_close + 1;
-                                            continue;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        cursor = *method_close + 1;
-                        continue;
-                    }
-                }
-            }
-
-            ++cursor;
         }
 
         // Mark matching belongsTo fields as ForeignKey<Related>.
@@ -1018,6 +838,21 @@ ModelLoweringResult ModelLowerer::lower(
                 qualified_access =
                     before_previous &&
                     tokens[*before_previous].lexeme == ":";
+
+                if (qualified_access) {
+                    const auto qualifier =
+                        previous_significant(
+                            tokens,
+                            *before_previous
+                        );
+
+                    if (
+                        qualifier &&
+                        tokens[*qualifier].lexeme == "Route"
+                    ) {
+                        continue;
+                    }
+                }
             }
         }
 

@@ -53,6 +53,76 @@ std::optional<ModelConfigurationKind> model_configuration_kind(
     return std::nullopt;
 }
 
+std::optional<RouteMethodKind> route_method_kind(
+    std::string_view lexeme
+) {
+    if (lexeme == "get") {
+        return RouteMethodKind::get;
+    }
+
+    if (lexeme == "post") {
+        return RouteMethodKind::post;
+    }
+
+    if (lexeme == "put") {
+        return RouteMethodKind::put;
+    }
+
+    if (lexeme == "patch") {
+        return RouteMethodKind::patch;
+    }
+
+    if (lexeme == "delete" || lexeme == "remove") {
+        return RouteMethodKind::remove;
+    }
+
+    if (lexeme == "options") {
+        return RouteMethodKind::options;
+    }
+
+    if (lexeme == "head") {
+        return RouteMethodKind::head;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<ModelRelationshipKind> model_relationship_kind(
+    std::string_view lexeme
+) {
+    if (lexeme == "hasOne") {
+        return ModelRelationshipKind::has_one;
+    }
+
+    if (lexeme == "hasMany") {
+        return ModelRelationshipKind::has_many;
+    }
+
+    if (lexeme == "belongsTo") {
+        return ModelRelationshipKind::belongs_to;
+    }
+
+    if (lexeme == "belongsToMany") {
+        return ModelRelationshipKind::belongs_to_many;
+    }
+
+    if (lexeme == "hasOneThrough") {
+        return ModelRelationshipKind::has_one_through;
+    }
+
+    if (lexeme == "hasManyThrough") {
+        return ModelRelationshipKind::has_many_through;
+    }
+
+    return std::nullopt;
+}
+
+bool relationship_requires_through(ModelRelationshipKind kind) {
+    return
+        kind == ModelRelationshipKind::has_one_through ||
+        kind == ModelRelationshipKind::has_many_through;
+}
+
 bool scalar_type(std::string_view lexeme) {
     return
         lexeme == "string" ||
@@ -223,6 +293,7 @@ void Parser::parse_model_members(
     std::size_t body_close
 ) {
     std::unordered_set<std::string> field_names;
+    std::unordered_set<std::string> relationship_names;
 
     for (auto cursor = body_open + 1; cursor < body_close; ++cursor) {
         const auto& token = tokens_[cursor];
@@ -358,6 +429,276 @@ void Parser::parse_model_members(
 
                 cursor = *semicolon;
                 continue;
+            }
+        }
+
+        if (token.kind == TokenKind::identifier) {
+            const auto open_paren = next_significant(cursor);
+
+            if (
+                open_paren &&
+                *open_paren < body_close &&
+                tokens_[*open_paren].lexeme == "("
+            ) {
+                const auto close_paren =
+                    matching_symbol(*open_paren, "(", ")");
+                const auto first_parameter =
+                    next_significant(*open_paren);
+
+                if (
+                    close_paren &&
+                    first_parameter &&
+                    *close_paren < body_close &&
+                    *first_parameter == *close_paren
+                ) {
+                    const auto method_open =
+                        next_significant(*close_paren);
+
+                    if (
+                        method_open &&
+                        *method_open < body_close &&
+                        tokens_[*method_open].lexeme == "{"
+                    ) {
+                        const auto method_close =
+                            matching_symbol(*method_open, "{", "}");
+
+                        if (
+                            method_close &&
+                            *method_close <= body_close
+                        ) {
+                            const auto returned =
+                                next_significant(*method_open);
+                            const auto factory =
+                                returned &&
+                                *returned < *method_close &&
+                                tokens_[*returned].lexeme == "return"
+                                    ? next_significant(*returned)
+                                    : std::nullopt;
+                            const auto relationship =
+                                factory && *factory < *method_close
+                                    ? model_relationship_kind(
+                                        tokens_[*factory].lexeme
+                                    )
+                                    : std::nullopt;
+
+                            if (relationship) {
+                                const auto angle_open =
+                                    next_significant(*factory);
+                                const auto related =
+                                    angle_open
+                                        ? next_significant(*angle_open)
+                                        : std::nullopt;
+
+                                if (
+                                    !angle_open ||
+                                    !related ||
+                                    *related >= *method_close ||
+                                    tokens_[*angle_open].lexeme != "<" ||
+                                    tokens_[*related].kind !=
+                                        TokenKind::identifier
+                                ) {
+                                    result_.diagnostics.push_back(Diagnostic{
+                                        DiagnosticLevel::error,
+                                        SourceLocation{
+                                            source_name_,
+                                            tokens_[*factory].line,
+                                            tokens_[*factory].column
+                                        },
+                                        "Invalid model relationship declaration",
+                                        "GNR1120",
+                                        "Use syntax like 'posts() { return hasMany<Post>(); }'."
+                                    });
+                                    cursor = *method_close;
+                                    continue;
+                                }
+
+                                std::string through_type;
+                                auto angle_close =
+                                    next_significant(*related);
+
+                                if (
+                                    angle_close &&
+                                    *angle_close < *method_close &&
+                                    tokens_[*angle_close].lexeme == ","
+                                ) {
+                                    const auto through =
+                                        next_significant(*angle_close);
+
+                                    if (
+                                        through &&
+                                        *through < *method_close &&
+                                        tokens_[*through].kind ==
+                                            TokenKind::identifier
+                                    ) {
+                                        through_type =
+                                            tokens_[*through].lexeme;
+                                        angle_close =
+                                            next_significant(*through);
+                                    }
+                                }
+
+                                if (
+                                    !angle_close ||
+                                    *angle_close >= *method_close ||
+                                    tokens_[*angle_close].lexeme != ">" ||
+                                    (
+                                        relationship_requires_through(
+                                            *relationship
+                                        ) &&
+                                        through_type.empty()
+                                    )
+                                ) {
+                                    result_.diagnostics.push_back(Diagnostic{
+                                        DiagnosticLevel::error,
+                                        SourceLocation{
+                                            source_name_,
+                                            tokens_[*factory].line,
+                                            tokens_[*factory].column
+                                        },
+                                        "Invalid relationship type arguments",
+                                        "GNR1121",
+                                        "Through relationships require both related and through model types."
+                                    });
+                                    cursor = *method_close;
+                                    continue;
+                                }
+
+                                const auto args_open =
+                                    next_significant(*angle_close);
+                                const auto args_close =
+                                    args_open &&
+                                    *args_open < *method_close &&
+                                    tokens_[*args_open].lexeme == "("
+                                        ? matching_symbol(
+                                            *args_open,
+                                            "(",
+                                            ")"
+                                        )
+                                        : std::nullopt;
+                                const auto semicolon =
+                                    args_close
+                                        ? next_significant(*args_close)
+                                        : std::nullopt;
+                                const auto after_return =
+                                    semicolon
+                                        ? next_significant(*semicolon)
+                                        : std::nullopt;
+
+                                if (
+                                    !args_open ||
+                                    !args_close ||
+                                    !semicolon ||
+                                    !after_return ||
+                                    *args_close >= *method_close ||
+                                    *semicolon >= *method_close ||
+                                    tokens_[*semicolon].lexeme != ";" ||
+                                    *after_return != *method_close
+                                ) {
+                                    result_.diagnostics.push_back(Diagnostic{
+                                        DiagnosticLevel::error,
+                                        SourceLocation{
+                                            source_name_,
+                                            tokens_[*factory].line,
+                                            tokens_[*factory].column
+                                        },
+                                        "Relationship method must return one relationship expression",
+                                        "GNR1122",
+                                        "Keep the relationship body to a single return statement."
+                                    });
+                                    cursor = *method_close;
+                                    continue;
+                                }
+
+                                std::vector<std::string> arguments;
+                                bool valid_arguments = true;
+
+                                for (
+                                    auto argument = *args_open + 1;
+                                    argument < *args_close;
+                                    ++argument
+                                ) {
+                                    if (tokens_[argument].trivia()) {
+                                        continue;
+                                    }
+
+                                    if (tokens_[argument].lexeme == ",") {
+                                        continue;
+                                    }
+
+                                    if (
+                                        tokens_[argument].kind !=
+                                        TokenKind::string_literal
+                                    ) {
+                                        valid_arguments = false;
+                                        break;
+                                    }
+
+                                    arguments.push_back(
+                                        unquote(tokens_[argument].lexeme)
+                                    );
+                                }
+
+                                if (!valid_arguments) {
+                                    result_.diagnostics.push_back(Diagnostic{
+                                        DiagnosticLevel::error,
+                                        SourceLocation{
+                                            source_name_,
+                                            tokens_[*args_open].line,
+                                            tokens_[*args_open].column
+                                        },
+                                        "Relationship key overrides must be string literals",
+                                        "GNR1123",
+                                        "Use quoted column or pivot names in relationship arguments."
+                                    });
+                                    cursor = *method_close;
+                                    continue;
+                                }
+
+                                if (
+                                    !relationship_names.insert(
+                                        token.lexeme
+                                    ).second
+                                ) {
+                                    result_.diagnostics.push_back(Diagnostic{
+                                        DiagnosticLevel::error,
+                                        SourceLocation{
+                                            source_name_,
+                                            token.line,
+                                            token.column
+                                        },
+                                        "Duplicate model relationship '" +
+                                            token.lexeme + "'",
+                                        "GNR1124",
+                                        "Declare each model relationship only once."
+                                    });
+                                    cursor = *method_close;
+                                    continue;
+                                }
+
+                                result_.program.nodes.push_back(
+                                    ModelRelationship{
+                                        SourceSpan{
+                                            token.offset,
+                                            tokens_[*method_close].offset +
+                                                tokens_[*method_close].lexeme.size(),
+                                            token.line,
+                                            token.column
+                                        },
+                                        class_name,
+                                        token.lexeme,
+                                        *relationship,
+                                        tokens_[*related].lexeme,
+                                        through_type,
+                                        std::move(arguments)
+                                    }
+                                );
+
+                                cursor = *method_close;
+                                continue;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -583,6 +924,246 @@ void Parser::parse_controller_members(
     }
 }
 
+void Parser::parse_route_declaration(
+    std::size_t index
+) {
+    const auto& route = tokens_[index];
+    if (route.lexeme != "Route") {
+        return;
+    }
+
+    const auto colon_one = next_significant(index);
+    const auto colon_two =
+        colon_one ? next_significant(*colon_one) : std::nullopt;
+    const auto method =
+        colon_two ? next_significant(*colon_two) : std::nullopt;
+    const auto open =
+        method ? next_significant(*method) : std::nullopt;
+
+    if (
+        !colon_one ||
+        !colon_two ||
+        !method ||
+        !open ||
+        tokens_[*colon_one].lexeme != ":" ||
+        tokens_[*colon_two].lexeme != ":" ||
+        tokens_[*open].lexeme != "("
+    ) {
+        return;
+    }
+
+    const auto method_kind =
+        route_method_kind(tokens_[*method].lexeme);
+    if (!method_kind) {
+        return;
+    }
+
+    const auto close = matching_symbol(*open, "(", ")");
+    if (!close) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[*open].line,
+                tokens_[*open].column
+            },
+            "Route call is missing a closing parenthesis",
+            "GNR1301",
+            "Close the Route call with ')'."
+        });
+        return;
+    }
+
+    std::optional<std::size_t> comma;
+    std::size_t nested_parentheses = 0;
+    std::size_t nested_braces = 0;
+    std::size_t nested_brackets = 0;
+
+    for (auto cursor = *open + 1; cursor < *close; ++cursor) {
+        if (tokens_[cursor].trivia()) {
+            continue;
+        }
+
+        const auto& lexeme = tokens_[cursor].lexeme;
+
+        if (lexeme == "(") {
+            ++nested_parentheses;
+        } else if (lexeme == ")") {
+            if (nested_parentheses > 0) {
+                --nested_parentheses;
+            }
+        } else if (lexeme == "{") {
+            ++nested_braces;
+        } else if (lexeme == "}") {
+            if (nested_braces > 0) {
+                --nested_braces;
+            }
+        } else if (lexeme == "[") {
+            ++nested_brackets;
+        } else if (lexeme == "]") {
+            if (nested_brackets > 0) {
+                --nested_brackets;
+            }
+        } else if (
+            lexeme == "," &&
+            nested_parentheses == 0 &&
+            nested_braces == 0 &&
+            nested_brackets == 0
+        ) {
+            comma = cursor;
+            break;
+        }
+    }
+
+    if (!comma) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                route.line,
+                route.column
+            },
+            "Route requires a URI and controller action",
+            "GNR1302",
+            "Use Route::get(\"/path\", Controller::action)."
+        });
+        return;
+    }
+
+    const auto controller = next_significant(*comma);
+    const auto handler_colon_one =
+        controller ? next_significant(*controller) : std::nullopt;
+    const auto handler_colon_two =
+        handler_colon_one
+            ? next_significant(*handler_colon_one)
+            : std::nullopt;
+    const auto action =
+        handler_colon_two
+            ? next_significant(*handler_colon_two)
+            : std::nullopt;
+
+    if (
+        !controller ||
+        !handler_colon_one ||
+        !handler_colon_two ||
+        !action ||
+        *action >= *close ||
+        tokens_[*controller].kind != TokenKind::identifier ||
+        tokens_[*handler_colon_one].lexeme != ":" ||
+        tokens_[*handler_colon_two].lexeme != ":" ||
+        tokens_[*action].kind != TokenKind::identifier
+    ) {
+        result_.diagnostics.push_back(Diagnostic{
+            DiagnosticLevel::error,
+            SourceLocation{
+                source_name_,
+                tokens_[*comma].line,
+                tokens_[*comma].column
+            },
+            "Route handler must be a controller action",
+            "GNR1303",
+            "Use a handler like UserController::index."
+        });
+        return;
+    }
+
+    SourceSpan middleware_span{};
+    std::string middleware_type;
+    bool has_middleware = false;
+
+    const auto route_dot = next_significant(*close);
+    const auto middleware_name =
+        route_dot ? next_significant(*route_dot) : std::nullopt;
+    const auto middleware_open =
+        middleware_name
+            ? next_significant(*middleware_name)
+            : std::nullopt;
+
+    if (
+        route_dot &&
+        middleware_name &&
+        middleware_open &&
+        tokens_[*route_dot].lexeme == "." &&
+        tokens_[*middleware_name].lexeme == "middleware" &&
+        tokens_[*middleware_open].lexeme == "("
+    ) {
+        const auto middleware_close =
+            matching_symbol(*middleware_open, "(", ")");
+
+        if (!middleware_close) {
+            result_.diagnostics.push_back(Diagnostic{
+                DiagnosticLevel::error,
+                SourceLocation{
+                    source_name_,
+                    tokens_[*middleware_open].line,
+                    tokens_[*middleware_open].column
+                },
+                "Route middleware call is missing a closing parenthesis",
+                "GNR1304",
+                "Close the middleware call with ')'."
+            });
+            return;
+        }
+
+        const auto middleware_type_index =
+            next_significant(*middleware_open);
+        const auto after_type =
+            middleware_type_index
+                ? next_significant(*middleware_type_index)
+                : std::nullopt;
+
+        if (
+            !middleware_type_index ||
+            *middleware_type_index >= *middleware_close ||
+            tokens_[*middleware_type_index].kind !=
+                TokenKind::identifier ||
+            !after_type ||
+            *after_type != *middleware_close
+        ) {
+            result_.diagnostics.push_back(Diagnostic{
+                DiagnosticLevel::error,
+                SourceLocation{
+                    source_name_,
+                    tokens_[*middleware_open].line,
+                    tokens_[*middleware_open].column
+                },
+                "Route middleware requires one middleware type",
+                "GNR1305",
+                "Use .middleware(AuthMiddleware)."
+            });
+            return;
+        }
+
+        middleware_span = SourceSpan{
+            tokens_[*middleware_name].offset,
+            tokens_[*middleware_close].offset +
+                tokens_[*middleware_close].lexeme.size(),
+            tokens_[*middleware_name].line,
+            tokens_[*middleware_name].column
+        };
+        middleware_type =
+            tokens_[*middleware_type_index].lexeme;
+        has_middleware = true;
+    }
+
+    result_.program.nodes.push_back(RouteDeclaration{
+        token_span(route),
+        token_span(tokens_[*method]),
+        SourceSpan{
+            tokens_[*controller].offset,
+            tokens_[*controller].offset,
+            tokens_[*controller].line,
+            tokens_[*controller].column
+        },
+        middleware_span,
+        *method_kind,
+        tokens_[*controller].lexeme,
+        tokens_[*action].lexeme,
+        middleware_type,
+        has_middleware
+    });
+}
+
 void Parser::parse_framework_members(
     const std::string& class_name,
     FrameworkBaseKind kind,
@@ -749,6 +1330,7 @@ ParseResult Parser::parse() {
         }
 
         parse_framework_declaration(index);
+        parse_route_declaration(index);
 
         if (token.lexeme == "class") {
             const auto class_name = next_significant(index);

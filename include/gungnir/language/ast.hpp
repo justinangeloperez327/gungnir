@@ -66,6 +66,25 @@ struct ModelConfiguration {
     bool enabled{false};
 };
 
+enum class ModelRelationshipKind {
+    has_one,
+    has_many,
+    belongs_to,
+    belongs_to_many,
+    has_one_through,
+    has_many_through
+};
+
+struct ModelRelationship {
+    SourceSpan span;
+    std::string model_name;
+    std::string name;
+    ModelRelationshipKind kind{ModelRelationshipKind::has_many};
+    std::string related_type;
+    std::string through_type;
+    std::vector<std::string> arguments;
+};
+
 struct ControllerMethod {
     SourceSpan span;
     SourceSpan return_type_span;
@@ -85,14 +104,38 @@ struct InjectDeclaration {
     std::string name;
 };
 
+enum class RouteMethodKind {
+    get,
+    post,
+    put,
+    patch,
+    remove,
+    options,
+    head
+};
+
+struct RouteDeclaration {
+    SourceSpan route_span;
+    SourceSpan method_span;
+    SourceSpan handler_prefix_span;
+    SourceSpan middleware_span;
+    RouteMethodKind method{RouteMethodKind::get};
+    std::string controller_name;
+    std::string action_name;
+    std::string middleware_type;
+    bool has_middleware{false};
+};
+
 using Node = std::variant<
     InferredBinding,
     FrameworkBase,
     FrameworkDeclaration,
     ModelField,
     ModelConfiguration,
+    ModelRelationship,
     ControllerMethod,
-    InjectDeclaration
+    InjectDeclaration,
+    RouteDeclaration
 >;
 
 struct Program {

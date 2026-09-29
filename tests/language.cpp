@@ -50,12 +50,15 @@ int main() {
                 "    softDeletes = true;\n"
                 "    string email;\n"
                 "    string? nickname;\n"
+                "    entries() { return hasMany<Entry>(); }\n"
                 "}\n"
                 "controller AccountController {\n"
                 "    inject Clock clock;\n"
                 "    Response index() { return text(\"ok\"); }\n"
                 "    async Response show(Request request) { return text(\"ok\"); }\n"
                 "}\n"
+                "Route::get(\"/accounts\", AccountController::index)"
+                ".middleware(AuthMiddleware);\n"
             }.tokenize(),
             "grammar_ast.gnr"
         }.parse();
@@ -66,9 +69,11 @@ int main() {
     bool found_nullable_field = false;
     bool found_table_config = false;
     bool found_timestamps_config = false;
+    bool found_relationship = false;
     bool found_inject = false;
     bool found_sync_method = false;
     bool found_async_method = false;
+    bool found_route = false;
 
     for (const auto& node : grammar_ast.program.nodes) {
         if (
@@ -109,6 +114,22 @@ int main() {
                     !configuration->enabled
                 );
         } else if (
+            const auto* relationship =
+                std::get_if<
+                    gungnir::language::ModelRelationship
+                >(&node)
+        ) {
+            found_relationship = found_relationship ||
+                (
+                    relationship->model_name == "Account" &&
+                    relationship->name == "entries" &&
+                    relationship->kind ==
+                        gungnir::language::ModelRelationshipKind::has_many &&
+                    relationship->related_type == "Entry" &&
+                    relationship->through_type.empty() &&
+                    relationship->arguments.empty()
+                );
+        } else if (
             const auto* injection =
                 std::get_if<
                     gungnir::language::InjectDeclaration
@@ -118,6 +139,21 @@ int main() {
                 injection->controller_name == "AccountController" &&
                 injection->type_name == "Clock" &&
                 injection->name == "clock";
+        } else if (
+            const auto* route =
+                std::get_if<
+                    gungnir::language::RouteDeclaration
+                >(&node)
+        ) {
+            found_route = found_route ||
+                (
+                    route->method ==
+                        gungnir::language::RouteMethodKind::get &&
+                    route->controller_name == "AccountController" &&
+                    route->action_name == "index" &&
+                    route->has_middleware &&
+                    route->middleware_type == "AuthMiddleware"
+                );
         } else if (
             const auto* method =
                 std::get_if<
@@ -144,9 +180,11 @@ int main() {
     assert(found_nullable_field);
     assert(found_table_config);
     assert(found_timestamps_config);
+    assert(found_relationship);
     assert(found_inject);
     assert(found_sync_method);
     assert(found_async_method);
+    assert(found_route);
 
     const auto invalid_model =
         gungnir::language::Parser{
