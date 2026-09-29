@@ -409,6 +409,36 @@ int main() {
     }
     assert(condition_error && nested_return_error);
 
+    const auto flow_edges = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Edges { void okay() { while (true) { break; } return; } "
+            "int missing() { return; } void wrong() { continue; } }"
+        }.tokenize(), "flow_edges.gnr"
+    }.parse().program;
+    bool missing_value = false, invalid_continue = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             flow_edges, "flow_edges.gnr")) {
+        missing_value |= diagnostic.code == "GNR1312";
+        invalid_continue |= diagnostic.code == "GNR1313";
+        assert(diagnostic.code != "GNR1304");
+    }
+    assert(missing_value && invalid_continue);
+
+    const auto chain_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Chain { int choose(bool a, bool b) { "
+            "if (a) { return 1; } else if (b) { return 2; } "
+            "else { return 3; } return 4; } }"
+        }.tokenize(), "chain.gnr"
+    }.parse().program;
+    const auto& chain = std::get<gungnir::language::FrameworkDeclaration>(
+        chain_program.nodes.front());
+    const auto& chained_method = std::get<gungnir::language::ControllerMethod>(
+        chain_program.nodes[chain.members.front()]);
+    assert(chained_method.body.size() == 2);
+    assert(chained_method.body[0].alternative.size() == 1);
+    assert(chained_method.body[0].alternative[0].alternative.size() == 1);
+
     const auto invalid_model =
         gungnir::language::Parser{
             gungnir::language::Lexer{

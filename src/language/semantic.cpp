@@ -209,12 +209,18 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 return {};
             };
             std::function<void(const std::vector<MethodStatement>&,
-                               std::unordered_map<std::string, Type>&)> check_body =
+                               std::unordered_map<std::string, Type>&, unsigned)> check_body =
                 [&](const std::vector<MethodStatement>& statements,
-                    std::unordered_map<std::string, Type>& scope) {
+                    std::unordered_map<std::string, Type>& scope, unsigned loop_depth) {
             for (const auto& statement : statements) {
+                if ((statement.kind == StatementKind::break_ ||
+                     statement.kind == StatementKind::continue_) && loop_depth == 0) {
+                    report(statement.span, "Loop control outside a loop", "GNR1313");
+                }
                 local_types = scope;
-                const Type value = infer(statement.expression);
+                const bool has_expression = statement.expression.span.end >
+                                            statement.expression.span.begin;
+                const Type value = has_expression ? infer(statement.expression) : Type{};
                 if (statement.kind == StatementKind::conditional ||
                     statement.kind == StatementKind::loop_) {
                     if (statement.name != "for" && value.known() &&
@@ -233,16 +239,21 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 }
                 if (!statement.children.empty()) {
                     auto nested = scope;
-                    check_body(statement.children, nested);
+                    check_body(statement.children, nested,
+                               loop_depth + (statement.kind == StatementKind::loop_));
                 }
                 if (!statement.alternative.empty()) {
                     auto nested = scope;
-                    check_body(statement.alternative, nested);
+                    check_body(statement.alternative, nested, loop_depth);
                 }
                 if (statement.kind != StatementKind::return_) continue;
                 if (return_type == "void") {
+                    if (has_expression)
+                        report(statement.span,
+                               "Void method cannot return a value", "GNR1304");
+                } else if (!has_expression) {
                     report(statement.span,
-                           "Void method cannot return a value", "GNR1304");
+                           "Non-void method must return a value", "GNR1312");
                 } else if (value.known() &&
                            !type_system.assignable(scalar_type(return_type), value)) {
                     report(statement.span,
@@ -251,7 +262,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 }
             }
             };
-            check_body(*body, local_types);
+            check_body(*body, local_types, 0);
         }
     }
 

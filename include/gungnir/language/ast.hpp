@@ -61,7 +61,9 @@ struct Expression {
     // For operators and postfix expressions, arguments contain operands in source order.
 };
 
-enum class StatementKind { return_, binding, expression, block, conditional, loop_ };
+enum class StatementKind {
+    return_, binding, expression, block, conditional, loop_, break_, continue_
+};
 
 struct MethodStatement {
     SourceSpan span;

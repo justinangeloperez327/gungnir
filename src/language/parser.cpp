@@ -360,7 +360,7 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) const {
             if (parens || brackets || braces || i == begin || i + 1 == end)
                 continue;
             const int rank = precedence(op);
-            if (rank && rank <= weakest) {
+            if (rank && (rank < weakest || (rank == weakest && rank != 1))) {
                 weakest = rank;
                 split = i;
             }
@@ -506,9 +506,31 @@ std::vector<MethodStatement> Parser::parse_method_body(
                             if (!next) break;
                             nested = *next;
                         }
-                        const auto end = nested < closing
+                        auto end = nested < closing
                             ? matching_symbol(nested, "{", "}") : std::nullopt;
                         if (end && *end < closing) {
+                            // Include the rest of the else-if chain in this branch.
+                            while (true) {
+                                const auto following = next_significant(*end);
+                                if (!following || *following >= closing ||
+                                    tokens_[*following].lexeme != "else") break;
+                                const auto arm = next_significant(*following);
+                                if (!arm || *arm >= closing) break;
+                                auto arm_open = *arm;
+                                if (tokens_[arm_open].lexeme == "if") {
+                                    while (arm_open < closing &&
+                                           tokens_[arm_open].lexeme != "{") {
+                                        const auto next = next_significant(arm_open);
+                                        if (!next) break;
+                                        arm_open = *next;
+                                    }
+                                }
+                                if (arm_open >= closing ||
+                                    tokens_[arm_open].lexeme != "{") break;
+                                const auto arm_end = matching_symbol(arm_open, "{", "}");
+                                if (!arm_end || *arm_end >= closing) break;
+                                end = arm_end;
+                            }
                             statement.alternative = parse_method_body(*otherwise, *end + 1);
                             cursor = *end;
                             statement.span.end = tokens_[cursor].offset +
@@ -521,10 +543,24 @@ std::vector<MethodStatement> Parser::parse_method_body(
         } else if (tokens_[cursor].lexeme == ";") {
             const auto expression_start = next_significant(*start);
             const auto expression_end = previous_significant(cursor);
-            const auto kind = tokens_[*start].lexeme == "return"
+            const auto& keyword = tokens_[*start].lexeme;
+            const auto kind = keyword == "return"
                 ? StatementKind::return_
-                : tokens_[*start].lexeme == "const"
-                    ? StatementKind::binding : StatementKind::expression;
+                : keyword == "const" ? StatementKind::binding
+                : keyword == "break" ? StatementKind::break_
+                : keyword == "continue" ? StatementKind::continue_
+                : StatementKind::expression;
+            if ((kind == StatementKind::return_ || kind == StatementKind::break_ ||
+                 kind == StatementKind::continue_) && expression_end &&
+                *expression_end == *start) {
+                statements.push_back(MethodStatement{
+                    SourceSpan{tokens_[*start].offset, tokens_[cursor].offset + 1,
+                               tokens_[*start].line, tokens_[*start].column},
+                    kind, {}
+                });
+                start = next_significant(cursor);
+                continue;
+            }
             if (expression_start && expression_end &&
                 *expression_start <= *expression_end) {
                 auto value_start = kind == StatementKind::return_
