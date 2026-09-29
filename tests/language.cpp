@@ -53,9 +53,9 @@ int main() {
     assert(nested_scope.code.find("const auto other = 3;") != std::string::npos);
 
     const auto framework_classes = transpiler.transpile(
-        "class User : Model {};\n"
-        "class UserController : Controller {};\n"
-        "class CreateUsers : Migration {};\n",
+        "model User {};\n"
+        "controller UserController {};\n"
+        "migration CreateUsers {};\n",
         "classes.gnr",
         {.emit_line_directives = false}
     );
@@ -139,7 +139,7 @@ int main() {
     );
 
     const auto model = transpiler.transpile(
-        "class User : Model {\n"
+        "model User {\n"
         "    string name;\n"
         "    string email;\n"
         "    string? nickname;\n"
@@ -196,7 +196,7 @@ int main() {
     );
 
     const auto belongs_to = transpiler.transpile(
-        "class Post : Model {\n"
+        "model Post {\n"
         "    int userId;\n"
         "    string title;\n"
         "    user() { return belongsTo<User>(); }\n"
@@ -218,7 +218,7 @@ int main() {
     );
 
     const auto configured = transpiler.transpile(
-        "class AuditUser : Model {\n"
+        "model AuditUser {\n"
         "    table = \"legacy_users\";\n"
         "    connection = \"reporting\";\n"
         "    timestamps = false;\n"
@@ -277,7 +277,7 @@ int main() {
     );
 
     const auto controller = transpiler.transpile(
-        "class UserController : Controller {\n"
+        "controller UserController {\n"
         "    inject Clock clock;\n"
         "\n"
         "    Response index() {\n"
@@ -325,7 +325,7 @@ int main() {
     );
 
     const auto async_controller = transpiler.transpile(
-        "class AsyncController : Controller {\n"
+        "controller AsyncController {\n"
         "    async Response index() {\n"
         "        const result = await load_response();\n"
         "        return result;\n"
@@ -367,7 +367,7 @@ int main() {
     );
 
     const auto sync_request = transpiler.transpile(
-        "class RequestController : Controller {\n"
+        "controller RequestController {\n"
         "    Response show(Request request) {\n"
         "        return text(request.parameter(\"id\"));\n"
         "    }\n"
@@ -384,7 +384,7 @@ int main() {
     );
 
     const auto middleware = transpiler.transpile(
-        "class AuthMiddleware : Middleware {\n"
+        "middleware AuthMiddleware {\n"
         "    async Response handle(Request request, Next next) {\n"
         "        if (request.header(\"authorization\").empty()) {\n"
         "            return text(\"Unauthorized\", 401);\n"
@@ -416,7 +416,7 @@ int main() {
     );
 
     const auto validation = transpiler.transpile(
-        "class UserController : Controller {\n"
+        "controller UserController {\n"
         "    Response store(Request request) {\n"
         "        const data = request.validate({\n"
         "            \"name\": \"required|string|max:80\",\n"
@@ -468,7 +468,7 @@ int main() {
     );
 
     const auto migration = transpiler.transpile(
-        "class CreateUsersTable : Migration {\n"
+        "migration CreateUsersTable {\n"
         "    void up() {}\n"
         "    void down() {}\n"
         "}\n",
@@ -505,7 +505,7 @@ int main() {
     assert(!invalid_await.diagnostics.empty());
 
     const auto view_data = transpiler.transpile(
-        "class PageController : Controller {\n"
+        "controller PageController {\n"
         "    Response index() {\n"
         "        const users = User::all();\n"
         "        return view(\"users/index\", {\n"

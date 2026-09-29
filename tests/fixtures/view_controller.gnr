@@ -11,7 +11,7 @@ T sync_wait(gungnir::Task<T> task) {
     return awaiter.await_resume();
 }
 
-class PageController : Controller
+controller PageController
 {
     Response index()
     {

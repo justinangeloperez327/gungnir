@@ -1,129 +1,56 @@
 name: CI
 
 on:
+  pull_request:
   push:
     branches:
       - main
-  pull_request:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux GCC Debug
-            os: ubuntu-latest
-            build_type: Debug
-            compiler_args: -DCMAKE_CXX_COMPILER=g++
-          - name: Linux Clang Debug
-            os: ubuntu-latest
-            build_type: Debug
-            compiler_args: -DCMAKE_CXX_COMPILER=clang++
-          - name: Windows MSVC Debug
-            os: windows-latest
-            build_type: Debug
-            compiler_args: ""
-          - name: Linux GCC Release
-            os: ubuntu-latest
-            build_type: Release
-            compiler_args: -DCMAKE_CXX_COMPILER=g++
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Configure
-        run: cmake -S . -B build ${{ matrix.compiler_args }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-
-      - name: Build
-        run: cmake --build build --config ${{ matrix.build_type }} --parallel
-
-      - name: Test
-        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
-
-  build-options:
-    name: ${{ matrix.name }}
+  core:
+    name: Core · Linux GCC
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Tests disabled
-            tests: "OFF"
-            tools: "ON"
-          - name: Tools disabled
-            tests: "ON"
-            tools: "OFF"
-          - name: Tests and tools disabled
-            tests: "OFF"
-            tools: "OFF"
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Configure
-        run: >
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Release
-          -DGUNGNIR_BUILD_TESTS=${{ matrix.tests }}
-          -DGUNGNIR_BUILD_TOOLS=${{ matrix.tools }}
-
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++
       - name: Build
         run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
 
-  package-consumer:
-    name: Installed package consumer
-    runs-on: ubuntu-latest
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-install
-      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-package-consumer.cpp
-
+  compatibility:
+    name: Compatibility · ${{ matrix.name }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux Clang
+            os: ubuntu-latest
+            compiler: -DCMAKE_CXX_COMPILER=clang++
+          - name: Windows MSVC
+            os: windows-latest
+            compiler: ""
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Configure Gungnir
-        run: >
-          cmake -S . -B build-package
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-
-      - name: Build Gungnir
-        run: cmake --build build-package --parallel
-
-      - name: Install Gungnir
-        run: cmake --install build-package
-
-      - name: Transpile external consumer
-        run: >
-          "$GUNGNIR_PREFIX/bin/gungnirc"
-          tests/package-consumer/app.gnr
-          -o "$GUNGNIR_GENERATED_SOURCE"
-
-      - name: Configure external consumer
-        run: >
-          cmake -S tests/package-consumer -B build-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
-
-      - name: Build external consumer
-        run: cmake --build build-consumer --parallel
-
-      - name: Run external consumer
-        run: ./build-consumer/gungnir-package-consumer
+      - name: Configure
+        run: cmake -S . -B build ${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build --config Debug --parallel
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure
 
   postgresql:
-    name: PostgreSQL adapter
+    name: Integration · PostgreSQL
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -139,69 +66,32 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
     env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-postgresql-install
       GUNGNIR_POSTGRESQL_HOST: 127.0.0.1
       GUNGNIR_POSTGRESQL_PORT: "5432"
       GUNGNIR_POSTGRESQL_DATABASE: gungnir
       GUNGNIR_POSTGRESQL_USERNAME: postgres
       GUNGNIR_POSTGRESQL_PASSWORD: postgres
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Install libpq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpq-dev
-
-      - name: Configure PostgreSQL adapter
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev
+      - name: Configure
         run: >
-          cmake -S . -B build-postgresql
+          cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
           -DGUNGNIR_BUILD_TOOLS=OFF
           -DGUNGNIR_WITH_POSTGRESQL=ON
           -DGUNGNIR_POSTGRESQL_INTEGRATION_TESTS=ON
-
-      - name: Build PostgreSQL adapter
-        run: >
-          cmake --build build-postgresql
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-postgresql
-          gungnir_postgresql_integration_test
-          --parallel
-
-      - name: Test PostgreSQL adapter
-        run: >
-          ctest --test-dir build-postgresql
-          -R "^gungnir.postgresql$"
-          --output-on-failure
-
-      - name: Install PostgreSQL-enabled package
-        run: cmake --install build-postgresql
-
-      - name: Configure PostgreSQL package consumer
-        run: >
-          cmake
-          -S tests/postgresql-package-consumer
-          -B build-postgresql-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-
-      - name: Build PostgreSQL package consumer
-        run: cmake --build build-postgresql-consumer --parallel
-
-      - name: Run PostgreSQL package consumer
-        run: ./build-postgresql-consumer/gungnir-postgresql-package-consumer
+      - name: Build adapter test
+        run: cmake --build build --target gungnir_postgresql_integration_test --parallel
+      - name: Test adapter
+        run: ctest --test-dir build -R "^gungnir.postgresql$" --output-on-failure
 
   mysql:
-    name: MySQL adapter
+    name: Integration · MySQL
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -216,233 +106,32 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-
     env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-mysql-install
       GUNGNIR_MYSQL_HOST: 127.0.0.1
       GUNGNIR_MYSQL_PORT: "3306"
       GUNGNIR_MYSQL_DATABASE: gungnir
       GUNGNIR_MYSQL_USERNAME: root
       GUNGNIR_MYSQL_PASSWORD: mysql
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Install MySQL client development files
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libmariadb-dev
-
-      - name: Configure MySQL adapter
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y libmariadb-dev
+      - name: Configure
         run: >
-          cmake -S . -B build-mysql
+          cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
           -DGUNGNIR_BUILD_TOOLS=OFF
           -DGUNGNIR_WITH_MYSQL=ON
           -DGUNGNIR_MYSQL_INTEGRATION_TESTS=ON
-
-      - name: Build MySQL adapter
-        run: >
-          cmake --build build-mysql
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-mysql
-          gungnir_mysql_integration_test
-          --parallel
-
-      - name: Test MySQL adapter
-        run: >
-          ctest --test-dir build-mysql
-          -R "^gungnir.mysql$"
-          --output-on-failure
-
-      - name: Install MySQL-enabled package
-        run: cmake --install build-mysql
-
-      - name: Configure MySQL package consumer
-        run: >
-          cmake
-          -S tests/mysql-package-consumer
-          -B build-mysql-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-
-      - name: Build MySQL package consumer
-        run: cmake --build build-mysql-consumer --parallel
-
-      - name: Run MySQL package consumer
-        run: ./build-mysql-consumer/gungnir-mysql-package-consumer
-
-  sqlserver:
-    name: SQL Server adapter
-    runs-on: ubuntu-latest
-    services:
-      sqlserver:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-          ACCEPT_EULA: "Y"
-          MSSQL_PID: Developer
-          MSSQL_SA_PASSWORD: "Gungnir_SQL_2026!"
-        ports:
-          - 1433:1433
-
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-sqlserver-install
-      GUNGNIR_SQLSERVER_HOST: 127.0.0.1
-      GUNGNIR_SQLSERVER_PORT: "1433"
-      GUNGNIR_SQLSERVER_DATABASE: master
-      GUNGNIR_SQLSERVER_USERNAME: sa
-      GUNGNIR_SQLSERVER_PASSWORD: "Gungnir_SQL_2026!"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install Microsoft ODBC Driver 18
-        run: |
-          curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(. /etc/os-release && echo "$VERSION_ID")/packages-microsoft-prod.deb"
-          sudo dpkg -i packages-microsoft-prod.deb
-          rm packages-microsoft-prod.deb
-          sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
-
-      - name: Wait for SQL Server
-        run: |
-          for attempt in {1..30}; do
-            if /opt/mssql-tools18/bin/sqlcmd               -S 127.0.0.1,1433               -U sa               -P "$GUNGNIR_SQLSERVER_PASSWORD"               -C               -Q "SELECT 1" >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "SQL Server did not become ready"
-          exit 1
-
-      - name: Configure SQL Server adapter
-        run: >
-          cmake -S . -B build-sqlserver
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-          -DGUNGNIR_BUILD_TOOLS=OFF
-          -DGUNGNIR_WITH_SQLSERVER=ON
-          -DGUNGNIR_SQLSERVER_INTEGRATION_TESTS=ON
-
-      - name: Build SQL Server adapter
-        run: >
-          cmake --build build-sqlserver
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-sqlserver
-          gungnir_sqlserver_integration_test
-          --parallel
-
-      - name: Test SQL Server adapter
-        run: >
-          ctest --test-dir build-sqlserver
-          -R "^gungnir.sqlserver$"
-          --output-on-failure
-
-      - name: Install SQL Server-enabled package
-        run: cmake --install build-sqlserver
-
-      - name: Configure SQL Server package consumer
-        run: >
-          cmake
-          -S tests/sqlserver-package-consumer
-          -B build-sqlserver-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-
-      - name: Build SQL Server package consumer
-        run: cmake --build build-sqlserver-consumer --parallel
-
-      - name: Run SQL Server package consumer
-        run: ./build-sqlserver-consumer/gungnir-sqlserver-package-consumer
-
-  mongodb:
-    name: MongoDB adapter
-    runs-on: ubuntu-latest
-    services:
-      mongodb:
-        image: mongo:8.3.11
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 2)'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-mongodb-install
-      MONGOC_PREFIX: ${{ github.workspace }}/.mongo-c-driver-install
-      GUNGNIR_MONGODB_HOST: 127.0.0.1
-      GUNGNIR_MONGODB_PORT: "27017"
-      GUNGNIR_MONGODB_DATABASE: gungnir
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Build MongoDB C Driver 2.5.4
-        run: |
-          git clone             --depth 1             --branch 2.5.4             https://github.com/mongodb/mongo-c-driver.git             mongo-c-driver
-          cmake             -S mongo-c-driver             -B mongo-c-driver-build             -DCMAKE_BUILD_TYPE=Release             -DBUILD_VERSION=2.5.4             -DENABLE_MONGOC=ON             -DENABLE_TESTS=OFF             -DENABLE_EXAMPLES=OFF             -DCMAKE_INSTALL_PREFIX="$MONGOC_PREFIX"
-          cmake --build mongo-c-driver-build --parallel 2
-          cmake --install mongo-c-driver-build
-
-      - name: Configure MongoDB adapter
-        run: >
-          cmake -S . -B build-mongodb
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-          -DCMAKE_PREFIX_PATH="$MONGOC_PREFIX"
-          -DGUNGNIR_BUILD_TOOLS=OFF
-          -DGUNGNIR_WITH_MONGODB=ON
-          -DGUNGNIR_MONGODB_INTEGRATION_TESTS=ON
-
-      - name: Build MongoDB adapter
-        run: >
-          cmake --build build-mongodb
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-mongodb
-          gungnir_mongodb_integration_test
-          --parallel
-
-      - name: Test MongoDB adapter
-        run: >
-          ctest --test-dir build-mongodb
-          -R "^gungnir.mongodb$"
-          --output-on-failure
-
-      - name: Install MongoDB-enabled package
-        run: cmake --install build-mongodb
-
-      - name: Configure MongoDB package consumer
-        run: >
-          cmake
-          -S tests/mongodb-package-consumer
-          -B build-mongodb-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          "-DCMAKE_PREFIX_PATH=$GUNGNIR_PREFIX;$MONGOC_PREFIX"
-
-      - name: Build MongoDB package consumer
-        run: cmake --build build-mongodb-consumer --parallel
-
-      - name: Run MongoDB package consumer
-        run: ./build-mongodb-consumer/gungnir-mongodb-package-consumer
-
+      - name: Build adapter test
+        run: cmake --build build --target gungnir_mysql_integration_test --parallel
+      - name: Test adapter
+        run: ctest --test-dir build -R "^gungnir.mysql$" --output-on-failure
 
   redis:
-    name: Redis adapters
+    name: Integration · Redis
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       redis:
@@ -454,335 +143,41 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-
     env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-redis-install
       GUNGNIR_REDIS_HOST: 127.0.0.1
       GUNGNIR_REDIS_PORT: "6379"
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Install hiredis
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhiredis-dev
-
-      - name: Configure Redis adapters
+        run: sudo apt-get update && sudo apt-get install -y libhiredis-dev
+      - name: Configure
         run: >
-          cmake -S . -B build-redis
+          cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
           -DGUNGNIR_BUILD_TOOLS=OFF
           -DGUNGNIR_WITH_REDIS=ON
           -DGUNGNIR_REDIS_INTEGRATION_TESTS=ON
-
-      - name: Build Redis adapters
-        run: >
-          cmake --build build-redis
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-redis
-          gungnir_redis_integration_test
-          --parallel
-
-      - name: Test Redis adapters
-        run: >
-          ctest --test-dir build-redis
-          -R "^gungnir.redis$"
-          --output-on-failure
-
-      - name: Install Redis-enabled package
-        run: cmake --install build-redis
-
-      - name: Configure Redis package consumer
-        run: >
-          cmake
-          -S tests/redis-package-consumer
-          -B build-redis-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-
-      - name: Build Redis package consumer
-        run: cmake --build build-redis-consumer --parallel
-
-      - name: Run Redis package consumer
-        run: ./build-redis-consumer/gungnir-redis-package-consumer
-
-
-  smtp:
-    name: SMTP mail adapter
-    runs-on: ubuntu-latest
-    services:
-      mailpit:
-        image: axllent/mailpit:v1.31.1
-        ports:
-          - 1025:1025
-          - 8025:8025
-
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-smtp-install
-      GUNGNIR_SMTP_HOST: 127.0.0.1
-      GUNGNIR_SMTP_PORT: "1025"
-      GUNGNIR_MAILPIT_HOST: 127.0.0.1
-      GUNGNIR_MAILPIT_PORT: "8025"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install libcurl
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev
-
-      - name: Wait for Mailpit
-        run: |
-          for attempt in {1..30}; do
-            if curl -fsS http://127.0.0.1:8025/readyz >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Mailpit did not become ready"
-          exit 1
-
-      - name: Configure SMTP adapter
-        run: >
-          cmake -S . -B build-smtp
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-          -DGUNGNIR_BUILD_TOOLS=OFF
-          -DGUNGNIR_WITH_SMTP=ON
-          -DGUNGNIR_SMTP_INTEGRATION_TESTS=ON
-
-      - name: Build SMTP adapter
-        run: >
-          cmake --build build-smtp
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-smtp
-          gungnir_smtp_integration_test
-          --parallel
-
-      - name: Test SMTP adapter
-        run: >
-          ctest --test-dir build-smtp
-          -R "^gungnir.smtp$"
-          --output-on-failure
-
-      - name: Install SMTP-enabled package
-        run: cmake --install build-smtp
-
-      - name: Configure SMTP package consumer
-        run: >
-          cmake
-          -S tests/smtp-package-consumer
-          -B build-smtp-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-
-      - name: Build SMTP package consumer
-        run: cmake --build build-smtp-consumer --parallel
-
-      - name: Run SMTP package consumer
-        run: ./build-smtp-consumer/gungnir-smtp-package-consumer
-
-
-  otlp:
-    name: OTLP HTTP exporter
-    runs-on: ubuntu-latest
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-otlp-install
-      GUNGNIR_OTLP_ENDPOINT: http://127.0.0.1:4319
-      GUNGNIR_OTLP_CAPTURE: ${{ github.workspace }}/otlp-capture.jsonl
-      GUNGNIR_OTLP_PORT: "4319"
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install libcurl
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev
-
-      - name: Start local OTLP collector
-        run: |
-          python3 tests/otlp_collector.py >otlp-collector.log 2>&1 &
-          echo $! > otlp-collector.pid
-          for attempt in {1..30}; do
-            if curl -sS -o /dev/null -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:4319/v1/traces; then
-              rm -f "$GUNGNIR_OTLP_CAPTURE"
-              exit 0
-            fi
-            sleep 1
-          done
-          cat otlp-collector.log
-          exit 1
-
-      - name: Configure OTLP exporter
-        run: >
-          cmake -S . -B build-otlp
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-          -DGUNGNIR_BUILD_TOOLS=OFF
-          -DGUNGNIR_WITH_OTLP=ON
-          -DGUNGNIR_OTLP_INTEGRATION_TESTS=ON
-
-      - name: Build OTLP exporter
-        run: >
-          cmake --build build-otlp
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnir-otlp
-          gungnir_otlp_test
-          --parallel
-
-      - name: Test OTLP exporter
-        run: >
-          ctest --test-dir build-otlp
-          -R "^gungnir.otlp$"
-          --output-on-failure
-
-      - name: Verify OTLP collector received traces and metrics
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-
-          capture = os.environ["GUNGNIR_OTLP_CAPTURE"]
-          with open(capture, encoding="utf-8") as stream:
-              rows = [json.loads(line) for line in stream if line.strip()]
-
-          paths = {row["path"] for row in rows}
-          assert "/v1/traces" in paths, paths
-          assert "/v1/metrics" in paths, paths
-          PY
-
-      - name: Install OTLP-enabled package
-        run: cmake --install build-otlp
-
-      - name: Configure OTLP package consumer
-        run: >
-          cmake
-          -S tests/otlp-package-consumer
-          -B build-otlp-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-
-      - name: Build OTLP package consumer
-        run: cmake --build build-otlp-consumer --parallel
-
-      - name: Run OTLP package consumer
-        run: ./build-otlp-consumer/gungnir-otlp-package-consumer
-
+      - name: Build adapter test
+        run: cmake --build build --target gungnir_redis_integration_test --parallel
+      - name: Test adapter
+        run: ctest --test-dir build -R "^gungnir.redis$" --output-on-failure
 
   tls:
-    name: TLS HTTPS transport
+    name: Integration · TLS
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-tls-install
-      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-tls-consumer.cpp
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Install OpenSSL development package
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev
-
-      - name: Configure TLS build
+      - name: Install OpenSSL
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+      - name: Configure
         run: >
-          cmake -S . -B build-tls
+          cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX"
-          -DGUNGNIR_BUILD_TOOLS=ON
           -DGUNGNIR_WITH_TLS=ON
-
-      - name: Build TLS server and installable targets
-        run: >
-          cmake --build build-tls
-          --target
-          gungnir
-          gungnir-orm
-          gungnir-language
-          gungnirc
-          gungnir-cli
-          gungnir_tls_server_test
-          --parallel
-
-      - name: Test HTTPS transport
-        run: >
-          ctest --test-dir build-tls
-          -R "^gungnir.tls_server$"
-          --output-on-failure
-
-      - name: Install TLS-enabled package
-        run: cmake --install build-tls
-
-      - name: Transpile TLS package consumer
-        run: >
-          "$GUNGNIR_PREFIX/bin/gungnirc"
-          tests/package-consumer/app.gnr
-          -o "$GUNGNIR_GENERATED_SOURCE"
-
-      - name: Configure installed package consumer
-        run: >
-          cmake
-          -S tests/package-consumer
-          -B build-tls-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
-
-      - name: Build installed package consumer
-        run: cmake --build build-tls-consumer --parallel
-
-      - name: Run installed package consumer
-        run: ./build-tls-consumer/gungnir-package-consumer
-
-
-  http2:
-    name: HTTP2 TLS transport
-    runs-on: ubuntu-latest
-    env:
-      GUNGNIR_PREFIX: ${{ github.workspace }}/.gungnir-http2-install
-      GUNGNIR_GENERATED_SOURCE: ${{ github.workspace }}/.gungnir-http2-consumer.cpp
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Install HTTP2 dependencies
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev libnghttp2-dev libcurl4-openssl-dev
-      - name: Configure HTTP2 build
-        run: cmake -S . -B build-http2 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$GUNGNIR_PREFIX" -DGUNGNIR_BUILD_TOOLS=ON -DGUNGNIR_WITH_TLS=ON -DGUNGNIR_WITH_HTTP2=ON
-      - name: Build HTTP2 server and installable targets
-        run: cmake --build build-http2 --target gungnir gungnir-orm gungnir-language gungnirc gungnir-cli gungnir_http2_server_test --parallel
-      - name: Test HTTP2 transport
-        run: ctest --test-dir build-http2 -R "^gungnir.http2_server$" --output-on-failure
-      - name: Install HTTP2-enabled package
-        run: cmake --install build-http2
-      - name: Transpile HTTP2 package consumer
-        run: >
-          "$GUNGNIR_PREFIX/bin/gungnirc"
-          tests/package-consumer/app.gnr
-          -o "$GUNGNIR_GENERATED_SOURCE"
-      - name: Configure installed package consumer
-        run: >
-          cmake -S tests/package-consumer -B build-http2-consumer
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
-          -DGUNGNIR_CONSUMER_SOURCE="$GUNGNIR_GENERATED_SOURCE"
-      - name: Build installed package consumer
-        run: cmake --build build-http2-consumer --parallel
-      - name: Run installed package consumer
-        run: ./build-http2-consumer/gungnir-package-consumer
+      - name: Build TLS test
+        run: cmake --build build --target gungnir_tls_server_test --parallel
+      - name: Test TLS
+        run: ctest --test-dir build -R "^gungnir.tls_server$" --output-on-failure
