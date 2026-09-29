@@ -838,6 +838,21 @@ ModelLoweringResult ModelLowerer::lower(
                 qualified_access =
                     before_previous &&
                     tokens[*before_previous].lexeme == ":";
+
+                if (qualified_access) {
+                    const auto qualifier =
+                        previous_significant(
+                            tokens,
+                            *before_previous
+                        );
+
+                    if (
+                        qualifier &&
+                        tokens[*qualifier].lexeme == "Route"
+                    ) {
+                        continue;
+                    }
+                }
             }
         }
 
