@@ -2,67 +2,139 @@
 
 Gungnir provides an optional PostgreSQL adapter backed by libpq.
 
-The adapter is separate from the core library. Enable it when configuring Gungnir:
+This document defines the backend/runtime contract. Application-facing queries continue to use the ORM and migration APIs.
 
-```sh
-cmake -S . -B build -DGUNGNIR_WITH_POSTGRESQL=ON
-```
+# Enablement
 
-The exported CMake target is:
+The adapter is optional and may be enabled through the Gungnir build configuration.
 
-```cmake
-target_link_libraries(app PRIVATE gungnir::postgresql)
-```
+Applications using it link the PostgreSQL adapter/runtime target required by the build system.
 
-## Registration
+# Registration
 
-Register the adapter before the application configures its database:
+The adapter registers explicitly with the database driver registry during application bootstrap.
 
-```cpp
-gungnir::database::register_postgresql(
-    app.database_drivers()
-);
-```
+After registration, a PostgreSQL-configured connection can be used by:
 
-After registration, the existing `DB_CONNECTION=postgresql` configuration, connection pool, migrations, transactions, ORM execution and health checks use the libpq adapter.
+- ORM;
+- migrations;
+- transactions;
+- validation database rules;
+- health checks.
 
-## Parameterization
+Application models/controllers do not use libpq handles.
 
-The adapter uses `PQexecParams`. Binding values are passed separately from SQL and are never interpolated into the statement.
+# Parameterization
 
-Raw PostgreSQL statements use PostgreSQL placeholders:
+PostgreSQL execution uses bound parameters.
 
-```cpp
-connection->execute(
-    "SELECT * FROM users WHERE email = $1",
-    {email}
-);
-```
+Runtime values are passed separately from SQL text.
 
-ORM queries already compile PostgreSQL placeholders in this form.
+Raw PostgreSQL execution may use native PostgreSQL placeholder numbering such as:
 
-## Value mapping
+~~~text
+$1
+$2
+...
+~~~
 
-PostgreSQL booleans, signed integers, floating-point values and numeric values are mapped into Gungnir model values. Other PostgreSQL types are returned as strings. SQL NULL is returned as `nullptr`.
+ORM-generated queries must remain parameterized.
 
-The current model value type does not provide an arbitrary-precision decimal type, so PostgreSQL `NUMERIC` values are represented as `Double`. Applications requiring exact arbitrary-precision decimal arithmetic should not rely on that conversion.
+# Value mapping
 
-## Transactions and health
+The adapter maps PostgreSQL values into Gungnir runtime values.
 
-The adapter implements begin, commit, rollback, savepoint capability reporting and a live `SELECT 1` health check.
+Common mappings include:
 
-## Integration testing
+~~~text
+BOOLEAN          -> bool
+integer families -> integer types
+floating values  -> float/double
+text-like values -> string
+NULL             -> null/optional
+~~~
 
-Live integration coverage is opt-in:
+# DECIMAL / NUMERIC
 
-```sh
-cmake -S . -B build \
-  -DGUNGNIR_WITH_POSTGRESQL=ON \
-  -DGUNGNIR_POSTGRESQL_INTEGRATION_TESTS=ON
-```
+The Gungnir language defines decimal as an exact application-level decimal concept.
 
-The integration test expects a PostgreSQL server and reads the `GUNGNIR_POSTGRESQL_HOST`, `GUNGNIR_POSTGRESQL_PORT`, `GUNGNIR_POSTGRESQL_DATABASE`, `GUNGNIR_POSTGRESQL_USERNAME` and `GUNGNIR_POSTGRESQL_PASSWORD` environment variables.
+If the current PostgreSQL adapter/runtime still maps NUMERIC/DECIMAL through binary floating point, that is a backend implementation limitation and must not be presented as exact decimal support.
 
-## Cancellation
+Until exact decimal mapping is implemented, applications requiring exact monetary/arbitrary-precision PostgreSQL NUMERIC semantics should use an explicitly supported exact representation or avoid relying on lossy conversion.
 
-Cancellation-aware connection execution interrupts an active PostgreSQL statement by opening a short-lived connection with the same settings and calling `pg_cancel_backend` for the active backend PID. This avoids manipulating the busy `PGconn` from another thread and preserves the configured authentication/TLS path.
+The adapter should eventually map NUMERIC/DECIMAL to the canonical Gungnir decimal runtime type.
+
+# Transactions
+
+The adapter should support begin, commit, rollback, and savepoints according to the database runtime contract.
+
+Transaction behavior must be represented through Gungnir runtime APIs rather than exposing libpq transaction commands to application source.
+
+# Cancellation
+
+Where native libpq cancellation is supported, request/application cancellation should interrupt in-flight operations according to the database runtime contract.
+
+Cancellation must remain distinguishable from normal query failure.
+
+# Health
+
+A live health check may use a bounded operation such as a simple SELECT.
+
+Health checks should not mutate application data.
+
+# Connection configuration
+
+Configuration may include:
+
+~~~text
+host
+port
+database
+username
+password
+TLS settings
+connect timeout
+application name/options
+~~~
+
+Credentials belong in runtime secrets/configuration.
+
+# TLS
+
+Production PostgreSQL deployments should use appropriate certificate validation and TLS policy.
+
+Development flags that weaken verification must not become production defaults.
+
+# Pooling
+
+The common database manager/pool owns connection acquisition and lifetime.
+
+The adapter implements physical PostgreSQL connections.
+
+# Async behavior
+
+A PostgreSQL operation is considered truly async only when the runtime path avoids blocking the request executor.
+
+Native cancellation support alone does not make a blocking libpq execution model coroutine-native.
+
+If blocking calls are used, they require the runtime's blocking/offload strategy.
+
+# Integration testing
+
+Live adapter tests should be opt-in and verify:
+
+- connection;
+- parameterized execution;
+- value mapping;
+- transaction behavior;
+- cancellation where supported;
+- migration/ORM compatibility.
+
+# Design rule
+
+~~~text
+Gungnir ORM defines application semantics
+PostgreSQL adapter maps them to libpq/PostgreSQL
+bound parameters remain mandatory
+backend precision and async limits stay explicit
+~~~
