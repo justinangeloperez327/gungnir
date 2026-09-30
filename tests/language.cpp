@@ -62,6 +62,15 @@ int main() {
            std::string::npos);
     assert(collections.code.find("gungnir::view::Data{{\"ok\", true}") !=
            std::string::npos);
+    const auto object_chain = gungnir::language::Transpiler{}.transpile(
+        "controller Objects { void build() { "
+        "const item = {\"id\": 1}.get(\"id\"); "
+        "if (true) { const other = {\"id\": 2}; }; } }",
+        "object_chain.gnr", {.emit_line_directives = false}
+    );
+    assert(object_chain.success());
+    assert(object_chain.code.find("gungnir::view::Data{{\"id\", 1}}.get") !=
+           std::string::npos);
     const auto invalid_object = gungnir::language::Transpiler{}.transpile(
         "controller Objects { void build() { const data = {missing: 1}; } }",
         "invalid_object.gnr", {.emit_line_directives = false}

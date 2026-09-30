@@ -566,6 +566,10 @@ std::vector<MethodStatement> Parser::parse_method_body(
         std::size_t parentheses = 0;
         std::size_t brackets = 0;
         bool block = false;
+        const auto& leading = tokens_[*start].lexeme;
+        const bool block_statement = leading == "{" || leading == "if" ||
+            leading == "while" || leading == "for" || leading == "switch" ||
+            leading == "try" || leading == "catch";
         while (cursor < closing) {
             const auto& value = tokens_[cursor].lexeme;
             if (value == "(") ++parentheses;
@@ -575,9 +579,8 @@ std::vector<MethodStatement> Parser::parse_method_body(
             if (value == "{") ++braces;
             if (value == "}" && braces > 0) {
                 --braces;
-                const auto next = next_significant(cursor);
                 if (braces == 0 && parentheses == 0 && brackets == 0 &&
-                    (!next || tokens_[*next].lexeme != ";")) {
+                    block_statement) {
                     block = true;
                     break;
                 }
