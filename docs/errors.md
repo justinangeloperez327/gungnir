@@ -1,25 +1,159 @@
 # Error Handling
 
-Gungnir separates framework error taxonomy from HTTP rendering.
+Gungnir separates language/compiler diagnostics, application/runtime errors, and HTTP error rendering.
 
-## Framework errors
+These are different layers and must not be conflated.
 
-`errors::Error` is the common framework-owned runtime error base and carries an optional stable code. Configuration and runtime specializations provide an initial taxonomy without forcing unrelated standard-library or application exceptions into Gungnir types.
+# Compiler diagnostics
 
-Subsystem-specific exceptions may continue to expose richer information where their contracts require it.
+Syntax, semantic, type, control-flow, and framework-contract errors are compile-time diagnostics.
 
-## HTTP rendering
+Examples:
 
-The HTTP exception handler maps known validation, model and HTTP failures to responses. Unknown exceptions produce a generic 500 response.
+~~~text
+unknown symbol
+invalid type
+invalid return
+route action not found
+invalid await
+invalid relationship
+~~~
 
-Production responses must not expose exception messages, stack traces, filesystem paths, credentials, generated C++ internals or other implementation details for unknown failures.
+Compile-time errors prevent Validated AST construction and normal code generation.
 
-Validation failures retain their structured 422 response. Model-not-found failures remain 404 responses. Explicit HTTP exceptions retain their declared status.
+# Runtime errors
 
-## Debugging
+Runtime failures occur after a program has compiled.
 
-Detailed diagnostics belong in logs and development tooling rather than unconditional HTTP responses. A future debug renderer may expose additional development-only context, but it must be controlled by application mode and remain disabled in production.
+Examples:
 
-## Exception ownership
+- database unavailable;
+- mail transport failure;
+- storage I/O failure;
+- queue lease failure;
+- invalid runtime configuration;
+- network timeout.
 
-Gungnir does not swallow exceptions merely to make an operation appear successful. Boundaries must either handle an exception according to their documented contract, translate it to a domain-specific error, or propagate it.
+Framework-owned runtime errors should use a stable taxonomy and optional error codes where useful.
+
+# Application errors
+
+Application/domain errors may remain application-defined.
+
+The framework should not force every application failure into one giant Gungnir exception hierarchy.
+
+# HTTP rendering
+
+The HTTP boundary converts known request/application/framework failures into responses.
+
+Typical mappings include:
+
+~~~text
+validation failure      -> 422
+model/resource missing  -> 404
+unauthenticated         -> 401
+authorization denied    -> 403
+explicit HTTP error     -> declared status
+unknown runtime failure -> 500
+~~~
+
+Exact application response formatting may be configurable.
+
+# Production safety
+
+Production error responses must not expose:
+
+- stack traces;
+- filesystem paths;
+- credentials;
+- database connection strings;
+- generated C++ internals;
+- native exception text from unknown failures;
+- private application source paths.
+
+Detailed context belongs in logs/observability.
+
+# Development diagnostics
+
+Development mode may provide richer error pages or source diagnostics.
+
+Debug rendering must be controlled by application mode and disabled in production.
+
+# Error ownership
+
+A boundary that receives an error must:
+
+- handle it according to a documented contract;
+- translate it to a domain/framework error;
+- or propagate it.
+
+It must not swallow the failure merely to make an operation appear successful.
+
+# Async errors
+
+Errors from awaited operations propagate through the async execution model.
+
+Cancellation is distinct from ordinary failure and should remain distinguishable.
+
+The application language should not expose native C++ coroutine exception plumbing.
+
+# Error model direction
+
+The language may use framework exception propagation, explicit Result<T,E>, or both depending on API design.
+
+The final source-language error syntax must be defined deliberately before introducing try/catch/throw grammar.
+
+Do not copy C++ exception syntax automatically.
+
+# HTTP exceptions
+
+Explicit HTTP failures may carry:
+
+~~~text
+status
+safe public message
+headers where allowed
+stable error code
+~~~
+
+Header values must still pass security validation.
+
+# Validation errors
+
+Validation errors retain structured field/rule information.
+
+They should not collapse into an opaque string before the response/view layer can use them.
+
+# Database errors
+
+Database drivers should preserve useful categories such as:
+
+- connection failure;
+- timeout/cancellation;
+- constraint violation;
+- transaction failure;
+- query execution failure.
+
+Raw vendor details may be logged but should not automatically be exposed to clients.
+
+# Generated C++ boundary
+
+Generated C++ may use:
+
+- exceptions;
+- expected/result objects;
+- error codes;
+- RAII cleanup;
+
+depending on runtime design.
+
+Those are implementation details.
+
+# Design rule
+
+~~~text
+compile-time mistakes -> diagnostics
+runtime failures       -> structured runtime errors
+HTTP boundary          -> safe response mapping
+production             -> no internal detail leakage
+~~~
