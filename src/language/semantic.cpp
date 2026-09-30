@@ -227,6 +227,14 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     const auto found = local_types.find(expression.text);
                     return found == local_types.end() ? Type{} : found->second;
                 }
+                if (expression.kind == ExpressionKind::list ||
+                    expression.kind == ExpressionKind::object ||
+                    expression.kind == ExpressionKind::entry ||
+                    expression.kind == ExpressionKind::subscript) {
+                    for (const auto& argument : expression.arguments)
+                        (void) infer(argument);
+                    return {};
+                }
                 if (expression.kind == ExpressionKind::call &&
                     !expression.arguments.empty()) {
                     const auto& callee = expression.arguments.front();
@@ -243,7 +251,12 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                         method_name = callee.arguments[1].text;
                     }
                     const auto found = index.methods.find(owner + "::" + method_name);
-                    if (method_name.empty() || found == index.methods.end()) return {};
+                    if (method_name.empty() || found == index.methods.end()) {
+                        for (std::size_t argument = 1;
+                             argument < expression.arguments.size(); ++argument)
+                            (void) infer(expression.arguments[argument]);
+                        return {};
+                    }
                     const auto count = expression.arguments.size() - 1;
                     bool matching_arity = false;
                     for (const auto& signature : found->second) {

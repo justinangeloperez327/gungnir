@@ -712,6 +712,19 @@ int main() {
         missing_argument |= diagnostic.code == "GNR1317";
     }
     assert(wrong_argument && missing_argument);
+    const auto nested_calls = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller NestedCalls { int take(int n) { return n; } "
+            "void run() { const values = [take(\"wrong\")]; "
+            "const item = values[take(\"wrong\")]; "
+            "view(\"page\", {\"items\": [take(\"wrong\")]}); } }"
+        }.tokenize(), "nested_calls.gnr"
+    }.parse().program;
+    unsigned nested_argument_errors = 0;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             nested_calls, "nested_calls.gnr"))
+        nested_argument_errors += diagnostic.code == "GNR1318";
+    assert(nested_argument_errors == 3);
     const auto named_types = gungnir::language::Parser{
         gungnir::language::Lexer{
             "model User {} model Post {} "
