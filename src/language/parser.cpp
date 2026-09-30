@@ -531,6 +531,7 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) {
                 auto result = make(begin, end, ExpressionKind::subscript);
                 result.arguments.push_back(parse(begin, i));
                 if (i + 1 < end - 1) result.arguments.push_back(parse(i + 1, end - 1));
+                else error(i, "Subscript index is missing", "GNR1013");
                 return result;
             }
         }
