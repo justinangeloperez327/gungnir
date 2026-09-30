@@ -79,6 +79,7 @@ struct MethodStatement {
     std::vector<Expression> for_parts;
     std::string for_binding_name;
     Expression for_binding_initializer;
+    bool for_binding_immutable{false};
 };
 
 struct FrameworkDeclaration {

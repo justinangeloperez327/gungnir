@@ -1,11 +1,13 @@
 #include <gungnir/language/transpiler.hpp>
 
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <iterator>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -248,34 +250,65 @@ TranspileResult Transpiler::transpile(
     }
 
     const auto lower_for_initializers = [&](const auto& self,
-                                             const std::vector<MethodStatement>& statements)
+                                             const std::vector<MethodStatement>& statements,
+                                             std::unordered_set<std::string> visible)
         -> void {
         for (const auto& statement : statements) {
+            auto nested = visible;
             if (statement.kind == StatementKind::loop_ && statement.name == "for" &&
-                !statement.for_parts.empty()) {
+                !statement.for_parts.empty() &&
+                !statement.for_binding_name.empty()) {
                 const auto& initializer = statement.for_parts.front();
-                if (initializer.span.end > initializer.span.begin) {
-                    const auto first = std::find_if(tokens.begin(), tokens.end(),
-                        [&](const Token& token) {
-                            return token.offset == initializer.span.begin &&
-                                   token.lexeme == "const";
-                        });
-                    if (first != tokens.end()) {
-                        edits.push_back(SourceEdit{first->offset,
-                                                   first->offset + first->lexeme.size(),
-                                                   "const auto"});
-                    }
+                if (statement.for_binding_immutable) {
+                    edits.push_back(SourceEdit{initializer.span.begin,
+                                               initializer.span.begin + 5,
+                                               "const auto"});
+                } else if (!visible.contains(statement.for_binding_name)) {
+                    edits.push_back(SourceEdit{initializer.span.begin,
+                                               initializer.span.begin, "auto "});
                 }
+                nested.insert(statement.for_binding_name);
             }
-            self(self, statement.children);
-            self(self, statement.alternative);
+            self(self, statement.children, nested);
+            self(self, statement.alternative, visible);
+            if (statement.kind == StatementKind::binding && !statement.name.empty())
+                visible.insert(statement.name);
+            if (statement.kind == StatementKind::expression &&
+                statement.expression.kind == ExpressionKind::binary &&
+                statement.expression.text == "=" &&
+                !statement.expression.arguments.empty() &&
+                statement.expression.arguments.front().kind == ExpressionKind::name)
+                visible.insert(statement.expression.arguments.front().text);
+            // Native C++ typed locals remain source-preserving, but their names
+            // must be visible to later inferred for-loop initializers.
+            if (statement.kind == StatementKind::expression) {
+                std::array<const Token*, 3> words{};
+                std::size_t count = 0;
+                auto token = std::lower_bound(tokens.begin(), tokens.end(),
+                    statement.span.begin, [](const Token& candidate, std::size_t offset) {
+                        return candidate.offset < offset;
+                    });
+                for (; token != tokens.end() && token->offset < statement.span.end &&
+                       count < words.size(); ++token) {
+                    if (!token->trivia()) words[count++] = &*token;
+                }
+                if (count == 3 && words[0]->word() &&
+                    words[1]->kind == TokenKind::identifier &&
+                    (words[2]->lexeme == "=" || words[2]->lexeme == ";"))
+                    visible.insert(words[1]->lexeme);
+            }
         }
     };
     for (const auto& node : parsed.program.nodes) {
-        if (const auto* method = std::get_if<FrameworkMethod>(&node))
-            lower_for_initializers(lower_for_initializers, method->body);
-        if (const auto* method = std::get_if<ControllerMethod>(&node))
-            lower_for_initializers(lower_for_initializers, method->body);
+        const auto* framework = std::get_if<FrameworkMethod>(&node);
+        const auto* controller = std::get_if<ControllerMethod>(&node);
+        if (!framework && !controller) continue;
+        std::unordered_set<std::string> visible;
+        const auto& parameters = framework ? framework->parameters : controller->parameters;
+        for (const auto& parameter : parameters) visible.insert(parameter.name);
+        lower_for_initializers(lower_for_initializers,
+                               framework ? framework->body : controller->body,
+                               std::move(visible));
     }
 
     edits.insert(

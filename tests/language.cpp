@@ -500,6 +500,21 @@ int main() {
         changed_for_constant |= diagnostic.code == "GNR1320";
     }
     assert(nonboolean_for && changed_for_constant);
+    const auto mutable_for = gungnir::language::Transpiler{}.transpile(
+        "controller Loops { void run(int existing) { "
+        "for (i = 0; i < 3; i = i + 1) { break; } "
+        "for (existing = 0; existing < 3; existing = existing + 1) { break; } "
+        "int native = 0; for (native = 1; native < 3; ) { break; } "
+        "for (j = 0; j < 2; ) { break; } } }",
+        "mutable_for.gnr", {.emit_line_directives = false}
+    );
+    assert(mutable_for.success());
+    assert(mutable_for.code.find("for (auto i = 0;") != std::string::npos);
+    assert(mutable_for.code.find("for (existing = 0;") != std::string::npos);
+    assert(mutable_for.code.find("for (native = 1;") != std::string::npos);
+    assert(mutable_for.code.find("for (auto j = 0;") != std::string::npos);
+    assert(mutable_for.code.find("; auto i =") == std::string::npos);
+    assert(mutable_for.code.find("; auto existing =") == std::string::npos);
     const auto invalid_flow = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller InvalidFlow { int choose() { "

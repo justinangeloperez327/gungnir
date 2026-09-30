@@ -351,9 +351,15 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 if (statement.kind == StatementKind::loop_ &&
                     statement.name == "for" &&
                     !statement.for_binding_name.empty()) {
-                    const auto initial = infer(statement.for_binding_initializer);
-                    loop_scope.insert_or_assign(statement.for_binding_name, initial);
-                    loop_constants.insert(statement.for_binding_name);
+                    if (statement.for_binding_immutable ||
+                        !scope.contains(statement.for_binding_name)) {
+                        const auto initial = infer(statement.for_binding_initializer);
+                        loop_scope.insert_or_assign(statement.for_binding_name, initial);
+                        if (statement.for_binding_immutable)
+                            loop_constants.insert(statement.for_binding_name);
+                    } else {
+                        (void) infer(statement.for_parts.front());
+                    }
                     local_types = loop_scope;
                     immutable_names = loop_constants;
                 }

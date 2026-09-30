@@ -623,9 +623,12 @@ std::vector<MethodStatement> Parser::parse_method_body(
                                     end && *end >= part_start &&
                                         tokens_[part_start].lexeme != ";"
                                         ? parse_expression(part_start, *end) : Expression{});
-                                if (statement.for_parts.size() == 1 && end &&
-                                    tokens_[part_start].lexeme == "const") {
-                                    const auto name = next_significant(part_start);
+                                if (statement.for_parts.size() == 1 && end) {
+                                    const bool immutable =
+                                        tokens_[part_start].lexeme == "const";
+                                    const auto name = immutable
+                                        ? next_significant(part_start)
+                                        : std::optional<std::size_t>{part_start};
                                     const auto equals = name
                                         ? next_significant(*name) : std::nullopt;
                                     const auto initializer = equals
@@ -635,6 +638,7 @@ std::vector<MethodStatement> Parser::parse_method_body(
                                         tokens_[*equals].lexeme == "=" &&
                                         *initializer <= *end) {
                                         statement.for_binding_name = tokens_[*name].lexeme;
+                                        statement.for_binding_immutable = immutable;
                                         statement.for_binding_initializer =
                                             parse_expression(*initializer, *end);
                                     }
@@ -1953,12 +1957,20 @@ ParseResult Parser::parse() {
     scopes_.emplace_back();
     framework_names_.clear();
     result_ = {};
+    std::optional<std::size_t> for_header_end;
 
     for (std::size_t index = 0; index < tokens_.size(); ++index) {
         const auto& token = tokens_[index];
 
         if (token.trivia() || token.kind == TokenKind::end) {
             continue;
+        }
+        if (token.lexeme == "for") {
+            const auto open = next_significant(index);
+            if (open && tokens_[*open].lexeme == "(") {
+                const auto close = matching_symbol(*open, "(", ")");
+                if (close) for_header_end = *close;
+            }
         }
 
         if (token.kind == TokenKind::identifier && token.lexeme == "Application") {
@@ -2068,6 +2080,8 @@ ParseResult Parser::parse() {
 
             continue;
         }
+
+        if (for_header_end && index <= *for_header_end) continue;
 
         if (token.lexeme == "const" && statement_start(index)) {
             const auto name = next_significant(index);
