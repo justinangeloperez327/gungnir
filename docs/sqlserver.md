@@ -2,63 +2,119 @@
 
 Gungnir provides an optional SQL Server adapter through ODBC.
 
-Enable it when configuring Gungnir:
+This document defines the backend/runtime contract. Application-facing code uses the common ORM, migration, and database APIs.
 
-```sh
-cmake -S . -B build -DGUNGNIR_WITH_SQLSERVER=ON
-```
+# Runtime dependency
 
-The exported CMake target is:
+The adapter uses the platform ODBC manager and requires a compatible Microsoft SQL Server ODBC driver at runtime.
 
-```cmake
-target_link_libraries(app PRIVATE gungnir::sqlserver)
-```
+Current deployments should use a supported modern Microsoft ODBC driver, with Driver 18 as the expected baseline where configured by the repository.
 
-## Runtime dependency
+# Registration
 
-The adapter links against the platform ODBC manager. A SQL Server ODBC driver must also be installed at runtime. Gungnir currently targets **Microsoft ODBC Driver 18 for SQL Server**.
+The adapter registers explicitly with the database driver registry during application bootstrap.
 
-## Registration
+Configured SQL Server connection aliases may then be used by ORM, migrations, transactions, validation rules, and health checks.
 
-Register the adapter before the application configures its database:
+# Parameterization
 
-```cpp
-gungnir::database::register_sqlserver(
-    app.database_drivers()
-);
-```
+The adapter uses prepared ODBC statements and bound parameters.
 
-Use `DB_CONNECTION=mssql`, `sqlserver`, or `sql_server`.
+Runtime values must remain separate from SQL text.
 
-## Parameterization
+Native SQL Server raw statements typically use question-mark placeholders:
 
-The adapter uses ODBC prepared statements and `SQLBindParameter`. Bound values are passed separately from SQL and are never interpolated into the statement.
+~~~text
+SELECT ... WHERE email = ?
+~~~
 
-Raw SQL Server statements use `?` placeholders:
+ORM-generated queries must remain parameterized.
 
-```cpp
-connection->execute(
-    "SELECT * FROM users WHERE email = ?",
-    {email}
-);
-```
+# Encryption
 
-## Encryption and connection options
+Modern SQL Server ODBC drivers default toward encrypted connections.
 
-ODBC Driver 18 uses encrypted connections. Additional ODBC connection attributes can be supplied through `DB_OPTIONS`. For local development with a self-signed SQL Server certificate, `TrustServerCertificate=yes` can be used. Production deployments should validate the server certificate rather than disabling certificate verification.
+Production deployments should validate server certificates.
 
-## Values
+TrustServerCertificate-style development options should be explicit and must not become secure-production defaults.
 
-BIT, signed integer, floating-point and numeric values map to Gungnir scalar values. Other values are returned as strings, and SQL NULL maps to `nullptr`.
+# Value mapping
 
-SQL Server DECIMAL/NUMERIC values currently map to `Double` because Gungnir does not yet expose an arbitrary-precision decimal scalar.
+Common mappings include:
 
-## Transactions and health
+~~~text
+BIT              -> bool
+integer families -> integer types
+floating values  -> float/double
+text-like values -> string
+NULL             -> null/optional
+~~~
 
-The adapter uses ODBC autocommit control plus `SQLEndTran` for commit and rollback, reports savepoint capability, and uses a lightweight `SELECT 1` health check.
+# DECIMAL / NUMERIC
 
-Live integration coverage is enabled with `GUNGNIR_SQLSERVER_INTEGRATION_TESTS=ON`.
+The Gungnir language defines decimal as an exact application-level decimal concept.
 
-## Cancellation
+If the current ODBC adapter maps SQL Server DECIMAL/NUMERIC through binary Double, that is a known adapter limitation.
 
-Cancellation-aware execution tracks the active ODBC statement and calls `SQLCancelHandle(SQL_HANDLE_STMT, ...)` from the cancelling thread. The connection layer converts the resulting cancelled operation into `OperationCancelled` for the caller.
+Applications requiring exact financial/decimal semantics must not rely on a lossy mapping.
+
+The target adapter should map DECIMAL/NUMERIC to Gungnir's canonical decimal runtime representation.
+
+# Transactions
+
+The adapter should support begin, commit, rollback, and savepoints/capability reporting through the common database runtime.
+
+Backend behavior should be exposed through capabilities rather than application ODBC code.
+
+# Cancellation
+
+Where ODBC/native statement cancellation is supported, request/application cancellation should interrupt in-flight execution according to the database runtime contract.
+
+# Health
+
+A bounded live query may be used for readiness.
+
+Health checks should not mutate application data.
+
+# Pooling
+
+Connection pooling is owned by the common database manager/pool.
+
+The adapter owns physical ODBC connection/session behavior.
+
+# Async behavior
+
+A blocking ODBC operation is not made non-blocking merely because it is called from an async controller.
+
+Blocking calls must use an offload strategy or a future genuinely asynchronous execution path.
+
+# Configuration
+
+Connection configuration may include:
+
+~~~text
+server
+port
+database
+username
+password
+driver
+encryption options
+timeouts
+additional reviewed ODBC options
+~~~
+
+Secrets remain runtime configuration.
+
+# Integration testing
+
+Live tests should verify parameter binding, transactions, value mapping, cancellation where supported, migration compatibility, and TLS configuration expectations.
+
+# Design rule
+
+~~~text
+Gungnir application API stays backend-neutral
+ODBC remains inside the adapter
+bound parameters are mandatory
+encryption and decimal limitations are explicit
+~~~
