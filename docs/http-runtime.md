@@ -1,37 +1,153 @@
 # HTTP Runtime
 
-Gungnir's HTTP/1.1 socket backend uses a cross-platform non-blocking readiness reactor.
+The HTTP runtime is the transport layer beneath Gungnir routing, Request, Response, middleware, sessions, authentication, and controller execution.
 
-`RuntimeOptions` centralizes request/header limits, connection limits, request limits per persistent connection, read/write/idle timeouts, graceful-shutdown timeout, and keep-alive policy.
+Application-facing HTTP contracts are defined in routing.md, request.md, response.md, and middleware.md.
 
-## Connection reactor
+# Responsibilities
 
-Listener and accepted sockets are non-blocking. The reactor waits for read/write readiness rather than assigning one blocking socket to a worker. It applies bounded connection admission, reads one request at a time per connection, buffers only within configured request limits, and writes responses incrementally when the socket is writable.
+The HTTP runtime owns:
 
-The reactor supports sequential HTTP/1.1 keep-alive requests and closes a connection when the client requests `close`, the server disables keep-alive, or `max_requests_per_connection` is reached. HTTP/1.0 remains close-by-default unless the client explicitly requests keep-alive.
+- listener sockets;
+- connection admission;
+- HTTP parsing;
+- limits and timeouts;
+- request construction;
+- router dispatch;
+- async request ownership;
+- response serialization;
+- keep-alive;
+- graceful shutdown;
+- transport-level cancellation.
 
-Header and request limits are enforced before routing. Oversized headers return 431; oversized requests return 413.
+Application controllers do not manage sockets.
 
-Read, write and idle phases are bounded by their corresponding runtime timeouts. Suspended route handlers are additionally bounded by `request_timeout`.
+# HTTP/1.1
 
-## Shutdown
+The built-in HTTP/1.1 backend uses non-blocking readiness-oriented connection handling.
 
-`Server::stop()` stops accepting new connections. Existing connections are allowed to finish within `shutdown_timeout`; idle connections are closed immediately and any remaining connections are forcibly released when the drain deadline expires.
+It should support sequential keep-alive requests per connection while respecting configured limits.
 
-## Bound port
+A connection closes when required by protocol/client request, server policy, maximum requests per connection, malformed input, timeout, or shutdown.
 
-`Server::bound_port()` exposes the actual listener port. This is useful for tests and for deployments that intentionally bind port `0`.
+# Limits
 
-## Asynchronous route completion
+RuntimeOptions should centralize limits such as:
 
-Controller-facing Gungnir syntax does not expose C++ coroutine machinery. A route task may genuinely suspend while the connection retains owned request state. Completion on a timer or executor thread publishes the response and signals the reactor through an internal wake socket. The reactor remains responsible for response serialization and network writes.
+~~~text
+header bytes
+request body bytes
+connection count
+requests per persistent connection
+read timeout
+write timeout
+idle timeout
+request timeout
+shutdown timeout
+~~~
 
-Each server-created `Request` carries a cancellation token. The reactor automatically signals it when the client disconnects while a handler is pending, `request_timeout` expires, or server shutdown cancels pending request work. Handlers and middleware can check `request.cancelled()` or retain `request.cancellation()` across suspension points.
+These are security and reliability controls.
 
-Cancellation is cooperative: Gungnir does not forcibly destroy a live coroutine frame. If a client disconnects or a request times out, the route task can still finish safely without writing to the released connection. Started route tasks are retained until completion before the server releases request-runtime ownership; `shutdown_timeout` bounds connection draining, not forced destruction of live coroutine frames.
+# Parse failures
 
-## Remaining transport work
+Transport/parser errors should produce appropriate HTTP responses where possible.
 
-`Transport` remains the boundary for future TLS-backed transports. `BodyStream` remains the response-streaming foundation. Timer deadlines are now integrated into the HTTP readiness loop; continuation execution remains intentionally delegated to the bounded executor rather than running user code inside socket readiness bookkeeping.
+Examples:
 
-This runtime does not yet claim HTTP/2, TLS termination, WebSocket frame handling, chunked request parsing, or asynchronous streaming responses.
+~~~text
+oversized headers -> 431
+oversized body    -> 413
+malformed request -> 400
+~~~
+
+Connection safety may require closing after malformed input.
+
+# Request ownership
+
+Once a request is dispatched, its state must remain valid until the controller/middleware task completes or is cancelled.
+
+This includes async suspension.
+
+Request data must not reference receive buffers that become invalid while the coroutine is suspended.
+
+# Async dispatch
+
+A route task may suspend.
+
+The runtime retains connection/request state and resumes response processing when the task completes.
+
+Coroutine continuations may run on executor threads while socket readiness remains reactor-owned.
+
+# Backpressure
+
+The runtime should not buffer unbounded request or response data.
+
+Streaming and large transfers should use bounded buffering and write readiness.
+
+# Keep-alive
+
+HTTP/1.1 keep-alive follows protocol and runtime policy.
+
+The runtime must serialize request/response processing correctly for a connection unless pipelining or multiplexing is explicitly supported.
+
+# Graceful shutdown
+
+Server shutdown should:
+
+1. stop accepting new connections;
+2. stop accepting new keep-alive work where required;
+3. let active dispatched requests drain within deadline;
+4. signal cancellation after deadline;
+5. close remaining sockets and resources.
+
+# Bound port
+
+The server should expose the actual bound port.
+
+This is useful for tests and port-zero development binding.
+
+# TLS
+
+TLS may be implemented by the built-in runtime or an external reverse proxy.
+
+When built in, TLS must integrate with the same non-blocking lifecycle, timeouts, shutdown, and certificate configuration.
+
+# HTTP/2 and WebSocket
+
+Protocol support must be documented according to actual repository capability.
+
+A feature should not be advertised solely because a parser or type exists.
+
+Protocol-specific backpressure, cancellation, and shutdown semantics must remain consistent with the application request model.
+
+# Trusted proxy boundary
+
+Client scheme, IP, and host forwarding metadata must only be accepted from configured trusted peers.
+
+Transport parsing alone does not make forwarded headers trustworthy.
+
+# Request IDs and tracing
+
+The HTTP boundary may create or accept request identifiers according to configured security policy and attach them to observability context.
+
+Tracing context must survive async execution.
+
+# Runtime/application boundary
+
+Transport parsing produces a Request.
+
+Router, middleware, and controller execution produce a Response.
+
+The HTTP runtime serializes that Response.
+
+Application code should not manipulate native socket buffers.
+
+# Design rule
+
+~~~text
+HTTP runtime owns transport
+router owns matching
+middleware owns request pipeline policy
+controller owns application action
+Response owns application response intent
+~~~
