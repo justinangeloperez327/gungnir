@@ -1,105 +1,170 @@
 # Security
 
-Gungnir security is layered. The framework supplies safe primitives and middleware contracts; cryptographic algorithms and deployment trust boundaries must remain explicit.
+Gungnir security is layered across language semantics, HTTP runtime, authentication, authorization, sessions, storage, database access, and deployment.
 
-## HTTP hardening
+The framework should provide safe defaults and explicit trust boundaries without claiming that deployment policy can be automated universally.
 
-Existing HTTP middleware provides:
+# Security principles
 
-- security response headers
-- request body limits
-- host validation
-- CORS policy
-- request identifiers
-- rate limiting
+Core principles are:
 
-These controls are application policy and should be configured deliberately.
+~~~text
+escape output by default
+parameterize database input
+fail authorization closed
+treat proxy headers as untrusted by default
+use secure session identifiers
+make raw/native escape hatches explicit
+never expose secrets in generated code
+bound untrusted input
+preserve cancellation and timeouts
+~~~
 
-## Constant-time comparison
+# HTTP hardening
 
-`security::constant_time_equal()` is available for comparing already-derived secret values where timing-sensitive equality is required.
+HTTP middleware/runtime should support request/header/body limits, host validation, CORS, security response headers, trusted proxy handling, rate limiting, request IDs/timing, and CSRF for browser session workflows.
 
-It is not a password hashing function and does not replace a vetted cryptographic library.
+These are policy controls and must be configured deliberately.
 
-## Header and cookie validation
+# Header safety
 
-`valid_header_value()` rejects carriage-return/newline injection. `valid_cookie_name()` validates cookie token names before serialization.
+Response headers must reject CR/LF injection.
 
-Framework-generated response metadata must not allow CRLF injection.
+Cookie names and values, attachment filenames, redirects, and other response metadata require safe serialization.
 
-## Proxies and rate limiting
+Do not concatenate untrusted values directly into raw headers.
 
-Client-supplied `X-Forwarded-For` is not trustworthy by itself. Rate limiting and client-IP resolution must only honor forwarding headers after a trusted-proxy boundary has been configured.
+# Trusted proxies
 
-Use `gungnir::http::trusted_proxies()` before `gungnir::http::rate_limit()` when an application is intentionally deployed behind a known reverse proxy:
+Forwarded client information is untrusted unless the direct peer is a configured trusted proxy.
 
-```cpp
-router.use(
-    gungnir::http::trusted_proxies({
-        .proxies = {
-            "127.0.0.1"
-        }
-    })
-);
+Headers such as X-Forwarded-For, Forwarded, and X-Forwarded-Proto must not automatically override socket-level peer or scheme information.
 
-router.use(
-    gungnir::http::rate_limit()
-);
-```
+# Rate limiting
 
-Without trusted proxy configuration, `rate_limit()` uses the socket peer IP recorded by the server and ignores spoofable forwarding headers.
+Rate limiting must use a trustworthy client or application key.
 
-## CSRF
+A process-local limiter only protects one process.
 
-CSRF protection depends on session lifecycle, token generation, token rotation, and request/session binding. It belongs with the session implementation rather than a fake standalone token check.
+Distributed rate limiting requires a shared backend with the required atomicity semantics.
 
-## Cryptography
+# CSRF
 
-Gungnir does not implement custom password hashing, encryption, signing, random-number generation, or TLS cryptography. Production implementations should use established cryptographic libraries and operating-system facilities.
+CSRF protection applies primarily to authenticated browser/session workflows.
 
+The contract requires a securely generated token, session binding, validation on state-changing requests, appropriate token rotation, and safe comparison.
 
-## CSRF protection
+CSRF is not a substitute for authentication or authorization.
 
-Cookie-authenticated browser routes can use session-bound CSRF protection:
+# Authentication
 
-```cpp
-router.use(
-    gungnir::session::middleware(
-        session_store
-    )
-);
+Authentication verifies identity.
 
-router.use(
-    gungnir::http::csrf()
-);
+Password storage must use a vetted password-hashing implementation through framework password helpers/runtime.
 
-router.use(
-    gungnir::auth::session(
-        identity_resolver
-    )
-);
-```
+Do not implement password hashing with generic hashes or home-grown cryptography.
 
-Use this order: **session → CSRF → session authentication**. The ordering lets CSRF observe session-ID rotation caused by login, logout, or stale authentication and rotate the CSRF token at the same boundary.
+# Authorization
 
-Safe methods (`GET`, `HEAD`, and `OPTIONS`) do not require a submitted token. They ensure a session token exists. Application code can render it with:
+Authorization is separate from authentication.
 
-```cpp
-auto token =
-    gungnir::http::csrf_token(
-        request
-    );
-```
+Undefined policy or ability resolution must fail closed.
 
-Unsafe methods (`POST`, `PUT`, `PATCH`, and `DELETE`) require the current token in either:
+A hidden button in a view is not authorization enforcement.
 
-- the `X-CSRF-Token` request header; or
-- the `_token` URL-encoded form field.
+# Sessions
 
-Query-string tokens are intentionally not accepted because URLs are routinely copied, logged, cached, and included in referrers.
+Session identifiers require cryptographic randomness.
 
-Token comparison is constant-time. A missing or mismatched token returns HTTP **419 Page Expired** before the route handler runs.
+Login or privilege changes regenerate IDs.
 
-When the underlying session ID rotates, the CSRF token also rotates. A token captured before login/logout cannot be reused with the new authenticated session.
+Logout invalidates state.
 
-CSRF protects cookie-authenticated browser requests from cross-site request forgery. It does not mitigate XSS; scripts executing in the application's own origin can read or submit same-origin state.
+Production cookies should use HttpOnly, Secure, and an appropriate SameSite policy.
+
+# Constant-time comparison
+
+Constant-time equality may be used for already-derived secrets or tokens where timing resistance matters.
+
+It is not a password hashing function.
+
+# Database
+
+Queries must use bound parameters.
+
+Do not interpolate untrusted runtime values into SQL.
+
+Database credentials belong in secrets/configuration.
+
+# Views
+
+Double-brace interpolation is escaped by default.
+
+Raw output is explicit and must only receive trusted or sanitized HTML.
+
+HTML, attribute, URL, JavaScript, and CSS contexts may require different encoders.
+
+# Storage
+
+Storage paths must remain contained within configured roots or buckets.
+
+Reject traversal, unsafe absolute paths, NULs, and unsafe link/reparse traversal according to adapter guarantees.
+
+# Uploads
+
+Uploaded files are untrusted.
+
+Validate size, content/type as required by the application, filename handling, storage destination, and authorization.
+
+Never trust a browser-supplied filename as a safe filesystem path.
+
+# Mail
+
+Mail headers, addresses, and attachments must be encoded and validated at the transport boundary.
+
+Credentials remain runtime configuration secrets.
+
+# Native extensions
+
+Loading a native plugin executes code with application privileges.
+
+Plugin loading must be explicit.
+
+Do not auto-execute arbitrary libraries found on disk.
+
+# Cryptography
+
+Gungnir should use reviewed platform/library cryptographic implementations.
+
+The framework should not invent cryptographic primitives.
+
+Key generation, encryption, TLS, password hashing, and signing require explicit providers and lifecycle.
+
+# TLS
+
+Production network traffic should use TLS at the appropriate termination layer.
+
+If the built-in runtime terminates TLS, certificate validation and protocol behavior must follow the runtime contract.
+
+Reverse-proxy TLS is valid when the trust boundary is configured correctly.
+
+# Secrets
+
+Secrets must not be embedded in source examples as real values, generated C++, logs, diagnostics, or queue payloads unless an explicit secure design requires it.
+
+Use environment or secret-management configuration.
+
+# Production errors
+
+Unknown failures should render generic responses.
+
+Stack traces, generated source paths, credentials, and native exception details belong in protected logs or development tooling.
+
+# Design rule
+
+~~~text
+safe by default
+trust explicitly
+validate at boundaries
+keep security guarantees through lowering and runtime adapters
+~~~
