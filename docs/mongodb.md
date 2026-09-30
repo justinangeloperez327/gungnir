@@ -1,156 +1,39 @@
 # MongoDB Adapter
 
-Gungnir provides an optional MongoDB adapter backed by the official MongoDB C Driver.
+> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/mongodb.md).
 
-MongoDB is document-native.
+## Current behavior
 
-Gungnir may provide a familiar model/ORM surface where semantics can be mapped safely, but the adapter must not pretend MongoDB provides relational guarantees that it does not have.
+The optional adapter requires libmongoc/libbson. Build and link it explicitly:
 
-# Registration
+```sh
+cmake -S . -B build -DGUNGNIR_WITH_MONGODB=ON
+cmake --build build --config Release
+```
 
-The adapter registers explicitly with the database driver registry during application bootstrap.
+```cmake
+target_link_libraries(app PRIVATE gungnir::mongodb)
+```
 
-A configured MongoDB connection may then be selected by the ORM and migration/runtime layers.
+Register before configuring database connections:
 
-# Native document execution
+```cpp
+gungnir::database::register_mongodb(app.database_drivers());
+app.configure_database();
+```
 
-MongoDB operations should compile to document/BSON operations rather than SQL.
+Select `DB_CONNECTION=mongodb` and configure the server/database/credentials through the common Settings contract. Include `<gungnir/database/mongodb.hpp>` for registration. Raw query parameter representation: backend-specific document query representation.
 
-Parameter/binding concepts should remain explicit so runtime values are not spliced into command text unsafely.
+Live integration tests use `GUNGNIR_MONGODB_INTEGRATION_TESTS=ON` and need a reachable correctly configured server. Enabling a build flag does not connect to a database.
 
-# Queries
+## Limits and planned work
 
-The adapter may use find, aggregate, update, insert, delete, and other MongoDB-native operations.
+MongoDB is a document backend. SQL joins, DDL, foreign keys and migration semantics are not portable to it; transaction support depends on server topology.
 
-ORM operations are translated according to their validated semantic identity.
+## Implementation references
 
-Unsupported relational-only operations should produce clear capability errors.
+- [include/gungnir/database/mongodb.hpp](../include/gungnir/database/mongodb.hpp)
+- [CMakeLists.txt](../CMakeLists.txt)
+- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
 
-# Model identity
-
-MongoDB uses _id as the native primary key.
-
-Gungnir may expose an application model id abstraction and map it to _id.
-
-The exact strategy depends on model key configuration.
-
-If the framework provides generated integer IDs through a sequence collection, that behavior is a Gungnir compatibility layer rather than a native MongoDB auto-increment feature.
-
-# Relationships
-
-MongoDB does not enforce relational foreign keys.
-
-Gungnir relationship conveniences may represent application query conventions, but they do not create database-enforced referential integrity unless explicitly implemented through application logic.
-
-# Migrations
-
-MongoDB migration operations may map to commands such as:
-
-~~~text
-create
-collMod
-createIndexes
-dropIndexes
-update
-drop
-~~~
-
-Schema validation is different from relational DDL.
-
-The migration compiler/runtime should expose backend capability differences clearly.
-
-# Transactions
-
-Transaction support depends on MongoDB deployment topology and driver/runtime support.
-
-Standalone deployments do not provide the same transaction capabilities as properly configured replica sets or sharded deployments.
-
-The adapter must report capabilities rather than assuming transaction availability.
-
-# Value mapping
-
-BSON values map into Gungnir runtime values according to explicit rules.
-
-Important categories include:
-
-~~~text
-null
-bool
-integer
-double
-decimal where supported
-string
-date/time
-object/document
-array
-object ID
-binary
-~~~
-
-The target mapping should preserve Gungnir decimal semantics when BSON Decimal128 is supported.
-
-# Object IDs
-
-Applications using native ObjectId keys require an explicit Gungnir/runtime key representation.
-
-Do not silently coerce ObjectId into an unrelated integer type.
-
-# Connection configuration
-
-Configuration may include:
-
-~~~text
-URI / hosts
-database
-authentication
-TLS
-replica set
-timeouts
-pool options
-application name
-~~~
-
-Credentials belong in secrets/configuration.
-
-# Cancellation
-
-Operations should observe runtime cancellation where supported by the driver path.
-
-If cancellation is only cooperative at operation boundaries, that limitation should remain explicit.
-
-# Async behavior
-
-A blocking MongoDB driver call is not made non-blocking by use inside an async action.
-
-The runtime must use genuine non-blocking support or an explicit blocking/offload executor.
-
-# Health
-
-A bounded ping/command may provide live readiness information.
-
-# Security
-
-Production deployments should use appropriate authentication, authorization, TLS, and network restrictions.
-
-MongoDB command documents and logs must not expose credentials.
-
-# Integration testing
-
-Live tests should cover:
-
-- CRUD;
-- model key mapping;
-- query translation;
-- indexes/migrations;
-- transaction capability behavior;
-- BSON value mapping;
-- cancellation where supported.
-
-# Design rule
-
-~~~text
-MongoDB remains document-native
-Gungnir exposes common application semantics only where valid
-capability differences stay explicit
-no fake relational guarantees
-~~~
+See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/mongodb.md).

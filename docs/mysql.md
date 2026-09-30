@@ -1,54 +1,39 @@
 # MySQL Adapter
 
-Gungnir provides an optional MySQL adapter using the native MySQL C prepared-statement API. The build can link either MariaDB Connector/C or a compatible MySQL client library discovered by Gungnir's CMake module.
+> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/mysql.md).
 
-Enable it when configuring Gungnir:
+## Current behavior
+
+The optional adapter requires MariaDB Connector/C or a compatible MySQL C client. Build and link it explicitly:
 
 ```sh
 cmake -S . -B build -DGUNGNIR_WITH_MYSQL=ON
+cmake --build build --config Release
 ```
-
-The exported CMake target is:
 
 ```cmake
 target_link_libraries(app PRIVATE gungnir::mysql)
 ```
 
-## Registration
-
-Register the adapter before the application configures its database:
+Register before configuring database connections:
 
 ```cpp
-gungnir::database::register_mysql(
-    app.database_drivers()
-);
+gungnir::database::register_mysql(app.database_drivers());
+app.configure_database();
 ```
 
-After registration, `DB_CONNECTION=mysql` uses the concrete adapter through the normal Gungnir connection pool, transaction, migration and ORM contracts.
+Select `DB_CONNECTION=mysql` and configure the server/database/credentials through the common Settings contract. Include `<gungnir/database/mysql.hpp>` for registration. Raw query parameter representation: ?.
 
-## Parameterization
+Live integration tests use `GUNGNIR_MYSQL_INTEGRATION_TESTS=ON` and need a reachable correctly configured server. Enabling a build flag does not connect to a database.
 
-The adapter uses native prepared statements through `mysql_stmt_prepare`, `mysql_stmt_bind_param` and `mysql_stmt_execute`. Values are never interpolated into SQL.
+## Limits and planned work
 
-Raw MySQL statements use `?` placeholders:
+DECIMAL/NEWDECIMAL currently map to Double; use explicit conversion where exact decimal semantics matter.
 
-```cpp
-connection->execute(
-    "SELECT * FROM users WHERE email = ?",
-    {email}
-);
-```
+## Implementation references
 
-ORM queries already compile MySQL placeholders in this form.
+- [include/gungnir/database/mysql.hpp](../include/gungnir/database/mysql.hpp)
+- [CMakeLists.txt](../CMakeLists.txt)
+- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
 
-## Values
-
-Signed and unsigned integers, booleans and floating-point values are converted into Gungnir model values. Other MySQL values are returned as strings, and SQL NULL is represented as `nullptr`.
-
-MySQL `DECIMAL` and `NEWDECIMAL` currently map to `Double` because the model value type does not yet provide arbitrary-precision decimals.
-
-## Transactions and health
-
-The adapter implements begin, commit, rollback, savepoint capability reporting and `mysql_ping` health checks.
-
-Live integration coverage is enabled with `GUNGNIR_MYSQL_INTEGRATION_TESTS=ON` and requires a reachable MySQL-compatible server.
+See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/mysql.md).

@@ -1,173 +1,21 @@
 # Dependency Injection
 
-Gungnir dependency injection separates application dependencies from construction mechanics.
+> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/dependency-injection.md).
 
-Application-facing declarations use inject:
+## Current behavior
 
-~~~gnr
-controller UserController {
-    inject UserService users;
+Native Application provides `bind`, `singleton`, `scoped`, `instance` and `resolve`. The Container owns bindings and request service scopes. Controllers can use `inject Type name;` to request generated constructor/member plumbing.
 
-    public show(int id) {
-        return json(users.find(id));
-    }
-}
-~~~
+Register dependencies before resolving the controller. Request-scoped dependencies should be resolved through request services.
 
-The compiler resolves UserService as a type and the runtime container supplies the instance.
+## Limits and planned work
 
-# Responsibilities
+General automatic constructor discovery and every target declaration's injection rules are not established by controller injection support. Keep native registrations explicit, and do not retain request-scoped services past their scope lifetime.
 
-Dependency injection provides:
+## Implementation references
 
-- service registration;
-- constructor/factory resolution;
-- lifetime management;
-- scoped request services;
-- test overrides;
-- circular dependency detection.
+- [include/gungnir/core/application.hpp](../include/gungnir/core/application.hpp)
+- [include/gungnir/core/container.hpp](../include/gungnir/core/container.hpp)
+- [src/language/controller_lowering.cpp](../src/language/controller_lowering.cpp)
 
-It does not replace modules/imports.
-
-Import makes a type visible to the compiler.
-
-inject requests an instance from the application container.
-
-# Lifetimes
-
-Supported container lifetimes are:
-
-~~~text
-transient
-singleton
-scoped
-instance
-~~~
-
-Transient:
-a new instance is created for each resolution.
-
-Singleton:
-one application-owned instance is reused.
-
-Scoped:
-one instance is reused only inside an explicit request/operation scope.
-
-Instance:
-an already-created instance is registered.
-
-# Scoped services
-
-Scoped bindings must only resolve inside an active scope.
-
-Resolving a scoped service without a scope is an error.
-
-HTTP integration should create and destroy request scopes automatically.
-
-Controllers should not call begin_scope/end_scope manually.
-
-# Framework injection
-
-Framework declarations that support injection include:
-
-- controllers;
-- middleware;
-- policies;
-- listeners;
-- notifications/mail where allowed by their contracts.
-
-Each declaration's canonical documentation defines whether inject is legal.
-
-# Type-based resolution
-
-The compiler resolves injected type syntax to TypeId/SymbolId before lowering.
-
-Generated code should use resolved container metadata rather than repeated runtime string lookup where possible.
-
-# Factories
-
-Bindings may use factories when construction requires configuration or runtime state.
-
-Factory cycles must still be detected.
-
-A factory must not silently change the declared service lifetime.
-
-# Interfaces and abstractions
-
-Where an interface/contract abstraction is available, the container may bind the contract to an implementation.
-
-Until a first-class Gungnir interface syntax exists, native/runtime services may expose explicit binding metadata.
-
-Application code should not depend on C++ pointer ownership syntax.
-
-# Automatic construction
-
-Unregistered concrete native services may be auto-constructible only when the runtime can do so safely and predictably.
-
-Automatic construction must not hide ambiguous constructors or lifetime requirements.
-
-Explicit registration is preferred for infrastructure services.
-
-# Circular dependencies
-
-Circular resolution must fail with a readable dependency path.
-
-Example:
-
-~~~text
-A -> B -> C -> A
-~~~
-
-Do not recurse until stack failure.
-
-# Overrides
-
-Bindings may be replaced deliberately for:
-
-- tests;
-- application customization;
-- package overrides.
-
-Test overrides should be scoped to the test/application container and not mutate unrelated process-global state.
-
-# Async/request scope safety
-
-A scoped service used across await must remain attached to the logical request/operation scope.
-
-Scope ownership must follow coroutine context rather than thread identity.
-
-# Shutdown
-
-Singleton/application-owned services that require shutdown should participate in the application lifecycle through providers/runtime hooks.
-
-The container should not depend on unspecified C++ global destruction order.
-
-# Compiler contract
-
-Source:
-
-~~~gnr
-inject UserService users;
-~~~
-
-should become validated metadata similar to:
-
-~~~text
-ValidatedInjection
-  symbol = users
-  requestedType = UserService
-  containerResolution = resolved
-~~~
-
-Lowering generates constructor/container plumbing.
-
-The transpiler must not rediscover the injected type from source text.
-
-# Design rule
-
-~~~text
-imports resolve names
-inject resolves instances
-container owns lifetime
-application lifecycle owns shutdown
-~~~
+See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/dependency-injection.md).

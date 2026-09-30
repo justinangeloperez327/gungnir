@@ -1,137 +1,21 @@
-# Filesystem and Storage
+# Storage
 
-Gungnir storage exposes named disks behind a storage contract.
+> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/storage.md).
 
-Application code addresses logical object paths. Adapters implement local filesystem or remote/object storage behavior.
+## Current behavior
 
-# Disk operations
+Manager registers named Disk instances and selects a default disk. The native Disk contract uses `exists`, `get`, `put`, `remove`, `move`, `copy`, `size` and `files`. `get` returns an optional string; LocalDisk roots object paths under a configured directory.
 
-A disk may support:
+Cancellation overloads check cancellation around operations. Keep paths logical and let the adapter resolve them.
 
-~~~text
-read
-write
-exists
-delete
-copy
-move
-size
-list
-metadata
-streaming
-~~~
+## Limits and planned work
 
-Capabilities should be explicit per adapter.
+The public names are not `read`/`write`/`delete`/`list`. There is no universal remote object-storage implementation implied by Disk. Cancellation checks around synchronous operations do not guarantee interruption of a blocked filesystem call or undo a completed write.
 
-# Named disks
+## Implementation references
 
-Applications configure named disks such as:
+- [include/gungnir/storage/disk.hpp](../include/gungnir/storage/disk.hpp)
+- [include/gungnir/storage/local_disk.hpp](../include/gungnir/storage/local_disk.hpp)
+- [include/gungnir/storage/manager.hpp](../include/gungnir/storage/manager.hpp)
 
-~~~text
-local
-public
-uploads
-archive
-remote
-~~~
-
-The logical disk name is application configuration, not a raw filesystem path.
-
-# Local disk
-
-LocalDisk is rooted at one configured directory.
-
-Application object paths must remain relative to that root.
-
-Reject:
-
-- absolute paths;
-- NUL characters;
-- parent traversal;
-- unsafe symbolic-link/reparse traversal.
-
-# Path containment
-
-Containment must remain safe under concurrent filesystem changes as far as the platform implementation guarantees.
-
-POSIX implementations should prefer descriptor-relative no-follow operations.
-
-Windows implementations should use handle/reparse-point verification appropriate to the platform.
-
-Adapter docs must state any remaining race limitations honestly.
-
-# Writes
-
-Where durable/atomic replacement is promised, the adapter must implement the required file and directory flush/rename semantics.
-
-Do not label a simple overwrite as durable atomic storage without those guarantees.
-
-# Temporary files
-
-Atomic write implementations should clean up abandoned temporary files where practical.
-
-Temporary candidates must remain inside the trusted storage root.
-
-# Cancellation
-
-Long storage operations may expose cancellation-aware APIs.
-
-Cancellation should leave destination state according to a documented contract.
-
-Partial/corrupt committed output should not be presented as a successful write.
-
-# Remote storage
-
-Remote/object storage adapters should preserve the logical disk contract while documenting differences such as:
-
-~~~text
-eventual consistency
-multipart upload
-metadata behavior
-rename implemented as copy+delete
-conditional writes
-versioning
-ETags
-~~~
-
-Do not pretend remote object stores have local filesystem semantics.
-
-# Uploads
-
-Uploaded files are untrusted request data.
-
-The storage layer can persist bytes, but the application must decide authorization, validation, filename policy, retention, and content rules.
-
-Browser-provided filenames are metadata, not safe paths.
-
-# Public files
-
-Public URL generation should be explicit per disk/configuration.
-
-A stored object does not automatically become public.
-
-# Security
-
-Storage credentials belong in configuration/secrets.
-
-Object paths should not expose server filesystem layout.
-
-Sensitive objects require correct access-control policy.
-
-# Async behavior
-
-A storage operation is only truly async when the adapter/runtime avoids blocking the request executor.
-
-Blocking filesystem or SDK calls should use the runtime's blocking/offload strategy when invoked from async request paths.
-
-# Testing
-
-Tests should use isolated temporary roots or test adapters with deterministic cleanup.
-
-# Design rule
-
-~~~text
-application uses logical disks and object paths
-adapter owns transport/filesystem semantics
-containment and durability guarantees must be explicit
-~~~
+See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/storage.md).

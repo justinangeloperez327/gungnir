@@ -1,163 +1,40 @@
 # CLI and Code Generation
 
-Gungnir's CLI is project-aware and should generate canonical .gnr source rather than exposing native C++ plumbing.
+> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/cli-codegen.md).
 
-# Project commands
+## Current behavior
 
-Core project commands include:
+| Command | Current purpose |
+| --- | --- |
+| `gungnir new <name> [path]` | Create a project |
+| `gungnir build [--release]` | Generate native source and build with CMake |
+| `gungnir run [--release]` | Build/run the project |
+| `gungnir dev` | Run in development mode |
+| `gungnir make:model <name>` | Generate a model |
+| `gungnir make:controller <name>` | Generate a typed controller |
+| `gungnir make:middleware <name>` | Generate middleware |
+| `gungnir make:migration <name>` | Generate a migration |
+| `gungnir make:request <name>` | Generate a native request-validation helper |
+| `gungnir make:job <name>` | Generate a job |
+| `gungnir migrate` | Apply migrations |
+| `gungnir migrate:rollback` | Roll back migrations |
+| `gungnir migrate:reset` | Reset migrations |
+| `gungnir migrate:status` | Inspect applied state |
+| `gungnir migrate:plan` | Inspect migration plans |
+| `gungnir --version` | Show repository CLI version |
 
-~~~text
-gungnir new <name> [path]
-gungnir build [--release]
-gungnir run [--release]
-gungnir dev
-~~~
+`gungnirc <input.gnr> [-o output.cpp] [--check] [--no-line-directives]` transpiles one file. `--format` formats one file and writes to stdout or `-o`.
 
-Project discovery may walk upward until the Gungnir project marker/configuration is found.
+Project discovery uses `.gungnir-project`. Generated files must not overwrite existing files silently. `GUNGNIR_CMAKE_PREFIX` supplies an installed package search prefix.
 
-# Compiler commands
+## Limits and planned work
 
-Compiler-facing commands should include:
+The compiler does not expose the proposed AST/symbol/type/semantic/IR dump flags, `--emit-cpp`, or a project argument for `--check`/`--format`. Policy/event/listener/notification/mail generators are planned. `dev` currently delegates to development `run`; it is not a file watcher or hot-reload guarantee. Some generators still emit legacy `class ... : ...` syntax.
 
-~~~text
-gungnirc --check <file/project>
-gungnirc --format <file/project>
-gungnirc --dump-ast
-gungnirc --dump-symbols
-gungnirc --dump-types
-gungnirc --dump-semantic
-gungnirc --dump-validated-ast
-gungnirc --dump-cpp-ir
-gungnirc --emit-cpp
-~~~
+## Implementation references
 
-The exact command spelling may evolve, but compiler phases should be inspectable independently.
+- [tools/gungnir.cpp](../tools/gungnir.cpp)
+- [tools/gungnirc.cpp](../tools/gungnirc.cpp)
+- [src/cli/project.cpp](../src/cli/project.cpp)
 
-# Generators
-
-Generators should exist only for source constructs with a defined language contract and working lowering/runtime support.
-
-Canonical generator families may include:
-
-~~~text
-make:model
-make:controller
-make:middleware
-make:migration
-make:policy
-make:event
-make:listener
-make:notification
-make:mail
-~~~
-
-Additional generators should be enabled only when their source-language contracts exist.
-
-# Generated syntax
-
-Generators must follow the canonical docs:
-
-~~~text
-model.md
-controller.md
-middleware.md
-migration.md
-policy.md
-event.md
-listener.md
-notification.md
-mail.md
-grammar.md
-~~~
-
-A generator must never become an alternate parser/language definition.
-
-# Safety
-
-Generation must not overwrite an existing application file silently.
-
-Default behavior should fail with a clear message.
-
-A future explicit force/replace mode may exist, but it must be opt-in.
-
-# Naming
-
-Generators normalize names deterministically.
-
-Example intent:
-
-~~~text
-UserController
-  -> app/controllers/user_controller.gnr
-~~~
-
-Exact path conventions should follow the module contract.
-
-# Module generation
-
-Generated files should naturally map to their inferred module names.
-
-An explicit module declaration is optional when path-based module identity is sufficient.
-
-# Build
-
-gungnir build should conceptually perform:
-
-~~~text
-project discovery
-  -> source discovery
-  -> parse
-  -> semantics
-  -> Validated AST
-  -> C++ lowering/emission
-  -> native C++ build
-~~~
-
-A failed semantic check should stop before native compilation.
-
-# Development command
-
-gungnir dev should only claim features that are actually implemented.
-
-Hot reload/file watching should not be documented as reliable until the development runtime can:
-
-- detect changes;
-- rebuild;
-- restart safely;
-- report failures;
-- avoid orphan processes.
-
-# Generated C++ inspection
-
-Developers should be able to retain/inspect generated C++ without making that generated code part of the normal source workflow.
-
-Generated files are build artifacts.
-
-# Database commands
-
-Migration commands may include:
-
-~~~text
-migrate
-rollback
-reset
-status
-plan
-~~~
-
-They should operate through the canonical migration runtime and backend capability contracts.
-
-# Determinism
-
-Generators and compiler emission should be deterministic.
-
-The same inputs/configuration should generate the same source/output ordering.
-
-# Design rule
-
-~~~text
-CLI generates canonical Gungnir
-compiler validates Gungnir
-transpiler generates C++23
-native toolchain builds the result
-~~~
+See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/cli-codegen.md).
