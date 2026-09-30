@@ -1,72 +1,199 @@
-# Database
+# Database Runtime
 
-Gungnir's database layer is the execution foundation for the ORM, migrations, and database-aware validation.
+The database runtime is the execution layer beneath the ORM, migrations, transactions, and database-backed validation.
 
-## Connections
+Application-facing query semantics are defined by orm.md and migration.md. This document defines the runtime and adapter boundary.
 
-Applications configure named connections through `database::Manager`. A connection owns a concrete driver and exposes parameterized execution.
+# Responsibilities
 
-```cpp
-auto result = connection->execute(
-    "SELECT * FROM users WHERE email = $1",
-    {email}
-);
-```
+The database layer provides:
 
-Bindings are passed separately from the statement. Application code should not interpolate untrusted values into SQL.
+- named connections;
+- driver registration;
+- connection acquisition;
+- parameterized execution;
+- transactions;
+- cancellation;
+- health checks;
+- pooling;
+- backend capability reporting.
 
-A `database::Query` can also carry a statement and its bindings as one value.
+Application code should not need native client-library handles.
 
-## Drivers
+# Connections
 
-Gungnir separates the database contract from vendor adapters. `Driver` is the adapter boundary and `DriverRegistry` registers concrete drivers.
+Applications configure named connections.
 
-The core recognizes PostgreSQL, MySQL, SQL Server, and MongoDB configuration.
+A connection executes a statement with a separate bindings collection:
 
-PostgreSQL has an optional libpq adapter built with `GUNGNIR_WITH_POSTGRESQL=ON`; it is exported as `gungnir::postgresql` and registered with `database::register_postgresql()`.
+~~~text
+statement
+bindings[]
+~~~
 
-MySQL has an optional native C-client adapter built with `GUNGNIR_WITH_MYSQL=ON`; it is exported as `gungnir::mysql` and registered with `database::register_mysql()`. The build accepts MariaDB Connector/C or a compatible MySQL client library.
+Runtime values must not be interpolated directly into SQL text.
 
-SQL Server has an optional ODBC adapter built with `GUNGNIR_WITH_SQLSERVER=ON`; it is exported as `gungnir::sqlserver` and registered with `database::register_sqlserver()`. It targets Microsoft ODBC Driver 18 for SQL Server at runtime.
+# Drivers
 
-MongoDB has an optional `libmongoc` adapter built with `GUNGNIR_WITH_MONGODB=ON`; it is exported as `gungnir::mongodb` and registered with `database::register_mongodb()`. MongoDB remains document-native: ORM and migration plans compile to BSON-compatible command documents rather than SQL. Model `id` maps to MongoDB `_id`.
+The core database contract is implemented by backend adapters.
 
-Raw SQL uses the placeholder syntax of the active backend. PostgreSQL uses `$1`, `$2`, and so on; MySQL and SQL Server use `?`. ORM queries compile the correct backend placeholders automatically.
+Supported adapter families include:
 
-Vendor-specific connection attributes can be supplied through `DB_OPTIONS`. For SQL Server local development with a self-signed certificate, `TrustServerCertificate=yes` can be used; production deployments should validate the server certificate.
+~~~text
+SQLite
+PostgreSQL
+MySQL / MariaDB-compatible client
+SQL Server
+MongoDB
+~~~
 
-## Pooling
+Concrete availability depends on build and runtime configuration.
 
-`ConnectionPool` creates a bounded set of connections and distributes acquisitions across them. The current pool is deliberately small and deterministic; production queueing and lease semantics belong to later runtime work rather than being hidden behind a misleading API.
+# Driver registry
 
-## Cancellation
+Drivers register through an explicit registry/application bootstrap path.
 
-`Connection::execute(...)` has a cancellation-aware overload that accepts a `CancellationToken`. The connection checks the token before execution, registers the driver's cancellation hook only while that query owns the connection, and re-checks the token after the driver returns. A cancelled operation throws `OperationCancelled` instead of being wrapped as `database::Error`.
+Runtime adapter discovery must not depend on unspecified global static initialization order.
 
-```cpp
-auto result = connection->execute(
-    "SELECT * FROM users WHERE email = $1",
-    {email},
-    request.cancellation()
-);
-```
+# ORM boundary
 
-`Driver::cancel()` is the vendor interruption boundary. PostgreSQL and SQL Server provide native interruption in their concrete adapters: PostgreSQL signals its active backend through a separate authenticated connection, while SQL Server cancels the active ODBC statement handle. Drivers without an equivalent safe interruption mechanism still benefit from pre-execution rejection and post-call cancellation detection; Gungnir does not falsely claim that every blocking vendor call can be forcibly aborted.
+The ORM lowers Gungnir query intent into backend/runtime database operations.
 
-## Transactions
+Example application code:
 
-`Manager::transaction()` pins work to one connection. `Transaction::run()` commits on success and rolls back on exceptions. Nested transaction/savepoint semantics are explicit driver capabilities and are not emulated by the core.
+~~~gnr
+const user = User::where('email', email)
+    .first();
+~~~
 
-Transaction closures are currently **synchronous and thread-affine by design**. `Transaction` is non-movable, its operations verify the creating thread, and `run()` does not accept callbacks returning `Task<T>`. The transaction-scoped connection override is internal to the synchronous closure and is isolated per thread. This prevents a suspended coroutine from silently resuming on another executor worker while still assuming ownership of a thread-bound database transaction.
+The database layer receives a parameterized query plan or statement. It does not parse Gungnir source.
 
-True asynchronous transactions require coroutine-local execution context and a connection-leasing model that can preserve transaction ownership across suspension. Gungnir does not claim that capability yet.
+# Parameterization
 
-Connections expose `supports_transactions()` and `supports_savepoints()`. The migration runner honors these capabilities. The initial MongoDB adapter targets standalone deployments and reports transactions as unsupported instead of emulating them; replica-set transaction support is separate work.
+Bindings are always separate runtime values.
 
-## Errors
+This is a security invariant.
 
-Driver execution failures are wrapped as `database::Error` with backend, connection name, and statement context. Binding values are intentionally not copied into the exception to reduce accidental credential or personal-data leakage.
+Example conceptual SQL:
 
-## Health
+~~~text
+SELECT ... WHERE email = ?
+bindings = [email]
+~~~
 
-`Connection::healthy()` delegates to the driver ping contract. This is a connectivity signal, not an application readiness guarantee.
+The exact placeholder syntax is backend-specific.
+
+# Pooling
+
+Connection pooling is owned by the database runtime/manager.
+
+A pool should define:
+
+- maximum size;
+- acquisition timeout;
+- idle policy;
+- health/reconnect behavior;
+- shutdown behavior.
+
+Application models/controllers should not manually return native connections to pools.
+
+# Transactions
+
+Transactions preserve one logical transaction context and define commit, rollback, nested/savepoint behavior where supported, failure propagation, and backend capability limitations.
+
+# Async transactions
+
+A synchronous thread-affine transaction must not be carried across arbitrary await points.
+
+Async transactions require coroutine-safe connection ownership, coroutine/request transaction context, and suspension-safe driver behavior.
+
+Until that contract is implemented for a backend/runtime, async transaction use should be rejected rather than emulated unsafely.
+
+# Cancellation
+
+Database operations should observe cancellation when the adapter supports it.
+
+Adapters must document whether cancellation is:
+
+~~~text
+native in-flight cancellation
+cooperative boundary cancellation
+unsupported
+~~~
+
+# Errors
+
+Database failures should map into stable framework error categories such as:
+
+~~~text
+connection
+timeout
+cancelled
+constraint
+transaction
+query
+configuration
+unsupported capability
+~~~
+
+Raw vendor error text may be logged but should not automatically be exposed to clients.
+
+# Values
+
+Backend values map into Gungnir semantic/runtime values.
+
+Mappings must preserve language guarantees.
+
+Exact decimal semantics must not be silently presented as guaranteed when an adapter currently maps DECIMAL/NUMERIC through binary floating point. Adapter limitations must remain explicit.
+
+# Health
+
+A driver may provide a bounded live health check suitable for readiness use.
+
+Health checks should not mutate application data.
+
+# Backend capabilities
+
+Drivers should expose capabilities rather than forcing higher layers to guess from the driver name.
+
+Examples:
+
+~~~text
+transactions
+savepoints
+DDL transactions
+native cancellation
+returning clauses
+JSON/document operations
+foreign keys
+async execution
+~~~
+
+# MongoDB
+
+MongoDB remains document-native.
+
+The ORM/migration layers may normalize common model behavior, but the runtime must not pretend relational guarantees exist where MongoDB does not provide them.
+
+# Security
+
+Database credentials come from configuration/secrets.
+
+Generated C++ must not embed environment credentials.
+
+Query values remain bound parameters.
+
+# Shutdown
+
+Pools and connections participate in application shutdown.
+
+New acquisition should stop during shutdown and outstanding owned work should drain or cancel according to lifecycle policy.
+
+# Design rule
+
+~~~text
+ORM defines application query semantics
+database runtime executes parameterized operations
+driver adapts one backend
+backend limitations stay explicit
+~~~
