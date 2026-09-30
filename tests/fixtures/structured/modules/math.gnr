@@ -1,0 +1,2 @@
+module math;
+export function int add(int left, int right = 2) { return left + right; }

@@ -4,7 +4,7 @@
 namespace gungnir::language {
 
 inline constexpr std::string_view language_name = "Gungnir";
-inline constexpr std::string_view language_version = "1.0";
+inline constexpr std::string_view language_version = "0.1";
 inline constexpr std::string_view source_extension = ".gnr";
 
 enum class Compatibility {
@@ -16,9 +16,9 @@ enum class Compatibility {
 struct LanguageFeatures {
     bool inferred_bindings{true};
     bool immutable_bindings{true};
-    bool classes{true};
-    bool interfaces{true};
-    bool enums{true};
+    bool classes{false};
+    bool interfaces{false};
+    bool enums{false};
     bool modules{true};
     bool imports{true};
     bool optionals{true};
@@ -26,6 +26,11 @@ struct LanguageFeatures {
     bool async_await{true};
 };
 
-inline constexpr LanguageFeatures stable_features{};
+// Capability flags describe the structured Compiler / --strict frontend.
+// Native C++ passthrough is available separately through Transpiler.
+inline constexpr Compatibility compiler_compatibility = Compatibility::experimental;
+inline constexpr LanguageFeatures implemented_features{};
+inline constexpr LanguageFeatures stable_features = implemented_features; // Legacy API name; not a stability guarantee.
 
 } // namespace gungnir::language
+

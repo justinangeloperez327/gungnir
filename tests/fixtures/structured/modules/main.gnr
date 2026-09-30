@@ -1,0 +1,3 @@
+module main;
+import math as Math;
+function int result() { return Math::add(right: 8, left: 3); }

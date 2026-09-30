@@ -1,0 +1,37 @@
+function int add(int left, int right = 2) { return left + right; }
+function string greeting(string who) { return 'Hello ' + who; }
+event Created { int id; string title; }
+listener RecordCreated { handle(Created event) { const id = event.id; } }
+job Ping { int id; handle() { const copy = id; } }
+mail Welcome { string username; subject() { return 'Welcome ' + username; } html() { return '<b>Hello</b>'; } }
+migration CreateUsers { up() { Table::create('users', (table) => { table.id(); table.string('name'); }); } down() { Table::dropIfExists('users'); } }
+model User { table = 'users'; fillable = ['name', 'active']; hidden = ['secret']; casts = { active: 'bool' }; }
+function List<int> doubled() { return [1,2,3].map((item) => item * 2); }
+policy UserPolicy { view(User actor, User resource) { return actor.id == resource.id; } }
+notification Greeting { string title; via(User recipient) { return ['mail', 'database']; } toDatabase(User recipient) { return { title: title }; } }
+async function int later(int value) { return value + 1; }
+async function int twice(int value) { const result = await later(value); return result * 2; }
+function int named() { return add(right: 7, left: 3); }
+function int nullable(int? value) { return value ?? 9; }
+function int closure(int value) { const calculate = (int item) => { const local = item + value; return local; }; return calculate(4); }
+function string unicode() { return '\u0041\u03a9'; }
+function int separators() { return 1_024 + 0b10 + 0x10; }
+async function void completed() { return; }
+listener AsyncRecord { async handle(Created event) { await completed(); } }
+job AsyncPing { int id; async handle() { await completed(); } }
+function int guarded(int? value) { if (value != null) { return value + 1; } else { return 0; } }
+async function int nested(int value) { return add(await later(value), 2); }
+function Json absent() { return { item: null }; }
+function int? emptyOptional() { return null; }
+job InjectedPing { inject Tools tools; int id; handle() { const result = tools.number(); } }
+controller Tools { int number() { return 3; } }
+event Versioned { int version = 1; }
+function int eventDefault() { const event = Versioned(); return event.version; }
+function double floating() { return 2f + 1.5; }
+function int minimum() { return -9223372036854775808; }
+function string embedded() { return 'a\0b'; }
+function Json lookup() { const value = { item: 'hello' }; return value['item']; }
+function int loop() { let total = 0; for (let i = 0; i < 3; i++) { total += i; } return total; }
+
+controller Home { public index(Request request) { return text(request.header('X-Name')); } private int helper() { return 2; } }
+migration Helpers { up() { helper(); } down() {} private void helper() {} }

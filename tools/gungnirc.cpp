@@ -13,7 +13,7 @@ namespace {
 void usage() {
     std::cerr
         << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] "
-           "[--no-line-directives]\n";
+           "[--no-line-directives] [--strict] [--project] [--dump-validated-ast]\n";
 }
 
 std::string read_file(const std::filesystem::path& path) {
@@ -63,6 +63,7 @@ int main(int argc, char** argv) {
     bool check_only = false;
     bool emit_line_directives = true;
     bool format_only = false;
+    bool strict = false, project = false, dump = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -77,6 +78,9 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        if (argument == "--strict") { strict = true; continue; }
+        if (argument == "--project") { strict = true; project = true; continue; }
+        if (argument == "--dump-validated-ast") { strict = true; dump = true; continue; }
         if (argument == "--check") {
             check_only = true;
             continue;
@@ -111,6 +115,15 @@ int main(int argc, char** argv) {
     }
 
     try {
+        if (strict) {
+            gungnir::language::Compiler compiler;
+            gungnir::language::CompilerOptions options; options.emit_line_directives = emit_line_directives;
+            const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
+            for (const auto& diagnostic : result.diagnostics) std::cerr << diagnostic.location.file << ':' << diagnostic.location.line << ':' << diagnostic.location.column << ": " << diagnostic.code << ": " << diagnostic.message << '\n';
+            if (!result.success()) return 1;
+            if (!check_only || dump) { const auto content = dump ? gungnir::language::dump_validated(*result.validated) : result.code; if (output_path.empty()) std::cout << content; else write_file(output_path,content); }
+            return 0;
+        }
         const auto source = read_file(input_path);
 
         if (format_only) {
@@ -156,3 +169,4 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+

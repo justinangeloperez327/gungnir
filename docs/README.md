@@ -83,3 +83,5 @@ Gungnir is experimental. Start with the current usage guides below. The full pro
 - [Semantic Analysis](semantics.md)
 - [Validated AST](validated-ast.md)
 - [Transpiler](transpiler.md)
+
+- [Compiler profiles and feature status](compiler-profiles.md)

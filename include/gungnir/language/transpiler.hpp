@@ -12,6 +12,7 @@ struct SemanticIndex;
 
 struct TranspileOptions {
     bool emit_line_directives{true};
+    bool structured_frontend{false};
     const SemanticIndex* semantic_index{nullptr};
 };
 
@@ -32,3 +33,4 @@ public:
 };
 
 } // namespace gungnir::language
+

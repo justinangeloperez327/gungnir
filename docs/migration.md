@@ -2,6 +2,8 @@
 
 > **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/migration.md).
 
+The structured profile (`gungnirc --strict`) supports typed functions and framework actions, structured callbacks, and validated C++ emission. See [compiler profiles](compiler-profiles.md) for usage and current limits. The compatibility profile retains the native syntax described below.
+
 ## Current behavior
 
 The migration runtime builds table operations and executes them through a migration runner and selected backend. Native `Table` supports `create`, `alter`, `rename`, `drop`, and `drop_if_exists`. Column builders include scalar types, indexes, foreign keys, timestamps and soft-delete columns.
@@ -22,7 +24,7 @@ gungnir::migration::Table::create("users", [](gungnir::migration::Column& table)
 
 ## Limits and planned work
 
-The native callback receives `Column&`. The proposed `(table) => { ... }` callback and camelCase schema surface in the design document are not a complete implemented language grammar. Backend DDL and transaction capabilities differ.
+The native callback receives `Column&`. The structured profile supports `(table) => { ... }` callbacks and validated schema calls. Compatibility mode requires native callbacks. Backend DDL and transaction capabilities differ.
 
 ## Implementation references
 

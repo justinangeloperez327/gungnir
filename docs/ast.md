@@ -4,13 +4,16 @@
 
 ## Current behavior
 
-Program owns a flat vector of Node variants. Framework declarations retain member indices; expressions/statements have child structure and source spans. FrameworkMethod/ControllerMethod and model metadata nodes are transitional representations.
+`SyntaxProject` owns declaration, expression and statement arenas with source origins and stable arena IDs. It represents modules/imports, ordinary functions, framework declarations, generic/optional types, fields, metadata, methods, named calls, arrows and control flow.
 
 ## Limits and planned work
 
-There is no complete ModuleUnit tree, stable NodeId arena, dedicated syntax TypeSyntax hierarchy or separate declaration variant for every framework construct. Text/raw expression and flat-index dependencies remain.
+The previous flat `Program` API remains available for compatibility. General classes, interfaces, enums, native preprocessor directives and arbitrary native C++ expressions are outside the structured grammar.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/language/ast.hpp](../include/gungnir/language/ast.hpp)
 

@@ -4,15 +4,16 @@
 
 ## Current behavior
 
-The native Event interface requires `name() const noexcept`. `Dispatcher::listen` registers a callback by event name with optional priority and returns a listener ID. `dispatch` invokes registered callbacks in descending priority order; `forget` removes a listener.
-
-Dispatch is synchronous. Payloads belong to application event types.
+In the structured frontend, events contain typed data fields and generate immutable constructors, a qualified event name and the native `events::Event` interface. Event methods and metadata are rejected.
 
 ## Limits and planned work
 
-The target data-only immutable event syntax does not yet imply generated constructors, automatic `name()` implementations, static dispatch helpers or complete payload semantics. A bare `.gnr` declaration may still need native interface implementation.
+General event serialization and externally supplied custom event bases remain native concerns.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/events/event.hpp](../include/gungnir/events/event.hpp)
 - [include/gungnir/events/dispatcher.hpp](../include/gungnir/events/dispatcher.hpp)

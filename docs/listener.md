@@ -4,15 +4,16 @@
 
 ## Current behavior
 
-Runtime listeners are `std::function<void(const Event&)>` callbacks registered with an explicit event name. The framework `Listener` base has a virtual destructor, but does not itself register or invoke `handle` methods.
-
-Keep the dispatcher and captured dependencies alive while listeners remain registered; remove registrations when their owners stop.
+Structured listeners require `handle(EventType event)`. Generated `register_listener(dispatcher, shared_ptr<Listener>, priority)` binds the typed event to native dispatch. Async handlers register through `listen_async` and execute through `dispatch_async`; synchronous dispatch rejects async listeners before executing callbacks.
 
 ## Limits and planned work
 
-Automatic event-type inference, async listener dispatch, dependency injection and queued listeners in the language design need explicit lowering/runtime integration. `async` does not automatically queue an event handler.
+The dispatcher must outlive a pending dispatch, and the event must remain alive until asynchronous dispatch completes. Queueing, persistence and distributed event delivery remain separate services.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/events/dispatcher.hpp](../include/gungnir/events/dispatcher.hpp)
 - [include/gungnir/core/framework_artifacts.hpp](../include/gungnir/core/framework_artifacts.hpp)

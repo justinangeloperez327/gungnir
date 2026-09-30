@@ -24,3 +24,6 @@
 #include <gungnir/language/types.hpp>
 #include <gungnir/language/validation_lowering.hpp>
 #include <gungnir/language/view_lowering.hpp>
+
+
+#include <gungnir/language/compiler.hpp>

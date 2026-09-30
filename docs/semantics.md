@@ -4,13 +4,16 @@
 
 ## Current behavior
 
-SemanticIndex records framework types, actions, declaration sources and method signatures. SemanticAnalyzer checks duplicate members/parameters, selected relationships/routes, known expression types, mutability, conditions and return/control-flow rules. Closed-world project mode enables additional unresolved-reference checks.
+`ProgramValidator` performs structured module/name/type binding, member visibility, call/default/named argument checks, mutability, async/await checks, callback contracts, required framework methods and return-path checks. Errors preserve file, line, column and diagnostic codes; invalid programs cannot reach `CppEmitter`.
 
 ## Limits and planned work
 
-Unknown native types/calls remain permissive. Complete symbol/type resolution, cross-module import visibility, framework capability checks and exhaustive control flow are not yet implemented. SemanticAnalyzer returns diagnostics rather than a fully typed validated program.
+Loop termination is not treated as proof of a return path. Native overloads and advanced null-flow analysis remain outside this profile. `SemanticAnalyzer` remains available for the compatibility frontend.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/language/semantic.hpp](../include/gungnir/language/semantic.hpp)
 - [src/language/semantic.cpp](../src/language/semantic.cpp)

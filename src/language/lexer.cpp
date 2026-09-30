@@ -44,7 +44,7 @@ bool keyword(std::string_view value) {
 Lexer::Lexer(std::string_view source) noexcept : source_(source) {}
 
 std::vector<Token> Lexer::tokenize(
-    std::vector<Diagnostic>* diagnostics, std::string_view source_name
+    std::vector<Diagnostic>* diagnostics, std::string_view source_name, bool single_quoted_strings
 ) const {
     std::vector<Token> tokens;
 
@@ -243,7 +243,7 @@ std::vector<Token> Lexer::tokenize(
 
             if (!closed) report(start_line, start_column,
                                 "Unterminated quoted literal", "GNR0902");
-            if (closed && quote == '\'') {
+            if (closed && quote == '\'' && !single_quoted_strings) {
                 static const std::regex character{R"('([^'\\\r\n]|\\([abfnrtv\\'"?]|[0-7]{1,3}|x[0-9a-fA-F]+|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))')"};
                 const std::string literal{source_.substr(start, index - start)};
                 if (!std::regex_match(literal, character))
@@ -251,7 +251,7 @@ std::vector<Token> Lexer::tokenize(
                            "Single quotes require one character; use double quotes for strings", "GNR0904");
             }
             emit(
-                quote == '"' ? TokenKind::string_literal
+                (quote == '"' || single_quoted_strings) ? TokenKind::string_literal
                              : TokenKind::character_literal,
                 start,
                 start_line,
@@ -312,8 +312,15 @@ std::vector<Token> Lexer::tokenize(
 
             static const std::regex number{
                 R"((0[xX][0-9a-fA-F]+([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?)?|0[bB][01]+([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?)?|[0-9]+([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?)?|([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][+-]?[0-9]+)?[fFlL]?))"};
-            const std::string literal{source_.substr(start, index - start)};
-            if (!std::regex_match(literal, number))
+            std::string literal{source_.substr(start, index - start)};
+            bool separators_valid = true;
+            if (single_quoted_strings) {
+                const bool hexadecimal = literal.starts_with("0x") || literal.starts_with("0X");
+                auto digit = [&](char value) { return hexadecimal ? std::isxdigit(static_cast<unsigned char>(value)) != 0 : std::isdigit(static_cast<unsigned char>(value)) != 0; };
+                for (std::size_t i = 0; i < literal.size(); ++i) if (literal[i] == '_' && (i == 0 || i + 1 == literal.size() || !digit(literal[i-1]) || !digit(literal[i+1]))) separators_valid = false;
+                std::erase(literal, '_');
+            }
+            if (!separators_valid || !std::regex_match(literal, number))
                 report(start_line, start_column, "Malformed numeric literal '" + literal + "'", "GNR0903");
             emit(TokenKind::number, start, start_line, start_column);
             continue;

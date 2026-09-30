@@ -17,6 +17,8 @@ model User {
 }
 ```
 
+The structured compiler emits native attribute descriptors and table/connection/fillable/hidden/visible/cast metadata. Metadata-only attributes receive inferred fields. Serialization enforcement and runtime cast semantics remain separate ORM work; metadata emission does not guarantee those effects.
+
 ## Limits and planned work
 
 The metadata-only model design is a planned replacement for this field-based lowering. Its `primaryKey`, `fillable`, `hidden`, `casts`, string-named relationships, polymorphic relationships and relationship modifiers must not be assumed to have matching `.gnr` support today. The native model APIs and accepted model declaration grammar are different surfaces.
