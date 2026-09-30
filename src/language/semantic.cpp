@@ -61,10 +61,29 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
     const SemanticIndex* project
 ) const {
     std::vector<Diagnostic> diagnostics;
-    SemanticIndex index = project ? *project : SemanticIndex{};
-    index.add(program, source_name);
+    bool already_indexed = project != nullptr;
+    if (project) {
+        for (const auto& node : program.nodes) {
+            const auto* base = std::get_if<FrameworkBase>(&node);
+            const auto* framework = std::get_if<FrameworkDeclaration>(&node);
+            if (!base && !framework) continue;
+            const auto& name = base ? base->class_name : framework->class_name;
+            const auto found = project->declaration_sources.find(name);
+            if (found == project->declaration_sources.end() ||
+                !found->second.contains(std::string{source_name})) {
+                already_indexed = false;
+                break;
+            }
+        }
+    }
+    SemanticIndex local_index;
+    if (!already_indexed) {
+        if (project) local_index = *project;
+        local_index.add(program, source_name);
+    }
+    const auto& index = already_indexed ? *project : local_index;
     const auto& types = index.types;
-    auto& actions = index.actions;
+    const auto& actions = index.actions;
     const auto resolve_type = [&](std::string_view name) {
         auto type = scalar_type(name);
         if (!type.known() && types.contains(std::string{name}))
@@ -164,9 +183,6 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                 : controller_method ? &controller_method->body : nullptr;
             if (!name.empty()) {
                 if (parameters) {
-                    if (declaration_kind == FrameworkBaseKind::controller) {
-                        actions[declaration_name].insert(name);
-                    }
                     std::string signature = name + "(";
                     for (const auto& parameter : *parameters) {
                         signature += parameter.type_name + ",";
@@ -439,7 +455,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             report(route->route_span, "Route target '" + route->controller_name +
                         "' is not a controller", "GNR1305");
         } else if (found != types.end() &&
-                   !actions[route->controller_name].contains(route->action_name)) {
+                   (actions.find(route->controller_name) == actions.end() ||
+                    !actions.at(route->controller_name).contains(route->action_name))) {
             report(route->route_span, "Controller '" + route->controller_name +
                         "' has no action '" + route->action_name + "'", "GNR1307");
         }
