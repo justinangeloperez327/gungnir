@@ -1,124 +1,147 @@
 # Sessions
 
-Gungnir sessions are server-side state identified by an opaque cookie.
+Gungnir sessions provide request-scoped server-side state identified by an opaque client cookie.
 
-## Request lifecycle
+Sessions integrate with authentication, CSRF protection, flash data, redirects, and browser workflows.
 
-Attach session middleware to the router:
+# Architecture
 
-```cpp
-auto store =
-    std::make_shared<
-        gungnir::session::MemoryStore
-    >();
+A session consists of:
 
-router.use(
-    gungnir::session::middleware(
-        store
-    )
-);
-```
+~~~text
+opaque session ID
+server-side values
+flash data
+persistence store
+cookie metadata
+request-owned session context
+~~~
 
-The middleware:
+The client cookie identifies the session. Application session state is not stored directly in an unsigned/plain client cookie.
 
-- accepts only Gungnir-format session identifiers from the request cookie;
-- creates missing sessions with 256 bits of operating-system cryptographic randomness;
-- attaches the session to the request for the full coroutine/request lifetime;
-- ages flash data once per request;
-- persists session mutations after the downstream handler completes;
-- replaces the session cookie when a session is created or rotated; and
-- erases the previous stored identifier after regeneration or invalidation.
+# Request lifecycle
 
-Application code accesses the request-owned session directly:
+Session middleware should:
 
-```cpp
-request.session().put(
-    "user_id",
-    "42"
-);
+1. read and validate the session cookie;
+2. load server-side state if it exists;
+3. create a secure ID when needed;
+4. attach the session to the request context;
+5. age flash data once;
+6. execute downstream middleware/controller code;
+7. persist mutations;
+8. emit, rotate, or expire the cookie as required.
 
-auto user_id =
-    request.session().get(
-        "user_id"
-    );
-```
+The session remains request-owned for the full coroutine lifetime.
 
-## Regeneration and invalidation
+# Session IDs
 
-Use `regenerate()` after authentication or privilege changes:
+Session identifiers must be generated from an operating-system cryptographically secure random source with sufficient entropy.
 
-```cpp
-request.session().regenerate();
-```
+Predictable IDs are not acceptable.
 
-This preserves session data while assigning a new cryptographically random identifier. The lifecycle middleware persists the new identifier and removes the previous stored identifier.
+# Regeneration
 
-Use `invalidate()` for logout or full session reset:
+After login or privilege changes, regenerate the session identifier.
 
-```cpp
-request.session().invalidate();
-```
+Regeneration preserves intended session data while replacing the ID and invalidating the old identifier.
 
-Invalidation clears normal and flash data and rotates the identifier.
+This mitigates session fixation.
 
-The lower-level overloads that accept an explicit identifier remain available for compatibility and testing. HTTP middleware will replace an empty or non-Gungnir-format identifier before it is persisted to a session cookie.
+# Invalidation
 
-## Cookie defaults
+Logout or full reset should invalidate the session.
 
-The default cookie is:
+Invalidation clears appropriate data, rotates or removes the old identifier, and prevents stale state reuse.
 
-- name: `gungnir_session`
-- path: `/`
-- `HttpOnly`: enabled
-- `Secure`: enabled
-- `SameSite=Lax`
-- browser-session lifetime unless a future store/lifetime policy defines otherwise
+# Flash data
 
-For local plain-HTTP development, set `session::Options::secure` to `false`. Production deployments should keep secure cookies enabled.
+Flash values live for a limited request lifecycle:
 
-## Storage
+~~~text
+request N
+  set flash
 
-`MemoryStore` is thread-safe and suitable for tests, local development, and single-process ephemeral deployments. It is not a durable or distributed production session store.
+request N+1
+  read flash
 
-When Gungnir is built with `GUNGNIR_WITH_REDIS=ON`, `gungnir::redis` provides a Redis-backed session store with server-side TTL expiry.
+later
+  expired
+~~~
 
-```cpp
-gungnir::session::RedisSessionSettings settings;
-settings.redis.host = "127.0.0.1";
-settings.redis.prefix = "myapp:sessions:";
-settings.lifetime = std::chrono::hours{2};
+This supports validation errors, status messages, and old form input.
 
-auto store =
-    std::make_shared<
-        gungnir::session::RedisStore
-    >(settings);
+# Stores
 
-router.use(
-    gungnir::session::middleware(
-        store
-    )
-);
-```
+Session persistence uses a Store abstraction.
 
-The Redis store persists normal session values plus both flash-data generations, so moving from `MemoryStore` to Redis does not change flash semantics. Saving a session refreshes its Redis TTL. Expired records disappear through Redis expiry and a stale browser cookie therefore creates a fresh session through the normal lifecycle.
+Possible stores include MemoryStore, RedisStore, and future database/custom stores.
 
-Use a dedicated non-empty Redis key prefix for sessions. The adapter rejects an empty prefix so its maintenance operations cannot accidentally target the whole Redis database.
+MemoryStore is suitable only for development, tests, and single-instance use.
 
-`MemoryStore` remains appropriate for tests and ephemeral single-process use. Redis provides the concrete distributed store for multi-process deployments.
+# Distributed sessions
 
-## Authentication integration
+A distributed store must define TTL/expiry, concurrent update behavior, stale ID deletion, atomicity expectations, and failover behavior.
 
-Register `session::middleware(...)` before `auth::session(...)`. Authentication stores only the identity ID in session state; the configured identity resolver reloads the current identity on each request. Login, logout, and stale identity resolution trigger session-ID rotation.
+Do not claim distributed-safe semantics merely because data is stored in Redis.
 
+# Cookies
 
-## CSRF integration
+Production session cookies should normally use:
 
-For browser routes that mutate state, register `http::csrf()` after session middleware and before `auth::session(...)`:
+~~~text
+HttpOnly
+Secure
+appropriate SameSite
+restricted Path
+appropriate Domain
+~~~
 
-```cpp
-router.use(session::middleware(store));
-router.use(http::csrf());
-router.use(auth::session(identity_resolver));
-```
+SameSite=None requires Secure.
 
-The CSRF token is stored in the server-side session. Session-ID regeneration caused by login, logout, invalidation, or stale authentication rotates the CSRF token as well.
+# Authentication integration
+
+Session authentication stores only the identity material required by the configured guard/provider.
+
+Login should regenerate the session ID.
+
+Logout should invalidate or rotate authentication/session state according to the authentication contract.
+
+# CSRF integration
+
+Browser session authentication and CSRF belong to the same request/session security boundary.
+
+CSRF tokens should bind to session lifecycle and rotate when required.
+
+The view helper only renders the token; validation occurs in middleware/security runtime.
+
+# Async safety
+
+The active session must follow the logical request across await.
+
+Do not rely on raw thread-local storage without coroutine-aware context propagation.
+
+# Concurrency
+
+Concurrent requests for the same session can race.
+
+A production store must define how lost updates are avoided or documented.
+
+A process-local mutex only protects one process.
+
+# Security
+
+Do not store plaintext credentials in session state.
+
+Session IDs should not be logged unnecessarily.
+
+# Design rule
+
+~~~text
+cookie identifies
+store persists
+request owns active session
+login regenerates
+logout invalidates
+async keeps context attached to the request
+~~~
