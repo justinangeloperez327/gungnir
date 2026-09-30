@@ -1,65 +1,137 @@
 # Filesystem and Storage
 
-Gungnir storage uses named disks behind the `storage::Disk` contract. `LocalDisk` provides filesystem-backed storage rooted at one configured directory.
+Gungnir storage exposes named disks behind a storage contract.
 
-## Local disk
+Application code addresses logical object paths. Adapters implement local filesystem or remote/object storage behavior.
 
-`LocalDisk` supports reading, writing, existence checks, deletion, copying, moving, size inspection and immediate-directory file listing.
+# Disk operations
 
-### Path containment
+A disk may support:
 
-Local storage accepts relative object paths only. Absolute paths, embedded null bytes and lexical `..` traversal are rejected.
+~~~text
+read
+write
+exists
+delete
+copy
+move
+size
+list
+metadata
+streaming
+~~~
 
-The storage root is pinned by filesystem identity when `LocalDisk` is constructed. If the configured root pathname is later replaced with a different directory, operations reject it rather than silently following the replacement.
+Capabilities should be explicit per adapter.
 
-On POSIX platforms, object operations reopen and verify the pinned root, walk parent directories with descriptor-relative `openat(..., O_NOFOLLOW)`, create directories with `mkdirat`, and perform final reads/writes/removes/moves relative to verified directory descriptors. Atomic commits use `renameat` inside the pinned destination directory. Directory listing uses the already-open directory descriptor. A concurrent symlink swap can therefore make an operation fail, but cannot redirect object I/O outside the pinned storage root.
+# Named disks
 
-On Windows, Gungnir pins the root by volume/file identity, opens objects and directories with `FILE_FLAG_OPEN_REPARSE_POINT`, rejects reparse points, verifies resolved handle paths remain under the pinned root, and uses handle-based delete/rename operations with a verified destination-directory handle. Temporary candidates are verified before application data is written. A concurrently hostile process may still cause a candidate create to fail or create-and-delete an empty candidate before verification; Gungnir does not claim the same descriptor-relative create primitive that POSIX provides.
+Applications configure named disks such as:
 
-### Atomic and durable writes
+~~~text
+local
+public
+uploads
+archive
+remote
+~~~
 
-`LocalDisk::put()` does not truncate the destination in place. It creates an exclusive temporary file in the destination directory, writes the complete new content, flushes the file, checks cancellation, and then atomically replaces the destination.
+The logical disk name is application configuration, not a raw filesystem path.
 
-On POSIX, Gungnir `fsync()`s the file before `renameat()` and then `fsync()`s the containing directory. Newly created parent-directory levels are also followed by a parent-directory metadata sync. Removes and moves sync the affected directory metadata after the mutation. This provides the normal crash-durability contract expected from local filesystems that honor file and directory `fsync()`.
+# Local disk
 
-On Windows, file contents are flushed with `FlushFileBuffers()` before the handle-based rename. Gungnir also attempts to flush verified directory handles after metadata mutations. Windows filesystems do not uniformly permit directory `FlushFileBuffers()`; `ERROR_INVALID_HANDLE` and `ERROR_ACCESS_DENIED` are treated as an unsupported directory-flush capability rather than pretending to provide a POSIX-equivalent guarantee.
+LocalDisk is rooted at one configured directory.
 
-If writing fails or cancellation is observed before replacement, the temporary object is removed and the previous destination remains unchanged.
+Application object paths must remain relative to that root.
 
-### Abandoned temporary files
+Reject:
 
-`LocalDisk::cleanup_abandoned(older_than)` explicitly removes Gungnir temporary artifacts older than the supplied age. The default threshold is 24 hours. Cleanup recognizes only Gungnir's hidden `.gungnir-...tmp` naming pattern; unrelated files and fresh temporary files are left untouched.
+- absolute paths;
+- NUL characters;
+- parent traversal;
+- unsafe symbolic-link/reparse traversal.
 
-Cleanup is explicit rather than unconditional at startup so one process does not silently delete another long-running process's temporary write. Candidates are passed back through the disk's hardened remove path before deletion.
+# Path containment
 
-## Cancellation
+Containment must remain safe under concurrent filesystem changes as far as the platform implementation guarantees.
 
-Every `Disk` operation has a cancellation-aware overload. Generic disks receive before/after cancellation checkpoints by default.
+POSIX implementations should prefer descriptor-relative no-follow operations.
 
-`LocalDisk` additionally checks cancellation while reading and writing buffered file content. A cancelled `put()` never commits its temporary file once cancellation has been observed.
+Windows implementations should use handle/reparse-point verification appropriate to the platform.
 
-```cpp
-disk.put(
-    "reports/monthly.txt",
-    contents,
-    request.cancellation()
-);
-```
+Adapter docs must state any remaining race limitations honestly.
 
-Cancellation remains cooperative. A filesystem system call already executing in the kernel is not forcibly terminated.
+# Writes
 
-## Named disks
+Where durable/atomic replacement is promised, the adapter must implement the required file and directory flush/rename semantics.
 
-`storage::Manager` maps application names such as `local` or `uploads` to concrete disk implementations and provides a configurable default.
+Do not label a simple overwrite as durable atomic storage without those guarantees.
 
-## Remote storage
+# Temporary files
 
-S3-compatible, Azure Blob and other remote systems should be implemented as real `Disk` adapters backed by their official or reviewed clients. Gungnir does not pretend that a local filesystem adapter provides cloud semantics.
+Atomic write implementations should clean up abandoned temporary files where practical.
 
-## Uploads
+Temporary candidates must remain inside the trusted storage root.
 
-HTTP upload parsing and storage are separate concerns. Uploaded filenames must never be used directly as trusted filesystem paths. Applications should generate storage keys and retain the original filename only as metadata.
+# Cancellation
 
-## Security
+Long storage operations may expose cancellation-aware APIs.
 
-Public-file serving requires a separate HTTP policy for content type, cache headers, authorization and download disposition.
+Cancellation should leave destination state according to a documented contract.
+
+Partial/corrupt committed output should not be presented as a successful write.
+
+# Remote storage
+
+Remote/object storage adapters should preserve the logical disk contract while documenting differences such as:
+
+~~~text
+eventual consistency
+multipart upload
+metadata behavior
+rename implemented as copy+delete
+conditional writes
+versioning
+ETags
+~~~
+
+Do not pretend remote object stores have local filesystem semantics.
+
+# Uploads
+
+Uploaded files are untrusted request data.
+
+The storage layer can persist bytes, but the application must decide authorization, validation, filename policy, retention, and content rules.
+
+Browser-provided filenames are metadata, not safe paths.
+
+# Public files
+
+Public URL generation should be explicit per disk/configuration.
+
+A stored object does not automatically become public.
+
+# Security
+
+Storage credentials belong in configuration/secrets.
+
+Object paths should not expose server filesystem layout.
+
+Sensitive objects require correct access-control policy.
+
+# Async behavior
+
+A storage operation is only truly async when the adapter/runtime avoids blocking the request executor.
+
+Blocking filesystem or SDK calls should use the runtime's blocking/offload strategy when invoked from async request paths.
+
+# Testing
+
+Tests should use isolated temporary roots or test adapters with deterministic cleanup.
+
+# Design rule
+
+~~~text
+application uses logical disks and object paths
+adapter owns transport/filesystem semantics
+containment and durability guarantees must be explicit
+~~~
