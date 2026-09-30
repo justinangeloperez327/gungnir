@@ -1,94 +1,178 @@
 # Queues and Jobs
 
-Gungnir queues separate job data, transport and execution.
+Gungnir queues separate background job data, transport, retry policy, and worker execution.
 
-## Job envelope
+Async application code is not automatically queued. Queued work has a separate execution lifecycle.
 
-A queued job is represented by an `Envelope` containing an opaque identifier, stable job name, serialized payload and retry counters. Serialization is explicit; the queue does not persist arbitrary C++ object memory.
+# Core model
 
-## Drivers
+A queued job is represented by a stable envelope:
 
-`queue::Driver` defines push, pop, acknowledge, release and failure operations. `MemoryDriver` is a process-local development and test implementation. It is not durable and must not be presented as a production queue.
+~~~text
+job ID
+job name/type
+serialized payload
+attempt count
+available-at time
+metadata
+~~~
 
-## Worker
+The queue must not persist arbitrary C++ object memory.
 
-`Worker` maps stable job names to handlers. `run_one()` remains available for tests and explicit single-job execution, while `run()` provides the long-running production loop.
+# Serialization
 
-`WorkerOptions` controls idle polling, an optional maximum number of jobs, and an optional maximum runtime. `request_stop()` wakes an idle worker immediately and prevents any new reservation after the current iteration. If shutdown is requested while a handler is active, that handler is allowed to finish and its job is acknowledged or released before the worker exits.
+Job payloads must be explicitly serializable.
 
-`run()` also accepts a Gungnir `CancellationToken`. Process supervisors and application signal handlers should cancel that token rather than installing queue-specific global signal state inside the framework.
+Good payloads contain stable application data such as:
 
-## Delivery semantics
+~~~text
+record IDs
+strings
+numbers
+small structured values
+explicit versioned payload objects
+~~~
 
-The generic contract does not promise exactly-once delivery. Production adapters must document their acknowledgement, visibility timeout, redelivery and crash-recovery semantics.
+Do not enqueue request-scoped objects such as Request, Response, Next, open transactions, native references, or scoped service instances.
 
-## Worker lifecycle
+# Drivers
 
-Background execution is provided by queue workers, not by pretending synchronous application code is asynchronous. The worker loop has cooperative production shutdown semantics: stop polling first, finish the active job, then exit. Operating-system signal ownership remains with the hosting executable or service manager so applications can coordinate HTTP, queue, scheduler and other shutdown participants through one cancellation source.
+The queue driver owns transport/storage behavior.
 
-`WorkerOptions::retry_backoff` controls delayed retry after handler failure. The first delay applies after attempt 1, the second after attempt 2, and so on; when attempts exceed the configured list, the last delay is reused. An empty list preserves immediate retry behavior. `Envelope::max_attempts` remains the hard retry ceiling.
+Possible drivers include:
 
-Multi-worker supervision, process restarts and deployment-level concurrency remain host concerns.
+- MemoryDriver for tests and local development;
+- Redis-backed durable/shared queue when enabled;
+- future broker/database adapters.
 
-## Serialization and compatibility
+MemoryDriver is not a durable production queue.
 
-Job names and payload schemas are externalized data contracts once persisted. Applications should version payloads when deployments may process jobs produced by older code.
+# Delivery semantics
 
+The generic queue contract must not claim exactly-once execution.
 
-## Redis production driver
+Production drivers should document:
 
-When Gungnir is built with `GUNGNIR_WITH_REDIS=ON`, `gungnir::redis` also provides `queue::RedisDriver`.
+~~~text
+reservation/visibility behavior
+acknowledgement
+redelivery
+retry
+lease timeout
+crash recovery
+failed-job storage
+~~~
 
-```cpp
-gungnir::queue::RedisSettings settings;
-settings.host = "127.0.0.1";
-settings.queue = "emails";
-settings.visibility_timeout =
-    std::chrono::seconds{60};
+Applications should design jobs to tolerate retry where required.
 
-gungnir::queue::RedisDriver driver{
-    settings
-};
+# Worker
 
-gungnir::queue::Worker worker{
-    driver
-};
-```
+A worker:
 
-The Redis driver does not treat a queue as a disposable list. Each active job is stored separately from its ready-state entry. `pop()` atomically assigns a visibility lease and a driver-owned reservation token. `acknowledge()`, `release()`, `release_after()`, `renew()`, and `fail()` only mutate the job when that reservation token still owns the lease.
+1. reserves a job;
+2. resolves its registered handler;
+3. executes the handler;
+4. acknowledges success;
+5. releases/retries or fails according to policy.
 
-If a worker exits without acknowledging a job, a later `pop()` recovers expired leases back to the ready queue. A worker that finishes after its old lease expired cannot acknowledge a job that has already been leased again to another worker.
+Handler registration uses stable semantic job identity.
 
-The queue uses Redis server time when calculating visibility and delayed-delivery deadlines, avoiding correctness dependence on worker-machine clock synchronization.
+# Worker lifecycle
 
-### Delayed jobs
+Workers participate in the application lifecycle.
 
-`push_later(job, delay)` stores the job immediately but keeps it out of the ready list until its Redis-server-time deadline. `release_after(job, delay)` applies the same mechanism when a worker wants to retry later. Due delayed jobs are promoted atomically during reservation.
+Shutdown should:
 
-### Lease renewal
+1. stop reserving new jobs;
+2. allow the current owned job to complete within policy;
+3. observe cancellation;
+4. release or fail work correctly if execution cannot complete.
 
-Long-running handlers can enable `WorkerOptions::lease_renewal_interval`. While the handler is running, the worker periodically calls `Driver::renew()`. Redis renews the visibility deadline only when the reservation token still owns the lease, so a stale worker cannot extend a lease after another worker has recovered the job.
+# Retry policy
 
-The renewal interval should be comfortably shorter than `RedisSettings::visibility_timeout`.
+Retry behavior should be explicit.
 
-Current Redis queue guarantees:
+Useful policy may include:
 
-- durable ready-job state as far as the configured Redis persistence policy provides;
-- atomic reservation;
-- configurable visibility timeout;
-- delayed enqueue and delayed release;
-- expired-lease recovery;
-- stale-reservation protection;
-- lease renewal for long-running handlers;
-- retry state persisted through `release()` / `release_after()`;
-- failed-job retention;
-- binary-safe payload storage; and
-- duplicate active/failed job-ID rejection.
+~~~text
+maximum attempts
+fixed/exponential backoff
+retryable error categories
+dead-letter/failed-job storage
+~~~
 
-### Failed jobs
+Do not retry every failure blindly.
 
-Drivers may expose retained failures through `failed_jobs()` and `failed_job(id)`. `retry_failed(id)` moves a retained failure back to the ready queue and resets its attempt counter to zero, starting a fresh manual retry cycle. `forget_failed(id)` permanently removes the retained failure.
+# Delayed jobs
 
-Redis performs manual retry atomically: the failed record must still match the value inspected by the caller, and the same job ID must not already be active.
+Drivers may support delayed availability.
 
-Redis Cluster/Sentinel/TLS support and multi-process worker supervision remain separate runtime work.
+Delay semantics must be represented explicitly rather than implemented through worker sleep that occupies a worker slot.
+
+# Lease renewal
+
+Drivers using visibility leases may support lease renewal for long-running jobs.
+
+A lost lease must not be silently treated as successful ownership.
+
+# Failed jobs
+
+Production queue systems should support inspection of failed jobs and explicit retry/delete operations where the driver supports it.
+
+Failure payloads/logs must not leak secrets unnecessarily.
+
+# Dependency injection
+
+Job handlers may resolve application services from a worker-owned application scope.
+
+A new scope should be created per job when scoped services are supported.
+
+# Async handlers
+
+A job handler may be async when the runtime supports it.
+
+Async does not change queue delivery semantics.
+
+The worker still owns acknowledgement, retry, cancellation, and lease behavior.
+
+# Transactions
+
+Database work inside jobs follows normal transaction rules.
+
+Do not enqueue a job while assuming it automatically shares the caller's current open transaction.
+
+If dispatch must happen only after commit, use an explicit after-commit queue contract.
+
+# Observability
+
+Queue execution should record useful context such as:
+
+~~~text
+job name
+job ID
+attempt
+duration
+result
+failure category
+queue/driver
+~~~
+
+Tracing context may be serialized/propagated explicitly when supported.
+
+# Security
+
+Queue payloads may persist beyond the originating request.
+
+Avoid embedding credentials or unnecessary sensitive data.
+
+Production queue backends require appropriate access control and transport security.
+
+# Design rule
+
+~~~text
+async = current task may suspend
+queue = work moves to another execution lifecycle
+driver owns delivery semantics
+worker owns execution lifecycle
+payload is explicit and serializable
+~~~
