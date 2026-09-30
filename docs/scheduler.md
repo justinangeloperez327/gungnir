@@ -1,65 +1,143 @@
 # Scheduler
 
-Gungnir's scheduler supports deterministic interval and cron schedules without hiding distributed coordination behind in-process APIs.
+Gungnir's scheduler runs named application tasks according to interval or cron schedules.
 
-## Tasks
+Scheduling is a runtime service, not a language control-flow feature.
 
-`Scheduler::every()` registers a named action with a positive interval.
+# Tasks
 
-`Scheduler::cron()` registers a standard five-field cron schedule:
+A scheduled task has:
 
-`minute hour day-of-month month day-of-week`
+~~~text
+stable name
+schedule
+action/handler
+timezone
+overlap policy
+optional distributed lock policy
+~~~
 
-Supported cron syntax includes wildcards, lists, ascending ranges, steps, month names (`JAN`-`DEC`), weekday names (`SUN`-`SAT`), and Sunday as either `0` or `7`. When both day-of-month and day-of-week are restricted, standard cron OR semantics are used.
+Names should be unique within one scheduler configuration.
 
-Convenience registrations are available through `hourly()`, `daily()`, `weekly()`, and `monthly()`.
+# Interval schedules
 
-Names must be unique within a scheduler.
+Interval scheduling runs a task after a defined duration cadence.
 
-## Execution
+Intervals must be positive and use a monotonic timing source where appropriate.
 
-`run_due()` evaluates all tasks against the injected clock and runs those that are due. A task is marked as run only after its action completes successfully. Exceptions propagate to the caller.
+# Cron schedules
 
-Cron tasks execute at most once for each matching minute, even when `run_due()` is called repeatedly during that minute.
+The scheduler may support standard five-field cron:
 
-`next_due()` exposes the earliest next task deadline for scheduler runtimes that want deadline-aware sleeping.
+~~~text
+minute hour day-of-month month day-of-week
+~~~
 
-## Clock and timezones
+Supported cron syntax should be documented and tested explicitly.
 
-Time is provided through the `Clock` interface. Production applications can use `SystemClock`; tests can provide deterministic clocks.
+Do not silently accept unsupported cron extensions.
 
-A scheduler has an explicit default `TimeZone`, defaulting to UTC. Cron tasks inherit that timezone when registered and may override it fluently with `.timezone(...)`.
+# Timezones
 
-`FixedOffsetTimeZone` covers zones without daylight-saving transitions. `RecurringTimeZone` models named zones whose daylight transitions follow recurring month / nth-weekday / local-time rules. Transition rules are evaluated without modifying process-global timezone state.
+A scheduler has an explicit timezone policy.
 
-During a spring-forward gap, nonexistent wall-clock minutes do not run. During fall-back, the repeated wall-clock minute represents one scheduled slot: once a cron task has run for that local year/month/day/hour/minute, the repeated occurrence is suppressed. This prevents accidental duplicate business actions during DST rollback.
+UTC is a safe default.
 
-Recurring transition rules define the start time in pre-transition standard time and the end time in pre-transition daylight time.
+Timezone handling must define daylight-saving behavior.
 
-## Production runner
+Fixed offsets are not a complete replacement for named regional timezone rules.
 
-`Scheduler::run()` provides the long-running production loop. It executes due work, computes the next scheduled deadline, and sleeps until that deadline or `RunnerOptions::maximum_sleep`, whichever is earlier. The bounded maximum sleep lets the runner re-evaluate wall-clock changes without aggressive polling.
+# Execution
 
-The runner accepts a Gungnir `CancellationToken` and also exposes `request_stop()`. Both wake an idle runner immediately.
+The scheduler evaluates due tasks against an injected clock.
 
-Shutdown is cooperative. If stop/cancellation arrives while a synchronous scheduled action is running, that action is allowed to finish. Before the runner considers the next task, it re-checks shutdown state and exits without starting additional scheduled work.
+A task should be marked complete for that occurrence only after its handler finishes according to the scheduler contract.
 
-`reset_stop()` allows explicit reuse after a requested stop. Scheduler configuration and manual `run_due()` are rejected while the production runner is active.
+Failures should be observable and should not silently count as successful execution.
 
-Interval schedules support millisecond resolution; cron schedules remain minute-based by definition.
+# Production runner
 
-Scheduled tasks are stored with stable references, so the `Task&` returned by registration remains valid when additional tasks are registered.
+The long-running scheduler runtime should:
 
-## Overlap and distributed execution
+- sleep until the next relevant deadline;
+- wake on cancellation;
+- avoid busy polling;
+- stop scheduling new tasks during shutdown;
+- drain the currently owned task according to policy.
 
-Scheduler locking is explicit. Configure a `LockStore` on the scheduler with `.locks(...)`, then opt individual tasks into the desired policy.
+# Overlap
 
-`without_overlapping(ttl)` acquires a task-name lease before the action starts. If another process already owns that lease, the occurrence is skipped. The lease is released after successful or failed execution; the TTL is crash recovery protection.
+Overlap behavior must be explicit.
 
-`on_one_server(ttl)` acquires a schedule-occurrence-specific lease. The occurrence key includes the cron wall-clock slot (or the interval bucket), so only one application instance can execute that occurrence. The lease is intentionally not released after the action; it expires by TTL so a second server cannot replay the same slot immediately after the first finishes.
+Possible policies include:
 
-The two policies may be combined: `on_one_server()` elects one instance for the occurrence, while `without_overlapping()` prevents the elected occurrence from starting while a previous occurrence is still active.
+~~~text
+allow overlap
+prevent overlap in process
+prevent overlap using distributed lock
+~~~
 
-`MemoryLockStore` is deterministic and useful for tests or single-process coordination.
+An in-process lock only protects one process.
 
-When Gungnir is built with `GUNGNIR_WITH_REDIS=ON`, `RedisLockStore` provides distributed leases using Redis `SET NX PX`. Release and renewal use owner-token comparisons, preventing a stale process from releasing or extending a lock that was reacquired by another process.
+# Distributed execution
+
+In multi-instance deployments, single execution requires shared coordination.
+
+A distributed lock must define:
+
+- owner identity/token;
+- TTL/lease;
+- renewal;
+- safe release;
+- failure behavior.
+
+Do not claim cluster-wide single execution from a local mutex.
+
+# Async tasks
+
+A scheduled handler may be async.
+
+The scheduler owns its lifecycle and cancellation.
+
+Async suspension does not by itself provide distributed coordination.
+
+# Queue integration
+
+Long or retryable scheduled work may dispatch a queue job rather than execute all work inline.
+
+The scheduler and queue remain separate subsystems.
+
+# Clock abstraction
+
+Tests should use an injectable/fake clock so schedules can be tested deterministically.
+
+Production uses a system clock plus configured timezone rules.
+
+# DST behavior
+
+For regional timezones, the scheduler must define behavior for:
+
+- skipped local times during spring-forward;
+- repeated local times during fall-back.
+
+The same scheduled occurrence must not run unpredictably twice unless that is the explicit policy.
+
+# Observability
+
+Record task name, scheduled time, start/end, duration, outcome, and overlap/lock decisions where useful.
+
+# Shutdown
+
+Scheduler shutdown participates in the application lifecycle.
+
+It should stop launching new tasks, signal cancellation, and drain the active owned task within configured policy.
+
+# Design rule
+
+~~~text
+scheduler decides when
+handler decides what
+queue may own deferred execution
+distributed coordination is explicit
+time semantics are deterministic
+~~~
