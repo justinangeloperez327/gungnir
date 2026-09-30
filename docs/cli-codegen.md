@@ -1,35 +1,163 @@
-# Command Line and Code Generation
+# CLI and Code Generation
 
-Gungnir's command line is project-aware and generates Gungnir source rather than exposing C++ plumbing.
+Gungnir's CLI is project-aware and should generate canonical .gnr source rather than exposing native C++ plumbing.
 
-## Project commands
+# Project commands
 
-- `gungnir new <name> [path]`
-- `gungnir build [--release]`
-- `gungnir run [--release]`
-- `gungnir dev`
+Core project commands include:
 
-Project discovery walks upward from the current path until it finds `.gungnir-project`.
+~~~text
+gungnir new <name> [path]
+gungnir build [--release]
+gungnir run [--release]
+gungnir dev
+~~~
 
-## Generators
+Project discovery may walk upward until the Gungnir project marker/configuration is found.
 
-The CLI supports:
+# Compiler commands
 
-- `make:model`
-- `make:controller`
-- `make:middleware`
-- `make:migration`
-- `make:request`
-- `make:job`
+Compiler-facing commands should include:
 
-Generated names are normalized consistently and existing files are never overwritten. The generator fails instead of silently replacing application code.
+~~~text
+gungnirc --check <file/project>
+gungnirc --format <file/project>
+gungnirc --dump-ast
+gungnirc --dump-symbols
+gungnirc --dump-types
+gungnirc --dump-semantic
+gungnirc --dump-validated-ast
+gungnirc --dump-cpp-ir
+gungnirc --emit-cpp
+~~~
 
-Generators emit Gungnir source files. They should remain aligned with syntax supported by the transpiler; code generation must not become an alternate language implementation.
+The exact command spelling may evolve, but compiler phases should be inspectable independently.
 
-## Database development
+# Generators
 
-Migration commands remain available for migrate, rollback, reset, status and plan operations.
+Generators should exist only for source constructs with a defined language contract and working lowering/runtime support.
 
-## Scope
+Canonical generator families may include:
 
-Code generation is deliberately deterministic. Interactive scaffolding, plugin generators and application-specific templates can be layered later without changing the core source conventions.
+~~~text
+make:model
+make:controller
+make:middleware
+make:migration
+make:policy
+make:event
+make:listener
+make:notification
+make:mail
+~~~
+
+Additional generators should be enabled only when their source-language contracts exist.
+
+# Generated syntax
+
+Generators must follow the canonical docs:
+
+~~~text
+model.md
+controller.md
+middleware.md
+migration.md
+policy.md
+event.md
+listener.md
+notification.md
+mail.md
+grammar.md
+~~~
+
+A generator must never become an alternate parser/language definition.
+
+# Safety
+
+Generation must not overwrite an existing application file silently.
+
+Default behavior should fail with a clear message.
+
+A future explicit force/replace mode may exist, but it must be opt-in.
+
+# Naming
+
+Generators normalize names deterministically.
+
+Example intent:
+
+~~~text
+UserController
+  -> app/controllers/user_controller.gnr
+~~~
+
+Exact path conventions should follow the module contract.
+
+# Module generation
+
+Generated files should naturally map to their inferred module names.
+
+An explicit module declaration is optional when path-based module identity is sufficient.
+
+# Build
+
+gungnir build should conceptually perform:
+
+~~~text
+project discovery
+  -> source discovery
+  -> parse
+  -> semantics
+  -> Validated AST
+  -> C++ lowering/emission
+  -> native C++ build
+~~~
+
+A failed semantic check should stop before native compilation.
+
+# Development command
+
+gungnir dev should only claim features that are actually implemented.
+
+Hot reload/file watching should not be documented as reliable until the development runtime can:
+
+- detect changes;
+- rebuild;
+- restart safely;
+- report failures;
+- avoid orphan processes.
+
+# Generated C++ inspection
+
+Developers should be able to retain/inspect generated C++ without making that generated code part of the normal source workflow.
+
+Generated files are build artifacts.
+
+# Database commands
+
+Migration commands may include:
+
+~~~text
+migrate
+rollback
+reset
+status
+plan
+~~~
+
+They should operate through the canonical migration runtime and backend capability contracts.
+
+# Determinism
+
+Generators and compiler emission should be deterministic.
+
+The same inputs/configuration should generate the same source/output ordering.
+
+# Design rule
+
+~~~text
+CLI generates canonical Gungnir
+compiler validates Gungnir
+transpiler generates C++23
+native toolchain builds the result
+~~~
