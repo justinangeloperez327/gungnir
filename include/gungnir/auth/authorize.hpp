@@ -11,8 +11,12 @@ namespace gungnir::auth {
 
 class AuthorizationError : public std::runtime_error {
 public:
-    explicit AuthorizationError(std::string message)
-        : std::runtime_error(std::move(message)) {}
+    explicit AuthorizationError(std::string message, int status = 403)
+        : std::runtime_error(std::move(message)), status_(status) {}
+
+    [[nodiscard]] int status() const noexcept { return status_; }
+private:
+    int status_;
 };
 
 inline void authorize(
@@ -22,7 +26,7 @@ inline void authorize(
 ) {
     const auto* identity = context.user();
     if (identity == nullptr) {
-        throw AuthorizationError{"Authentication required"};
+        throw AuthorizationError{"Authentication required", 401};
     }
 
     const auto decision = authorization.inspect(ability, *identity);
@@ -34,3 +38,4 @@ inline void authorize(
 }
 
 } // namespace gungnir::auth
+

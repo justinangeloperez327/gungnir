@@ -727,7 +727,7 @@ std::vector<MethodStatement> Parser::parse_method_body(
             const auto expression_start = next_significant(*start);
             const auto expression_end = previous_significant(cursor);
             const auto& keyword = tokens_[*start].lexeme;
-            const auto kind = keyword == "return"
+            const auto kind = (keyword == "return" || keyword == "co_return")
                 ? StatementKind::return_
                 : keyword == "const" ? StatementKind::binding
                 : keyword == "break" ? StatementKind::break_
@@ -767,6 +767,31 @@ std::vector<MethodStatement> Parser::parse_method_body(
                     parse_expression(value_start, *expression_end),
                     std::move(binding_name)
                 });
+                if (keyword == "throw") statements.back().name = "throw";
+                auto type = std::optional<std::size_t>{*start};
+                const bool immutable = tokens_[*type].lexeme == "const";
+                if (immutable) type = next_significant(*type);
+                auto local = type ? next_significant(*type) : std::nullopt;
+                if (local && (tokens_[*local].lexeme == "&" ||
+                              tokens_[*local].lexeme == "*"))
+                    local = next_significant(*local);
+                const auto marker = local ? next_significant(*local) : std::nullopt;
+                if (kind != StatementKind::return_ && type && local && marker &&
+                    tokens_[*type].word() && tokens_[*type].lexeme != "throw" &&
+                    tokens_[*type].lexeme != "co_return" &&
+                    tokens_[*local].kind == TokenKind::identifier &&
+                    (tokens_[*marker].lexeme == "=" ||
+                     tokens_[*marker].lexeme == ";")) {
+                    auto& statement = statements.back();
+                    statement.declared_name = tokens_[*local].lexeme;
+                    statement.declared_type = tokens_[*type].lexeme;
+                    statement.declared_immutable = immutable;
+                    if (tokens_[*marker].lexeme == "=") {
+                        const auto initializer = next_significant(*marker);
+                        if (initializer && *initializer <= *expression_end)
+                            statement.expression = parse_expression(*initializer, *expression_end);
+                    } else statement.expression = {};
+                }
             }
         }
         start = next_significant(cursor);
@@ -2190,3 +2215,4 @@ ParseResult Parser::parse() {
 }
 
 } // namespace gungnir::language
+

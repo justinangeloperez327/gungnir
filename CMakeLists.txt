@@ -899,6 +899,16 @@ endif()
 if(GUNGNIR_BUILD_TESTS)
     enable_testing()
 
+    add_executable(gungnir_runtime_safety_test tests/runtime_safety.cpp)
+    target_link_libraries(gungnir_runtime_safety_test PRIVATE gungnir::gungnir gungnir::orm)
+    target_compile_features(gungnir_runtime_safety_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.runtime_safety COMMAND gungnir_runtime_safety_test)
+
+    add_executable(gungnir_frontend_diagnostics_test tests/frontend_diagnostics.cpp)
+    target_link_libraries(gungnir_frontend_diagnostics_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_frontend_diagnostics_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.frontend_diagnostics COMMAND gungnir_frontend_diagnostics_test)
+
     add_executable(gungnir_language_test tests/language.cpp)
     target_link_libraries(gungnir_language_test PRIVATE gungnir::language)
     target_compile_features(gungnir_language_test PRIVATE cxx_std_23)
@@ -2003,3 +2013,4 @@ if(GUNGNIR_BUILD_TOOLS)
             ${CMAKE_INSTALL_BINDIR}
     )
 endif()
+

@@ -18,6 +18,10 @@ struct SemanticIndex {
     };
     // Enable unresolved reference diagnostics for closed Gungnir projects.
     bool closed_world{false};
+    // Names supplied by native C++ integrations in a closed project.
+    std::unordered_set<std::string> external_values;
+    std::unordered_set<std::string> external_functions;
+    std::unordered_set<std::string> external_types;
     std::unordered_map<std::string, FrameworkBaseKind> types;
     std::unordered_map<std::string, std::unordered_set<std::string>> actions;
     std::unordered_map<std::string, std::unordered_set<std::string>> declaration_sources;
@@ -36,3 +40,4 @@ public:
 };
 
 } // namespace gungnir::language
+

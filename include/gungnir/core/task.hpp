@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <gungnir/core/execution_context.hpp>
 
 namespace gungnir {
 
@@ -45,6 +46,7 @@ public:
 
     void run_inline() {
         if (handle_ && !handle_.done()) {
+            handle_.promise().prepare();
             handle_.resume();
         }
     }
@@ -60,14 +62,18 @@ public:
         }
 
         T await_resume() {
+            if (!handle) throw std::logic_error("Cannot await an empty Gungnir Task");
             return handle.promise().result();
         }
     };
 
-    [[nodiscard]] Awaiter operator co_await() & noexcept { return Awaiter{handle_}; }
-    [[nodiscard]] Awaiter operator co_await() && noexcept { return Awaiter{handle_}; }
+    [[nodiscard]] Awaiter operator co_await() & {
+        if (handle_ && !handle_.done()) handle_.promise().prepare();
+        return Awaiter{handle_};
+    }
+    [[nodiscard]] Awaiter operator co_await() && { return operator co_await(); }
 
-    struct promise_type {
+    struct promise_type : detail::ContextPromise {
         std::optional<T> value;
         std::exception_ptr exception;
         std::coroutine_handle<> continuation{std::noop_coroutine()};
@@ -76,12 +82,11 @@ public:
             return Task{handle_type::from_promise(*this)};
         }
 
-        [[nodiscard]] std::suspend_always initial_suspend() const noexcept { return {}; }
-
         struct FinalAwaiter {
             [[nodiscard]] bool await_ready() const noexcept { return false; }
 
             std::coroutine_handle<> await_suspend(handle_type handle) const noexcept {
+                handle.promise().finish();
                 return handle.promise().continuation;
             }
 
@@ -156,13 +161,19 @@ public:
             return handle;
         }
 
-        void await_resume() { handle.promise().result(); }
+        void await_resume() {
+            if (!handle) throw std::logic_error("Cannot await an empty Gungnir Task");
+            handle.promise().result();
+        }
     };
 
-    [[nodiscard]] Awaiter operator co_await() & noexcept { return Awaiter{handle_}; }
-    [[nodiscard]] Awaiter operator co_await() && noexcept { return Awaiter{handle_}; }
+    [[nodiscard]] Awaiter operator co_await() & {
+        if (handle_ && !handle_.done()) handle_.promise().prepare();
+        return Awaiter{handle_};
+    }
+    [[nodiscard]] Awaiter operator co_await() && { return operator co_await(); }
 
-    struct promise_type {
+    struct promise_type : detail::ContextPromise {
         std::exception_ptr exception;
         std::coroutine_handle<> continuation{std::noop_coroutine()};
 
@@ -170,12 +181,11 @@ public:
             return Task{handle_type::from_promise(*this)};
         }
 
-        [[nodiscard]] std::suspend_always initial_suspend() const noexcept { return {}; }
-
         struct FinalAwaiter {
             [[nodiscard]] bool await_ready() const noexcept { return false; }
 
             std::coroutine_handle<> await_suspend(handle_type handle) const noexcept {
+                handle.promise().finish();
                 return handle.promise().continuation;
             }
 
@@ -198,3 +208,4 @@ private:
 };
 
 } // namespace gungnir
+

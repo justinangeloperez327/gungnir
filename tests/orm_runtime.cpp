@@ -199,8 +199,21 @@ int main() {
     assert(found.has_value());
     assert(found->id.get() == 1);
 
+    // Eager loading must reuse a pinned transaction connection even with a
+    // one-connection pool, rather than release or acquire another lease.
+    auto transaction = manager.transaction();
+    transaction.run([&] {
+        const auto scoped = database::runtime::current();
+        assert(scoped);
+        auto transactional_users = User::with("posts").get();
+        assert(transactional_users.first().posts.loaded());
+        assert(database::runtime::current() == scoped);
+    });
+    assert(!database::runtime::current());
+
     assert(observed_queries >= 1);
     orm::stop_listening();
     database::runtime::clear();
     return 0;
 }
+

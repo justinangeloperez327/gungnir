@@ -12,8 +12,7 @@ std::atomic<Manager*> active_manager{
     nullptr
 };
 
-thread_local ConnectionHandle
-    current_connection;
+
 
 } // namespace
 
@@ -22,20 +21,22 @@ namespace detail {
 ConnectionScope::ConnectionScope(
     ConnectionHandle connection
 ) noexcept
-    : previous_(
+    : owner_(gungnir::detail::current_execution_context()),
+      previous_(
         std::move(
-            current_connection
+            gungnir::detail::active_context->database
         )
       ),
       active_(true) {
-    current_connection =
+    gungnir::detail::active_context->database =
         std::move(connection);
 }
 
 ConnectionScope::ConnectionScope(
     ConnectionScope&& other
 ) noexcept
-    : previous_(
+    : owner_(std::move(other.owner_)),
+      previous_(
         std::move(
             other.previous_
         )
@@ -57,6 +58,7 @@ ConnectionScope::operator=(
 
     reset();
 
+    owner_ = std::move(other.owner_);
     previous_ =
         std::move(
             other.previous_
@@ -81,7 +83,7 @@ void ConnectionScope::reset()
         return;
     }
 
-    current_connection =
+    owner_->database =
         std::move(previous_);
 
     active_ = false;
@@ -105,7 +107,7 @@ void clear()
         std::memory_order_release
     );
 
-    current_connection.reset();
+    gungnir::detail::active_context->database.reset();
 }
 
 bool configured()
@@ -143,7 +145,7 @@ Manager& manager() {
 
 ConnectionHandle current()
     noexcept {
-    return current_connection;
+    return gungnir::detail::active_context->database;
 }
 
 detail::ConnectionScope activate(
@@ -157,18 +159,18 @@ detail::ConnectionScope activate(
 
 void clear_current()
     noexcept {
-    current_connection.reset();
+    gungnir::detail::active_context->database.reset();
 }
 
 ConnectionHandle connection(
     std::string_view name
 ) {
     if (
-        current_connection &&
-        current_connection->name() ==
+        gungnir::detail::active_context->database &&
+        gungnir::detail::active_context->database->name() ==
             name
     ) {
-        return current_connection;
+        return gungnir::detail::active_context->database;
     }
 
     return
@@ -181,11 +183,11 @@ ConnectionHandle read_connection(
     std::string_view name
 ) {
     if (
-        current_connection &&
-        current_connection->name() ==
+        gungnir::detail::active_context->database &&
+        gungnir::detail::active_context->database->name() ==
             name
     ) {
-        return current_connection;
+        return gungnir::detail::active_context->database;
     }
 
     return
@@ -198,11 +200,11 @@ ConnectionHandle write_connection(
     std::string_view name
 ) {
     if (
-        current_connection &&
-        current_connection->name() ==
+        gungnir::detail::active_context->database &&
+        gungnir::detail::active_context->database->name() ==
             name
     ) {
-        return current_connection;
+        return gungnir::detail::active_context->database;
     }
 
     return
@@ -212,3 +214,4 @@ ConnectionHandle write_connection(
 }
 
 } // namespace gungnir::database::runtime
+

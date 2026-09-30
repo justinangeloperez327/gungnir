@@ -100,6 +100,20 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
         });
     };
 
+    std::unordered_set<std::string> global_values = index.external_values;
+    for (const auto& node : program.nodes)
+        if (const auto* binding = std::get_if<InferredBinding>(&node)) {
+            bool member = false;
+            for (const auto& owner : program.nodes) {
+                if (const auto* declaration = std::get_if<FrameworkDeclaration>(&owner))
+                    member |= binding->span.begin >= declaration->span.begin &&
+                              binding->span.end <= declaration->span.end;
+                if (const auto* declaration = std::get_if<FrameworkBase>(&owner))
+                    member |= binding->span.begin >= declaration->declaration_span.begin &&
+                              binding->span.end <= declaration->declaration_span.end;
+            }
+            if (!member) global_values.insert(binding->name);
+        }
     std::unordered_set<std::string> declarations_in_file;
     for (const auto& node : program.nodes) {
         const auto* base = std::get_if<FrameworkBase>(&node);
@@ -202,8 +216,24 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             }
             if (!parameters) continue;
 
+            const auto check_type = [&](std::string type_name, SourceSpan location) {
+                if (!index.closed_world) return;
+                while (!type_name.empty() && (type_name.back() == '&' ||
+                       type_name.back() == '*' || type_name.back() == ' ')) type_name.pop_back();
+                static const std::unordered_set<std::string> native_types{
+                    "void", "auto", "Response", "Request", "Next", "String", "Integer",
+                    "Boolean", "Int64", "UInt64", "Double", "Json", "Data", "Value",
+                    "Table", "std::string", "gungnir::Response", "gungnir::Request"
+                };
+                if (!resolve_type(type_name).known() &&
+                    !native_types.contains(type_name) && !index.external_types.contains(type_name))
+                    report(location, "Unknown type '" + type_name + "'", "GNR1326");
+            };
+            check_type(framework_method ? framework_method->return_type :
+                       controller_method->return_type, span);
             std::unordered_set<std::string> parameter_names;
             for (const auto& parameter : *parameters) {
+                check_type(parameter.type_name, parameter.span);
                 if (!parameter_names.insert(parameter.name).second) {
                     report(parameter.span, "Duplicate parameter '" +
                          parameter.name + "'", "GNR1302");
@@ -217,6 +247,13 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     parameter.name, resolve_type(parameter.type_name)
                 );
             }
+            for (const auto value_index : members) {
+                const auto& value = program.nodes[value_index];
+                if (const auto* field = std::get_if<ModelField>(&value))
+                    local_types.emplace(field->name, resolve_type(field->type_name));
+                if (const auto* injection = std::get_if<InjectDeclaration>(&value))
+                    local_types.emplace(injection->name, resolve_type(injection->type_name));
+            }
             TypeSystem type_system;
             std::unordered_set<std::string> immutable_names;
             std::function<Type(const Expression&)> infer =
@@ -225,7 +262,13 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     return type_system.infer_literal(expression.text);
                 if (expression.kind == ExpressionKind::name) {
                     const auto found = local_types.find(expression.text);
-                    return found == local_types.end() ? Type{} : found->second;
+                    if (found != local_types.end()) return found->second;
+                    if (!global_values.contains(expression.text) &&
+                        !types.contains(expression.text) &&
+                        !index.external_types.contains(expression.text) &&
+                        expression.text != "this" && expression.text != "nullptr")
+                        report(expression.span, "Unknown value '" + expression.text + "'", "GNR1324");
+                    return {};
                 }
                 if (expression.kind == ExpressionKind::list) {
                     std::string element;
@@ -287,6 +330,20 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     }
                     const auto found = index.methods.find(owner + "::" + method_name);
                     if (method_name.empty() || found == index.methods.end()) {
+                        static const std::unordered_set<std::string> builtins{
+                            "text", "html", "json", "view", "redirect", "abort",
+                            "authorize", "sleep_for", "make_json", "make_value"
+                        };
+                        if (index.closed_world && callee.kind == ExpressionKind::name &&
+                            !builtins.contains(method_name) &&
+                            !index.external_functions.contains(method_name) &&
+                            !types.contains(method_name) &&
+                            !index.external_types.contains(method_name) &&
+                            !local_types.contains(method_name))
+                            report(callee.span, "Unknown function '" + method_name + "'", "GNR1325");
+                        if (callee.kind == ExpressionKind::member &&
+                            callee.text != "::" && !callee.arguments.empty())
+                            (void) infer(callee.arguments.front());
                         for (std::size_t argument = 1;
                              argument < expression.arguments.size(); ++argument)
                             (void) infer(expression.arguments[argument]);
@@ -427,6 +484,16 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                                "Control-flow condition must be boolean", "GNR1311");
                     }
                 }
+                if (!statement.declared_name.empty()) {
+                    if (!declared_here.insert(statement.declared_name).second)
+                        report(statement.span, "Duplicate local binding '" +
+                               statement.declared_name + "'", "GNR1310");
+                    check_type(statement.declared_type, statement.span);
+                    const auto declared = resolve_type(statement.declared_type);
+                    scope.insert_or_assign(statement.declared_name,
+                        statement.declared_type == "auto" ? value : declared);
+                    if (statement.declared_immutable) constants.insert(statement.declared_name);
+                }
                 if (statement.kind == StatementKind::binding &&
                     !statement.name.empty()) {
                     if (!declared_here.insert(statement.name).second) {
@@ -471,7 +538,8 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
             std::function<bool(const std::vector<MethodStatement>&)> returns_on_all_paths =
                 [&](const std::vector<MethodStatement>& statements) {
                     for (const auto& statement : statements) {
-                        if (statement.kind == StatementKind::return_) return true;
+                        if (statement.kind == StatementKind::return_ ||
+                            statement.name == "throw") return true;
                         if (statement.kind == StatementKind::block &&
                             returns_on_all_paths(statement.children)) return true;
                         if (statement.kind == StatementKind::conditional &&
@@ -481,16 +549,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     }
                     return false;
                 };
-            std::function<bool(const std::vector<MethodStatement>&)> contains_return =
-                [&](const std::vector<MethodStatement>& statements) {
-                    for (const auto& statement : statements) {
-                        if (statement.kind == StatementKind::return_ ||
-                            contains_return(statement.children) ||
-                            contains_return(statement.alternative)) return true;
-                    }
-                    return false;
-                };
-            if (return_type != "void" && contains_return(*body) &&
+            if (return_type != "void" &&
                 !returns_on_all_paths(*body)) {
                 report(span, "Non-void method may finish without returning a value",
                        "GNR1319");
@@ -531,3 +590,4 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
 }
 
 } // namespace gungnir::language
+

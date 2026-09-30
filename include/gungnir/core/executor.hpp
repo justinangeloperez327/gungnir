@@ -37,14 +37,7 @@ public:
             std::coroutine_handle<> handle
         ) const {
             executor.schedule(handle);
-            observability::
-                clear_current_context();
 
-            view::runtime::
-                clear_current();
-
-            database::runtime::
-                clear_current();
         }
         void await_resume() const noexcept {}
     };
@@ -63,3 +56,4 @@ private:
 };
 
 } // namespace gungnir
+

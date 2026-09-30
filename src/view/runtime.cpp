@@ -13,28 +13,29 @@ std::mutex runtime_mutex;
 
 EngineHandle fallback_engine;
 
-thread_local EngineHandle
-    current_engine;
+
 
 } // namespace
 
 Scope::Scope(
     EngineHandle engine
 ) noexcept
-    : previous_(
+    : owner_(gungnir::detail::current_execution_context()),
+      previous_(
         std::move(
-            current_engine
+            gungnir::detail::active_context->view
         )
       ),
       active_(true) {
-    current_engine =
+    gungnir::detail::active_context->view =
         std::move(engine);
 }
 
 Scope::Scope(
     Scope&& other
 ) noexcept
-    : previous_(
+    : owner_(std::move(other.owner_)),
+      previous_(
         std::move(
             other.previous_
         )
@@ -55,6 +56,7 @@ Scope& Scope::operator=(
 
     reset();
 
+    owner_ = std::move(other.owner_);
     previous_ =
         std::move(
             other.previous_
@@ -79,7 +81,7 @@ void Scope::reset()
         return;
     }
 
-    current_engine =
+    owner_->view =
         std::move(previous_);
 
     active_ = false;
@@ -119,8 +121,8 @@ bool using_engine(
 
 EngineHandle current()
     noexcept {
-    if (current_engine) {
-        return current_engine;
+    if (gungnir::detail::active_context->view) {
+        return gungnir::detail::active_context->view;
     }
 
     std::lock_guard lock{
@@ -153,7 +155,8 @@ Scope activate(
 
 void clear_current()
     noexcept {
-    current_engine.reset();
+    gungnir::detail::active_context->view.reset();
 }
 
 } // namespace gungnir::view::runtime
+

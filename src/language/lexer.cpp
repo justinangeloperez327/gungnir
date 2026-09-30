@@ -1,6 +1,7 @@
 #include <gungnir/language/lexer.hpp>
 
 #include <cctype>
+#include <regex>
 #include <string>
 #include <string_view>
 
@@ -42,13 +43,21 @@ bool keyword(std::string_view value) {
 
 Lexer::Lexer(std::string_view source) noexcept : source_(source) {}
 
-std::vector<Token> Lexer::tokenize() const {
+std::vector<Token> Lexer::tokenize(
+    std::vector<Diagnostic>* diagnostics, std::string_view source_name
+) const {
     std::vector<Token> tokens;
 
     std::size_t index = 0;
     std::size_t line = 1;
     std::size_t column = 1;
 
+    const auto report = [&](std::size_t line, std::size_t column,
+                            std::string message, std::string code) {
+        if (diagnostics) diagnostics->push_back(Diagnostic{
+            DiagnosticLevel::error, {std::string{source_name}, line, column},
+            std::move(message), std::move(code), {}});
+    };
     auto advance = [&]() {
         const char current = source_[index++];
         if (current == '\n') {
@@ -135,6 +144,7 @@ std::vector<Token> Lexer::tokenize() const {
         ) {
             advance();
             advance();
+            bool closed = false;
 
             while (index < source_.size()) {
                 if (
@@ -144,12 +154,15 @@ std::vector<Token> Lexer::tokenize() const {
                 ) {
                     advance();
                     advance();
+                    closed = true;
                     break;
                 }
 
                 advance();
             }
 
+            if (!closed) report(start_line, start_column,
+                                "Unterminated block comment", "GNR0901");
             emit(TokenKind::comment, start, start_line, start_column);
             continue;
         }
@@ -162,6 +175,7 @@ std::vector<Token> Lexer::tokenize() const {
             advance();
             advance();
 
+            bool raw_closed = false;
             const auto delimiter_start = index;
             while (index < source_.size() && source_[index] != '(') {
                 advance();
@@ -171,6 +185,8 @@ std::vector<Token> Lexer::tokenize() const {
                 const std::string delimiter{
                     source_.substr(delimiter_start, index - delimiter_start)
                 };
+                if (delimiter.size() > 16 || delimiter.find_first_of(" \\)\t\r\n") != std::string::npos)
+                    report(start_line, start_column, "Invalid raw string delimiter", "GNR0902");
                 advance();
 
                 const std::string closing = ")" + delimiter + "\"";
@@ -181,6 +197,7 @@ std::vector<Token> Lexer::tokenize() const {
                         advance();
                     }
                 } else {
+                    raw_closed = true;
                     const auto end = closing_at + closing.size();
                     while (index < end) {
                         advance();
@@ -188,6 +205,8 @@ std::vector<Token> Lexer::tokenize() const {
                 }
             }
 
+            if (!raw_closed) report(start_line, start_column,
+                                    "Unterminated raw string literal", "GNR0902");
             emit(TokenKind::string_literal, start, start_line, start_column);
             continue;
         }
@@ -195,6 +214,7 @@ std::vector<Token> Lexer::tokenize() const {
         if (current == '"' || current == '\'') {
             const char quote = current;
             bool escaped = false;
+            bool closed = false;
             advance();
 
             while (index < source_.size()) {
@@ -211,11 +231,25 @@ std::vector<Token> Lexer::tokenize() const {
                     continue;
                 }
 
+                if (value == '\n' || value == '\r') {
+                    report(start_line, start_column, "Newline in quoted literal", "GNR0902");
+                    break;
+                }
                 if (value == quote) {
+                    closed = true;
                     break;
                 }
             }
 
+            if (!closed) report(start_line, start_column,
+                                "Unterminated quoted literal", "GNR0902");
+            if (closed && quote == '\'') {
+                static const std::regex character{R"('([^'\\\r\n]|\\([abfnrtv\\'"?]|[0-7]{1,3}|x[0-9a-fA-F]+|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))')"};
+                const std::string literal{source_.substr(start, index - start)};
+                if (!std::regex_match(literal, character))
+                    report(start_line, start_column,
+                           "Single quotes require one character; use double quotes for strings", "GNR0904");
+            }
             emit(
                 quote == '"' ? TokenKind::string_literal
                              : TokenKind::character_literal,
@@ -254,7 +288,9 @@ std::vector<Token> Lexer::tokenize() const {
             continue;
         }
 
-        if (std::isdigit(static_cast<unsigned char>(current)) != 0) {
+        if (std::isdigit(static_cast<unsigned char>(current)) != 0 ||
+            (current == '.' && index + 1 < source_.size() &&
+             std::isdigit(static_cast<unsigned char>(source_[index + 1])) != 0)) {
             advance();
 
             while (index < source_.size()) {
@@ -262,7 +298,11 @@ std::vector<Token> Lexer::tokenize() const {
                 if (
                     std::isalnum(static_cast<unsigned char>(value)) == 0 &&
                     value != '_' &&
-                    value != '.'
+                    value != '.' &&
+                    !((value == '+' || value == '-') && index > start &&
+                      (source_[index - 1] == 'e' || source_[index - 1] == 'E') &&
+                      !(index > start + 1 && source_[start] == '0' &&
+                        (source_[start + 1] == 'x' || source_[start + 1] == 'X')))
                 ) {
                     break;
                 }
@@ -270,6 +310,11 @@ std::vector<Token> Lexer::tokenize() const {
                 advance();
             }
 
+            static const std::regex number{
+                R"((0[xX][0-9a-fA-F]+([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?)?|0[bB][01]+([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?)?|[0-9]+([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?)?|([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][+-]?[0-9]+)?[fFlL]?))"};
+            const std::string literal{source_.substr(start, index - start)};
+            if (!std::regex_match(literal, number))
+                report(start_line, start_column, "Malformed numeric literal '" + literal + "'", "GNR0903");
             emit(TokenKind::number, start, start_line, start_column);
             continue;
         }
@@ -290,3 +335,4 @@ std::vector<Token> Lexer::tokenize() const {
 }
 
 } // namespace gungnir::language
+

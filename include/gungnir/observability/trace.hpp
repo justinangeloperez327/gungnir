@@ -11,6 +11,7 @@
 #include <utility>
 
 #include <gungnir/security/random.hpp>
+#include <gungnir/core/execution_context.hpp>
 
 namespace gungnir::observability {
 
@@ -24,19 +25,6 @@ enum class SpanStatus {
     unset,
     ok,
     error
-};
-
-struct TraceContext {
-    std::string trace_id;
-    std::string span_id;
-
-    [[nodiscard]]
-    bool valid()
-        const noexcept {
-        return
-            !trace_id.empty() &&
-            !span_id.empty();
-    }
 };
 
 struct SpanRecord {
@@ -71,8 +59,7 @@ class Tracer;
 
 namespace detail {
 
-inline thread_local TraceContext
-    current_trace_context{};
+
 
 [[nodiscard]]
 inline std::mutex&
@@ -99,13 +86,12 @@ public:
     explicit Scope(
         TraceContext context
     )
-        : previous_(
-            detail::
-                current_trace_context
+        : owner_(gungnir::detail::current_execution_context()),
+          previous_(
+            gungnir::detail::active_context->trace
           ),
           active_(true) {
-        detail::
-            current_trace_context =
+        gungnir::detail::active_context->trace =
             std::move(context);
     }
 
@@ -120,7 +106,8 @@ public:
     Scope(
         Scope&& other
     ) noexcept
-        : previous_(
+        : owner_(std::move(other.owner_)),
+          previous_(
             std::move(
                 other.previous_
             )
@@ -141,6 +128,7 @@ public:
 
         reset();
 
+        owner_ = std::move(other.owner_);
         previous_ =
             std::move(
                 other.previous_
@@ -165,14 +153,14 @@ public:
             return;
         }
 
-        detail::
-            current_trace_context =
+        owner_->trace =
             std::move(previous_);
 
         active_ = false;
     }
 
 private:
+    gungnir::detail::ContextHandle owner_;
     TraceContext previous_;
     bool active_{false};
 };
@@ -180,8 +168,7 @@ private:
 [[nodiscard]]
 inline TraceContext current_context() {
     return
-        detail::
-            current_trace_context;
+        gungnir::detail::active_context->trace;
 }
 
 [[nodiscard]]
@@ -195,8 +182,7 @@ inline Scope activate(
 
 inline void clear_current_context()
     noexcept {
-    detail::
-        current_trace_context = {};
+    gungnir::detail::active_context->trace = {};
 }
 
 class Span {
@@ -554,3 +540,4 @@ inline void set_global_tracer(
 }
 
 } // namespace gungnir::observability
+

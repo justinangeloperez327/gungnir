@@ -505,14 +505,7 @@ void SleepAwaiter::await_suspend(
         database::runtime::current()
     );
 
-    observability::
-        clear_current_context();
 
-    view::runtime::
-        clear_current();
-
-    database::runtime::
-        clear_current();
 }
 
 namespace detail {
@@ -552,3 +545,4 @@ void dispatch_due_timers() noexcept {
 } // namespace detail
 
 } // namespace gungnir
+

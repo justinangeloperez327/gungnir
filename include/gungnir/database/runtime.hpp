@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <gungnir/core/execution_context.hpp>
 #include <string_view>
 #include <utility>
 
@@ -44,6 +45,7 @@ public:
         noexcept;
 
 private:
+    gungnir::detail::ContextHandle owner_;
     ConnectionHandle previous_;
     bool active_{false};
 };
@@ -92,3 +94,4 @@ ConnectionHandle write_connection(
 );
 
 } // namespace gungnir::database::runtime
+
