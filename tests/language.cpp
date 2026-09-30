@@ -45,6 +45,14 @@ int main() {
                                    "std::vector{3, 4}}") != std::string::npos);
     assert(lowered_lists.code.find("std::vector<gungnir::view::Value>{}") !=
            std::string::npos);
+    const auto loop_list = gungnir::language::Transpiler{}.transpile(
+        "controller Lists { void build() { for (const values = [1, 2]; "
+        "true; ) { break; } } }",
+        "loop_list.gnr", {.emit_line_directives = false}
+    );
+    assert(loop_list.success());
+    assert(loop_list.code.find("const auto values = std::vector{1, 2}") !=
+           std::string::npos);
     const auto access_program = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Access { void load() { const users = User::all(); "

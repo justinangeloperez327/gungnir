@@ -268,7 +268,12 @@ TranspileResult Transpiler::transpile(
         -> void {
         for (const auto& statement : statements) {
             if (statement.for_parts.empty()) lower_lists(lower_lists, statement.expression);
-            for (const auto& part : statement.for_parts) lower_lists(lower_lists, part);
+            for (std::size_t i = 0; i < statement.for_parts.size(); ++i) {
+                if (i == 0 && statement.for_binding_immutable) continue;
+                lower_lists(lower_lists, statement.for_parts[i]);
+            }
+            if (statement.for_binding_immutable)
+                lower_lists(lower_lists, statement.for_binding_initializer);
             self(self, statement.children);
             self(self, statement.alternative);
         }
