@@ -1,68 +1,117 @@
 # Cache
 
-Gungnir cache separates the application-facing repository from storage adapters.
+Gungnir cache separates the application-facing cache repository from storage adapters.
 
-`cache::Store` defines the persistence contract. `cache::Repository` provides the common API and `remember()`. `MemoryStore` is the built-in process-local adapter for development, tests and single-process workloads.
+# Core contract
 
-## Values and expiration
+A cache operation is based on:
 
-The core contract stores opaque strings. Serialization of models or structured application values should be explicit rather than hidden behind unsafe type erasure.
+~~~text
+key
+value
+optional expiration
+store
+~~~
 
-Entries may be stored without expiration or with a `cache::Duration` time-to-live. The memory adapter uses a monotonic clock for expiration.
+The repository owns common behavior. The store owns persistence.
 
-## Remember
+# Stores
 
-```cpp
-auto value = cache.remember(
-    "users.count",
-    std::chrono::seconds{60},
-    [] { return load_user_count(); }
-);
-```
+The core may provide:
 
-`remember()` is intentionally a simple read-through operation. It does not claim distributed stampede protection. Production adapters that need atomic locks or single-flight behavior should expose those capabilities explicitly.
+- MemoryStore for development, tests, and single-process workloads;
+- RedisStore when the optional Redis adapter is enabled.
 
-## Redis
+Additional production stores can implement the same contract.
 
-Gungnir provides an optional hiredis-backed Redis store. It is not linked into the core target unless explicitly enabled:
+# Memory store
 
-```sh
-cmake -S . -B build \
-  -DGUNGNIR_WITH_REDIS=ON
-```
+MemoryStore is process-local.
 
-Link applications that use it against `gungnir::redis`:
+It is not suitable for:
 
-```cpp
-#include <gungnir/cache/redis_store.hpp>
+- multi-instance coordination;
+- durable cache state;
+- distributed locks;
+- shared sessions;
+- shared queue semantics.
 
-gungnir::cache::RedisSettings settings;
-settings.host = "127.0.0.1";
-settings.port = 6379;
-settings.database = 0;
-settings.prefix = "my-app:";
+# Values
 
-gungnir::cache::RedisStore store{
-    settings
-};
+The low-level cache store should use an explicit serializable representation.
 
-gungnir::cache::Repository cache{
-    store
-};
-```
+Application models or arbitrary native objects should not be persisted through unsafe memory/type erasure.
 
-`RedisSettings` supports host, port, optional username/password authentication, logical database selection, key prefixes, connect timeout and command timeout.
+Higher-level serializers may encode strings, JSON/data, or explicit application payloads.
 
-The adapter uses binary-safe hiredis argv commands, native Redis expiration, reconnects after transport failure, and serializes access to the synchronous hiredis context because a context is not safe for concurrent command use.
+# Expiration
 
-A non-empty prefix scopes `flush()` to keys owned by that prefix. With an empty prefix, `flush()` intentionally maps to `FLUSHDB` and clears the selected Redis logical database.
+Entries may have no expiration or an explicit TTL.
 
-The current adapter is a real single-node Redis implementation, but it does **not** yet claim Redis Cluster routing, TLS transport, Sentinel discovery, connection pooling or asynchronous hiredis execution. Those capabilities should be added explicitly rather than hidden behind the basic `Store` contract.
+Process-local expiration should use a monotonic clock where appropriate. Distributed stores use backend expiration semantics.
 
-## Other production stores
+# Remember
 
-Memcached and database-backed distributed cache adapters are not yet supplied. They require concrete clients and operational semantics rather than placeholder APIs.
+A read-through helper may implement:
 
-## Flush
+~~~text
+get key
+if found -> return
+else compute
+store
+return
+~~~
 
-`flush()` clears the selected store. Applications should namespace cache keys when a shared production cache contains data from multiple applications or environments.
+Basic remember does not automatically guarantee distributed stampede protection.
+
+Atomic single-flight or locking behavior must be an explicit capability.
+
+# Namespacing
+
+Applications/stores may use prefixes or namespaces to prevent key collisions.
+
+Secrets should not be placed directly in cache keys when keys may appear in logs or monitoring.
+
+# Redis
+
+The optional Redis adapter may provide shared process-independent cache storage.
+
+Configuration may include host, port, authentication, database, prefix, timeouts, and TLS/backend capabilities when implemented.
+
+Credentials belong in runtime configuration.
+
+# Serialization compatibility
+
+Persisted structured cache payloads are a compatibility boundary.
+
+Applications should version long-lived payloads when schema changes can make old entries unreadable.
+
+# Errors
+
+Stores should distinguish:
+
+- cache miss;
+- backend/storage failure;
+- serialization failure;
+- timeout/cancellation.
+
+A cache miss is not an exception.
+
+# Security
+
+Cache data may contain sensitive application values.
+
+Production stores need appropriate access control, network encryption where required, secret management, and retention/TTL policy.
+
+# Testing
+
+Tests should use isolated stores or namespaces with deterministic cleanup.
+
+# Design rule
+
+~~~text
+cache repository defines behavior
+store defines persistence
+serialization is explicit
+distributed guarantees are never implied by MemoryStore
+~~~
