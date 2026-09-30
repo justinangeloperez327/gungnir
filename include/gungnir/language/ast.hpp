@@ -14,12 +14,6 @@ struct SourceSpan {
     std::size_t column{1};
 };
 
-struct InferredBinding {
-    SourceSpan span;
-    std::string name;
-    bool immutable{false};
-};
-
 struct ApplicationReference {
     SourceSpan span;
 };
@@ -62,6 +56,13 @@ struct Expression {
     std::string text;
     std::vector<Expression> arguments;
     // For operators and postfix expressions, arguments contain operands in source order.
+};
+
+struct InferredBinding {
+    SourceSpan span;
+    std::string name;
+    bool immutable{false};
+    Expression initializer;
 };
 
 enum class StatementKind {

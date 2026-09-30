@@ -1,6 +1,9 @@
 #include <cassert>
 #include <gungnir/gungnir.hpp>
 
+const defaults = [7, 8];
+const settings = {"enabled": true};
+
 controller CollectionsController {
     void check() {
         const numbers = [1, 2, 3];
@@ -31,6 +34,8 @@ controller CollectionsController {
 }
 
 int main() {
+    assert(defaults[0] == 7);
+    assert(settings["enabled"].truthy());
     CollectionsController controller;
     controller.check();
 }

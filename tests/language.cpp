@@ -45,6 +45,16 @@ int main() {
                                    "std::vector{3, 4}}") != std::string::npos);
     assert(lowered_lists.code.find("std::vector<gungnir::view::Value>{}") !=
            std::string::npos);
+    const auto global_collections = gungnir::language::Transpiler{}.transpile(
+        "const defaults = [1, 2]; const settings = {\"enabled\": true};",
+        "global_collections.gnr", {.emit_line_directives = false}
+    );
+    assert(global_collections.success());
+    assert(global_collections.code.find("const auto defaults = std::vector{1, 2}") !=
+           std::string::npos);
+    assert(global_collections.code.find("const auto settings = "
+                                        "gungnir::view::Data{{\"enabled\", true}}") !=
+           std::string::npos);
     const auto collections = gungnir::language::Transpiler{}.transpile(
         "controller Collections { void build() { "
         "const mixed = [1, \"two\", true]; "

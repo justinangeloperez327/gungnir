@@ -385,6 +385,8 @@ TranspileResult Transpiler::transpile(
         }
     };
     for (const auto& node : parsed.program.nodes) {
+        if (const auto* binding = std::get_if<InferredBinding>(&node))
+            lower_literals(lower_literals, binding->initializer, false);
         if (const auto* method = std::get_if<FrameworkMethod>(&node))
             lower_list_statements(lower_list_statements, method->body);
         if (const auto* method = std::get_if<ControllerMethod>(&node))

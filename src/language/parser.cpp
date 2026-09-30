@@ -1969,6 +1969,25 @@ ParseResult Parser::parse() {
     framework_names_.clear();
     result_ = {};
     std::optional<std::size_t> for_header_end;
+    const auto binding_initializer = [&](std::size_t equals) -> Expression {
+        if (scopes_.size() != 1) return {};
+        const auto first = next_significant(equals);
+        if (!first) return {};
+        std::size_t depth = 0;
+        for (auto cursor = *first; cursor < tokens_.size(); ++cursor) {
+            if (tokens_[cursor].trivia()) continue;
+            const auto& symbol = tokens_[cursor].lexeme;
+            if (symbol == "(" || symbol == "[" || symbol == "{") ++depth;
+            else if ((symbol == ")" || symbol == "]" || symbol == "}") &&
+                     depth > 0) --depth;
+            if (symbol == ";" && depth == 0) {
+                const auto last = previous_significant(cursor);
+                return last && *last >= *first
+                    ? parse_expression(*first, *last) : Expression{};
+            }
+        }
+        return {};
+    };
 
     for (std::size_t index = 0; index < tokens_.size(); ++index) {
         const auto& token = tokens_[index];
@@ -2121,7 +2140,8 @@ ParseResult Parser::parse() {
                                 token.column
                             },
                             binding_name,
-                            true
+                            true,
+                            binding_initializer(*equals)
                         });
 
                         continue;
@@ -2160,7 +2180,8 @@ ParseResult Parser::parse() {
                     token.column
                 },
                 token.lexeme,
-                false
+                false,
+                binding_initializer(*equals)
             });
         }
     }
