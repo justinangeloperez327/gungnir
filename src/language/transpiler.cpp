@@ -249,6 +249,37 @@ TranspileResult Transpiler::transpile(
         );
     }
 
+    const auto lower_lists = [&](const auto& self, const Expression& expression)
+        -> void {
+        if (expression.kind == ExpressionKind::list) {
+            edits.push_back(SourceEdit{
+                expression.span.begin, expression.span.begin + 1,
+                expression.arguments.empty()
+                    ? "std::vector<gungnir::view::Value>{" : "std::vector{"
+            });
+            edits.push_back(SourceEdit{
+                expression.span.end - 1, expression.span.end, "}"
+            });
+        }
+        for (const auto& argument : expression.arguments) self(self, argument);
+    };
+    const auto lower_list_statements = [&](const auto& self,
+                                           const std::vector<MethodStatement>& statements)
+        -> void {
+        for (const auto& statement : statements) {
+            if (statement.for_parts.empty()) lower_lists(lower_lists, statement.expression);
+            for (const auto& part : statement.for_parts) lower_lists(lower_lists, part);
+            self(self, statement.children);
+            self(self, statement.alternative);
+        }
+    };
+    for (const auto& node : parsed.program.nodes) {
+        if (const auto* method = std::get_if<FrameworkMethod>(&node))
+            lower_list_statements(lower_list_statements, method->body);
+        if (const auto* method = std::get_if<ControllerMethod>(&node))
+            lower_list_statements(lower_list_statements, method->body);
+    }
+
     const auto lower_for_initializers = [&](const auto& self,
                                              const std::vector<MethodStatement>& statements,
                                              std::unordered_set<std::string> visible)

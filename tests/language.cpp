@@ -34,6 +34,17 @@ int main() {
     assert(build.body.front().expression.kind ==
            gungnir::language::ExpressionKind::list);
     assert(build.body.front().expression.arguments.size() == 2);
+    const auto lowered_lists = gungnir::language::Transpiler{}.transpile(
+        "controller Lists { void build() { const numbers = [1, 2]; "
+        "const nested = [[1, 2], [3, 4]]; const empty = []; } }",
+        "lowered_lists.gnr", {.emit_line_directives = false}
+    );
+    assert(lowered_lists.success());
+    assert(lowered_lists.code.find("std::vector{1, 2}") != std::string::npos);
+    assert(lowered_lists.code.find("std::vector{std::vector{1, 2}, "
+                                   "std::vector{3, 4}}") != std::string::npos);
+    assert(lowered_lists.code.find("std::vector<gungnir::view::Value>{}") !=
+           std::string::npos);
     const auto access_program = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Access { void load() { const users = User::all(); "
