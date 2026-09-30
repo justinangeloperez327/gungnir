@@ -817,6 +817,17 @@ int main() {
              invalid_index, "invalid_index.gnr"))
         noninteger_index |= diagnostic.code == "GNR1321";
     assert(noninteger_index);
+    const auto invalid_object_index = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller ObjectIndex { void run() { "
+            "const data = {\"id\": 1}; const item = data[0]; } }"
+        }.tokenize(), "invalid_object_index.gnr"
+    }.parse().program;
+    bool nonstring_key = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             invalid_object_index, "invalid_object_index.gnr"))
+        nonstring_key |= diagnostic.code == "GNR1323";
+    assert(nonstring_key);
     const auto named_types = gungnir::language::Parser{
         gungnir::language::Lexer{
             "model User {} model Post {} "

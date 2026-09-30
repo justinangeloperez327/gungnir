@@ -38,6 +38,10 @@ public:
         return &found->second;
     }
 
+    [[nodiscard]] const Value& operator[](std::string_view key) const {
+        return values_.at(String{key});
+    }
+
     Data& with(String key, Value value) {
         values_.insert_or_assign(std::move(key), std::move(value));
         return *this;

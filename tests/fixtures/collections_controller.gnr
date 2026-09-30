@@ -15,6 +15,7 @@ controller CollectionsController {
         assert(mixed[1].string() == "two");
         assert(data.get("numbers")->as_array().size() == 3);
         assert(data.get("nested")->get("ok")->truthy());
+        assert(data["nested"].get("ok")->truthy());
         assert(rows.size() == 2);
         assert(varied[0].get("id") != nullptr);
         assert(nested[0].as_array()[1].string() == "two");

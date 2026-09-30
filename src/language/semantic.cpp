@@ -242,6 +242,11 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                             mixed || expression.arguments.empty() ? "Value" : element,
                             false};
                 }
+                if (expression.kind == ExpressionKind::object) {
+                    for (const auto& entry : expression.arguments)
+                        (void) infer(entry);
+                    return {TypeKind::map, "Data", false};
+                }
                 if (expression.kind == ExpressionKind::subscript &&
                     expression.arguments.size() == 2) {
                     const auto container = infer(expression.arguments[0]);
@@ -252,10 +257,14 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                                    "List index must be an integer", "GNR1321");
                         return scalar_type(container.name);
                     }
+                    if (container.kind == TypeKind::map && index.known() &&
+                        index.kind != TypeKind::string) {
+                        report(expression.arguments[1].span,
+                               "Object key must be a string", "GNR1323");
+                    }
                     return {};
                 }
-                if (expression.kind == ExpressionKind::object ||
-                    expression.kind == ExpressionKind::entry ||
+                if (expression.kind == ExpressionKind::entry ||
                     expression.kind == ExpressionKind::subscript) {
                     for (const auto& argument : expression.arguments)
                         (void) infer(argument);
