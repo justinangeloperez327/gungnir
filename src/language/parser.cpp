@@ -564,15 +564,20 @@ std::vector<MethodStatement> Parser::parse_method_body(
         auto cursor = *start;
         std::size_t braces = 0;
         std::size_t parentheses = 0;
+        std::size_t brackets = 0;
         bool block = false;
         while (cursor < closing) {
             const auto& value = tokens_[cursor].lexeme;
             if (value == "(") ++parentheses;
             if (value == ")" && parentheses > 0) --parentheses;
+            if (value == "[") ++brackets;
+            if (value == "]" && brackets > 0) --brackets;
             if (value == "{") ++braces;
             if (value == "}" && braces > 0) {
                 --braces;
-                if (braces == 0 && parentheses == 0) {
+                const auto next = next_significant(cursor);
+                if (braces == 0 && parentheses == 0 && brackets == 0 &&
+                    (!next || tokens_[*next].lexeme != ";")) {
                     block = true;
                     break;
                 }

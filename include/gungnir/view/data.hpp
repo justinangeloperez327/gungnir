@@ -71,4 +71,8 @@ private:
     std::unordered_map<String, Value> values_;
 };
 
+[[nodiscard]] inline Value make_value(const Data& data) {
+    return Value::object(data.values());
+}
+
 } // namespace gungnir::view

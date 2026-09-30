@@ -18,7 +18,7 @@ Type scalar_type(std::string_view name) {
     }
     if (name == "int" || name == "integer" || name == "int64" ||
         name == "uint64") return {TypeKind::integer, "int", false};
-    if (name == "float" || name == "double") {
+    if (name == "float" || name == "double" || name == "decimal") {
         return {TypeKind::decimal, "decimal", false};
     }
     return {};
@@ -227,8 +227,34 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     const auto found = local_types.find(expression.text);
                     return found == local_types.end() ? Type{} : found->second;
                 }
-                if (expression.kind == ExpressionKind::list ||
-                    expression.kind == ExpressionKind::object ||
+                if (expression.kind == ExpressionKind::list) {
+                    std::string element;
+                    bool mixed = false;
+                    for (const auto& argument : expression.arguments) {
+                        const auto type = infer(argument);
+                        if (!type.known()) continue;
+                        const auto name = type.kind == TypeKind::list
+                            ? "list<" + type.name + ">" : type.name;
+                        if (element.empty()) element = name;
+                        else if (element != name) mixed = true;
+                    }
+                    return {TypeKind::list,
+                            mixed || expression.arguments.empty() ? "Value" : element,
+                            false};
+                }
+                if (expression.kind == ExpressionKind::subscript &&
+                    expression.arguments.size() == 2) {
+                    const auto container = infer(expression.arguments[0]);
+                    const auto index = infer(expression.arguments[1]);
+                    if (container.kind == TypeKind::list) {
+                        if (index.known() && index.kind != TypeKind::integer)
+                            report(expression.arguments[1].span,
+                                   "List index must be an integer", "GNR1321");
+                        return scalar_type(container.name);
+                    }
+                    return {};
+                }
+                if (expression.kind == ExpressionKind::object ||
                     expression.kind == ExpressionKind::entry ||
                     expression.kind == ExpressionKind::subscript) {
                     for (const auto& argument : expression.arguments)
@@ -478,6 +504,18 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     !actions.at(route->controller_name).contains(route->action_name))) {
             report(route->route_span, "Controller '" + route->controller_name +
                         "' has no action '" + route->action_name + "'", "GNR1307");
+        }
+        if (route->has_middleware) {
+            const auto middleware = types.find(route->middleware_type);
+            if (middleware != types.end() &&
+                middleware->second != FrameworkBaseKind::middleware) {
+                report(route->middleware_span, "Route middleware '" +
+                           route->middleware_type + "' is not middleware", "GNR1322");
+            } else if (project && project->closed_world &&
+                       middleware == types.end()) {
+                report(route->middleware_span, "Unknown route middleware '" +
+                           route->middleware_type + "'", "GNR1322");
+            }
         }
     }
     return diagnostics;

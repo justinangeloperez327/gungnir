@@ -986,6 +986,41 @@ if(GUNGNIR_BUILD_TESTS)
                 gungnir_language_view_generated_test
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/views"
         )
+
+        set(
+            GUNGNIR_GENERATED_COLLECTIONS_TEST
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/collections_controller.cpp"
+        )
+        add_custom_command(
+            OUTPUT "${GUNGNIR_GENERATED_COLLECTIONS_TEST}"
+            COMMAND
+                ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_CURRENT_BINARY_DIR}/generated"
+            COMMAND
+                $<TARGET_FILE:gungnirc>
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/collections_controller.gnr"
+                -o
+                "${GUNGNIR_GENERATED_COLLECTIONS_TEST}"
+            DEPENDS
+                gungnirc
+                tests/fixtures/collections_controller.gnr
+            VERBATIM
+        )
+        add_executable(
+            gungnir_language_collections_generated_test
+            "${GUNGNIR_GENERATED_COLLECTIONS_TEST}"
+        )
+        target_link_libraries(
+            gungnir_language_collections_generated_test
+            PRIVATE gungnir::gungnir
+        )
+        target_compile_features(
+            gungnir_language_collections_generated_test PRIVATE cxx_std_23
+        )
+        add_test(
+            NAME gungnir.language_collections_generated
+            COMMAND gungnir_language_collections_generated_test
+        )
     endif()
 
     add_executable(gungnir_cli_test tests/cli.cpp)

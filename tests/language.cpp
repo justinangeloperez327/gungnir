@@ -45,6 +45,31 @@ int main() {
                                    "std::vector{3, 4}}") != std::string::npos);
     assert(lowered_lists.code.find("std::vector<gungnir::view::Value>{}") !=
            std::string::npos);
+    const auto collections = gungnir::language::Transpiler{}.transpile(
+        "controller Collections { void build() { "
+        "const mixed = [1, \"two\", true]; "
+        "const data = {\"items\": [1, 2], \"nested\": {\"ok\": true}}; "
+        "const rows = [{\"id\": 1}, {\"id\": 2}]; "
+        "view(\"page\", {\"items\": mixed}); } }",
+        "collections.gnr", {.emit_line_directives = false}
+    );
+    assert(collections.success());
+    assert(collections.code.find("std::vector<gungnir::view::Value>{") !=
+           std::string::npos);
+    assert(collections.code.find("gungnir::view::make_value(1)") !=
+           std::string::npos);
+    assert(collections.code.find("gungnir::view::Data{{\"items\", ") !=
+           std::string::npos);
+    assert(collections.code.find("gungnir::view::Data{{\"ok\", true}") !=
+           std::string::npos);
+    const auto invalid_object = gungnir::language::Transpiler{}.transpile(
+        "controller Objects { void build() { const data = {missing: 1}; } }",
+        "invalid_object.gnr", {.emit_line_directives = false}
+    );
+    bool invalid_object_key = false;
+    for (const auto& diagnostic : invalid_object.diagnostics)
+        invalid_object_key |= diagnostic.code == "GNR1014";
+    assert(invalid_object_key);
     const auto loop_list = gungnir::language::Transpiler{}.transpile(
         "controller Lists { void build() { for (const values = [1, 2]; "
         "true; ) { break; } } }",
@@ -87,6 +112,31 @@ int main() {
     }
     assert(missing_list_element && missing_object_colon && missing_operand &&
            missing_subscript);
+    const auto recovered_list = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Recover { void run() { const bad = [1,; "
+            "const good = [2, 3]; } }"
+        }.tokenize(), "recover.gnr"
+    }.parse();
+    bool unclosed_list = false;
+    for (const auto& diagnostic : recovered_list.diagnostics)
+        unclosed_list |= diagnostic.code == "GNR1011";
+    const auto& recovered_declaration =
+        std::get<gungnir::language::FrameworkDeclaration>(
+            recovered_list.program.nodes.front());
+    const auto& recovered_method = std::get<gungnir::language::ControllerMethod>(
+        recovered_list.program.nodes[recovered_declaration.members.front()]);
+    assert(unclosed_list && recovered_method.body.size() == 2);
+    assert(recovered_method.body[1].expression.kind ==
+           gungnir::language::ExpressionKind::list);
+    const auto directive_program = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "#define COUNT \\\n 2\ncontroller WithDirective { void run() { const values = [COUNT]; } }"
+        }.tokenize(), "directive.gnr"
+    }.parse();
+    assert(directive_program.diagnostics.empty());
+    assert(std::get<gungnir::language::FrameworkDeclaration>(
+               directive_program.program.nodes.front()).class_name == "WithDirective");
     const auto native_postfix = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Native { int next(int value) { return value++; } }"
@@ -664,6 +714,28 @@ int main() {
     project_index.add(shared_controller.program);
     project_index.add(shared_model.program);
     project_index.closed_world = true;
+    const auto route_middleware = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "middleware AuthMiddleware {} policy WrongMiddleware {}"
+        }.tokenize(), "middleware.gnr"
+    }.parse().program;
+    gungnir::language::SemanticIndex middleware_index = project_index;
+    middleware_index.add(route_middleware, "middleware.gnr");
+    const auto middleware_routes = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "Route::get(\"/ok\", PostsController::index)"
+            ".middleware(AuthMiddleware); "
+            "Route::get(\"/wrong\", PostsController::index)"
+            ".middleware(WrongMiddleware); "
+            "Route::get(\"/unknown\", PostsController::index)"
+            ".middleware(MissingMiddleware);"
+        }.tokenize(), "middleware_routes.gnr"
+    }.parse().program;
+    unsigned invalid_middleware_routes = 0;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             middleware_routes, "middleware_routes.gnr", &middleware_index))
+        invalid_middleware_routes += diagnostic.code == "GNR1322";
+    assert(invalid_middleware_routes == 2);
     const auto colliding_model = gungnir::language::Parser{
         gungnir::language::Lexer{"model Post { string label; }"}.tokenize(),
         "duplicate_model.gnr"
@@ -725,6 +797,17 @@ int main() {
              nested_calls, "nested_calls.gnr"))
         nested_argument_errors += diagnostic.code == "GNR1318";
     assert(nested_argument_errors == 3);
+    const auto invalid_index = gungnir::language::Parser{
+        gungnir::language::Lexer{
+            "controller Index { void run() { const values = [1, 2]; "
+            "const item = values[\"first\"]; } }"
+        }.tokenize(), "invalid_index.gnr"
+    }.parse().program;
+    bool noninteger_index = false;
+    for (const auto& diagnostic : gungnir::language::SemanticAnalyzer{}.analyze(
+             invalid_index, "invalid_index.gnr"))
+        noninteger_index |= diagnostic.code == "GNR1321";
+    assert(noninteger_index);
     const auto named_types = gungnir::language::Parser{
         gungnir::language::Lexer{
             "model User {} model Post {} "

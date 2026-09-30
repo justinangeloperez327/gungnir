@@ -80,6 +80,26 @@ std::vector<Token> Lexer::tokenize() const {
         const auto start_column = column;
         const char current = source_[index];
 
+        if (current == '#') {
+            const auto line_start = source_.rfind('\n', start);
+            const auto prefix = source_.substr(
+                line_start == std::string_view::npos ? 0 : line_start + 1,
+                start - (line_start == std::string_view::npos ? 0 : line_start + 1)
+            );
+            if (prefix.find_first_not_of(" \t\r") == std::string_view::npos) {
+                while (index < source_.size()) {
+                    if (source_[index] == '\n') {
+                        const bool continued = index > start &&
+                            source_[index - 1] == '\\';
+                        if (!continued) break;
+                    }
+                    advance();
+                }
+                emit(TokenKind::comment, start, start_line, start_column);
+                continue;
+            }
+        }
+
         if (std::isspace(static_cast<unsigned char>(current)) != 0) {
             while (
                 index < source_.size() &&

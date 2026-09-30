@@ -1,0 +1,35 @@
+#include <cassert>
+#include <gungnir/gungnir.hpp>
+
+controller CollectionsController {
+    void check() {
+        const numbers = [1, 2, 3];
+        const mixed = [1, "two", true];
+        const data = {"numbers": numbers, "mixed": mixed,
+                      "nested": {"ok": true}};
+        const rows = [{"id": 1}, {"id": 2}];
+        const varied = [{"id": 1}, 2];
+        const nested = [[1, "two"], [3, 4]];
+
+        assert(numbers[1] == 2);
+        assert(mixed[1].string() == "two");
+        assert(data.get("numbers")->as_array().size() == 3);
+        assert(data.get("nested")->get("ok")->truthy());
+        assert(rows.size() == 2);
+        assert(varied[0].get("id") != nullptr);
+        assert(nested[0].as_array()[1].string() == "two");
+        for (const values = [4, 5]; true; ) {
+            assert(values[0] == 4);
+            break;
+        }
+    }
+
+    Response show() {
+        return view("page", {"items": [1, 2]});
+    }
+}
+
+int main() {
+    CollectionsController controller;
+    controller.check();
+}

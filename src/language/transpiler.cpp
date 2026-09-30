@@ -21,6 +21,7 @@
 #include <gungnir/language/model_lowering.hpp>
 #include <gungnir/language/parser.hpp>
 #include <gungnir/language/semantic.hpp>
+#include <gungnir/language/type_system.hpp>
 #include <gungnir/language/validation_lowering.hpp>
 #include <gungnir/language/view_lowering.hpp>
 
@@ -249,31 +250,136 @@ TranspileResult Transpiler::transpile(
         );
     }
 
-    const auto lower_lists = [&](const auto& self, const Expression& expression)
+    const auto list_type = [&](const auto& self, const Expression& expression)
+        -> std::string {
+        if (expression.kind == ExpressionKind::literal) {
+            const auto type = TypeSystem{}.infer_literal(expression.text);
+            return type.known() ? type.name : std::string{};
+        }
+        if (expression.kind == ExpressionKind::list) {
+            if (expression.arguments.empty()) return "list<Value>";
+            std::string element;
+            for (const auto& argument : expression.arguments) {
+                const auto type = self(self, argument);
+                if (type.empty()) continue;
+                if (element.empty()) element = type;
+                else if (element != type) return "list<Value>";
+            }
+            return element.empty() ? std::string{} : "list<" + element + ">";
+        }
+        if (expression.kind == ExpressionKind::object) return "map";
+        return {};
+    };
+    const auto lower_literals = [&](const auto& self, const Expression& expression,
+                                    bool view_data)
         -> void {
         if (expression.kind == ExpressionKind::list) {
+            std::string element;
+            bool mixed = false;
+            for (const auto& argument : expression.arguments) {
+                const auto type = list_type(list_type, argument);
+                if (type.empty()) continue;
+                if (element.empty()) element = type;
+                else if (element != type) mixed = true;
+            }
             edits.push_back(SourceEdit{
                 expression.span.begin, expression.span.begin + 1,
-                expression.arguments.empty()
+                expression.arguments.empty() || mixed
                     ? "std::vector<gungnir::view::Value>{" : "std::vector{"
             });
             edits.push_back(SourceEdit{
                 expression.span.end - 1, expression.span.end, "}"
             });
+            if (mixed) {
+                for (const auto& argument : expression.arguments) {
+                    edits.push_back(SourceEdit{argument.span.begin, argument.span.begin,
+                                               "gungnir::view::make_value("});
+                    edits.push_back(SourceEdit{argument.span.end, argument.span.end, ")"});
+                }
+            }
         }
-        for (const auto& argument : expression.arguments) self(self, argument);
+        bool native_initializer = false;
+        if (expression.kind == ExpressionKind::object &&
+            expression.arguments.empty()) {
+            const auto previous = std::find_if(tokens.rbegin(), tokens.rend(),
+                [&](const Token& token) {
+                    return !token.trivia() && token.offset < expression.span.begin;
+                });
+            native_initializer = previous != tokens.rend() &&
+                (previous->lexeme == ">" || previous->lexeme == ")" ||
+                 previous->kind == TokenKind::identifier);
+        }
+        if (expression.kind == ExpressionKind::object && !view_data &&
+            !native_initializer) {
+            edits.push_back(SourceEdit{expression.span.begin,
+                                       expression.span.begin + 1,
+                                       "gungnir::view::Data{"});
+            for (std::size_t i = 0; i < expression.arguments.size(); ++i) {
+                const auto& entry = expression.arguments[i];
+                if (entry.kind != ExpressionKind::entry ||
+                    entry.arguments.size() != 2) continue;
+                const auto& key = entry.arguments[0];
+                const auto& value = entry.arguments[1];
+                if (key.kind != ExpressionKind::literal || key.text.empty() ||
+                    key.text.front() != '"') {
+                    parsed.diagnostics.push_back(Diagnostic{
+                        DiagnosticLevel::error,
+                        SourceLocation{source_name, key.span.line, key.span.column},
+                        "Object keys must be string literals", "GNR1014", {}
+                    });
+                    continue;
+                }
+                edits.push_back(SourceEdit{key.span.begin, key.span.begin, "{"});
+                for (const auto& token : tokens) {
+                    if (token.offset < key.span.end) continue;
+                    if (token.offset >= value.span.begin) break;
+                    if (token.lexeme == ":") {
+                        edits.push_back(SourceEdit{token.offset, token.offset + 1, ","});
+                        break;
+                    }
+                }
+                auto end = expression.span.end - 1;
+                if (i + 1 < expression.arguments.size()) {
+                    for (const auto& token : tokens) {
+                        if (token.offset < entry.span.end) continue;
+                        if (token.offset >= expression.arguments[i + 1].span.begin) break;
+                        if (token.lexeme == ",") {
+                            end = token.offset;
+                            break;
+                        }
+                    }
+                }
+                edits.push_back(SourceEdit{end, end, "}"});
+            }
+        }
+        bool view_call = false, validation_call = false;
+        if (expression.kind == ExpressionKind::call &&
+            !expression.arguments.empty()) {
+            const auto& callee = expression.arguments.front();
+            view_call = callee.kind == ExpressionKind::name &&
+                        callee.text == "view";
+            const auto* name = &callee;
+            if (callee.kind == ExpressionKind::member &&
+                callee.arguments.size() == 2) name = &callee.arguments[1];
+            validation_call = name->kind == ExpressionKind::name &&
+                              name->text == "validate";
+        }
+        for (std::size_t i = 0; i < expression.arguments.size(); ++i)
+            self(self, expression.arguments[i],
+                 (view_call && i == 2) || (validation_call && i == 1));
     };
     const auto lower_list_statements = [&](const auto& self,
                                            const std::vector<MethodStatement>& statements)
         -> void {
         for (const auto& statement : statements) {
-            if (statement.for_parts.empty()) lower_lists(lower_lists, statement.expression);
+            if (statement.for_parts.empty())
+                lower_literals(lower_literals, statement.expression, false);
             for (std::size_t i = 0; i < statement.for_parts.size(); ++i) {
                 if (i == 0 && statement.for_binding_immutable) continue;
-                lower_lists(lower_lists, statement.for_parts[i]);
+                lower_literals(lower_literals, statement.for_parts[i], false);
             }
             if (statement.for_binding_immutable)
-                lower_lists(lower_lists, statement.for_binding_initializer);
+                lower_literals(lower_literals, statement.for_binding_initializer, false);
             self(self, statement.children);
             self(self, statement.alternative);
         }
@@ -416,10 +522,19 @@ TranspileResult Transpiler::transpile(
             edit.end < edit.begin ||
             edit.end > source.size()
         ) {
+            SourceLocation location{source_name, 1, 1};
+            for (std::size_t i = 0; i < std::min(edit.begin, source.size()); ++i) {
+                if (source[i] == '\n') {
+                    ++location.line;
+                    location.column = 1;
+                } else {
+                    ++location.column;
+                }
+            }
             parsed.diagnostics.push_back(Diagnostic{
                 DiagnosticLevel::error,
-                SourceLocation{source_name, 1, 1},
-                "Internal transpiler edit overlap"
+                std::move(location),
+                "Internal transpiler edit overlap", "GNR1901", {}
             });
             continue;
         }
