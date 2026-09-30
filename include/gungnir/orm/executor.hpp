@@ -251,6 +251,7 @@ void load_relation(
             compiled.text,
             compiled.bindings
         );
+        connection.reset();
 
         std::vector<model::AttributeValue> related_keys;
         for (const auto& row : pivot.rows) {
@@ -432,6 +433,9 @@ Collection<ModelType> Query<ModelType>::get() const {
     );
 
     auto models = Hydrator<ModelType>::many(result.rows);
+    // A transaction scope retains its own lease. Ordinary queries must release
+    // theirs before relation loading acquires another connection from the pool.
+    connection.reset();
     detail::eager_load(models, plan_.eager_loads);
     return models;
 }
@@ -862,3 +866,4 @@ Derived Model<Derived>::replicate() const {
 }
 
 } // namespace gungnir
+

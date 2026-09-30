@@ -81,6 +81,10 @@ struct MethodStatement {
     std::string for_binding_name;
     Expression for_binding_initializer;
     bool for_binding_immutable{false};
+    // Native typed locals remain source-preserving but participate in lookup.
+    std::string declared_name;
+    std::string declared_type;
+    bool declared_immutable{false};
 };
 
 struct FrameworkDeclaration {
@@ -216,3 +220,4 @@ struct Program {
 };
 
 } // namespace gungnir::language
+

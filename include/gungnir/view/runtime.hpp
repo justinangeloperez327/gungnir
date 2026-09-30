@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <gungnir/core/execution_context.hpp>
 #include <utility>
 
 namespace gungnir::view {
@@ -42,6 +43,7 @@ public:
         noexcept;
 
 private:
+    gungnir::detail::ContextHandle owner_;
     EngineHandle previous_;
     bool active_{false};
 };
@@ -75,3 +77,4 @@ void clear_current()
 } // namespace runtime
 
 } // namespace gungnir::view
+

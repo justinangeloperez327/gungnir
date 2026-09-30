@@ -4,6 +4,7 @@
 #include <utility>
 
 #include <gungnir/http/errors.hpp>
+#include <gungnir/auth/authorize.hpp>
 #include <gungnir/model/errors.hpp>
 #include <gungnir/validation/exception.hpp>
 
@@ -73,6 +74,8 @@ Response ExceptionHandler::render(
             "Validation failed",
             422
         );
+    } catch (const auth::AuthorizationError& exception) {
+        return message_response(request, exception.what(), exception.status());
     } catch (const ModelNotFoundError&) {
         return message_response(
             request,
@@ -95,3 +98,4 @@ Response ExceptionHandler::render(
 }
 
 } // namespace gungnir::http
+

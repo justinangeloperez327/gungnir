@@ -86,9 +86,73 @@ TranspileResult Transpiler::transpile(
     std::string source_name,
     TranspileOptions options
 ) const {
-    const auto tokens = Lexer{source}.tokenize();
+    std::vector<Diagnostic> lexical_diagnostics;
+    const auto tokens = Lexer{source}.tokenize(&lexical_diagnostics, source_name);
+    if (!lexical_diagnostics.empty()) return {{}, std::move(lexical_diagnostics)};
+    const auto unsupported = [&](const Token& token, std::string message) {
+        lexical_diagnostics.push_back(Diagnostic{DiagnosticLevel::error,
+            {source_name, token.line, token.column}, std::move(message), "GNR1330", {}});
+    };
+    std::vector<const Token*> significant;
+    for (const auto& token : tokens)
+        if (!token.trivia() && token.kind != TokenKind::end) significant.push_back(&token);
+    std::size_t depth = 0;
+    for (std::size_t i = 0; i < significant.size(); ++i) {
+        const auto& token = *significant[i];
+        if (depth == 0 && (token.lexeme == "module" || token.lexeme == "import" ||
+                           token.lexeme == "function"))
+            unsupported(token, "This declaration syntax is not implemented: " + token.lexeme);
+        if (i + 1 < significant.size() && token.lexeme == "=" &&
+            significant[i + 1]->lexeme == ">")
+            unsupported(token, "Arrow callbacks are not implemented; use a native C++ lambda");
+        if (token.lexeme == "{") ++depth;
+        if (token.lexeme == "}" && depth) --depth;
+    }
+    if (!lexical_diagnostics.empty()) return {{}, std::move(lexical_diagnostics)};
     Parser parser{tokens, source_name};
     auto parsed = parser.parse();
+    for (const auto& node : parsed.program.nodes) {
+        const auto* declaration = std::get_if<FrameworkDeclaration>(&node);
+        if (!declaration) continue;
+        std::size_t nesting = 0;
+        bool start = true;
+        for (std::size_t i = 0; i < significant.size(); ++i) {
+            const auto& token = *significant[i];
+            if (token.offset < declaration->body_open_span.end ||
+                token.offset >= declaration->body_end_span.begin) continue;
+            if (nesting == 0 && i + 1 < significant.size()) {
+                const auto& next = *significant[i + 1];
+                if ((token.lexeme == "public" || token.lexeme == "private" ||
+                     token.lexeme == "protected") && next.lexeme != ":")
+                    unsupported(token, "Access modifiers require a colon in the current compiler");
+                const bool relation = std::any_of(declaration->members.begin(),
+                    declaration->members.end(), [&](std::size_t member) {
+                        const auto* value = std::get_if<ModelRelationship>(&parsed.program.nodes[member]);
+                        return value && token.offset >= value->span.begin && token.offset < value->span.end;
+                    });
+                if (start && token.word() && next.lexeme == "(" && !relation &&
+                    token.lexeme != declaration->class_name)
+                    unsupported(token, "Methods require an explicit return type in the current compiler");
+                if (declaration->kind == FrameworkBaseKind::model && next.lexeme == "=" &&
+                    (token.lexeme == "fillable" || token.lexeme == "hidden" ||
+                     token.lexeme == "visible" || token.lexeme == "casts"))
+                    unsupported(token, "This model metadata syntax is not implemented: " + token.lexeme);
+                if (declaration->kind == FrameworkBaseKind::event &&
+                    token.lexeme == "string" && i + 2 < significant.size() &&
+                    significant[i + 2]->lexeme == ";")
+                    unsupported(token, "Data-only event lowering is not implemented; use a native event class");
+                if (!token.trivia()) start = false;
+                if (token.lexeme == ";" || token.lexeme == ":") start = true;
+            }
+            if (token.lexeme == "{") ++nesting;
+            if (token.lexeme == "}" && nesting) {
+                --nesting;
+                if (!nesting) start = true;
+            }
+        }
+    }
+    parsed.diagnostics.insert(parsed.diagnostics.end(), lexical_diagnostics.begin(),
+                              lexical_diagnostics.end());
     auto semantic_diagnostics = SemanticAnalyzer{}.analyze(
         parsed.program, source_name, options.semantic_index
     );
@@ -548,10 +612,11 @@ TranspileResult Transpiler::transpile(
 
     output.append(source.substr(cursor));
 
-    return TranspileResult{
-        std::move(output),
-        std::move(parsed.diagnostics)
-    };
+    if (std::any_of(parsed.diagnostics.begin(), parsed.diagnostics.end(),
+                    [](const Diagnostic& d) { return d.level == DiagnosticLevel::error; }))
+        output.clear();
+    return TranspileResult{std::move(output), std::move(parsed.diagnostics)};
 }
 
 } // namespace gungnir::language
+

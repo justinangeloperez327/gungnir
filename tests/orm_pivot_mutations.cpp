@@ -491,5 +491,32 @@ int main() {
     orm::stop_listening();
     database::runtime::clear();
 
+    // Pivot eager loading performs users -> pivot -> roles sequentially and
+    // must work with the default one-connection pool.
+    database::Manager eager_manager;
+    std::size_t created_connections = 0;
+    std::size_t eager_queries = 0;
+    eager_manager.add("default", database::Backend::postgresql, [&] {
+        ++created_connections;
+        return std::make_shared<database::CallbackDriver>(
+            database::Backend::postgresql,
+            [&](const String& statement, const auto&) {
+                ++eager_queries;
+                if (contains(statement, "FROM \"users\""))
+                    return database::Result{.rows = {{{"id", Int64{7}}, {"name", String{"Justin"}}}}};
+                if (contains(statement, "FROM \"role_user\""))
+                    return database::Result{.rows = {{{"user_id", Int64{7}}, {"role_id", Int64{3}}}}};
+                assert(contains(statement, "FROM \"roles\""));
+                return database::Result{.rows = {{{"id", Int64{3}}, {"name", String{"editor"}}}}};
+            });
+    });
+    database::runtime::use(eager_manager);
+    const auto eager = User::with("roles").get();
+    assert(eager.size() == 1 && eager.first().roles.loaded());
+    assert(eager.first().roles.get().front().id.get() == 3);
+    assert(created_connections == 1 && eager_queries == 3);
+    database::runtime::clear();
+
     return 0;
 }
+
