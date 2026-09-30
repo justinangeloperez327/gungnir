@@ -2,6 +2,8 @@
 
 > **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/controller.md).
 
+The structured profile (`gungnirc --strict`) supports typed functions and framework actions, structured callbacks, and validated C++ emission. See [compiler profiles](compiler-profiles.md) for usage and current limits. The compatibility profile retains the native syntax described below.
+
 ## Current behavior
 
 Use a typed action in the current language frontend. A synchronous action returns `Response`; async actions use an explicit logical result type. The lowerer generates the native controller base and injected dependency plumbing.
@@ -20,7 +22,7 @@ controller HomeController {
 
 ## Limits and planned work
 
-The proposed `public index()` action with an inferred Response contract belongs to the design specification. Do not replace working typed actions with that syntax yet. Route binding is a separate contract; successful parsing alone does not establish that a handler can be invoked.
+`public index()` uses the implicit Response contract in the structured profile. Compatibility mode continues to require typed actions. Route binding is a separate contract; successful parsing alone does not establish that a handler can be invoked.
 
 ## Implementation references
 

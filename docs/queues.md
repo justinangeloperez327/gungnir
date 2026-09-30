@@ -8,6 +8,8 @@ Queue contracts separate envelopes, drivers and workers. The envelope carries se
 
 Workers expose stop requests and cancellation-aware execution. Lease renewal supports driver-owned reservations.
 
+Structured `job` declarations generate immutable data constructors, typed JSON payloads, `from_payload` and `register_job(worker)`. Jobs with injected services use `register_job(worker, container)` and resolve services during decoding. Async handlers are awaited to completion by the synchronous worker; failures propagate to its retry handling. The container must outlive registered handlers.
+
 ## Limits and planned work
 
 Jobs must tolerate retries; do not promise exactly-once side effects. Memory queues are process-local. Queue delivery does not share the request's open database transaction. Static `.gnr` dispatch syntax and automatic after-commit scheduling need explicit integration.

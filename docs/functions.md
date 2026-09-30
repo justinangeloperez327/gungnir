@@ -4,13 +4,16 @@
 
 ## Current behavior
 
-The current AST represents typed ControllerMethod and FrameworkMethod nodes with parameters and statement bodies.
+Use `function int add(int left, int right = 2) { return left + right; }` with `gungnirc --strict`. Functions require declared return types. Calls support literal defaults and named arguments; supplied arguments are evaluated in source order. Framework methods infer their documented response/decision/void contracts. Public, protected and private members are checked.
 
 ## Limits and planned work
 
-There is no dedicated top-level FunctionDeclaration variant in Program::nodes. The target function ReturnType name(...) syntax, visibility rules and default arguments are a planned language contract; native C++ callable interoperability is separate.
+Defaults currently require literal constants. Native overload resolution, variadic functions and general class inheritance are outside this profile. Async calls require explicit `await` inside an async callable.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/language/ast.hpp](../include/gungnir/language/ast.hpp)
 - [src/language/parser.cpp](../src/language/parser.cpp)

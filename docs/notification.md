@@ -4,15 +4,16 @@
 
 ## Current behavior
 
-Native Notification requires `name()` and `channels()`. A Channel sends to a recipient string. `notifications::Manager::channel` registers channel instances and `send` dispatches to the names returned by the notification.
-
-An unconfigured channel raises a logic error. Channel instances must outlive the manager's use of them.
+Structured notification declarations retain typed constructor data and require `via(Recipient recipient)`. `bind(recipient)` creates an adapter implementing native `notifications::Notification`, preserving the qualified name and recipient-specific channels. Typed `to_mail()` / `to_database()` accessors forward declared recipient payload methods.
 
 ## Limits and planned work
 
-Mail/database/SMS/push action methods, user `notify` shorthand and automatic queued delivery are target APIs. Applications currently provide concrete channel implementations and payload composition.
+Channels still need explicit native registration. Built-in database/mail channel delivery adapters and automatic recipient addressing are not supplied by this compiler.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/notifications/notification.hpp](../include/gungnir/notifications/notification.hpp)
 - [include/gungnir/notifications/channel.hpp](../include/gungnir/notifications/channel.hpp)

@@ -278,6 +278,10 @@ add_library(gungnir-language
     src/language/async_lowering.cpp
     src/language/bootstrap_lowering.cpp
     src/language/controller_lowering.cpp
+    src/language/compiler.cpp
+    src/language/emitter.cpp
+    src/language/syntax.cpp
+    src/language/validated.cpp
     src/language/lexer.cpp
     src/language/middleware_lowering.cpp
     src/language/migration_lowering.cpp
@@ -909,12 +913,37 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_frontend_diagnostics_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.frontend_diagnostics COMMAND gungnir_frontend_diagnostics_test)
 
+    add_executable(gungnir_structured_runtime_test tests/structured_runtime.cpp)
+    target_link_libraries(gungnir_structured_runtime_test PRIVATE gungnir::gungnir gungnir::orm)
+    target_compile_features(gungnir_structured_runtime_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.structured_runtime COMMAND gungnir_structured_runtime_test)
+
+    add_executable(gungnir_structured_language_test tests/structured_language.cpp)
+    target_link_libraries(gungnir_structured_language_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_structured_language_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.structured_language COMMAND gungnir_structured_language_test)
+
     add_executable(gungnir_language_test tests/language.cpp)
     target_link_libraries(gungnir_language_test PRIVATE gungnir::language)
     target_compile_features(gungnir_language_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.language COMMAND gungnir_language_test)
 
     if(GUNGNIR_BUILD_TOOLS)
+        set(GUNGNIR_STRUCTURED_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/program.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/program.gnr VERBATIM)
+        set(GUNGNIR_STRUCTURED_MODULES "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_modules.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_MODULES}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/modules" --project --no-line-directives -o "${GUNGNIR_STRUCTURED_MODULES}"
+            DEPENDS gungnirc tests/fixtures/structured/modules/main.gnr tests/fixtures/structured/modules/math.gnr VERBATIM)
+        add_executable(gungnir_structured_generated_test tests/structured_generated.cpp "${GUNGNIR_STRUCTURED_PROGRAM}" "${GUNGNIR_STRUCTURED_MODULES}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_MODULES}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        set_source_files_properties("${GUNGNIR_STRUCTURED_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_generated_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_generated_test PRIVATE gungnir::gungnir gungnir::orm)
+        target_compile_features(gungnir_structured_generated_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_generated COMMAND gungnir_structured_generated_test)
         set(
             GUNGNIR_GENERATED_ASYNC_TEST
             "${CMAKE_CURRENT_BINARY_DIR}/generated/async_controller.cpp"

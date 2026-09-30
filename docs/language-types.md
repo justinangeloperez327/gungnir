@@ -4,13 +4,16 @@
 
 ## Current behavior
 
-TypeSystem models unknown, null, boolean, integer, decimal, string, optional, list, map and named types. Known numeric literals and selected declarations/expressions receive type checks.
+The structured validator interns resolved types and records a TypeId for every expression. Known calls, return paths, const writes, conditions, callback signatures, optionals and declared field access are checked. Integer literals are range-checked, decimal/hex/binary literals and separators are normalized, and single/double quotes both create strings. Unicode escapes must denote valid scalar values.
 
 ## Limits and planned work
 
-Types are not yet a fully resolved TypeId graph. Unknown native types remain permissive. The decimal type category is not an exact fixed/arbitrary-precision runtime guarantee; optional/generic syntax requires validation against the accepted frontend subset.
+`decimal` currently uses double precision, not exact decimal arithmetic. Unknown native types/calls require explicit compiler bindings. Collection type inference may use JSON values for heterogeneous lists; runtime model casting is a separate concern.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/language/types.hpp](../include/gungnir/language/types.hpp)
 - [include/gungnir/language/type_system.hpp](../include/gungnir/language/type_system.hpp)

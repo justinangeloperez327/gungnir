@@ -10,7 +10,7 @@ Current usage guides live at this directory level; proposed contracts live under
 
 ## Limits and planned work
 
-The `language_version = "1.0"` constant and feature flags in spec.hpp are internal metadata, not proof that a complete stable 1.0 grammar exists. Feature acceptance must be established by parsing, semantic checks and native compilation.
+The compiler now reports `language_version = "0.1"` and experimental compatibility. Feature flags in spec.hpp describe implemented structured syntax rather than a complete stable grammar. Feature acceptance must be established by parsing, semantic checks and native compilation.
 
 ## Implementation references
 

@@ -19,6 +19,8 @@ message.from({"sender@example.com", "Gungnir"})
 // Send through a Mailer configured with a Transport.
 ```
 
+Structured `mail` declarations generate typed data constructors and `message()` composition from parameterless subject/text/html methods. View-response content still needs native rendering integration before sending.
+
 ## Limits and planned work
 
 Target `mail` action declarations, template composition, attachments, custom headers and fluent static sending are not all fields/methods of the current Message class. Sending does not automatically enqueue work.

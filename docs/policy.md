@@ -4,26 +4,16 @@
 
 ## Current behavior
 
-Native `Authorization` registers named callbacks taking `Identity` and returning `Decision`. It exposes `inspect`, `allows`, `denies` and a `before` callback. Unknown abilities are denied.
-
-`auth::authorize(authorization, context, ability)` throws when identity is missing or the decision denies access. The native `Policy` framework base is currently an empty polymorphic base.
-
-## Example
-
-```cpp
-gungnir::auth::Authorization authorization;
-authorization.define("admin", [](const gungnir::auth::Identity& user) {
-    return user.role("admin")
-        ? gungnir::auth::Decision::allow()
-        : gungnir::auth::Decision::deny("Admin role required");
-});
-```
+Structured policy methods infer `auth::Decision`, including conversion from bool returns. Generated `register_policy` binds public synchronous actor/resource methods to `auth::ResourceAuthorization`. The registry validates the actor/resource types and denies unknown or mismatched abilities.
 
 ## Limits and planned work
 
-A `.gnr` `policy` declaration does not automatically supply complete model-specific policy registration, resource arguments or the target implicit ability return contract. Register working authorization callbacks explicitly.
+The existing Identity-only `Authorization` API remains separate. Async resource-policy registration and automatic ORM/authenticated-user resolution are not implemented.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/auth/authorization.hpp](../include/gungnir/auth/authorization.hpp)
 - [include/gungnir/auth/authorize.hpp](../include/gungnir/auth/authorize.hpp)

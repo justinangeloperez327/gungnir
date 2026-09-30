@@ -14,7 +14,7 @@ public:
 
     [[nodiscard]] std::vector<Token> tokenize(
         std::vector<Diagnostic>* diagnostics = nullptr,
-        std::string_view source_name = "<memory>"
+        std::string_view source_name = "<memory>", bool single_quoted_strings = false
     ) const;
 
 private:

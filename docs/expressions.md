@@ -4,13 +4,16 @@
 
 ## Current behavior
 
-ExpressionKind includes name, literal, call, raw, unary, binary, member, subscript, group, object, entry and list. Expressions retain spans and child arguments.
+The structured frontend parses typed literals, calls, members, indexing, lists, objects, arrows, unary/binary operators, ternaries, `await`, safe field access and null coalescing. Arrows receive callback parameter types from migration/collection contexts and capture referenced outer values by value. Optional values can be narrowed by simple null comparisons in if/else branches.
 
 ## Limits and planned work
 
-Raw expressions and text remain transitional escape paths. Arrow closures, named arguments, null-safe access and all target operator rules are not a complete implemented grammar.
+String interpolation, general native operators, safe optional method calls and general flow-sensitive narrowing are not supported. Await expressions inside null coalescing require a separate binding. Native APIs must be declared through compiler bindings. Framework compatibility expressions continue through the legacy parser.
 
 ## Implementation references
+
+- [Structured compiler API](../include/gungnir/language/compiler.hpp)
+- [Structured compiler tests](../tests/structured_language.cpp)
 
 - [include/gungnir/language/ast.hpp](../include/gungnir/language/ast.hpp)
 - [src/language/parser.cpp](../src/language/parser.cpp)
