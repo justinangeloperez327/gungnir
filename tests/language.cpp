@@ -107,20 +107,23 @@ int main() {
         gungnir::language::Lexer{
             "controller BadExpressions { void run() { "
             "const values = [1,,2]; const x = 1 +; const item = values[]; "
+            "const call = add(1,); "
             "return view(\"page\", { \"x\" 1 }); } }"
         }.tokenize(), "bad_expressions.gnr"
     }.parse();
     bool missing_list_element = false, missing_object_colon = false;
     bool missing_operand = false, missing_subscript = false;
+    bool missing_call_argument = false;
     for (const auto& diagnostic : malformed_expressions.diagnostics) {
         missing_list_element |= diagnostic.message == "List element is missing";
         missing_object_colon |= diagnostic.message ==
             "Object entry requires a key, ':' and value";
         missing_operand |= diagnostic.code == "GNR1012";
         missing_subscript |= diagnostic.code == "GNR1013";
+        missing_call_argument |= diagnostic.code == "GNR1015";
     }
     assert(missing_list_element && missing_object_colon && missing_operand &&
-           missing_subscript);
+           missing_subscript && missing_call_argument);
     const auto recovered_list = gungnir::language::Parser{
         gungnir::language::Lexer{
             "controller Recover { void run() { const bad = [1,; "

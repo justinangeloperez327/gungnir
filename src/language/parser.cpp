@@ -515,11 +515,13 @@ Expression Parser::parse_expression(std::size_t first, std::size_t last) {
                     else if (value(j) == ")" || value(j) == "]" || value(j) == "}") --depth;
                     if (value(j) == "," && depth == 0) {
                         if (start < j) result.arguments.push_back(parse(start, j));
-                        else error(j, "Call argument is missing");
+                        else error(j, "Call argument is missing", "GNR1015");
                         start = j + 1;
                     }
                 }
                 if (start < end - 1) result.arguments.push_back(parse(start, end - 1));
+                else if (start > i + 1)
+                    error(end - 2, "Call argument is missing", "GNR1015");
                 return result;
             }
         }
