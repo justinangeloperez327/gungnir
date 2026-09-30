@@ -1,122 +1,292 @@
 # Models
 
-Gungnir models provide the application-facing interface to persisted data.
+A Gungnir model is a **database mapping declaration**.
 
-The normal application syntax is written in `.gnr`. Model declarations are convention-first and intentionally hide C++ inheritance, CRTP, field wrappers, template-heavy relationship types, and generated ORM metadata.
+Its responsibility is intentionally narrow:
 
-This document defines the intended Gungnir model language contract. Compiler support may be implemented progressively, but application-facing syntax should converge on this specification rather than exposing lower-level C++ mechanics.
+- identify the database table or collection;
+- identify the database connection when needed;
+- identify the primary key and key behavior when non-standard;
+- define which attributes are mass assignable;
+- define which attributes are hidden during serialization;
+- define which attributes require casting;
+- define persistence options such as timestamps or soft deletes;
+- declare relationships.
 
-## Defining a model
+A model is **not** a business-logic class and is **not** the database schema definition.
 
-A model is declared with the `model` keyword:
+Database columns, column types, indexes, constraints, and foreign keys belong to migrations.
+
+## Basic model
+
+The smallest model is:
 
 ```gnr
 model User {
-    string name;
-    string email;
 }
 ```
 
-Gungnir infers the conventional table name and primary key.
-
-For `User`, the defaults are:
+By convention, Gungnir infers:
 
 ```text
 model       User
 table       users
-primary key id
+primaryKey  id
+connection  default
+timestamps  true
 ```
 
-The compiler generates the native C++23 model plumbing required by the ORM.
+The ORM supplies querying and persistence behavior automatically.
 
-## Fields
+## Model responsibility
 
-Fields are declared using a type followed by a field name:
-
-```gnr
-model User {
-    string name;
-    string email;
-    bool active = true;
-}
-```
-
-Common scalar types include:
+A model answers only these questions:
 
 ```text
-string
-bool
-int
-int64
-uint64
-float
-double
-decimal
+Which table or collection does this model represent?
+Which database connection does it use?
+What is its primary key?
+Which attributes may be mass assigned?
+Which attributes should be hidden when serialized?
+Which attributes require type conversion?
+Which persistence options are enabled?
+Which relationships exist?
 ```
 
-## Nullable fields
+Business logic, HTTP behavior, validation workflows, authorization, events, and application services belong elsewhere.
 
-A nullable field uses `?`:
+# Table
+
+Use `table` only when the conventional table name is not correct.
 
 ```gnr
 model User {
-    string name;
-    string? nickname;
+    table = 'app_users';
 }
 ```
 
-Gungnir maps nullable values to the appropriate native representation during C++23 generation.
-
-## Default values
-
-Fields may define defaults:
+Without an override:
 
 ```gnr
 model User {
-    bool active = true;
-    string status = "pending";
 }
 ```
 
-## Model configuration
+Gungnir conventionally maps:
 
-Gungnir uses conventions by default. Explicit configuration is only needed when an application differs from those conventions.
+```text
+User -> users
+Post -> posts
+OrderItem -> order_items
+```
+
+# Connection
+
+Use `connection` when the model should use a non-default database connection.
 
 ```gnr
-model AuditUser {
-    table = "legacy_users";
-    connection = "reporting";
+model AuditLog {
+    connection = 'reporting';
+}
+```
+
+A model that omits `connection` uses the application's default database connection.
+
+# Primary key
+
+The conventional primary key is:
+
+```text
+id
+```
+
+Use `primaryKey` when the table uses a different key:
+
+```gnr
+model User {
+    primaryKey = 'user_id';
+}
+```
+
+Gungnir model configuration uses camelCase, so the canonical spelling is:
+
+```text
+primaryKey
+```
+
+not:
+
+```text
+primary_key
+```
+
+## Non-incrementing keys
+
+For UUIDs or other manually assigned keys:
+
+```gnr
+model ApiClient {
+    primaryKey = 'uuid';
+    incrementing = false;
+    keyType = 'string';
+}
+```
+
+The default behavior is equivalent to:
+
+```text
+primaryKey = 'id'
+incrementing = true
+keyType = inferred/default integer key
+```
+
+# Fillable attributes
+
+`fillable` defines which attributes may be supplied through mass-assignment operations such as `create()` and `update()`.
+
+```gnr
+model User {
+    fillable = [
+        'name',
+        'email',
+        'password'
+    ];
+}
+```
+
+This permits:
+
+```gnr
+const user = User::create({
+    'name': 'Justin',
+    'email': 'justin@example.com',
+    'password': password
+});
+```
+
+Attributes not allowed by the model's mass-assignment policy must not be silently assigned through object-style mass assignment.
+
+For example, if `is_admin` is not fillable:
+
+```gnr
+User::create({
+    'name': 'Justin',
+    'is_admin': true
+});
+```
+
+must not silently elevate the value through mass assignment.
+
+`fillable` is persistence metadata. It does not define whether a database column exists; the migration remains the schema authority.
+
+# Hidden attributes
+
+`hidden` controls model serialization.
+
+```gnr
+model User {
+    hidden = [
+        'password',
+        'remember_token'
+    ];
+}
+```
+
+Hidden attributes may still exist in the database and on the hydrated model. They are excluded from serialized output such as:
+
+```gnr
+return json(user);
+```
+
+Typical hidden attributes include:
+
+```text
+password
+remember_token
+security tokens
+internal secrets
+```
+
+`hidden` affects representation, not database storage.
+
+# Casts
+
+`casts` defines attributes whose database representation should be converted to an application-level type.
+
+```gnr
+model User {
+    casts = {
+        'active': 'bool',
+        'settings': 'json',
+        'verified_at': 'datetime'
+    };
+}
+```
+
+Conceptually:
+
+```text
+database representation -> Gungnir representation
+
+0 / 1                   -> bool
+JSON value              -> object/map
+timestamp               -> datetime
+integer value           -> int
+decimal value           -> decimal
+```
+
+Only attributes that require explicit conversion need to appear in `casts`.
+
+Casting is model metadata because it describes how persisted values are interpreted after hydration and before persistence.
+
+# Timestamps
+
+Models use conventional timestamps by default:
+
+```text
+created_at
+updated_at
+```
+
+Disable them when the mapped table does not use timestamps:
+
+```gnr
+model AuditEntry {
     timestamps = false;
-    softDeletes = true;
-
-    string name;
 }
 ```
 
-The standard model configuration properties are:
+`timestamps` describes persistence behavior. It does not declare the timestamp columns; migrations define the schema.
 
-| Property | Purpose |
-| --- | --- |
-| `table` | Override the inferred table name |
-| `connection` | Use a specific database connection |
-| `timestamps` | Enable or disable managed timestamps |
-| `softDeletes` | Enable soft deletion |
+# Soft deletes
 
-## Relationships
-
-Relationships are ordinary model methods.
-
-Gungnir favors resource names instead of C++ model types in application source:
+Enable soft deletion when the mapped table contains the appropriate soft-delete column:
 
 ```gnr
-posts() {
-    return hasMany('posts');
+model User {
+    softDeletes = true;
 }
 ```
 
-The compiler resolves the resource name to its related model and applies conventional table and key rules.
+The ORM can then apply soft-delete behavior to operations such as:
 
-For example:
+```gnr
+user.delete();
+
+User::withTrashed().get();
+
+user.restore();
+
+user.forceDelete();
+```
+
+`softDeletes` describes persistence behavior. The migration remains responsible for creating the required database column.
+
+# Relationships
+
+Relationships are the only method-like declarations allowed inside a model.
+
+A relationship declaration describes how the mapped database record relates to another model.
 
 ```gnr
 model User {
@@ -126,19 +296,13 @@ model User {
 }
 ```
 
-is understood as a relationship from `User` to `Post`, normally using:
+Relationship bodies are intentionally restricted. They are declarations, not general-purpose model methods.
 
-```text
-related model   Post
-related table   posts
-foreign key     posts.user_id
-local key       users.id
-result          Collection<Post>
-```
+A relationship body should resolve to a supported relationship declaration.
 
-### hasOne
+# hasOne
 
-Use `hasOne` when a model owns one related record.
+Use `hasOne` when one model owns one related record.
 
 ```gnr
 model User {
@@ -148,15 +312,15 @@ model User {
 }
 ```
 
-Convention:
+Conventionally:
 
 ```text
 profiles.user_id -> users.id
 ```
 
-### hasMany
+# hasMany
 
-Use `hasMany` when a model owns multiple related records.
+Use `hasMany` when one model owns multiple related records.
 
 ```gnr
 model User {
@@ -166,7 +330,7 @@ model User {
 }
 ```
 
-Convention:
+Conventionally:
 
 ```text
 posts.user_id -> users.id
@@ -174,7 +338,7 @@ posts.user_id -> users.id
 
 The relationship resolves to a collection of `Post` models.
 
-### belongsTo
+# belongsTo
 
 Use `belongsTo` when the current model references its parent.
 
@@ -186,13 +350,13 @@ model Post {
 }
 ```
 
-Convention:
+Conventionally:
 
 ```text
 posts.user_id -> users.id
 ```
 
-### belongsToMany
+# belongsToMany
 
 Use `belongsToMany` for a many-to-many relationship.
 
@@ -204,7 +368,7 @@ model User {
 }
 ```
 
-The inverse relationship may use the same declaration:
+Inverse side:
 
 ```gnr
 model Role {
@@ -214,21 +378,18 @@ model Role {
 }
 ```
 
-By convention Gungnir infers a pivot table from the two related models.
-
-For `User` and `Role`:
+By convention, Gungnir may infer a pivot table such as:
 
 ```text
-pivot table role_user
-user_id
+role_user
+
 role_id
+user_id
 ```
 
-### hasOneThrough
+# hasOneThrough
 
 Use `hasOneThrough` to access one related model through an intermediate model.
-
-Example relationship:
 
 ```text
 Mechanic -> Car -> Owner
@@ -242,11 +403,9 @@ model Mechanic {
 }
 ```
 
-### hasManyThrough
+# hasManyThrough
 
 Use `hasManyThrough` to access multiple related records through an intermediate model.
-
-Example relationship:
 
 ```text
 Country -> Users -> Posts
@@ -260,17 +419,9 @@ model Country {
 }
 ```
 
-The relationship resolves to `Collection<Post>`.
+# morphOne
 
-## Polymorphic relationships
-
-Polymorphic relationships allow one related table to belong to more than one model type.
-
-These relationships are part of the planned model language contract but may be implemented after the six core relationship types.
-
-### morphOne
-
-Use `morphOne` when multiple model types may each own one record of the same related type.
+Use `morphOne` for one polymorphic related record.
 
 ```gnr
 model User {
@@ -286,16 +437,9 @@ model Post {
 }
 ```
 
-A conventional polymorphic table can contain:
+# morphMany
 
-```text
-imageable_id
-imageable_type
-```
-
-### morphMany
-
-Use `morphMany` when multiple model types may each own many records of the same related type.
+Use `morphMany` for many polymorphic related records.
 
 ```gnr
 model Post {
@@ -311,16 +455,9 @@ model Video {
 }
 ```
 
-The `comments` table can contain:
+# morphTo
 
-```text
-commentable_id
-commentable_type
-```
-
-### morphTo
-
-Use `morphTo` on the inverse side of a polymorphic one-to-one or one-to-many relationship.
+Use `morphTo` on the inverse side of a polymorphic relationship.
 
 ```gnr
 model Comment {
@@ -330,9 +467,7 @@ model Comment {
 }
 ```
 
-A comment can therefore resolve its parent as a `Post`, `Video`, or another supported model type according to its polymorphic metadata.
-
-### morphToMany
+# morphToMany
 
 Use `morphToMany` for the owning side of a polymorphic many-to-many relationship.
 
@@ -342,24 +477,9 @@ model Post {
         return morphToMany('tags', 'taggable');
     }
 }
-
-model Video {
-    tags() {
-        return morphToMany('tags', 'taggable');
-    }
-}
 ```
 
-A conventional pivot table may contain:
-
-```text
-taggables
-    tag_id
-    taggable_id
-    taggable_type
-```
-
-### morphedByMany
+# morphedByMany
 
 Use `morphedByMany` for the inverse side of a polymorphic many-to-many relationship.
 
@@ -375,7 +495,7 @@ model Tag {
 }
 ```
 
-## Relationship reference
+# Relationship reference
 
 | Relationship | Meaning | Typical result |
 | --- | --- | --- |
@@ -391,11 +511,11 @@ model Tag {
 | `morphToMany()` | Polymorphic many-to-many | `Collection<T>` |
 | `morphedByMany()` | Inverse polymorphic many-to-many | `Collection<T>` |
 
-## Relationship modifiers
+# Relationship modifiers
 
-Relationship modifiers refine an existing relationship rather than defining a separate relationship type.
+Relationship modifiers refine the database relationship declaration.
 
-### latestOfMany
+## latestOfMany
 
 ```gnr
 latestOrder() {
@@ -403,7 +523,7 @@ latestOrder() {
 }
 ```
 
-### oldestOfMany
+## oldestOfMany
 
 ```gnr
 oldestOrder() {
@@ -411,7 +531,7 @@ oldestOrder() {
 }
 ```
 
-### ofMany
+## ofMany
 
 ```gnr
 largestOrder() {
@@ -419,11 +539,11 @@ largestOrder() {
 }
 ```
 
-## Overriding relationship conventions
+# Relationship key overrides
 
-Normal application code should rely on convention. Explicit key arguments are available when a database schema does not follow Gungnir conventions.
+Normal relationships should use convention where possible.
 
-### Custom foreign key
+Explicit key configuration is available for non-standard schemas.
 
 ```gnr
 posts() {
@@ -434,7 +554,7 @@ posts() {
 }
 ```
 
-### Custom local key
+Custom local key:
 
 ```gnr
 posts() {
@@ -446,11 +566,9 @@ posts() {
 }
 ```
 
-## Relationship naming rules
+# Relationship naming
 
-Relationship methods should describe the application concept rather than database implementation details.
-
-Use singular names for relationships returning one model:
+Use singular names for relationships that return one model:
 
 ```gnr
 profile() {
@@ -462,7 +580,7 @@ user() {
 }
 ```
 
-Use plural names for relationships returning collections:
+Use plural names for collection relationships:
 
 ```gnr
 posts() {
@@ -474,9 +592,9 @@ roles() {
 }
 ```
 
-## Convention-based model resolution
+# Convention-based relationship resolution
 
-Resource strings are resolved through Gungnir model conventions.
+Resource names are resolved through Gungnir conventions.
 
 For example:
 
@@ -484,7 +602,7 @@ For example:
 hasMany('posts')
 ```
 
-is resolved conceptually as:
+is conceptually resolved as:
 
 ```text
 posts
@@ -492,135 +610,323 @@ posts
 post
   -> model name
 Post
-  -> model lookup
+  -> resolve model declaration
 model Post
 ```
 
-Application code therefore does not need syntax such as:
+Application code therefore does not need:
 
 ```text
 hasMany<Post>()
 Post::class
 ```
 
-Those are implementation details of the generated/native layer.
+Those are native implementation concerns.
 
-## Eager loading
-
-Relationships are designed to participate in ORM eager loading so applications can avoid N+1 query patterns.
-
-A query may request relationships before execution:
-
-```gnr
-const users = User::with('posts').get();
-```
-
-Nested relationships may use a dotted path:
-
-```gnr
-const users = User::with('posts.comments').get();
-```
-
-The ORM should batch relationship queries where possible rather than issuing one query for every parent record.
-
-## Querying models
-
-Models expose concise query entry points:
-
-```gnr
-const users = User::all();
-
-const user = User::find(id);
-
-const activeUsers = User::where('active', true)
-    .orderBy('name')
-    .get();
-```
-
-Query syntax remains application-oriented. The compiler may lower expressive Gungnir method names to differently named native C++ runtime operations.
-
-## Creating models
-
-Model creation should accept object-style data:
-
-```gnr
-const user = User::create({
-    'name': 'Justin',
-    'email': 'justin@example.com'
-});
-```
-
-Framework-managed fields such as timestamps should not need to be supplied manually.
-
-## Updating models
-
-Loaded models can be changed and saved through the model interface:
-
-```gnr
-user.name = 'Updated Name';
-user.save();
-```
-
-## Deleting models
-
-```gnr
-user.delete();
-```
-
-When `softDeletes = true`, deletion should use the model's soft-delete behavior instead of physically removing the record.
-
-## Model conventions
-
-Gungnir models should follow these principles:
-
-- Prefer convention over explicit configuration.
-- Keep application syntax free from C++ template and inheritance plumbing.
-- Infer table names, foreign keys, pivot tables, local keys, and relationship result types when unambiguous.
-- Keep relationship declarations readable without requiring model class literals.
-- Resolve relationship resources during semantic analysis rather than treating them as unchecked strings at code-generation time.
-- Detect invalid relationship targets and incompatible key configuration before C++23 emission.
-- Generate ordinary, inspectable C++23.
-- Preserve native C++ interoperability without making native C++ syntax the default application experience.
-
-## Compiler contract
-
-A relationship such as:
+# Complete model example
 
 ```gnr
 model User {
+    table = 'users';
+    primaryKey = 'id';
+
+    fillable = [
+        'name',
+        'email',
+        'password'
+    ];
+
+    hidden = [
+        'password',
+        'remember_token'
+    ];
+
+    casts = {
+        'active': 'bool',
+        'settings': 'json',
+        'verified_at': 'datetime'
+    };
+
+    timestamps = true;
+    softDeletes = true;
+
+    profile() {
+        return hasOne('profile');
+    }
+
+    posts() {
+        return hasMany('posts');
+    }
+
+    roles() {
+        return belongsToMany('roles');
+    }
+}
+```
+
+If the model follows all conventions, the declaration can be much smaller:
+
+```gnr
+model User {
+    fillable = [
+        'name',
+        'email',
+        'password'
+    ];
+
+    hidden = [
+        'password'
+    ];
+
     posts() {
         return hasMany('posts');
     }
 }
 ```
 
-should ultimately pass through the language pipeline as structured model syntax:
+# What is not allowed in a model
+
+Models must not become general-purpose application classes.
+
+The following do not belong inside a Gungnir model:
+
+- arbitrary business methods;
+- HTTP actions;
+- request validation workflows;
+- authorization logic;
+- service orchestration;
+- mail sending;
+- event handling;
+- transactions;
+- query scopes declared as arbitrary methods;
+- computed business workflows;
+- arbitrary statement blocks unrelated to relationships.
+
+For example, this should be rejected:
+
+```gnr
+model Order {
+    approve() {
+        sendEmail();
+        updateInventory();
+    }
+}
+```
+
+Business behavior belongs in an application/service layer.
+
+Likewise, this is not a relationship declaration and should be rejected:
+
+```gnr
+model User {
+    posts() {
+        const posts = Post::all();
+        return posts;
+    }
+}
+```
+
+A relationship declaration must use a recognized relationship form.
+
+# Migrations are the schema authority
+
+Models do not declare database columns.
+
+Do not duplicate migration schema like this:
+
+```gnr
+model User {
+    string name;
+    string email;
+    bool active;
+}
+```
+
+Instead, the migration defines the database schema:
+
+```gnr
+migration CreateUsersTable {
+    up() {
+        Table::create('users', (table) => {
+            table.id();
+            table.string('name');
+            table.string('email');
+            table.string('password');
+            table.boolean('active');
+            table.timestamps();
+        });
+    }
+}
+```
+
+The model only declares persistence metadata:
+
+```gnr
+model User {
+    fillable = [
+        'name',
+        'email',
+        'password'
+    ];
+
+    hidden = [
+        'password'
+    ];
+
+    casts = {
+        'active': 'bool'
+    };
+}
+```
+
+This avoids defining the same schema twice.
+
+# Responsibility split
+
+| Concern | Owner |
+| --- | --- |
+| Database columns | Migration |
+| Column types | Migration |
+| Default database values | Migration |
+| Indexes | Migration |
+| Unique constraints | Migration |
+| Foreign-key constraints | Migration |
+| Table/collection mapping | Model |
+| Database connection mapping | Model |
+| Primary-key mapping | Model |
+| Key behavior | Model |
+| Mass-assignment policy | Model |
+| Serialization hiding | Model |
+| Attribute casts | Model |
+| Timestamp behavior | Model |
+| Soft-delete behavior | Model |
+| ORM relationships | Model |
+| Query construction | ORM |
+| Business logic | Application/service layer |
+| HTTP handling | Controller |
+| Input validation | Validation/request layer |
+| Authorization | Policy |
+| Events | Event/listener |
+| Database execution | ORM/database runtime |
+
+# Model grammar
+
+A Gungnir model should ultimately be represented approximately as:
+
+```text
+ModelDeclaration
+  name
+  table?
+  connection?
+  primaryKey?
+  incrementing?
+  keyType?
+  fillable[]
+  hidden[]
+  casts{}
+  timestamps?
+  softDeletes?
+  relationships[]
+```
+
+A relationship should be represented independently:
+
+```text
+RelationshipDeclaration
+  name
+  kind
+  relatedResource
+  throughResource?
+  foreignKey?
+  localKey?
+  options
+```
+
+The compiler should not represent arbitrary model methods as normal executable methods.
+
+# Semantic validation
+
+The model semantic pass should validate at least:
+
+- only supported model configuration keys are used;
+- model configuration values have the correct type;
+- duplicate configuration entries are rejected;
+- `primaryKey` is a valid attribute name;
+- `fillable` contains valid attribute names;
+- `hidden` contains valid attribute names;
+- `casts` uses supported cast types;
+- relationships use supported relationship kinds;
+- relationship resources resolve to valid models where project information is available;
+- relationship modifiers are compatible with their base relationship;
+- relationship key overrides are structurally valid;
+- arbitrary model methods are rejected;
+- arbitrary statements inside relationship declarations are rejected.
+
+# Compiler contract
+
+A model such as:
+
+```gnr
+model User {
+    table = 'users';
+    primaryKey = 'id';
+
+    fillable = [
+        'name',
+        'email'
+    ];
+
+    hidden = [
+        'password'
+    ];
+
+    casts = {
+        'active': 'bool'
+    };
+
+    posts() {
+        return hasMany('posts');
+    }
+}
+```
+
+should pass through:
 
 ```text
 source
   -> lexer
   -> parser
-  -> model/relationship AST
+  -> ModelDeclaration AST
+  -> model metadata parsing
+  -> RelationshipDeclaration AST
   -> symbol resolution
   -> semantic validation
-  -> typed/validated AST
-  -> ORM lowering
+  -> validated model metadata
+  -> ORM/native lowering
   -> C++23 generation
 ```
 
-The transpiler should not rediscover relationships by scanning raw source text after parsing.
-
-The validated representation should already know that:
+Before C++23 generation, the validated model representation should already know:
 
 ```text
-owner model       User
-relationship      posts
-relationship kind hasMany
-related resource  posts
-related model     Post
-foreign key       user_id
-local key         id
-result type       Collection<Post>
+model            User
+table            users
+connection       default
+primaryKey       id
+fillable         [name, email]
+hidden           [password]
+casts            active -> bool
+relationship     posts -> hasMany -> Post
 ```
 
-before the C++23 backend begins emitting code.
+The transpiler must not rediscover model metadata or relationships by scanning raw source text.
+
+# Design rule
+
+The model contract is intentionally strict:
+
+```text
+model = database mapping metadata + relationship declarations
+```
+
+Nothing else belongs in a Gungnir model.
