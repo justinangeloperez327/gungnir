@@ -1,0 +1,117 @@
+name: Windows Installer
+
+on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/gungnir/**"
+      - "src/cli/**"
+      - "tools/gungnir.cpp"
+      - "tests/cli_integration.cmake"
+      - "tests/generated_project.py"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/installer-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    name: Windows setup executable
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -A x64
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Create installer
+        shell: pwsh
+        run: |
+          cpack `
+            --config build/CPackConfig.cmake `
+            -G NSIS `
+            -C Release `
+            -B installer
+
+          $installer = Get-ChildItem installer -Filter "gungnir-*-setup.exe" |
+            Select-Object -First 1
+
+          if ($null -eq $installer) {
+              throw "CPack did not create the Gungnir setup executable"
+          }
+
+          "GUNGNIR_INSTALLER=$($installer.FullName)" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install and build a project
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-ci"
+          $projectDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-ci-app"
+
+          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
+
+          $install = Start-Process `
+            -FilePath $env:GUNGNIR_INSTALLER `
+            -ArgumentList @("/S", "/D=$installDir") `
+            -Wait `
+            -PassThru
+
+          if ($install.ExitCode -ne 0) {
+              throw "Installer exited with code $($install.ExitCode)"
+          }
+
+          $cli = Join-Path $installDir "bin\gungnir.exe"
+          if (-not (Test-Path $cli)) {
+              throw "Installed CLI was not found"
+          }
+
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\(gungnir VERSION (\d+\.\d+\.\d+)') {
+              throw "Unable to read the Gungnir version"
+          }
+
+          $expectedVersion = "Gungnir $($Matches[1])"
+          $actualVersion = (& $cli --version).Trim()
+
+          if ($actualVersion -ne $expectedVersion) {
+              throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+          }
+
+          Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
+
+          & $cli new InstallerCI $projectDir
+          if ($LASTEXITCODE -ne 0) {
+              throw "Installed CLI failed to create a project"
+          }
+
+          Push-Location $projectDir
+          try {
+              & $cli build --release
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Installed CLI failed to build a project"
+              }
+          }
+          finally {
+              Pop-Location
+          }
