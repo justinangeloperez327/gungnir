@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(gungnir VERSION 0.1.1 LANGUAGES CXX)
+project(gungnir VERSION 0.1.2 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -2110,6 +2110,15 @@ install(
         .
 )
 
+if(WIN32)
+    install(
+        FILES
+            cmake/windows/UpdateUserPath.ps1
+        DESTINATION
+            ${CMAKE_INSTALL_DATADIR}/gungnir/installer
+    )
+endif()
+
 
 if(GUNGNIR_BUILD_TESTS)
     add_executable(gungnir_priority3_runtime_test tests/priority3_runtime.cpp)
@@ -2179,7 +2188,30 @@ if(WIN32)
     set(CPACK_NSIS_DISPLAY_NAME "Gungnir")
     set(CPACK_NSIS_PACKAGE_NAME "Gungnir")
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY "bin")
-    set(CPACK_NSIS_MODIFY_PATH ON)
+
+    # CPack's built-in PATH page edits the machine PATH through NSIS string
+    # handling, which can fail when an existing PATH is already long. Gungnir
+    # instead updates the current user's PATH with PowerShell/.NET and keeps
+    # the system PATH untouched.
+    set(CPACK_NSIS_MODIFY_PATH OFF)
+    set(
+        CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+        [=[
+nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\share\gungnir\installer\UpdateUserPath.ps1" -BinPath "$INSTDIR\bin" -Action Add'
+Pop $0
+DetailPrint "Gungnir user PATH update exit code: $0"
+SendMessage 0xffff 0x001A 0 "STR:Environment" /TIMEOUT=5000
+        ]=]
+    )
+    set(
+        CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
+        [=[
+nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\share\gungnir\installer\UpdateUserPath.ps1" -BinPath "$INSTDIR\bin" -Action Remove'
+Pop $0
+DetailPrint "Gungnir user PATH removal exit code: $0"
+SendMessage 0xffff 0x001A 0 "STR:Environment" /TIMEOUT=5000
+        ]=]
+    )
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
     set(CPACK_NSIS_MANIFEST_DPI_AWARE ON)
     set(CPACK_NSIS_UNINSTALL_NAME "Uninstall Gungnir")

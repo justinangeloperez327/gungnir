@@ -6,21 +6,23 @@
 
 ### Windows
 
-Beginning with v0.1.1, download the Windows setup executable from GitHub Releases:
+Download the Windows setup executable from GitHub Releases:
 
 ```text
-gungnir-v0.1.1-windows-x86_64-setup.exe
+gungnir-v<version>-windows-x86_64-setup.exe
 ```
 
-Run the installer and enable the option to add Gungnir to `PATH`. The installer places the framework, compiler, CLI, headers, libraries, and CMake package files under the selected installation directory and registers an uninstaller.
+Run the installer normally. Beginning with v0.1.2, the installer adds `<install directory>\bin` to the **current user's PATH** automatically. It does not modify the system PATH, so an already-long machine PATH does not block Gungnir from being registered.
 
-Verify:
+After installation, close existing terminal windows and open a new PowerShell or Command Prompt:
 
 ```powershell
 gungnir --version
 ```
 
 The CLI discovers the installed framework automatically. You do not need to set `GUNGNIR_CMAKE_PREFIX` for a normal installer or portable-package layout.
+
+Uninstalling Gungnir removes its own user-PATH entry without rewriting unrelated PATH entries.
 
 ### Portable packages
 
