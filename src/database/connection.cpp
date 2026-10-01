@@ -431,27 +431,20 @@ bool Connection::supports_savepoints() const noexcept {
     return driver_->supports_savepoints();
 }
 
+bool Connection::in_transaction() const { std::lock_guard lock{mutex_}; return transaction_depth_ != 0; }
+void Connection::after_commit(std::function<void()> callback) {
+    if (!callback) throw std::invalid_argument("Commit callback cannot be empty");
+    { std::lock_guard lock{mutex_};
+      if (transaction_depth_) { commit_callbacks_.back().push_back(std::move(callback)); return; } }
+    callback();
+}
 void Connection::begin() {
     std::lock_guard lock{mutex_};
-
-    if (!driver_->supports_transactions()) {
-        throw std::logic_error(
-            "Database driver does not support transactions"
-        );
-    }
-
-    driver_->begin();
+    if (transaction_depth_) throw std::logic_error("Use transaction scopes for nested transactions");
+    static_cast<void>(begin_scope());
 }
-
-void Connection::commit() {
-    std::lock_guard lock{mutex_};
-    driver_->commit();
-}
-
-void Connection::rollback() {
-    std::lock_guard lock{mutex_};
-    driver_->rollback();
-}
+void Connection::commit() { commit_scope(TransactionToken{.root = true}); }
+void Connection::rollback() { rollback_scope(TransactionToken{.root = true}); }
 
 TransactionToken
 Connection::begin_scope() {
@@ -462,6 +455,7 @@ Connection::begin_scope() {
     if (transaction_depth_ == 0) {
         driver_->begin();
         transaction_depth_ = 1;
+        commit_callbacks_.emplace_back();
 
         return {
             .root = true,
@@ -486,6 +480,7 @@ Connection::begin_scope() {
         );
         break;
 
+    case Backend::sqlite:
     case Backend::postgresql:
     case Backend::mysql:
         driver_->execute(
@@ -501,6 +496,7 @@ Connection::begin_scope() {
     }
 
     ++transaction_depth_;
+    commit_callbacks_.emplace_back();
 
     return {
         .root = false,
@@ -512,7 +508,7 @@ Connection::begin_scope() {
 void Connection::commit_scope(
     const TransactionToken& token
 ) {
-    std::lock_guard lock{
+    std::unique_lock lock{
         mutex_
     };
 
@@ -523,6 +519,13 @@ void Connection::commit_scope(
     if (token.root) {
         driver_->commit();
         transaction_depth_ = 0;
+        std::vector<std::function<void()>> callbacks;
+        for (auto& level : commit_callbacks_) for (auto& callback : level) callbacks.push_back(std::move(callback));
+        commit_callbacks_.clear();
+        lock.unlock();
+        std::exception_ptr failure;
+        for (auto& callback : callbacks) { try { callback(); } catch (...) { if (!failure) failure = std::current_exception(); } }
+        if (failure) std::rethrow_exception(failure);
         return;
     }
 
@@ -530,7 +533,7 @@ void Connection::commit_scope(
         backend() ==
             Backend::postgresql ||
         backend() ==
-            Backend::mysql
+            Backend::mysql || backend() == Backend::sqlite
     ) {
         driver_->execute(
             "RELEASE SAVEPOINT " +
@@ -538,6 +541,9 @@ void Connection::commit_scope(
         );
     }
 
+    auto callbacks = std::move(commit_callbacks_.back());
+    commit_callbacks_.pop_back();
+    for (auto& callback : callbacks) commit_callbacks_.back().push_back(std::move(callback));
     --transaction_depth_;
 }
 
@@ -555,6 +561,7 @@ void Connection::rollback_scope(
     if (token.root) {
         driver_->rollback();
         transaction_depth_ = 0;
+        commit_callbacks_.clear();
         return;
     }
 
@@ -566,6 +573,7 @@ void Connection::rollback_scope(
         );
         break;
 
+    case Backend::sqlite:
     case Backend::postgresql:
     case Backend::mysql:
         driver_->execute(
@@ -578,6 +586,7 @@ void Connection::rollback_scope(
         break;
     }
 
+    commit_callbacks_.pop_back();
     --transaction_depth_;
 }
 

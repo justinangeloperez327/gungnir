@@ -81,7 +81,7 @@ class Emitter {
                 if (!target.starts_with("gungnir::") && !target.starts_with("::")) {
                     if (is_static) target = expr(callee.operands[0]) + "::" + target;
                     else { receiver = expr(callee.operands[0]); target = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" + std::string(injection ? "->" : ".") + target; }
-                } else if (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each")) { receiver = expr(callee.operands[0]); receiver_argument = true; }
+                } else if (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate")) { receiver = expr(callee.operands[0]); receiver_argument = true; }
             }
             // Braced tuple construction fixes evaluation order, including await
             // expressions, before named arguments are reordered for the call.
@@ -224,6 +224,9 @@ public:
                 out << "); }\n";
                 const auto it = std::find_if(decl.methods.begin(),decl.methods.end(),[](const auto& m){return m.name == "handle";});
                 out << "static void register_job(gungnir::queue::Worker& worker" << (injectable ? ", gungnir::Container& container" : "") << ") { worker.handle(std::string{event_name},[" << (injectable ? "&container" : "") << "](std::string_view payload) { auto job = from_payload(payload" << (injectable ? ",container" : "") << "); " << (it->asynchronous ? "gungnir::language::runtime::wait(job.handle());" : "job.handle();") << " }); }\n";
+                if (injectable) {
+                    out << "static void register_job(gungnir::queue::Worker& worker, std::weak_ptr<gungnir::Container> owner) { worker.handle(std::string{event_name},[owner](std::string_view payload) { auto container = owner.lock(); if (!container) throw std::logic_error(\"Job application is no longer available\"); auto job = from_payload(payload,*container); " << (it->asynchronous ? "gungnir::language::runtime::wait(job.handle());" : "job.handle();") << " }); }\n";
+                }
 
             }
             out << "};\n"; close(module);

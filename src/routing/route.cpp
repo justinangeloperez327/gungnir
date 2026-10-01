@@ -8,8 +8,8 @@ namespace gungnir::routing::detail {
 namespace {
 
 std::mutex runtime_mutex;
-Router* active_router = nullptr;
-Container* active_container = nullptr;
+thread_local Router* active_router = nullptr;
+thread_local Container* active_container = nullptr;
 
 } // namespace
 
@@ -38,6 +38,7 @@ void unbind_route_runtime(
 }
 
 Router& route_router() {
+    if (auto context = gungnir::detail::application_context(); context->router) return *context->router;
     std::lock_guard lock{runtime_mutex};
 
     if (!active_router) {
@@ -50,6 +51,7 @@ Router& route_router() {
 }
 
 Container& route_container() {
+    if (auto context = gungnir::detail::application_context(); context->container) return *context->container;
     std::lock_guard lock{runtime_mutex};
 
     if (!active_container) {

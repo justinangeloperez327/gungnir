@@ -331,7 +331,7 @@ std::vector<Diagnostic> SemanticAnalyzer::analyze(
                     const auto found = index.methods.find(owner + "::" + method_name);
                     if (method_name.empty() || found == index.methods.end()) {
                         static const std::unordered_set<std::string> builtins{
-                            "text", "html", "json", "view", "redirect", "abort",
+                            "text", "html", "json", "view", "redirect", "response", "abort",
                             "authorize", "sleep_for", "make_json", "make_value"
                         };
                         if (index.closed_world && callee.kind == ExpressionKind::name &&

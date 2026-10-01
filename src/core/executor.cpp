@@ -7,8 +7,8 @@
 
 namespace gungnir {
 
-Executor::Executor(std::size_t workers)
-    : worker_count_(workers == 0 ? std::clamp<unsigned>(std::thread::hardware_concurrency(), 2U, 32U) : workers) {}
+Executor::Executor(std::size_t workers, std::size_t capacity)
+    : worker_count_(workers == 0 ? std::clamp<unsigned>(std::thread::hardware_concurrency(), 2U, 32U) : workers), capacity_(capacity) { if (!capacity) throw std::invalid_argument("Executor capacity must be positive"); }
 
 Executor::~Executor() { stop(); join(); }
 
@@ -39,39 +39,11 @@ void Executor::post(
         return;
     }
 
-    const auto trace_context =
-        observability::current_context();
-
-    const auto view_context =
-        view::runtime::current();
-
-    const auto database_context =
-        database::runtime::current();
-
-    auto wrapped =
-        [
-            trace_context,
-            view_context,
-            database_context,
-            work = std::move(work)
-        ]() mutable {
-            auto trace_scope =
-                observability::activate(
-                    trace_context
-                );
-
-            auto view_scope =
-                view::runtime::activate(
-                    view_context
-                );
-
-            auto database_scope =
-                database::runtime::activate(
-                    database_context
-                );
-
-            work();
-        };
+    auto context = detail::capture_execution_context();
+    auto wrapped = [context, work = std::move(work)]() mutable {
+        detail::ExecutionScope scope{context};
+        work();
+    };
 
     {
         std::lock_guard lock{
@@ -84,6 +56,7 @@ void Executor::post(
             );
         }
 
+        if (queue_.size() >= capacity_) throw std::length_error("Gungnir executor queue is full");
         queue_.push_back(
             std::move(wrapped)
         );
@@ -91,6 +64,10 @@ void Executor::post(
 
     ready_.notify_one();
 }
+
+std::exception_ptr Executor::failure() const { std::lock_guard lock{mutex_}; return failure_; }
+void Executor::rethrow_failure() const { if (auto error = failure()) std::rethrow_exception(error); }
+std::size_t Executor::pending() const noexcept { std::lock_guard lock{mutex_}; return queue_.size(); }
 
 void Executor::schedule(std::coroutine_handle<> handle) { post([handle] { if (handle && !handle.done()) handle.resume(); }); }
 
@@ -105,7 +82,7 @@ void Executor::worker_loop() noexcept {
             if (queue_.empty()) { if (stopping_) return; continue; }
             work = std::move(queue_.front()); queue_.pop_front();
         }
-        try { work(); } catch (...) {}
+        try { work(); } catch (...) { std::lock_guard lock{mutex_}; if (!failure_) failure_ = std::current_exception(); }
     }
 }
 

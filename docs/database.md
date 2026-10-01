@@ -8,7 +8,9 @@ The runtime has named connections, a driver registry, connection pooling, query 
 
 Settings include connection name/backend, host/port, database, username/password, pool size, pool acquisition timeout, validation interval, reconnect attempts and backend options. The generated environment uses `DB_CONNECTION`, `DB_NAME`, `DB_POOL_SIZE`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`.
 
-Use bindings for values; select backend-supported operations and inspect driver capabilities.
+Use bindings for values; select backend-supported operations and inspect driver capabilities. Enable `GUNGNIR_WITH_SQLITE=ON` to build and automatically register SQLite. Use `DB_CONNECTION=sqlite` and a file in `DB_DATABASE`; relative paths resolve under the application root. `:memory:` requires a one-connection pool. SQLite supports prepared queries, cancellation, transactions and savepoints; schema changes needing a table rebuild and row-lock clauses are rejected explicitly. Decimal migration columns use TEXT to preserve exact values.
+
+`model::Decimal` preserves SQL decimal text and scale; JSON/view serialization emits its exact string. Convert to binary floating point explicitly with `to_double()`. Integral model hydration rejects out-of-range values. PostgreSQL numeric, MySQL decimal, SQL Server decimal/numeric and MongoDB Decimal128 decoding retain decimal values.
 
 ## Limits and planned work
 

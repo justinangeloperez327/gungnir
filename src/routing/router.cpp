@@ -64,6 +64,7 @@ std::string join(std::string_view prefix, std::string_view path) {
 
 class Router::Impl {
 public:
+    std::weak_ptr<gungnir::detail::ExecutionContext> context;
     std::vector<RouteEntry> routes;
     std::vector<http::MiddlewareHandler> middleware;
     http::MiddlewareRegistry* middleware_registry{nullptr};
@@ -146,7 +147,21 @@ std::string Router::url(std::string_view name,const std::unordered_map<std::stri
     throw std::out_of_range("Unknown named route: "+std::string{name});
 }
 
+Router& Router::execution_context(std::weak_ptr<gungnir::detail::ExecutionContext> context) {
+    impl_->context = std::move(context);
+    return *this;
+}
 Task<http::Response> Router::dispatch(http::Request& request) const {
+    auto selected_context = impl_->context.lock();
+    auto context = std::make_shared<gungnir::detail::ExecutionContext>(*gungnir::detail::active_context);
+    if (selected_context) {
+        auto trace = context->trace;
+        auto connection = context->manager == selected_context->manager ? context->database : nullptr;
+        *context = *selected_context;
+        context->trace = std::move(trace);
+        context->database = std::move(connection);
+    }
+    gungnir::detail::ExecutionScope context_scope{context};
     if (impl_->container && !request.has_services()) {
         request.attach_services(
             std::make_shared<ServiceScope>(

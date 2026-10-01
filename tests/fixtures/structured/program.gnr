@@ -35,3 +35,9 @@ function int loop() { let total = 0; for (let i = 0; i < 3; i++) { total += i; }
 
 controller Home { public index(Request request) { return text(request.header('X-Name')); } private int helper() { return 2; } }
 migration Helpers { up() { helper(); } down() {} private void helper() {} }
+
+function void checkUser(Request request, User resource) { authorize(request, 'view', resource); }
+notification WelcomeNotice { via(User recipient) { return ['mail']; } toMail(User recipient) { return Welcome('Ada'); } }
+model Price { table = 'prices'; casts = { amount: 'decimal' }; }
+function Decimal exactAmount() { return exactDecimal('12345678901234567890.123400'); }
+function Json validatePayload(Request request) { return request.validate({ enabled: 'required|boolean', count: 'integer' }); }

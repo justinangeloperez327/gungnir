@@ -19,10 +19,15 @@
 | `map` | Return `std::vector<Result>`, not `Collection<Result>` |
 | `push`, `clear`, `values` | Mutate or access backing storage |
 | `begin`, `end` | Iterate models |
+| `contains`, `every`, `reject` | Evaluate predicates or exclude matching items |
+| `take`, `skip`, `chunk` | Slice or group items; zero chunk size is rejected |
+| `reduce`, `sum` | Fold values; integral sums reject overflow |
+| `sort_by`, `unique` | Stable projection sorting or first-occurrence deduplication |
+| `group_by`, `key_by` | Build maps from projected keys |
 
 ## Limits and planned work
 
-Predicate overloads of `first`/`last`, optional empty results, `groupBy`, `reduce`, sorting, aggregation, flattening, lazy collections and the wider Laravel-style catalogue are planned APIs. A `.gnr` arrow callback is not established merely because a native callback overload exists.
+Predicate overloads of `first`/`last`, optional empty results, additional aggregation, flattening, lazy collections and the wider Laravel-style catalogue are planned APIs. A `.gnr` arrow callback is not established merely because a native callback overload exists.
 
 ## Implementation references
 

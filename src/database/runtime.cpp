@@ -8,7 +8,7 @@ namespace gungnir::database::runtime {
 
 namespace {
 
-std::atomic<Manager*> active_manager{
+thread_local std::atomic<Manager*> active_manager{
     nullptr
 };
 
@@ -112,6 +112,7 @@ void clear()
 
 bool configured()
     noexcept {
+    if (gungnir::detail::application_context()->manager) return true;
     return
         active_manager.load(
             std::memory_order_acquire
@@ -121,6 +122,7 @@ bool configured()
 bool using_manager(
     const Manager& manager
 ) noexcept {
+    if (auto context = gungnir::detail::application_context(); context->manager) return context->manager.get() == &manager;
     return
         active_manager.load(
             std::memory_order_acquire
@@ -129,6 +131,7 @@ bool using_manager(
 }
 
 Manager& manager() {
+    if (auto context = gungnir::detail::application_context(); context->manager) return *context->manager;
     auto* current =
         active_manager.load(
             std::memory_order_acquire

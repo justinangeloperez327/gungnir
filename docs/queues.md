@@ -12,7 +12,9 @@ Structured `job` declarations generate immutable data constructors, typed JSON p
 
 ## Limits and planned work
 
-Jobs must tolerate retries; do not promise exactly-once side effects. Memory queues are process-local. Queue delivery does not share the request's open database transaction. Static `.gnr` dispatch syntax and automatic after-commit scheduling need explicit integration.
+Jobs must tolerate retries; do not promise exactly-once side effects. Memory queues are process-local. Queue delivery does not share the request's open database transaction. `queue::Dispatcher` defaults to publishing after the active transaction commits; nested rollback discards that scope's pending jobs. Publication failures propagate after the database has committed, so this is not a durable transactional outbox. Pass `after_commit=false` for immediate dispatch. Static `.gnr` dispatch syntax remains separate.
+
+Register `ServicesProvider` with explicit queue/cache/mail/storage adapters during bootstrap. It also exposes scheduler, event, resource-policy and notification services. Native `register_job`, `register_listener` and `register_policy` helpers wire generated declarations from boot hooks. `schedule_job` connects a scheduled action to the dispatcher; starting workers and running the scheduler remain explicit.
 
 ## Implementation references
 

@@ -11,7 +11,7 @@ namespace {
 
 std::mutex runtime_mutex;
 
-EngineHandle fallback_engine;
+thread_local EngineHandle fallback_engine;
 
 
 
@@ -125,10 +125,7 @@ EngineHandle current()
         return gungnir::detail::active_context->view;
     }
 
-    std::lock_guard lock{
-        runtime_mutex
-    };
-
+    if (auto context = gungnir::detail::application_context(); context->view) return context->view;
     return fallback_engine;
 }
 

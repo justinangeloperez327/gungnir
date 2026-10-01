@@ -85,6 +85,7 @@ private:
 
 class Router {
 public:
+    Router& execution_context(std::weak_ptr<gungnir::detail::ExecutionContext> context);
     Router();
     ~Router();
     Router(Router&&) noexcept;

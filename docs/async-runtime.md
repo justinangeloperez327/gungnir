@@ -8,7 +8,7 @@ Native asynchronous execution uses Task, executors, cancellation tokens and time
 
 ## Limits and planned work
 
-Cancellation is cooperative. A synchronous database or storage call does not become non-blocking simply because its caller is a coroutine. Structured task groups, complete semantic await typing and blanket context/lifetime guarantees in the target design remain work to verify per execution path.
+Cancellation is cooperative. A synchronous database or storage call does not become non-blocking simply because its caller is a coroutine. `TaskGroup` owns a bounded set of cooperative child tasks, cancels siblings on failure, and joins before destruction; `join()` rethrows the first failure. Each child currently uses a thread. `sleep_for(duration, token)` responds to cancellation. Executors bound pending work and expose background errors through `failure()`/`rethrow_failure()`. Destroying an already suspended timer/executor task invalidates its queued continuation. Task owners must still avoid concurrently destroying a running coroutine; cancellation is the shutdown mechanism for owned child work.
 
 ## Implementation references
 

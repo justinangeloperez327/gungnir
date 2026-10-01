@@ -167,6 +167,15 @@ String type_sql(
     const auto length = column.length == 0 ? 255U : column.length;
 
     switch (backend) {
+        case Backend::sqlite:
+            switch (column.type) {
+            case ColumnType::id: case ColumnType::big_integer: case ColumnType::tiny_integer:
+            case ColumnType::small_integer: case ColumnType::medium_integer: case ColumnType::integer:
+            case ColumnType::boolean: return "INTEGER";
+            case ColumnType::floating: case ColumnType::double_precision: return "REAL";
+            case ColumnType::binary: return "BLOB";
+            default: return "TEXT"; // Preserve decimal precision and date/JSON text.
+            }
         case Backend::postgresql:
             switch (column.type) {
                 case ColumnType::id:
@@ -370,6 +379,7 @@ String column_sql(
                    " PRIMARY KEY";
         } else {
             sql += " PRIMARY KEY";
+            if (backend == Backend::sqlite && column.auto_increment_value) sql += " AUTOINCREMENT";
         }
     }
 
@@ -432,6 +442,7 @@ void append_index(
         : index.name;
 
     if (index.type == IndexType::primary) {
+        if (backend == Backend::sqlite) throw std::logic_error("SQLite primary key changes require an explicit table rebuild");
         if (backend == Backend::mysql) {
             result.statements.push_back(sql_statement(
                 "ALTER TABLE " + quote_identifier(backend, table) +
@@ -499,6 +510,13 @@ void compile_create(
         definitions.push_back(foreign_sql(backend, operation.name, foreign));
     }
 
+    if (backend == Backend::sqlite) {
+        for (const auto& index : operation.indexes) {
+            if (index.type == IndexType::primary)
+                definitions.push_back("PRIMARY KEY (" + join_identifiers(backend, index.columns) + ")");
+        }
+    }
+
     for (std::size_t index = 0; index < definitions.size(); ++index) {
         if (index != 0) {
             sql += ", ";
@@ -512,6 +530,7 @@ void compile_create(
     append_column_indexes(result, backend, operation.name, operation.columns);
 
     for (const auto& index : operation.indexes) {
+        if (backend == Backend::sqlite && index.type == IndexType::primary) continue;
         append_index(result, backend, operation.name, index);
     }
 }
@@ -530,6 +549,7 @@ void append_alter_column(
         return;
     }
 
+    if (backend == Backend::sqlite) throw std::logic_error("SQLite column changes require an explicit table rebuild");
     if (backend == Backend::mysql) {
         result.statements.push_back(sql_statement(
             "ALTER TABLE " + quote_identifier(backend, table) +
@@ -681,6 +701,15 @@ void compile_alter(
     Backend backend,
     const TableOperation& operation
 ) {
+    if (backend == Backend::sqlite) {
+        if (!operation.foreign_keys.empty())
+            throw std::logic_error("SQLite foreign key changes require an explicit table rebuild");
+        for (const auto& command : operation.commands) {
+            if (command.type == AlterCommandType::drop_primary || command.type == AlterCommandType::drop_foreign ||
+                command.type == AlterCommandType::rename_index)
+                throw std::logic_error("This SQLite schema change requires an explicit table rebuild");
+        }
+    }
     for (const auto& column : operation.columns) {
         append_alter_column(result, backend, operation.name, column);
     }

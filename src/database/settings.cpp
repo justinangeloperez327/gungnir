@@ -103,6 +103,7 @@ std::uint16_t checked_port(
 Backend parse_backend(
     std::string_view value
 ) {
+    if (value == "sqlite" || value == "sqlite3") return Backend::sqlite;
     const auto normalized =
         lower(value);
 
@@ -147,6 +148,7 @@ std::uint16_t default_port(
     Backend backend
 ) noexcept {
     switch (backend) {
+    case Backend::sqlite: return 0;
     case Backend::postgresql:
         return 5432;
     case Backend::mysql:
@@ -244,6 +246,8 @@ Settings settings_from(
             ),
             "database.pool_reconnect_attempts"
         );
+
+    if (settings.backend == Backend::sqlite) { settings.port = 0; return settings; }
 
     settings.port =
         checked_port(

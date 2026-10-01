@@ -67,16 +67,8 @@ public:
 
     void schedule(
         std::chrono::milliseconds duration,
-        std::coroutine_handle<> handle,
-        observability::TraceContext trace_context,
-        view::runtime::EngineHandle view_context,
-        database::runtime::ConnectionHandle
-            database_context
+        std::function<void()> resume
     ) {
-        if (!handle) {
-            return;
-        }
-
         detail::TimerWakeFunction wake =
             nullptr;
 
@@ -100,20 +92,7 @@ public:
                         duration,
                     .sequence =
                         sequence_++,
-                    .handle =
-                        handle,
-                    .context =
-                        std::move(
-                            trace_context
-                        ),
-                    .view_context =
-                        std::move(
-                            view_context
-                        ),
-                    .database_context =
-                        std::move(
-                            database_context
-                        )
+                    .resume = std::move(resume)
                 }
             );
 
@@ -305,13 +284,7 @@ private:
     struct Entry {
         Clock::time_point deadline;
         std::uint64_t sequence;
-        std::coroutine_handle<> handle;
-        observability::TraceContext
-            context;
-        view::runtime::EngineHandle
-            view_context;
-        database::runtime::ConnectionHandle
-            database_context;
+        std::function<void()> resume;
     };
 
     struct Later {
@@ -359,40 +332,8 @@ private:
             const auto& entry :
             due
         ) {
-            if (
-                !entry.handle ||
-                entry.handle.done()
-            ) {
-                continue;
-            }
-
-            auto trace_scope =
-                observability::activate(
-                    entry.context
-                );
-
-            auto view_scope =
-                view::runtime::activate(
-                    entry.view_context
-                );
-
-            auto database_scope =
-                database::runtime::activate(
-                    entry.database_context
-                );
-
-            try {
-                executor_.schedule(
-                    entry.handle
-                );
-            } catch (...) {
-                if (
-                    entry.handle &&
-                    !entry.handle.done()
-                ) {
-                    entry.handle.resume();
-                }
-            }
+            try { executor_.post(entry.resume); }
+            catch (...) { entry.resume(); }
         }
     }
 
@@ -493,19 +434,22 @@ TimerScheduler& timer_scheduler() {
 
 } // namespace
 
-void SleepAwaiter::await_suspend(
-    std::coroutine_handle<> handle
-) const {
-    timer_scheduler().schedule(
-        duration_,
-        handle,
-        observability::
-            current_context(),
-        view::runtime::current(),
-        database::runtime::current()
-    );
-
-
+void SleepAwaiter::await_suspend(std::coroutine_handle<> handle) {
+    slot_ = std::make_shared<detail::ResumeSlot>(handle);
+    auto state = slot_;
+    auto context = std::make_shared<detail::ExecutionContext>(*detail::active_context);
+    auto resume = [state, context] { detail::ExecutionScope scope{context}; state->resume(); };
+    auto token = cancellation_;
+    auto duration = duration_;
+    // Register before publishing the timer. Cancellation schedules, never resumes inline.
+    registration_ = std::make_shared<CancellationRegistration>();
+    auto registration = registration_;
+    *registration = token.on_cancel([state, context] {
+        timer_scheduler().schedule(std::chrono::milliseconds{0}, [state, context] {
+            detail::ExecutionScope scope{context}; state->resume();
+        });
+    });
+    timer_scheduler().schedule(duration, std::move(resume));
 }
 
 namespace detail {

@@ -8,7 +8,7 @@ The structured validator interns resolved types and records a TypeId for every e
 
 ## Limits and planned work
 
-`decimal` currently uses double precision, not exact decimal arithmetic. Unknown native types/calls require explicit compiler bindings. Collection type inference may use JSON values for heterogeneous lists; runtime model casting is a separate concern.
+The existing numeric `decimal` alias uses double precision. `Decimal` is a separate exact stored value; `exactDecimal('123.4500')` constructs it from a string, and model `decimal` casts use it. `string()` preserves its representation; `toDouble()` explicitly converts to binary floating point. It has no implicit arithmetic conversion. Unknown native types/calls require explicit compiler bindings. Collection type inference may use JSON values for heterogeneous lists; runtime model casting is a separate concern.
 
 ## Implementation references
 

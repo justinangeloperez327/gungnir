@@ -103,6 +103,8 @@ template <std::floating_point T>
 [[nodiscard]] Json make_json(const char* value);
 [[nodiscard]] Json make_json(const model::AttributeValue& value);
 
+[[nodiscard]] inline Json make_json(const model::Decimal& value) { return Json{value.string()}; }
+
 template <typename T>
 [[nodiscard]] Json make_json(const std::optional<T>& value) {
     if (!value) {
@@ -121,7 +123,11 @@ template <JsonModel T>
 [[nodiscard]] Json make_json(const T& value) {
     Json::Object object;
 
-    for (const auto& [name, attribute] : value.attributes()) {
+    const auto attributes = [&] {
+        if constexpr (requires { value.serialized_attributes(); }) return value.serialized_attributes();
+        else return value.attributes();
+    }();
+    for (const auto& [name, attribute] : attributes) {
         object.insert_or_assign(name, make_json(attribute));
     }
 

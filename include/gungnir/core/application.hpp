@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <exception>
+#include <gungnir/core/execution_context.hpp>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -33,6 +35,10 @@ public:
     [[nodiscard]] static Application create(
         std::filesystem::path base_path = {}
     );
+
+    [[nodiscard]] detail::ExecutionScope activate() const;
+    [[nodiscard]] detail::ContextHandle execution_context() const;
+    [[nodiscard]] const std::vector<std::exception_ptr>& shutdown_errors() const noexcept;
 
     Application();
     ~Application();

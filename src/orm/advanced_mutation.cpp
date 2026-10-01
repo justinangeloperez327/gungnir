@@ -680,7 +680,7 @@ CompiledQuery compile_upsert(
         result.text.pop_back();
     }
 
-    if (backend == database::Backend::postgresql) {
+    if (backend == database::Backend::postgresql || backend == database::Backend::sqlite) {
         result.text += " ON CONFLICT (";
         for (std::size_t index = 0; index < unique_by.size(); ++index) {
             if (index != 0) {

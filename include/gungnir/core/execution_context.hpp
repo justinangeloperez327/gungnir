@@ -1,13 +1,18 @@
 #pragma once
 
 #include <memory>
+#include <vector>
+#include <algorithm>
 #include <coroutine>
 #include <type_traits>
 #include <string>
 #include <utility>
 
 namespace gungnir::view { class Engine; }
-namespace gungnir::database { class Connection; }
+namespace gungnir { class Container; }
+namespace gungnir::routing { class Router; }
+namespace gungnir::http { class MiddlewareRegistry; }
+namespace gungnir::database { class Connection; class Manager; }
 namespace gungnir::observability {
 struct TraceContext {
     std::string trace_id;
@@ -22,6 +27,10 @@ namespace gungnir::detail {
 // Scopes retain their owner, so destroying a suspended task never modifies
 // another task's ambient state. Only the active pointer is thread-local.
 struct ExecutionContext {
+    std::shared_ptr<routing::Router> router;
+    std::shared_ptr<Container> container;
+    std::shared_ptr<http::MiddlewareRegistry> middleware;
+    std::shared_ptr<database::Manager> manager;
     std::shared_ptr<view::Engine> view;
     std::shared_ptr<database::Connection> database;
     observability::TraceContext trace;
@@ -30,12 +39,53 @@ using ContextHandle = std::shared_ptr<ExecutionContext>;
 inline thread_local ContextHandle active_context = std::make_shared<ExecutionContext>();
 inline ContextHandle current_execution_context() { return active_context; }
 
+// Compatibility facades select the newest live application on this thread.
+// Explicit scopes and request dispatch always select their owning application.
+inline thread_local std::vector<std::weak_ptr<ExecutionContext>> applications;
+inline ContextHandle application_context() {
+    if (active_context->router) return active_context;
+    while (!applications.empty()) {
+        if (auto context = applications.back().lock()) return context;
+        applications.pop_back();
+    }
+    return active_context;
+}
+inline ContextHandle capture_execution_context() {
+    auto result = std::make_shared<ExecutionContext>(*active_context);
+    if (!result->router) {
+        const auto application = application_context();
+        result->router = application->router;
+        result->container = application->container;
+        result->middleware = application->middleware;
+        result->manager = application->manager;
+        if (!result->view) result->view = application->view;
+        if (!result->database) result->database = application->database;
+        if (!result->trace.valid()) result->trace = application->trace;
+    }
+    return result;
+}
+class ExecutionScope {
+public:
+    explicit ExecutionScope(const ContextHandle& context)
+        : owner_(active_context), previous_(*owner_) {
+        if (context) *owner_ = *context;
+    }
+    ExecutionScope(const ExecutionScope&) = delete;
+    ExecutionScope& operator=(const ExecutionScope&) = delete;
+    ExecutionScope(ExecutionScope&& other) noexcept
+        : owner_(std::move(other.owner_)), previous_(std::move(other.previous_)) {}
+    ~ExecutionScope() { if (owner_) *owner_ = std::move(previous_); }
+private:
+    ContextHandle owner_;
+    ExecutionContext previous_;
+};
+
 struct ContextPromise {
     ContextHandle context;
     ContextHandle caller;
 
     void prepare() {
-        if (!context) context = std::make_shared<ExecutionContext>(*active_context);
+        if (!context) context = capture_execution_context();
     }
     void enter() {
         prepare();
