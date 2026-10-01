@@ -9,10 +9,10 @@ import time
 import urllib.error
 import urllib.request
 
-cli, project_arg, stage, sqlite = sys.argv[1:]
+cli, project_arg, sqlite = sys.argv[1:]
 project = pathlib.Path(project_arg)
 env = os.environ.copy()
-env["GUNGNIR_CMAKE_PREFIX"] = stage
+env.pop("GUNGNIR_CMAKE_PREFIX", None)
 env["CMAKE_BUILD_PARALLEL_LEVEL"] = "2"
 
 
