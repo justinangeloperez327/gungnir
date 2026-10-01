@@ -229,56 +229,112 @@ jobs:
           "GUNGNIR_INSTALLER=$package.exe" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Smoke test Windows installer
+      - name: Smoke test Windows installer with long PATH
         shell: pwsh
         run: |
           $installer = Join-Path $env:GITHUB_WORKSPACE "installer\$env:GUNGNIR_INSTALLER"
           $installDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-smoke"
           $projectDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-app"
+          $originalUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 
-          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
-
-          $install = Start-Process `
-            -FilePath $installer `
-            -ArgumentList @("/S", "/D=$installDir") `
-            -Wait `
-            -PassThru
-
-          if ($install.ExitCode -ne 0) {
-              throw "Gungnir installer exited with code $($install.ExitCode)"
+          $longEntries = 1..140 | ForEach-Object {
+              "C:\release-path-segment-$($_.ToString('000'))\bin"
           }
+          $longUserPath = [string]::Join(';', $longEntries)
 
-          $cli = Join-Path $installDir "bin\gungnir.exe"
-
-          if (-not (Test-Path $cli)) {
-              throw "Installed gungnir.exe was not found"
-          }
-
-          $actualVersion = (& $cli --version).Trim()
-          $tagCore = $env:RELEASE_TAG.Substring(1).Split('-')[0]
-          $expectedVersion = "Gungnir $tagCore"
-
-          if ($actualVersion -ne $expectedVersion) {
-              throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
-          }
-
-          Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
-
-          & $cli new InstallerSmoke $projectDir
-          if ($LASTEXITCODE -ne 0) {
-              throw "Installed CLI failed to create a project"
-          }
-
-          Push-Location $projectDir
           try {
-              & $cli build --release
+              [Environment]::SetEnvironmentVariable(
+                  "Path",
+                  $longUserPath,
+                  "User"
+              )
+
+              Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
+
+              $install = Start-Process `
+                -FilePath $installer `
+                -ArgumentList @("/S", "/D=$installDir") `
+                -Wait `
+                -PassThru
+
+              if ($install.ExitCode -ne 0) {
+                  throw "Gungnir installer exited with code $($install.ExitCode)"
+              }
+
+              $cli = Join-Path $installDir "bin\gungnir.exe"
+              if (-not (Test-Path $cli)) {
+                  throw "Installed gungnir.exe was not found"
+              }
+
+              $expectedBin = (Join-Path $installDir "bin").TrimEnd('\')
+              $installedUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+              $pathEntries = $installedUserPath -split ';' |
+                ForEach-Object { $_.Trim().Trim('"').TrimEnd('\') }
+
+              if ($pathEntries -notcontains $expectedBin) {
+                  throw "Installer did not add Gungnir to the current user's PATH"
+              }
+
+              if (-not $installedUserPath.StartsWith(
+                  $longUserPath,
+                  [StringComparison]::OrdinalIgnoreCase
+              )) {
+                  throw "Installer changed or truncated the existing long user PATH"
+              }
+
+              $actualVersion = (& $cli --version).Trim()
+              $tagCore = $env:RELEASE_TAG.Substring(1).Split('-')[0]
+              $expectedVersion = "Gungnir $tagCore"
+
+              if ($actualVersion -ne $expectedVersion) {
+                  throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+              }
+
+              Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
+
+              & $cli new InstallerSmoke $projectDir
               if ($LASTEXITCODE -ne 0) {
-                  throw "Installed CLI failed to build a generated project without GUNGNIR_CMAKE_PREFIX"
+                  throw "Installed CLI failed to create a project"
+              }
+
+              Push-Location $projectDir
+              try {
+                  & $cli build --release
+                  if ($LASTEXITCODE -ne 0) {
+                      throw "Installed CLI failed to build a generated project without GUNGNIR_CMAKE_PREFIX"
+                  }
+              }
+              finally {
+                  Pop-Location
+              }
+
+              $uninstaller = Join-Path $installDir "Uninstall Gungnir.exe"
+              if (-not (Test-Path $uninstaller)) {
+                  throw "Gungnir uninstaller was not found"
+              }
+
+              $uninstall = Start-Process `
+                -FilePath $uninstaller `
+                -ArgumentList @("/S") `
+                -Wait `
+                -PassThru
+
+              if ($uninstall.ExitCode -ne 0) {
+                  throw "Gungnir uninstaller exited with code $($uninstall.ExitCode)"
+              }
+
+              $afterUninstall = [Environment]::GetEnvironmentVariable("Path", "User")
+              if ($afterUninstall -ne $longUserPath) {
+                  throw "Uninstaller did not restore the pre-install user PATH"
               }
           }
           finally {
-              Pop-Location
+              [Environment]::SetEnvironmentVariable(
+                  "Path",
+                  $originalUserPath,
+                  "User"
+              )
           }
 
       - name: Upload Windows installer artifact
