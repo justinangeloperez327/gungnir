@@ -47,6 +47,109 @@ Gungnir compiles application source into ordinary, inspectable C++23.
 
 ---
 
+## Installation
+
+Gungnir v0.1.0 is available as a public preview for Windows x86_64 and Linux x86_64.
+
+Requirements:
+
+- a C++23-compatible compiler;
+- CMake 3.25 or newer.
+
+Download the current preview from the [Gungnir v0.1.0 release](https://github.com/justinangeloperez327/gungnir/releases/tag/v0.1.0).
+
+### Windows
+
+Download:
+
+~~~text
+gungnir-v0.1.0-windows-x86_64.zip
+~~~
+
+Extract the archive, then add its `bin` directory to `PATH`.
+
+Set `GUNGNIR_CMAKE_PREFIX` to the extracted Gungnir directory so generated applications can locate the installed CMake package.
+
+Verify the installation:
+
+~~~powershell
+gungnir --version
+~~~
+
+### Linux
+
+Download:
+
+~~~text
+gungnir-v0.1.0-linux-x86_64.tar.gz
+~~~
+
+Extract the archive:
+
+~~~sh
+tar -xzf gungnir-v0.1.0-linux-x86_64.tar.gz
+~~~
+
+Add the extracted `bin` directory to `PATH`, and set `GUNGNIR_CMAKE_PREFIX` to the extracted Gungnir directory.
+
+Verify:
+
+~~~sh
+gungnir --version
+~~~
+
+The prebuilt v0.1.0 packages contain the core framework, compiler, ORM, headers, CMake package files, and CLI tools. Optional database, transport, and infrastructure adapters may require a source build with the corresponding CMake options and native dependencies.
+
+See [Getting Started](docs/getting-started.md) for the complete setup path.
+
+---
+
+## Quick Start
+
+Create a new application:
+
+~~~sh
+gungnir new hello
+cd hello
+~~~
+
+Build and run it:
+
+~~~sh
+gungnir build
+gungnir run
+~~~
+
+For development with rebuild/restart behavior:
+
+~~~sh
+gungnir dev
+~~~
+
+A generated project includes application source directories, routes, environment configuration, a welcome view, and `bootstrap/app.hpp`.
+
+The default generated environment binds to `127.0.0.1:8000`.
+
+See [Getting Started](docs/getting-started.md) for a complete first application.
+
+---
+
+## Releases
+
+Current public preview: **v0.1.0**
+
+Release assets:
+
+- `gungnir-v0.1.0-linux-x86_64.tar.gz`
+- `gungnir-v0.1.0-windows-x86_64.zip`
+- `SHA256SUMS.txt`
+
+All 0.x releases should be treated as pre-1.0 previews. Pin the exact version used by an application.
+
+See the [v0.1.0 release](https://github.com/justinangeloperez327/gungnir/releases/tag/v0.1.0).
+
+---
+
 ## Goals
 
 Gungnir is built around a small set of principles:
@@ -70,69 +173,16 @@ The language is deliberately smaller and focused on web and application developm
 
 ## Status
 
-Gungnir is under active development and is **pre-1.0**.
+**Gungnir v0.1.0 is the first public preview release.**
 
-The source language, compiler architecture, runtime APIs, and generated-code ABI may still change while the framework moves toward a coherent stable contract.
+Gungnir remains under active development and is **pre-1.0**. The source language, runtime APIs, generated-code ABI, and framework behavior may change between preview releases.
 
-The canonical documentation defines the target language and framework behavior before compiler/runtime implementation is considered complete.
+The canonical documentation defines both implemented behavior and the framework's evolving contracts. Do not assume every documented target-language feature is already fully implemented by the current compiler.
 
-Some runtime subsystems are already substantial, while parts of the language frontend and validated lowering pipeline are still being migrated from earlier compatibility/source-rewrite implementations.
-
-Do not assume every documented target-language feature is already fully implemented by the current compiler.
-
-See [docs/stability.md](docs/stability.md) for the compatibility policy.
+Pin the exact release used by an application and review [docs/stability.md](docs/stability.md) before upgrading.
 
 ---
 
-## Compiler Architecture
-
-The target compiler architecture is:
-
-~~~text
-.gnr source
-    ↓
-Lexer
-    ↓
-Tokens
-    ↓
-Parser
-    ↓
-Syntax AST
-    ↓
-Module / Symbol Resolution
-    ↓
-Semantic + Type Analysis
-    ↓
-Control-Flow / Framework Validation
-    ↓
-Validated AST
-    ↓
-Framework Lowering
-    ↓
-C++23 IR
-    ↓
-C++23 Emitter
-    ↓
-Native C++ Compiler
-    ↓
-Application
-~~~
-
-The compiler follows one important rule:
-
-> **Parse once, resolve once, validate once, then lower deterministic compiler structures.**
-
-Supported Gungnir syntax should not be rediscovered later through raw-source scanning or string matching.
-
-Key compiler specifications:
-
-- [Grammar](docs/grammar.md)
-- [Syntax AST](docs/ast.md)
-- [Semantics](docs/semantics.md)
-- [Validated AST](docs/validated-ast.md)
-- [Transpiler](docs/transpiler.md)
-
----
 
 ## Language
 
@@ -669,27 +719,34 @@ See [docs/testing.md](docs/testing.md).
 
 ---
 
-## Build
+## Build from Source
 
-Gungnir requires:
+Build Gungnir itself from source when developing the framework or when you need optional adapters that are not included in the default prebuilt packages.
 
-- C++23
-- CMake 3.25 or newer
+Requirements:
+
+- C++23-compatible compiler;
+- CMake 3.25 or newer.
 
 Typical native build:
 
 ~~~sh
-cmake -S . -B build
-cmake --build build
+cmake -S . -B build \
+    -DGUNGNIR_BUILD_TOOLS=ON \
+    -DGUNGNIR_BUILD_TESTS=OFF
+cmake --build build --config Release
+cmake --install build --config Release
 ~~~
 
-Optional adapters and repository build flags depend on selected runtime features.
+Optional adapters and repository build flags depend on the selected runtime features and their native dependencies.
 
-Refer to adapter documentation and CMake configuration for currently available options.
+See [Getting Started](docs/getting-started.md) and the relevant adapter documentation for installation details.
 
 ---
 
 ## Documentation
+
+Start with [Getting Started](docs/getting-started.md) for installation, project creation, validation, build, and run instructions.
 
 Documentation is organized into three layers.
 
@@ -746,6 +803,56 @@ Documentation is organized into three layers.
 - [Production](docs/production.md)
 - [Testing](docs/testing.md)
 - [Stability](docs/stability.md)
+
+---
+
+## Compiler Architecture
+
+The target compiler architecture is:
+
+~~~text
+.gnr source
+    ↓
+Lexer
+    ↓
+Tokens
+    ↓
+Parser
+    ↓
+Syntax AST
+    ↓
+Module / Symbol Resolution
+    ↓
+Semantic + Type Analysis
+    ↓
+Control-Flow / Framework Validation
+    ↓
+Validated AST
+    ↓
+Framework Lowering
+    ↓
+C++23 IR
+    ↓
+C++23 Emitter
+    ↓
+Native C++ Compiler
+    ↓
+Application
+~~~
+
+The compiler follows one important rule:
+
+> **Parse once, resolve once, validate once, then lower deterministic compiler structures.**
+
+Supported Gungnir syntax should not be rediscovered later through raw-source scanning or string matching.
+
+Key compiler specifications:
+
+- [Grammar](docs/grammar.md)
+- [Syntax AST](docs/ast.md)
+- [Semantics](docs/semantics.md)
+- [Validated AST](docs/validated-ast.md)
+- [Transpiler](docs/transpiler.md)
 
 ---
 
