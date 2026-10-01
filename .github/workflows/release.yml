@@ -80,7 +80,15 @@ jobs:
             -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
           cmake --build install-smoke-build --parallel 2
 
-          "$GUNGNIR_PREFIX/bin/gungnir" --version
+          actual_version="$("$GUNGNIR_PREFIX/bin/gungnir" --version)"
+          tag_core="${GITHUB_REF_NAME#v}"
+          tag_core="${tag_core%%-*}"
+          expected_version="Gungnir $tag_core"
+
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "Installed CLI reports '$actual_version'; expected '$expected_version'."
+            exit 1
+          fi
 
       - name: Create archive
         shell: bash
@@ -156,7 +164,13 @@ jobs:
             "-DCMAKE_PREFIX_PATH=$env:GUNGNIR_PREFIX"
           cmake --build install-smoke-build --config Release --parallel 2
 
-          & "$env:GUNGNIR_PREFIX\bin\gungnir.exe" --version
+          $actualVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnir.exe" --version).Trim()
+          $tagCore = $env:GITHUB_REF_NAME.Substring(1).Split('-')[0]
+          $expectedVersion = "Gungnir $tagCore"
+
+          if ($actualVersion -ne $expectedVersion) {
+              throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+          }
 
       - name: Create archive
         shell: pwsh
