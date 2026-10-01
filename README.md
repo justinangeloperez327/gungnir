@@ -49,40 +49,34 @@ Gungnir compiles application source into ordinary, inspectable C++23.
 
 ## Installation
 
-Gungnir v0.1.0 is available as a public preview for Windows x86_64 and Linux x86_64.
+Gungnir is available as a public preview for Windows x86_64 and Linux x86_64.
 
 Requirements:
 
 - a C++23-compatible compiler;
 - CMake 3.25 or newer.
 
-Download the current preview from the [Gungnir v0.1.0 release](https://github.com/justinangeloperez327/gungnir/releases/tag/v0.1.0).
+Download the current preview from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
 
 ### Windows
 
-The current v0.1.0 preview is available as a portable ZIP:
+Download the Windows setup executable from GitHub Releases:
 
 ~~~text
-gungnir-v0.1.0-windows-x86_64.zip
+gungnir-v<version>-windows-x86_64-setup.exe
 ~~~
 
-Starting with **v0.1.1**, Windows releases also include the recommended installer:
+Run the installer normally. Beginning with v0.1.2, the installer automatically adds its `bin` directory to the **current user's PATH** instead of modifying the machine-wide PATH. This avoids the NSIS long-PATH limitation that can prevent PATH updates on development machines with large environment configurations.
 
-~~~text
-gungnir-v0.1.1-windows-x86_64-setup.exe
-~~~
-
-The setup executable installs Gungnir under Program Files, includes an uninstaller, and can add Gungnir's `bin` directory to `PATH`.
-
-The portable ZIP remains available for users who prefer a manual installation.
-
-From v0.1.1 onward, the installed `gungnir` CLI automatically locates the framework's CMake package from its installation directory. `GUNGNIR_CMAKE_PREFIX` remains available as an explicit override for custom installations.
-
-Verify the installation:
+After installation, open a new PowerShell or Command Prompt and verify:
 
 ~~~powershell
 gungnir --version
 ~~~
+
+The installer also registers an uninstaller. Uninstalling Gungnir removes only Gungnir's own user-PATH entry and preserves the rest of the user's PATH.
+
+The portable ZIP remains available for users who prefer a manual installation. The installed `gungnir` CLI automatically locates the framework's CMake package from its installation directory. `GUNGNIR_CMAKE_PREFIX` remains available as an explicit override for custom installations.
 
 ### Linux
 
@@ -144,21 +138,20 @@ See [Getting Started](docs/getting-started.md) for a complete first application.
 
 ## Releases
 
-Current public preview: **v0.1.0**
+Current public preview: **v0.1.1**
 
-Current v0.1.0 release assets:
+Published release assets include:
 
-- `gungnir-v0.1.0-linux-x86_64.tar.gz`
-- `gungnir-v0.1.0-windows-x86_64.zip`
-- `SHA256SUMS.txt`
+- Linux x86_64 portable archive
+- Windows x86_64 portable ZIP
+- Windows x86_64 setup executable
+- SHA-256 checksums
 
-Beginning with v0.1.1, Windows releases also publish:
-
-- `gungnir-v0.1.1-windows-x86_64-setup.exe`
+The next installer revision, v0.1.2, replaces CPack's machine-PATH modification with long-PATH-safe current-user PATH handling.
 
 All 0.x releases should be treated as pre-1.0 previews. Pin the exact version used by an application.
 
-See the [v0.1.0 release](https://github.com/justinangeloperez327/gungnir/releases/tag/v0.1.0).
+See [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
 
 ---
 
