@@ -60,15 +60,23 @@ Download the current preview from the [Gungnir v0.1.0 release](https://github.co
 
 ### Windows
 
-Download:
+The current v0.1.0 preview is available as a portable ZIP:
 
 ~~~text
 gungnir-v0.1.0-windows-x86_64.zip
 ~~~
 
-Extract the archive, then add its `bin` directory to `PATH`.
+Starting with **v0.1.1**, Windows releases also include the recommended installer:
 
-Set `GUNGNIR_CMAKE_PREFIX` to the extracted Gungnir directory so generated applications can locate the installed CMake package.
+~~~text
+gungnir-v0.1.1-windows-x86_64-setup.exe
+~~~
+
+The setup executable installs Gungnir under Program Files, includes an uninstaller, and can add Gungnir's `bin` directory to `PATH`.
+
+The portable ZIP remains available for users who prefer a manual installation.
+
+From v0.1.1 onward, the installed `gungnir` CLI automatically locates the framework's CMake package from its installation directory. `GUNGNIR_CMAKE_PREFIX` remains available as an explicit override for custom installations.
 
 Verify the installation:
 
@@ -138,11 +146,15 @@ See [Getting Started](docs/getting-started.md) for a complete first application.
 
 Current public preview: **v0.1.0**
 
-Release assets:
+Current v0.1.0 release assets:
 
 - `gungnir-v0.1.0-linux-x86_64.tar.gz`
 - `gungnir-v0.1.0-windows-x86_64.zip`
 - `SHA256SUMS.txt`
+
+Beginning with v0.1.1, Windows releases also publish:
+
+- `gungnir-v0.1.1-windows-x86_64-setup.exe`
 
 All 0.x releases should be treated as pre-1.0 previews. Pin the exact version used by an application.
 

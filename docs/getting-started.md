@@ -2,7 +2,33 @@
 
 > **Status: experimental.** Use a C++23 compiler, CMake 3.25 or newer, and a pinned Gungnir revision. The first example uses supported typed controller syntax and no database.
 
-## Build and install
+## Install
+
+### Windows
+
+Beginning with v0.1.1, download the Windows setup executable from GitHub Releases:
+
+```text
+gungnir-v0.1.1-windows-x86_64-setup.exe
+```
+
+Run the installer and enable the option to add Gungnir to `PATH`. The installer places the framework, compiler, CLI, headers, libraries, and CMake package files under the selected installation directory and registers an uninstaller.
+
+Verify:
+
+```powershell
+gungnir --version
+```
+
+The CLI discovers the installed framework automatically. You do not need to set `GUNGNIR_CMAKE_PREFIX` for a normal installer or portable-package layout.
+
+### Portable packages
+
+Windows ZIP and Linux tarball packages remain available. Extract the package and add its `bin` directory to `PATH`.
+
+For custom layouts, `GUNGNIR_CMAKE_PREFIX` can explicitly point the CLI at the Gungnir installation prefix.
+
+### Build from source
 
 From the Gungnir repository:
 
@@ -11,10 +37,9 @@ cmake -S . -B build -DGUNGNIR_BUILD_TOOLS=ON -DGUNGNIR_BUILD_TESTS=OFF -DCMAKE_B
 cmake --build build --config Release
 cmake --install build --config Release
 export PATH="$PWD/install/bin:$PATH"
-export GUNGNIR_CMAKE_PREFIX="$PWD/install"
 ```
 
-These commands are for a POSIX shell. On Windows, set PATH and GUNGNIR_CMAKE_PREFIX to the corresponding installed directories, and use your C++23 toolchain's CMake generator. Optional database/transport adapters require their own build flags and dependencies.
+Optional database and transport adapters require their corresponding CMake options and native dependencies.
 
 ## Create an application
 

@@ -1,17 +1,94 @@
+#include <cstdlib>
 #include <exception>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <gungnir/cli/project.hpp>
 #include <gungnir/cli/lsp.hpp>
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#else
+#include <stdlib.h>
 #endif
+
+#ifndef GUNGNIR_VERSION
+#define GUNGNIR_VERSION "development"
+#endif
+
 namespace {
+
+constexpr std::string_view version{GUNGNIR_VERSION};
+
+std::optional<std::filesystem::path> executable_candidate(
+    std::filesystem::path candidate
+) {
+#ifdef _WIN32
+    if (!candidate.has_extension()) candidate += ".exe";
+#endif
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(candidate,error)) return std::nullopt;
+    auto absolute=std::filesystem::absolute(candidate,error);
+    return error ? std::optional<std::filesystem::path>{candidate}
+                 : std::optional<std::filesystem::path>{absolute};
+}
+
+std::optional<std::filesystem::path> executable_path(std::string_view command) {
+    if (command.empty()) return std::nullopt;
+    const std::filesystem::path requested{std::string{command}};
+    if (requested.is_absolute() || requested.has_parent_path())
+        return executable_candidate(requested);
+    if (auto local=executable_candidate(requested)) return local;
+    const char* configured=std::getenv("PATH");
+    if (configured==nullptr || *configured=='\0') return std::nullopt;
+#ifdef _WIN32
+    constexpr char separator=';';
+#else
+    constexpr char separator=':';
+#endif
+    const std::string path{configured};
+    std::size_t start=0;
+    while (start<=path.size()) {
+        const auto end=path.find(separator,start);
+        auto entry=path.substr(start,end==std::string::npos?std::string::npos:end-start);
+        if (entry.size()>=2 && entry.front()=='"' && entry.back()=='"')
+            entry=entry.substr(1,entry.size()-2);
+        if (!entry.empty()) {
+            if (auto found=executable_candidate(std::filesystem::path{entry}/requested))
+                return found;
+        }
+        if (end==std::string::npos) break;
+        start=end+1;
+    }
+    return std::nullopt;
+}
+
+bool installed_prefix(const std::filesystem::path& prefix) {
+    if (!std::filesystem::exists(prefix/"include/gungnir/gungnir.hpp")) return false;
+    return std::filesystem::exists(prefix/"lib/cmake/Gungnir/GungnirConfig.cmake") ||
+           std::filesystem::exists(prefix/"lib64/cmake/Gungnir/GungnirConfig.cmake");
+}
+
+void configure_installed_prefix(std::string_view command) {
+    if (const char* configured=std::getenv("GUNGNIR_CMAKE_PREFIX");
+        configured!=nullptr && *configured!='\0') return;
+    const auto executable=executable_path(command);
+    if (!executable) return;
+    const auto prefix=executable->parent_path().parent_path();
+    if (!installed_prefix(prefix)) return;
+    const auto value=prefix.string();
+#ifdef _WIN32
+    (void)_putenv_s("GUNGNIR_CMAKE_PREFIX",value.c_str());
+#else
+    (void)::setenv("GUNGNIR_CMAKE_PREFIX",value.c_str(),0);
+#endif
+}
+
 void help() {
-    std::cout << "Gungnir 0.1.0\n\n"
+    std::cout << "Gungnir " << version << "\n\n"
         "  gungnir new <name> [path]\n"
         "  gungnir build|run [--release]\n"
         "  gungnir dev\n"
@@ -23,9 +100,10 @@ void help() {
 }
 int main(int argc,char** argv) {
     try {
+        configure_installed_prefix(argc>0?argv[0]:"");
         const std::string command=argc>1?argv[1]:"help";
         if(command=="help" || command=="--help" || command=="-h") { help(); return 0; }
-        if(command=="--version" || command=="-V") { std::cout << "Gungnir 0.1.0\n"; return 0; }
+        if(command=="--version" || command=="-V") { std::cout << "Gungnir " << version << '\n'; return 0; }
         if(command=="lsp") {
             if(argc!=2) throw std::invalid_argument("Usage: gungnir lsp");
 #ifdef _WIN32

@@ -120,7 +120,7 @@ jobs:
   build-windows:
     name: Package · Windows x86_64
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -195,11 +195,97 @@ jobs:
             -Force
           Pop-Location
 
-      - name: Upload release artifact
+      - name: Upload portable Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-windows-x86_64
           path: ${{ env.GUNGNIR_PACKAGE }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+
+      - name: Create Windows installer
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $package = "gungnir-v$version-windows-x86_64-setup"
+
+          cpack `
+            --config build/CPackConfig.cmake `
+            -G NSIS `
+            -C Release `
+            -B installer `
+            -D "CPACK_PACKAGE_FILE_NAME=$package"
+
+          $installer = Join-Path $env:GITHUB_WORKSPACE "installer\$package.exe"
+
+          if (-not (Test-Path $installer)) {
+              throw "CPack did not create $installer"
+          }
+
+          "GUNGNIR_INSTALLER=$package.exe" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Smoke test Windows installer
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:GITHUB_WORKSPACE "installer\$env:GUNGNIR_INSTALLER"
+          $installDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-smoke"
+          $projectDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-app"
+
+          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
+
+          $install = Start-Process `
+            -FilePath $installer `
+            -ArgumentList @("/S", "/D=$installDir") `
+            -Wait `
+            -PassThru
+
+          if ($install.ExitCode -ne 0) {
+              throw "Gungnir installer exited with code $($install.ExitCode)"
+          }
+
+          $cli = Join-Path $installDir "bin\gungnir.exe"
+
+          if (-not (Test-Path $cli)) {
+              throw "Installed gungnir.exe was not found"
+          }
+
+          $actualVersion = (& $cli --version).Trim()
+          $tagCore = $env:RELEASE_TAG.Substring(1).Split('-')[0]
+          $expectedVersion = "Gungnir $tagCore"
+
+          if ($actualVersion -ne $expectedVersion) {
+              throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+          }
+
+          Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
+
+          & $cli new InstallerSmoke $projectDir
+          if ($LASTEXITCODE -ne 0) {
+              throw "Installed CLI failed to create a project"
+          }
+
+          Push-Location $projectDir
+          try {
+              & $cli build --release
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Installed CLI failed to build a generated project without GUNGNIR_CMAKE_PREFIX"
+              }
+          }
+          finally {
+              Pop-Location
+          }
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-installer
+          path: installer/${{ env.GUNGNIR_INSTALLER }}
           if-no-files-found: error
           retention-days: 7
 
