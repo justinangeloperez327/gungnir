@@ -473,6 +473,12 @@ public:
             }
             if (callable_id == invalid_id && t.name == "string" && (name == "size" || name == "length" || name == "empty")) { arity(0,0); return finish_builtin(type_id(name == "empty" ? "bool" : "int"), name == "length" ? "size" : name); }
         }
+        if (callable_id != invalid_id && type(v.symbols_[callable_id].type).name == "Next") {
+            const auto binding = v.symbols_[callable_id];
+            ResolvedSymbol callable{ResolvedSymbolKind::callable,binding.name,binding.cpp_name,type_id("Response"),callable_id,true,true};
+            callable.parameters = {type_id("Request")}; callable.parameter_names = {"request"}; callable.defaults = {invalid_id};
+            callable_id = symbol(std::move(callable));
+        }
         if (callable_id == invalid_id || (v.symbols_[callable_id].kind != ResolvedSymbolKind::callable && v.symbols_[callable_id].kind != ResolvedSymbolKind::builtin && v.symbols_[callable_id].type != type_id("Callable") && type(v.symbols_[callable_id].type).name != "Function")) {
             report(e.origin, "Unknown callable '" + name + "'", "GNR2212"); for (std::size_t i = 1; i < e.operands.size(); ++i) expression(e.operands[i]); info.type = type_id("Value"); return info.type;
         }

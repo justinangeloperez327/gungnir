@@ -1,4 +1,5 @@
 #include <gungnir/cli/project.hpp>
+#include "process.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -14,6 +15,8 @@
 
 #ifdef _WIN32
 #include <process.h>
+#else
+#include <sys/wait.h>
 #endif
 
 #include <gungnir/language/lexer.hpp>
@@ -22,6 +25,7 @@
 #include <gungnir/language/transpiler.hpp>
 
 namespace gungnir::cli {
+std::string bootstrap_template();
 
 namespace {
 
@@ -54,6 +58,7 @@ void write_file(
     const std::filesystem::path& path,
     std::string_view content
 ) {
+    if (std::filesystem::is_regular_file(path) && read_file(path) == content) return;
     if (!path.parent_path().empty()) {
         std::filesystem::create_directories(
             path.parent_path()
@@ -74,6 +79,8 @@ void write_file(
     }
 
     output << content;
+    output.close();
+    if (!output) throw std::runtime_error("Unable to finish writing: " + path.string());
 }
 
 String trim(String value) {
@@ -115,74 +122,7 @@ bool identifier_character(
         character == ' ';
 }
 
-#ifndef _WIN32
-String quote_shell(
-    std::string_view argument
-) {
-    const String value{argument};
-    String quoted{"'"};
-
-    for (const char character : value) {
-        if (character == '\'') {
-            quoted += "'\\''";
-        } else {
-            quoted += character;
-        }
-    }
-
-    quoted += '\'';
-    return quoted;
-}
-#endif
-
-int execute(
-    const std::vector<String>& arguments
-) {
-    if (arguments.empty()) {
-        return 0;
-    }
-
-#ifdef _WIN32
-    std::vector<const char*> argv;
-    argv.reserve(arguments.size() + 1);
-
-    for (const auto& argument : arguments) {
-        argv.push_back(argument.c_str());
-    }
-
-    argv.push_back(nullptr);
-
-    const auto result = _spawnvp(
-        _P_WAIT,
-        arguments.front().c_str(),
-        argv.data()
-    );
-
-    return result == -1
-        ? -1
-        : static_cast<int>(result);
-#else
-    String command;
-
-    for (
-        std::size_t index = 0;
-        index < arguments.size();
-        ++index
-    ) {
-        if (index != 0) {
-            command += ' ';
-        }
-
-        command += quote_shell(
-            arguments[index]
-        );
-    }
-
-    return std::system(
-        command.c_str()
-    );
-#endif
-}
+using detail::execute;
 
 std::vector<std::filesystem::path>
 source_files(
@@ -284,9 +224,8 @@ String marker_name(
         );
     }
 
-    auto name = trim(
-        read_file(marker)
-    );
+    auto content = read_file(marker);
+    auto name = trim(content.substr(0,content.find('\n')));
 
     constexpr std::string_view prefix{
         "name="
@@ -401,7 +340,7 @@ Project Project::create(
     write_file(
         destination /
         project_marker,
-        "name=" + name + "\n"
+        "name=" + name + "\nprofile=structured\n"
     );
 
     const String env =
@@ -441,7 +380,7 @@ Project Project::create(
         "app" /
         "controllers" /
         "home_controller.gnr",
-        "class HomeController : Controller\n"
+        "controller HomeController\n"
         "{\n"
         "    Response index()\n"
         "    {\n"
@@ -487,6 +426,7 @@ Project Project::create(
         ""
     );
 
+    write_file(destination / "bootstrap/app.hpp", bootstrap_template());
     return Project{
         std::move(destination)
     };
@@ -763,6 +703,7 @@ std::filesystem::path
 Project::make_model(
     String name
 ) {
+    if (structured()) return make("model",std::move(name));
     const auto class_name =
         normalize_class_name(name);
 
@@ -781,6 +722,7 @@ std::filesystem::path
 Project::make_controller(
     String name
 ) {
+    if (structured()) return make("controller",std::move(name));
     auto class_name =
         normalize_class_name(name);
 
@@ -811,6 +753,7 @@ std::filesystem::path
 Project::make_middleware(
     String name
 ) {
+    if (structured()) return make("middleware",std::move(name));
     auto class_name =
         normalize_class_name(name);
 
@@ -842,6 +785,7 @@ std::filesystem::path
 Project::make_migration(
     String name
 ) {
+    if (structured()) return make("migration",std::move(name));
     const auto class_name =
         normalize_class_name(name);
 
@@ -876,22 +820,12 @@ Project::make_migration(
 }
 
 
-std::filesystem::path
-Project::make_request(
-    String
-) {
-    throw std::logic_error(
-        "make:request is not available until ValidatedRequest source-language lowering is implemented"
-    );
-}
+std::filesystem::path Project::make_request(String name) { return make("request",std::move(name)); }
+std::filesystem::path Project::make_job(String name) { return make("job",std::move(name)); }
 
-std::filesystem::path
-Project::make_job(
-    String
-) {
-    throw std::logic_error(
-        "make:job is not available until queue Job source-language lowering is implemented"
-    );
+bool Project::structured() const {
+    const auto marker = read_file(root_ / ".gungnir-project");
+    return marker.find("\nprofile=structured\n") != String::npos || marker.ends_with("\nprofile=structured");
 }
 
 namespace {
@@ -1038,6 +972,7 @@ std::filesystem::path generated_executable(
 
 std::filesystem::path
 Project::assemble_migrations() const {
+    if (structured()) { (void) assemble_structured(); return root_ / ".gungnir/generated/migrations.cpp"; }
     const auto generated =
         root_ /
         ".gungnir" /
@@ -1053,7 +988,7 @@ Project::assemble_migrations() const {
             "database" /
             "migrations"
         );
-    const auto index = index_sources(files);
+    const auto semantic_index = index_sources(files);
 
     String output;
 
@@ -1073,7 +1008,7 @@ Project::assemble_migrations() const {
             migration_class_name(path)
         );
 
-        output += transpile_file(path, &index);
+        output += transpile_file(path, &semantic_index);
         output += "\n\n";
     }
 
@@ -1170,6 +1105,7 @@ Project::assemble_migrations() const {
 
 std::filesystem::path
 Project::assemble() const {
+    if (structured()) return assemble_structured();
     const auto generated =
         root_ /
         ".gungnir" /
@@ -1317,18 +1253,7 @@ int Project::run(
             release
         );
 
-    const auto original =
-        std::filesystem::current_path();
-
-    std::filesystem::current_path(root_);
-
-    const int code =
-        execute({
-            executable.string()
-        });
-
-    std::filesystem::current_path(original);
-    return code;
+    return execute({executable.string()},root_);
 }
 
 int Project::migrate(
@@ -1362,19 +1287,7 @@ int Project::migrate(
             release
         );
 
-    const auto original =
-        std::filesystem::current_path();
-
-    std::filesystem::current_path(root_);
-
-    const int code =
-        execute({
-            executable.string(),
-            command
-        });
-
-    std::filesystem::current_path(original);
-    return code;
+    return execute({executable.string(),command},root_);
 }
 
 } // namespace gungnir::cli

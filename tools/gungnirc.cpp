@@ -13,7 +13,7 @@ namespace {
 void usage() {
     std::cerr
         << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] "
-           "[--no-line-directives] [--strict] [--project] [--dump-validated-ast]\n";
+           "[--no-line-directives] [--strict] [--project] [--dump-validated-ast] [--format]\n";
 }
 
 std::string read_file(const std::filesystem::path& path) {
@@ -115,6 +115,21 @@ int main(int argc, char** argv) {
     }
 
     try {
+        if (format_only) {
+            if (project || dump) throw std::invalid_argument("--format requires a single source file and cannot dump an AST");
+            const auto source = read_file(input_path);
+            if (strict) {
+                auto syntax = gungnir::language::SyntaxParser{}.parse(source,input_path.generic_string());
+                if (!syntax.diagnostics.empty()) throw std::invalid_argument(syntax.diagnostics.front().message);
+            }
+            gungnir::language::Formatter formatter;
+            const auto formatted = formatter.format(source);
+            if (check_only) return formatted == source ? 0 : 1;
+            if (output_path.empty()) std::cout << formatted;
+            else write_file(output_path, formatted);
+            return 0;
+        }
+
         if (strict) {
             gungnir::language::Compiler compiler;
             gungnir::language::CompilerOptions options; options.emit_line_directives = emit_line_directives;
@@ -126,13 +141,6 @@ int main(int argc, char** argv) {
         }
         const auto source = read_file(input_path);
 
-        if (format_only) {
-            gungnir::language::Formatter formatter;
-            const auto formatted = formatter.format(source);
-            if (output_path.empty()) std::cout << formatted;
-            else write_file(output_path, formatted);
-            return 0;
-        }
 
         gungnir::language::Transpiler transpiler;
         const auto result = transpiler.transpile(

@@ -304,6 +304,7 @@ add_library(gungnir-language
     src/language/syntax.cpp
     src/language/validated.cpp
     src/language/lexer.cpp
+    src/language/lsp.cpp
     src/language/middleware_lowering.cpp
     src/language/migration_lowering.cpp
     src/language/model_lowering.cpp
@@ -333,12 +334,17 @@ add_library(
     gungnir-cli-support
     STATIC
         src/cli/project.cpp
+        src/cli/structured_project.cpp
+        src/cli/lsp.cpp
+        src/cli/dev.cpp
 )
 
 target_link_libraries(
     gungnir-cli-support
     PUBLIC
         gungnir::language
+    PRIVATE
+        gungnir::gungnir
 )
 
 target_compile_features(
@@ -924,6 +930,26 @@ endif()
 if(GUNGNIR_BUILD_TESTS)
     enable_testing()
 
+    add_executable(gungnir_project_tooling_test tests/project_tooling.cpp)
+    target_link_libraries(gungnir_project_tooling_test PRIVATE gungnir-cli-support)
+    add_test(NAME gungnir.project_tooling COMMAND gungnir_project_tooling_test)
+
+    # Compile important public entry points in isolation, so include order
+    # cannot hide missing dependencies. This target is part of the PR gate.
+    set(public_header_units)
+    foreach(header IN ITEMS gungnir/gungnir.hpp gungnir/orm/orm.hpp
+            gungnir/core/services.hpp gungnir/language/compiler.hpp
+            gungnir/language/formatter.hpp gungnir/language/lsp.hpp
+            gungnir/language/module.hpp gungnir/language/dependency_graph.hpp
+            gungnir/cli/project.hpp gungnir/cli/lsp.hpp)
+        string(REPLACE "/" "_" unit "${header}")
+        set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
+        file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
+        list(APPEND public_header_units "${source}")
+    endforeach()
+    add_library(gungnir_public_headers OBJECT ${public_header_units})
+    target_link_libraries(gungnir_public_headers PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+
     add_executable(gungnir_runtime_safety_test tests/runtime_safety.cpp)
     target_link_libraries(gungnir_runtime_safety_test PRIVATE gungnir::gungnir gungnir::orm)
     target_compile_features(gungnir_runtime_safety_test PRIVATE cxx_std_23)
@@ -1100,16 +1126,23 @@ if(GUNGNIR_BUILD_TESTS)
     )
 
     if(GUNGNIR_BUILD_TOOLS)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME gungnir.lsp_protocol COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp_protocol.py $<TARGET_FILE:gungnir-cli>)
         add_test(
             NAME gungnir.cli_integration
             COMMAND
                 ${CMAKE_COMMAND}
                 -DGUNGNIR_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
                 -DGUNGNIR_CLI=$<TARGET_FILE:gungnir-cli>
+                -DGUNGNIR_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
+                -DGUNGNIR_WITH_SQLITE=${GUNGNIR_WITH_SQLITE}
                 -DGUNGNIR_BUILD_CONFIG=$<CONFIG>
                 -P
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_integration.cmake
         )
+        set_tests_properties(gungnir.cli_integration PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
     endif()
 
     add_executable(gungnir_bootstrap_test tests/bootstrap.cpp)
@@ -2082,4 +2115,19 @@ if(GUNGNIR_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3_mock.py $<TARGET_FILE:gungnir_storage_s3_test>)
         set_tests_properties(gungnir_storage_s3 PROPERTIES TIMEOUT 30)
     endif()
+endif()
+
+# Test assertions include operations under test. Keep them active in every
+# configuration, including generated Release CI builds.
+if(GUNGNIR_BUILD_TESTS)
+    get_property(gungnir_directory_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS gungnir_directory_targets)
+        if(target MATCHES "_test$")
+            if(MSVC)
+                target_compile_options(${target} PRIVATE /UNDEBUG)
+            else()
+                target_compile_options(${target} PRIVATE -UNDEBUG)
+            endif()
+        endif()
+    endforeach()
 endif()

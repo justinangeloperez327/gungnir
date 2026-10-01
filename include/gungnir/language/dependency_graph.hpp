@@ -18,7 +18,10 @@ public:
         std::vector<std::string> result;
         std::unordered_set<std::string> visiting;
         std::unordered_set<std::string> visited;
-        for (const auto& [module, _] : graph_) visit(module, visiting, visited, result);
+        std::vector<std::string> modules;
+        for (const auto& [module, _] : graph_) modules.push_back(module);
+        std::sort(modules.begin(),modules.end());
+        for (const auto& module : modules) visit(module, visiting, visited, result);
         return result;
     }
 
@@ -28,8 +31,10 @@ private:
         if (visited.contains(module)) return;
         if (!visiting.insert(module).second) throw std::runtime_error("Circular Gungnir module dependency: " + module);
         if (const auto found = graph_.find(module); found != graph_.end()) {
-            for (const auto& dependency : found->second) visit(dependency, visiting, visited, result);
-        }
+            auto dependencies = found->second;
+            std::sort(dependencies.begin(),dependencies.end());
+            for (const auto& dependency : dependencies) visit(dependency, visiting, visited, result);
+        } else throw std::runtime_error("Missing Gungnir module dependency: " + module);
         visiting.erase(module);
         visited.insert(module);
         result.push_back(module);

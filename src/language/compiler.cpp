@@ -35,6 +35,16 @@ void append(SyntaxProject& target, SyntaxProject source) {
     target.statements.insert(target.statements.end(),std::make_move_iterator(source.statements.begin()),std::make_move_iterator(source.statements.end()));
 }
 }
+CompilationResult Compiler::compile_sources(std::vector<SourceFile> files, const CompilerOptions& options) const {
+    std::sort(files.begin(),files.end(),[](const auto& a,const auto& b){ return a.file < b.file; });
+    SyntaxProject project; std::vector<Diagnostic> diagnostics;
+    for (const auto& file : files) {
+        auto parsed = SyntaxParser{}.parse(file.source,file.file,file.module);
+        diagnostics.insert(diagnostics.end(),parsed.diagnostics.begin(),parsed.diagnostics.end());
+        append(project,std::move(parsed.project));
+    }
+    return finish(std::move(project),std::move(diagnostics),options);
+}
 CompilationResult Compiler::compile(std::string_view source, std::string file, const CompilerOptions& options) const {
     auto parsed = SyntaxParser{}.parse(source,std::move(file)); return finish(std::move(parsed.project),std::move(parsed.diagnostics),options);
 }
@@ -42,7 +52,7 @@ CompilationResult Compiler::compile_project(const std::filesystem::path& root, c
     std::vector<std::filesystem::path> files;
     if (!std::filesystem::is_directory(root)) return {{},{{DiagnosticLevel::error,{root.string()},"Project root is not a directory","GNR2100",{}}},{}};
     for (auto it = std::filesystem::recursive_directory_iterator(root); it != std::filesystem::recursive_directory_iterator{}; ++it) {
-        if (it->is_directory() && (it->path().filename() == ".git" || it->path().filename() == "build" || it->path().filename() == "vendor")) { it.disable_recursion_pending(); continue; }
+        if (it->is_directory() && (it->path().filename() == ".git" || it->path().filename() == ".gungnir" || it->path().filename() == "build" || it->path().filename() == "vendor")) { it.disable_recursion_pending(); continue; }
         if (it->is_regular_file() && it->path().extension() == ".gnr") files.push_back(std::filesystem::absolute(it->path()));
     }
     return compile_files(root,std::move(files),options);

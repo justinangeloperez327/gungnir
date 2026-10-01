@@ -317,7 +317,7 @@ public:
                 member_visibility = access == "private" ? Visibility::private_ : access == "protected" ? Visibility::protected_ : Visibility::public_;
                 if (take(":")) { visibility = member_visibility; continue; }
             }
-            if (take("inject")) { FieldSyntax field{member_origin, {}, type(), true}; field.name = name(); field.visibility = member_visibility; need(";"); value.fields.push_back(std::move(field)); continue; }
+            if (take("inject")) { FieldSyntax field{member_origin, {}, type(), true}; field.name = name(); field.visibility = member_visibility; need(";"); finish(field.origin); value.fields.push_back(std::move(field)); continue; }
             if (peek().word() && peek(1).lexeme == "=") { MetadataSyntax item{member_origin, name()}; need("="); item.value = expression(); need(";"); value.metadata.push_back(std::move(item)); continue; }
             const auto saved = at;
             bool async = take("async");
@@ -326,7 +326,7 @@ public:
             if (is("(")) { at = saved; value.methods.push_back(callable(value.kind, member_visibility, false)); continue; }
             if (async) error("Fields cannot be async");
             FieldSyntax field{member_origin, std::move(member_name), std::move(field_type)}; field.visibility = member_visibility;
-            if (take("=")) field.initializer = expression(); need(";"); value.fields.push_back(std::move(field));
+            if (take("=")) field.initializer = expression(); need(";"); finish(field.origin); value.fields.push_back(std::move(field));
         }
         need("}"); take(";"); finish(value.origin); result.project.modules[0].declarations.push_back(result.project.declarations.size()); result.project.declarations.push_back(std::move(value));
     }

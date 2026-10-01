@@ -9,9 +9,9 @@ gungnirc modules --project --check
 gungnirc application.gnr --dump-validated-ast
 ```
 
-`--project` compiles every `.gnr` module below the root, excluding `.git`, `build` and `vendor`. Explicit module declarations match the relative dotted file path. Imported declarations are exported by default. Generated C++ includes the framework runtime support header.
+`--project` compiles every `.gnr` module below the root, excluding `.git`, `.gungnir`, `build` and `vendor`. Explicit module declarations match the relative dotted file path. Imported declarations are exported by default. Generated C++ includes the framework runtime support header.
 
-The default `Transpiler` and default `gungnirc` mode preserve native C++ compatibility and the established application generator. They do not provide the structured validator's closed-world guarantees. Select a profile explicitly when adding new language features to existing projects.
+The default `Transpiler` and default `gungnirc` mode preserve native C++ compatibility for projects without `profile=structured`. New application projects use the structured compiler. They do not provide the structured validator's closed-world guarantees. Select a profile explicitly when adding new language features to existing projects.
 
 | Capability | Structured profile |
 | --- | --- |
@@ -29,6 +29,6 @@ The default `Transpiler` and default `gungnirc` mode preserve native C++ compati
 | General classes/interfaces/enums | Unsupported |
 | Arbitrary C++, preprocessor, overload resolution | Compatibility profile only |
 | String interpolation, advanced null-flow analysis | Unsupported |
-| Incremental compilation/application bootstrap | Existing native build path |
+| Incremental compilation/application bootstrap | New structured projects emit per-module C++; editable native bootstrap hooks register services |
 
 All capabilities remain experimental. The feature flags in `spec.hpp` describe implemented syntax, not stable release guarantees. See [generated runtime tests](../tests/structured_generated.cpp) for the native integration contracts.
