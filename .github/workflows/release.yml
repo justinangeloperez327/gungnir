@@ -1,0 +1,236 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Package · Linux x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate tag version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must use SemVer, for example v0.1.0 or v0.1.0-rc.1."
+            exit 1
+          fi
+
+          tag_version="${BASH_REMATCH[1]}"
+          cmake_version="$(
+            sed -nE 's/^[[:space:]]*project\(gungnir VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt
+          )"
+
+          if [[ -z "$cmake_version" ]]; then
+            echo "Unable to read the Gungnir version from CMakeLists.txt."
+            exit 1
+          fi
+
+          if [[ "$tag_version" != "$cmake_version" ]]; then
+            echo "Tag version $tag_version does not match CMake project version $cmake_version."
+            exit 1
+          fi
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Install
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          package="gungnir-v${version}-linux-x86_64"
+          prefix="$GITHUB_WORKSPACE/dist/$package"
+
+          cmake --install build --prefix "$prefix"
+          cp README.md LICENSE "$prefix/"
+
+          echo "GUNGNIR_PACKAGE=$package" >> "$GITHUB_ENV"
+          echo "GUNGNIR_PREFIX=$prefix" >> "$GITHUB_ENV"
+
+      - name: Smoke test installed package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake -S tests/install_smoke -B install-smoke-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
+          cmake --build install-smoke-build --parallel 2
+
+          actual_version="$("$GUNGNIR_PREFIX/bin/gungnir" --version)"
+          tag_core="${GITHUB_REF_NAME#v}"
+          tag_core="${tag_core%%-*}"
+          expected_version="Gungnir $tag_core"
+
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "Installed CLI reports '$actual_version'; expected '$expected_version'."
+            exit 1
+          fi
+
+      - name: Create archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C "$GITHUB_WORKSPACE/dist" \
+            -czf "$GITHUB_WORKSPACE/${GUNGNIR_PACKAGE}.tar.gz" \
+            "$GUNGNIR_PACKAGE"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: ${{ env.GUNGNIR_PACKAGE }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows:
+    name: Package · Windows x86_64
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate tag version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
+              throw "Release tag must use SemVer, for example v0.1.0 or v0.1.0-rc.1."
+          }
+
+          $tagVersion = $Matches[1]
+          $cmake = Get-Content CMakeLists.txt -Raw
+
+          if ($cmake -notmatch 'project\(gungnir VERSION (\d+\.\d+\.\d+)') {
+              throw "Unable to read the Gungnir version from CMakeLists.txt."
+          }
+
+          $cmakeVersion = $Matches[1]
+
+          if ($tagVersion -ne $cmakeVersion) {
+              throw "Tag version $tagVersion does not match CMake project version $cmakeVersion."
+          }
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -A x64
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Install
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $package = "gungnir-v$version-windows-x86_64"
+          $prefix = Join-Path $env:GITHUB_WORKSPACE "dist\$package"
+
+          cmake --install build --config Release --prefix "$prefix"
+          Copy-Item README.md, LICENSE -Destination "$prefix"
+
+          "GUNGNIR_PACKAGE=$package" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GUNGNIR_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Smoke test installed package
+        shell: pwsh
+        run: |
+          cmake -S tests/install_smoke -B install-smoke-build -A x64 `
+            "-DCMAKE_PREFIX_PATH=$env:GUNGNIR_PREFIX"
+          cmake --build install-smoke-build --config Release --parallel 2
+
+          $actualVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnir.exe" --version).Trim()
+          $tagCore = $env:GITHUB_REF_NAME.Substring(1).Split('-')[0]
+          $expectedVersion = "Gungnir $tagCore"
+
+          if ($actualVersion -ne $expectedVersion) {
+              throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+          }
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          Push-Location "$env:GITHUB_WORKSPACE\dist"
+          Compress-Archive `
+            -Path "$env:GUNGNIR_PACKAGE" `
+            -DestinationPath "$env:GITHUB_WORKSPACE\$env:GUNGNIR_PACKAGE.zip" `
+            -Force
+          Pop-Location
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: ${{ env.GUNGNIR_PACKAGE }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - build-linux
+      - build-windows
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum gungnir-* > SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          prerelease=()
+
+          if [[ "$version" == 0.* || "$version" == *-* ]]; then
+            prerelease+=(--prerelease)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Gungnir $GITHUB_REF_NAME" \
+            --generate-notes \
+            "${prerelease[@]}"
