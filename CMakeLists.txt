@@ -919,6 +919,11 @@ if(GUNGNIR_BUILD_TOOLS)
         PRIVATE
             cxx_std_23
     )
+    target_compile_definitions(
+        gungnir-cli
+        PRIVATE
+            GUNGNIR_VERSION="${PROJECT_VERSION}"
+    )
     set_target_properties(
         gungnir-cli
         PROPERTIES
@@ -2097,6 +2102,14 @@ if(GUNGNIR_BUILD_TOOLS)
     )
 endif()
 
+install(
+    FILES
+        README.md
+        LICENSE
+    DESTINATION
+        .
+)
+
 
 if(GUNGNIR_BUILD_TESTS)
     add_executable(gungnir_priority3_runtime_test tests/priority3_runtime.cpp)
@@ -2131,3 +2144,54 @@ if(GUNGNIR_BUILD_TESTS)
         endif()
     endforeach()
 endif()
+
+# CPack keeps the release artifacts aligned with the CMake install layout.
+set(CPACK_PACKAGE_NAME "Gungnir")
+set(CPACK_PACKAGE_VENDOR "Gungnir")
+set(
+    CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Expressive C++23 web framework"
+)
+set(
+    CPACK_PACKAGE_HOMEPAGE_URL
+    "https://github.com/justinangeloperez327/gungnir"
+)
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "Gungnir")
+set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "Gungnir")
+set(
+    CPACK_RESOURCE_FILE_LICENSE
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+)
+set(
+    CPACK_RESOURCE_FILE_README
+    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+)
+set(CPACK_VERBATIM_VARIABLES ON)
+
+if(WIN32)
+    set(CPACK_GENERATOR "NSIS")
+    set(
+        CPACK_PACKAGE_FILE_NAME
+        "gungnir-v${PROJECT_VERSION}-windows-x86_64-setup"
+    )
+    set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
+    set(CPACK_NSIS_DISPLAY_NAME "Gungnir")
+    set(CPACK_NSIS_PACKAGE_NAME "Gungnir")
+    set(CPACK_NSIS_EXECUTABLES_DIRECTORY "bin")
+    set(CPACK_NSIS_MODIFY_PATH ON)
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_MANIFEST_DPI_AWARE ON)
+    set(CPACK_NSIS_UNINSTALL_NAME "Uninstall Gungnir")
+    set(
+        CPACK_NSIS_URL_INFO_ABOUT
+        "https://github.com/justinangeloperez327/gungnir"
+    )
+    set(
+        CPACK_NSIS_HELP_LINK
+        "https://github.com/justinangeloperez327/gungnir/issues"
+    )
+endif()
+
+include(CPack)
+
