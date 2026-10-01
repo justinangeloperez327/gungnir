@@ -4,7 +4,7 @@
 
 ## Current behavior
 
-Native Message supports sender, recipients, cc, bcc, subject, plain text and HTML. Mailer wraps a Transport and sends synchronously, recording tracing and metrics. MemoryTransport is available for tests; optional SMTP transport provides network delivery.
+Native Message supports sender, recipients, cc, bcc, subject, plain text, HTML, reply-to and in-memory attachments. Mailer wraps a Transport and sends synchronously, recording tracing and metrics. MemoryTransport is available for tests; optional SMTP transport provides network delivery.
 
 Enable the SMTP adapter with `-DGUNGNIR_WITH_SMTP=ON` and link `gungnir::smtp`. Configure the concrete transport before constructing the Mailer.
 
@@ -23,7 +23,7 @@ Structured `mail` declarations generate typed data constructors and `message()` 
 
 ## Limits and planned work
 
-Target `mail` action declarations, template composition, attachments, custom headers and fluent static sending are not all fields/methods of the current Message class. Sending does not automatically enqueue work.
+Target `mail` action declarations, additional template composition, custom headers and fluent static sending are not all fields/methods of the current Message class. Sending does not automatically enqueue work.
 
 ## Implementation references
 

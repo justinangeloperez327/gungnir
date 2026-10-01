@@ -1,6 +1,8 @@
 #include <gungnir/validation/validator.hpp>
 
 #include <algorithm>
+#include <unordered_set>
+#include <gungnir/database/runtime.hpp>
 #include <charconv>
 #include <cctype>
 #include <cmath>
@@ -241,6 +243,50 @@ bool in_values(
     return false;
 }
 
+void validate_rule_names(const std::vector<ParsedRule>& rules) {
+    static const std::unordered_set<String> known{
+        "required","present","nullable","sometimes","string","integer","numeric","boolean",
+        "email","accepted","length","min","max","in","same","confirmed","unique","exists",
+        "array","object","bail"
+    };
+    for (const auto& rule : rules)
+        if (!known.contains(rule.name)) throw std::logic_error("Unknown validation rule '" + rule.name + "'");
+}
+
+bool database_rule(std::string_view value, const ParsedRule& rule, std::string_view field) {
+    std::vector<String> arguments;
+    std::string_view remaining{rule.argument};
+    while (true) {
+        auto comma = remaining.find(',');
+        arguments.emplace_back(trim(remaining.substr(0, comma)));
+        if (comma == std::string_view::npos) break;
+        remaining.remove_prefix(comma + 1);
+    }
+    if (arguments.empty() || arguments.size() > (rule.name == "unique" ? 4U : 2U))
+        throw std::invalid_argument("Invalid database validation rule arguments");
+    auto connection = database::runtime::read_connection();
+    const auto backend = connection->backend();
+    if (backend == database::Backend::mongodb) throw std::logic_error("Database validation requires a SQL connection");
+    auto identifier = [backend](std::string_view name) {
+        if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name.front())) || name.front() == '_') ||
+            !std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c) || c == '_'; }))
+            throw std::invalid_argument("Invalid database validation identifier");
+        return backend == database::Backend::mysql ? "`" + String{name} + "`" : "\"" + String{name} + "\"";
+    };
+    const auto column = arguments.size() > 1 && !arguments[1].empty() ? arguments[1] : String{field};
+    const auto placeholder = [backend](int index) { return backend == database::Backend::postgresql ? "$" + std::to_string(index) : "?"; };
+    auto sql = "SELECT COUNT(*) AS matches FROM " + identifier(arguments[0]) + " WHERE " + identifier(column) + " = " + placeholder(1);
+    std::vector<model::AttributeValue> bindings{String{value}};
+    if (arguments.size() > 2 && !arguments[2].empty()) {
+        sql += " AND " + identifier(arguments.size() > 3 ? arguments[3] : "id") + " <> " + placeholder(2);
+        bindings.emplace_back(arguments[2]);
+    }
+    auto result = connection->execute(sql, bindings);
+    if (result.rows.empty() || !result.rows.front().contains("matches")) throw std::runtime_error("Database validation returned no count");
+    auto count = model::value_cast<UInt64>(result.rows.front().at("matches"));
+    return rule.name == "exists" ? count != 0 : count == 0;
+}
+
 void add_error(
     Errors& errors,
     const String& field,
@@ -324,6 +370,7 @@ Result Validator::check(
 
     for (const auto& entry : rules.entries()) {
         const auto parsed = parse_rules(entry.expression);
+        validate_rule_names(parsed);
         const auto found = input.find(entry.field);
         const bool present = found != input.end();
         const std::string_view value =
@@ -383,14 +430,18 @@ Result Validator::check(
                 rule.name == "present" ||
                 rule.name == "nullable" ||
                 rule.name == "sometimes" ||
-                rule.name == "string"
+                rule.name == "string" || rule.name == "bail"
             ) {
                 continue;
             }
 
             bool valid = true;
 
-            if (rule.name == "integer") {
+            if (rule.name == "unique" || rule.name == "exists") {
+                valid = database_rule(value, rule, entry.field);
+            } else if (rule.name == "array" || rule.name == "object") {
+                valid = false; // Structured values require the Json overload.
+            } else if (rule.name == "integer") {
                 valid = integer_value(value);
             } else if (rule.name == "numeric") {
                 valid = numeric_value(value);
@@ -463,6 +514,7 @@ Result Validator::check(
                         rule.argument
                     )
                 );
+                if (has_rule(parsed, "bail")) break;
             }
         }
 
@@ -493,3 +545,102 @@ Input Validator::validate(
 }
 
 } // namespace gungnir::validation
+
+namespace gungnir::validation {
+namespace {
+const http::Json* at_path(const http::Json& input, std::string_view path) {
+    const auto dot = path.find('.');
+    auto key = path.substr(0, dot);
+    const http::Json* next{};
+    if (input.is_object()) next = input.get(key);
+    else if (input.is_array()) {
+        std::size_t index{};
+        auto [end, error] = std::from_chars(key.data(), key.data() + key.size(), index);
+        if (error == std::errc{} && end == key.data() + key.size() && index < input.as_array().size()) next = &input.as_array()[index];
+    }
+    return next && dot != std::string_view::npos ? at_path(*next, path.substr(dot + 1)) : next;
+}
+http::Json select_path(http::Json output, const http::Json& input, std::string_view path, const http::Json& value) {
+    const auto dot = path.find('.');
+    const auto key = path.substr(0, dot);
+    if (input.is_array()) {
+        auto array = output.is_array() ? output.as_array() : http::Json::Array{};
+        std::size_t index{};
+        auto [end, error] = std::from_chars(key.data(), key.data() + key.size(), index);
+        if (error != std::errc{} || end != key.data() + key.size() || index >= input.as_array().size()) return output;
+        if (array.size() <= index) array.resize(index + 1);
+        array[index] = dot == std::string_view::npos ? value : select_path(array[index], input.as_array()[index], path.substr(dot + 1), value);
+        return http::Json::array(std::move(array));
+    }
+    auto object = output.is_object() ? output.as_object() : http::Json::Object{};
+    auto* child = input.get(key);
+    object[String{key}] = dot == std::string_view::npos ? value : select_path(object[String{key}], child ? *child : http::Json{}, path.substr(dot + 1), value);
+    return http::Json::object(std::move(object));
+}
+void expand_paths(const http::Json& input, std::string_view pattern, String prefix, std::vector<String>& paths) {
+    const auto star = pattern.find('*');
+    if (star == std::string_view::npos) { paths.push_back(prefix + String{pattern}); return; }
+    if ((star && pattern[star - 1] != '.') || (star + 1 < pattern.size() && pattern[star + 1] != '.'))
+        throw std::invalid_argument("Validation wildcard must be a complete path segment");
+    auto parent_path = prefix + String{pattern.substr(0, star ? star - 1 : 0)};
+    auto* parent = parent_path.empty() ? &input : at_path(input, parent_path);
+    if (!parent || !parent->is_array()) return;
+    auto suffix = pattern.substr(star + 1);
+    for (std::size_t i = 0; i < parent->as_array().size(); ++i)
+        expand_paths(input, suffix, (parent_path.empty() ? "" : parent_path + ".") + std::to_string(i), paths);
+}
+}
+StructuredResult Validator::check(const http::Json& input, const Rules& rules) {
+    if (!input.is_object()) throw std::invalid_argument("Structured validation requires an object");
+    StructuredResult result{http::Json::object({}), {}};
+    for (const auto& entry : rules.entries()) {
+        auto parsed = parse_rules(entry.expression);
+        validate_rule_names(parsed);
+        std::vector<String> paths;
+        expand_paths(input, entry.field, "", paths);
+        for (const auto& path : paths) {
+            const auto* value = at_path(input, path);
+            if (!value && has_rule(parsed, "sometimes")) continue;
+            auto fail = [&](std::string_view rule) { result.errors[path].push_back(message(path, rule)); };
+            if (!value) {
+                if (has_rule(parsed, "required") || has_rule(parsed, "present")) fail("required");
+                continue;
+            }
+            const bool empty = value->is_null() || (value->is_string() && blank(value->string())) ||
+                (value->is_array() && value->as_array().empty()) || (value->is_object() && value->as_object().empty());
+            if (empty && has_rule(parsed, "required")) { fail("required"); continue; }
+            if (value->is_null() && has_rule(parsed, "nullable")) {
+                result.values = select_path(result.values, input, path, *value); continue;
+            }
+            if ((has_rule(parsed,"array") && !value->is_array()) || (has_rule(parsed,"object") && !value->is_object()) ||
+                (has_rule(parsed,"string") && !value->is_string()) || (value->is_null() && !parsed.empty())) {
+                fail("type"); continue;
+            }
+            if (value->is_array() || value->is_object()) {
+                const auto size = value->is_array() ? value->as_array().size() : value->as_object().size();
+                for (const auto& rule : parsed) {
+                    if (rule.name == "min" && size < unsigned_argument(rule.name,rule.argument)) fail("min");
+                    else if (rule.name == "max" && size > unsigned_argument(rule.name,rule.argument)) fail("max");
+                    else if (rule.name != "array" && rule.name != "object" && rule.name != "required" && rule.name != "present" &&
+                        rule.name != "nullable" && rule.name != "sometimes" && rule.name != "bail" && rule.name != "min" && rule.name != "max") fail(rule.name);
+                }
+            } else {
+                Input scalar{{path,value->string()}};
+                for (const auto& rule : parsed) {
+                    if (rule.name == "same") { if (auto* other = at_path(input,rule.argument)) scalar[rule.argument] = other->string(); }
+                    if (rule.name == "confirmed") { if (auto* other = at_path(input,path+"_confirmation")) scalar[path+"_confirmation"] = other->string(); }
+                }
+                auto checked = check(scalar, Rules{{path,entry.expression}});
+                if (!checked.valid()) result.errors[path] = std::move(checked.errors.at(path));
+            }
+            if (!result.errors.contains(path)) result.values = select_path(result.values, input, path, *value);
+        }
+    }
+    return result;
+}
+http::Json Validator::validate(const http::Json& input, const Rules& rules) {
+    auto result = check(input, rules);
+    if (!result.valid()) throw ValidationException{std::move(result.errors)};
+    return std::move(result.values);
+}
+}

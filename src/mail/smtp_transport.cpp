@@ -780,6 +780,10 @@ public:
                 );
             }
 
+            if (message.reply_address()) {
+                validate_address(*message.reply_address(), "reply-to");
+                append(raw_headers, "Reply-To: " + display_address(*message.reply_address()));
+            }
             append(
                 raw_headers,
                 "Subject: " +
@@ -837,6 +841,14 @@ public:
             message
         );
 
+        for (const auto& attachment : message.attachments()) {
+            auto* part = curl_mime_addpart(mime.get());
+            if (!part) throw std::bad_alloc{};
+            check(curl_mime_data(part, attachment.contents.data(), attachment.contents.size()), "attachment data");
+            check(curl_mime_filename(part, attachment.filename.c_str()), "attachment filename");
+            check(curl_mime_type(part, attachment.content_type.c_str()), "attachment content type");
+            check(curl_mime_encoder(part, "base64"), "attachment encoding");
+        }
         check(
             curl_easy_setopt(
                 curl.get(),

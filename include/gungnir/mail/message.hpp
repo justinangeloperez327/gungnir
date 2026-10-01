@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -11,8 +13,18 @@ struct Address {
     std::string name;
 };
 
+struct Attachment { std::string filename; std::string contents; std::string content_type{"application/octet-stream"}; };
+
 class Message {
 public:
+    Message& reply_to(Address value) { reply_to_ = std::move(value); return *this; }
+    Message& attach(Attachment value) {
+        if (value.filename.empty() || value.filename.find_first_of("\r\n\0", 0, 3) != std::string::npos || value.content_type.find_first_of("\r\n") != std::string::npos)
+            throw std::invalid_argument("Invalid attachment name or content type");
+        attachments_.push_back(std::move(value)); return *this;
+    }
+    [[nodiscard]] const std::optional<Address>& reply_address() const noexcept { return reply_to_; }
+    [[nodiscard]] const std::vector<Attachment>& attachments() const noexcept { return attachments_; }
     Message& from(Address value) { from_ = std::move(value); return *this; }
     Message& to(Address value) { to_.push_back(std::move(value)); return *this; }
     Message& cc(Address value) { cc_.push_back(std::move(value)); return *this; }
@@ -31,6 +43,8 @@ public:
 
 private:
     Address from_;
+    std::optional<Address> reply_to_;
+    std::vector<Attachment> attachments_;
     std::vector<Address> to_;
     std::vector<Address> cc_;
     std::vector<Address> bcc_;

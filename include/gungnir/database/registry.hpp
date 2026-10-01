@@ -28,6 +28,7 @@ public:
 
 class DriverRegistry {
 public:
+    DriverRegistry();
     DriverRegistry& add(
         Backend backend,
         ConfiguredDriverFactory factory

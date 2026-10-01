@@ -54,6 +54,9 @@ int main() {
         {model::AttributeValue{Int64{1}}}
     });
     assert(calls.size() == 2);
+    // Return both leases before asking this two-slot pool for a transaction.
+    first.reset();
+    second.reset();
 
     {
         auto transaction = manager.transaction();

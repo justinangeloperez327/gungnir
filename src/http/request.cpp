@@ -492,6 +492,24 @@ bool Request::has(std::string_view name) const {
         query_.contains(std::string{name});
 }
 
+Json Request::structured_input() const {
+    parse_body_input();
+    Json::Object values;
+    for (const auto& [name, value] : query_) values.insert_or_assign(name, Json{value});
+    for (const auto& [name, value] : form_) values.insert_or_assign(name, Json{value});
+    if (json_) {
+        if (!json_->is_object()) throw std::invalid_argument("Request input must be a JSON object");
+        for (const auto& [name, value] : json_->as_object()) values.insert_or_assign(name, value);
+    }
+    return Json::object(std::move(values));
+}
+Json Request::validate_structured(const validation::Rules& rules) const {
+    return validation::Validator::validate(structured_input(), rules);
+}
+validation::StructuredResult Request::check_structured(const validation::Rules& rules) const {
+    return validation::Validator::check(structured_input(), rules);
+}
+
 Request::Input Request::all() const {
     parse_body_input();
 
@@ -583,7 +601,6 @@ void Request::parse_body_input() const {
         return;
     }
 
-    body_parsed_ = true;
     form_.clear();
     json_.reset();
 
@@ -594,6 +611,7 @@ void Request::parse_body_input() const {
             json_ = Json::parse(body_);
         }
 
+        body_parsed_ = true;
         return;
     }
 
@@ -605,6 +623,7 @@ void Request::parse_body_input() const {
     ) {
         form_ = parse_urlencoded(body_);
     }
+    body_parsed_ = true;
 }
 
 void Request::parse_cookies() const {

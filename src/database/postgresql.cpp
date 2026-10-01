@@ -131,6 +131,7 @@ NativeConnection connect(
 String encode_binding(
     const model::AttributeValue& value
 ) {
+    if (const auto* decimal = std::get_if<model::Decimal>(&value)) return decimal->string();
     if (const auto* boolean =
             std::get_if<Boolean>(&value)) {
         return *boolean ? "true" : "false";
@@ -299,9 +300,11 @@ model::AttributeValue decode_value(
     case int8_oid:
         return parse_integer(value);
 
+    case numeric_oid:
+        return model::Decimal{value};
+
     case float4_oid:
     case float8_oid:
-    case numeric_oid:
         return parse_number(value);
 
     default:

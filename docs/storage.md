@@ -10,7 +10,7 @@ Cancellation overloads check cancellation around operations. Keep paths logical 
 
 ## Limits and planned work
 
-The public names are not `read`/`write`/`delete`/`list`. There is no universal remote object-storage implementation implied by Disk. Cancellation checks around synchronous operations do not guarantee interruption of a blocked filesystem call or undo a completed write.
+The public names are not `read`/`write`/`delete`/`list`. Enable `GUNGNIR_WITH_S3=ON` (libcurl 7.75+) for `S3Disk`, a path-style S3-compatible adapter with SigV4 authentication, optional session credentials, bounded transfers/listing, timeouts and cancellation. Configure `S3Options` and register the instance with `Manager`. HTTPS is required by default; `allow_http` is an explicit local-test option. Listing follows continuation tokens. Copy downloads and uploads an object within the configured size limit; move performs copy then delete and is not atomic. Live service behavior still depends on the chosen S3-compatible endpoint. Cancellation checks around synchronous operations do not guarantee interruption of a blocked filesystem call or undo a completed write.
 
 ## Implementation references
 

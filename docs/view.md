@@ -4,7 +4,7 @@
 
 ## Current behavior
 
-The default root is `views/`; names without an extension resolve to `.html`. Rendering supports escaped `{{ value }}`, explicit raw `{{{ value }}}`, dotted lookup, `this`, each blocks and nested each blocks.
+The default root is `views/`; names without an extension resolve to `.html`. Rendering supports escaped `{{ value }}`, explicit raw `{{{ value }}}`, dotted lookup, `this`, nested `each`, `if`, `unless` and `else` blocks. Rendered values are never reparsed as template source. Native model values respect `hidden` and `visible` serialization metadata.
 
 Logical names are resolved under the configured root. Absolute paths, traversal and root escapes are rejected. Model/range values can be converted to structured view values.
 
@@ -21,7 +21,7 @@ Logical names are resolved under the configured root. Absolute paths, traversal 
 
 ## Limits and planned work
 
-Conditionals, else/unless, partials, layouts, sections, yields, components, loop metadata and safe helper calls are target syntax. The current ModelLike conversion iterates `attributes()`; do not promise hidden-field filtering. Pass an explicitly selected view object when sensitive attributes are present.
+Partials use `{{> 'partial' key=value}}`. Layouts use `#layout` with named `#section` blocks, and layout templates consume sections with `#yield` (optional fallback body). `#component` passes named props and rendered `slot` content. Each loops expose `loop.index` (zero-based), `first`, `last`, and `count`. Register native helpers with `Engine::helper`; helper calls such as `{{ upper(name) }}` remain HTML-escaped. Raw slots use the explicit triple-brace form. Expressions support lookup, literals and registered helpers, rather than arbitrary C++. Rendering is bounded by nesting and output limits. External ModelLike classes that only expose `attributes()` must select their own public fields.
 
 ## Implementation references
 

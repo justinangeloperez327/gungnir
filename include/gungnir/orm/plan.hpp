@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <unordered_map>
 #include <optional>
 #include <vector>
 
@@ -89,6 +90,11 @@ struct Aggregate {
     String column{"*"};
 };
 
+struct RelationConstraint {
+    std::vector<Predicate> predicates;
+    std::vector<Order> orders;
+};
+
 struct QueryPlan {
     String table;
     String connection{"default"};
@@ -99,6 +105,7 @@ struct QueryPlan {
     std::vector<Predicate> having;
     std::vector<Order> orders;
     std::vector<String> eager_loads;
+    std::unordered_map<String,RelationConstraint> eager_constraints;
     std::optional<Aggregate> aggregate;
     std::optional<std::size_t> limit;
     std::optional<std::size_t> offset;

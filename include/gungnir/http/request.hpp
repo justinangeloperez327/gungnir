@@ -27,6 +27,7 @@ namespace gungnir::auth {
 struct Identity;
 class Context;
 class AuthenticateSession;
+class SessionGuard;
 }
 
 namespace gungnir::routing {
@@ -118,6 +119,9 @@ public:
     [[nodiscard]] std::string input(std::string_view name) const;
     [[nodiscard]] bool has(std::string_view name) const;
     [[nodiscard]] Input all() const;
+    [[nodiscard]] Json structured_input() const;
+    [[nodiscard]] Json validate_structured(const validation::Rules& rules) const;
+    [[nodiscard]] validation::StructuredResult check_structured(const validation::Rules& rules) const;
     [[nodiscard]] Input only(
         std::initializer_list<std::string_view> names
     ) const;
@@ -136,6 +140,7 @@ private:
     friend class gungnir::routing::Router;
     friend class gungnir::session::StartSession;
     friend class gungnir::auth::AuthenticateSession;
+    friend class gungnir::auth::SessionGuard;
 
     void parse_target();
     void parse_body_input() const;

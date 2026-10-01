@@ -4,7 +4,7 @@
 
 ## Current behavior
 
-Structured policy methods infer `auth::Decision`, including conversion from bool returns. Generated `register_policy` binds public synchronous actor/resource methods to `auth::ResourceAuthorization`. The registry validates the actor/resource types and denies unknown or mismatched abilities.
+Structured policy methods infer `auth::Decision`, including conversion from bool returns. Generated `register_policy` binds public synchronous actor/resource methods to `auth::ResourceAuthorization`. The registry validates the actor/resource types and denies unknown or mismatched abilities. Register an authenticated actor resolver with `ResourceAuthorization::actor<Actor>` and register generated policies during application bootstrap. Structured `.gnr` handlers can call `authorize(request, 'view', resource)` using the request service scope. Guests receive 401; denied, missing or ambiguous policy bindings receive 403.
 
 ## Limits and planned work
 

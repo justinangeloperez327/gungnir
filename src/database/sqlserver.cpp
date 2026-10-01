@@ -420,7 +420,8 @@ void bind_parameters(
         ++index
     ) {
         auto& item = storage[index];
-        const auto& value = values[index];
+        auto value = values[index];
+        if (const auto* decimal = std::get_if<model::Decimal>(&value)) value = decimal->string();
 
         SQLSMALLINT value_type = SQL_C_CHAR;
         SQLSMALLINT parameter_type = SQL_VARCHAR;
@@ -876,11 +877,15 @@ model::AttributeValue value_at(
             column
         );
 
+    case SQL_DECIMAL:
+    case SQL_NUMERIC: {
+        auto value = read_string(statement_handle, column);
+        if (const auto* text = std::get_if<String>(&value)) return model::Decimal{*text};
+        return value;
+    }
     case SQL_REAL:
     case SQL_FLOAT:
     case SQL_DOUBLE:
-    case SQL_DECIMAL:
-    case SQL_NUMERIC:
         return read_number(
             statement_handle,
             column

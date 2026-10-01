@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -49,6 +50,8 @@ public:
     [[nodiscard]] bool supports_transactions() const noexcept;
     [[nodiscard]] bool supports_savepoints() const noexcept;
 
+    void after_commit(std::function<void()> callback);
+    [[nodiscard]] bool in_transaction() const;
     void begin();
     void commit();
     void rollback();
@@ -76,7 +79,8 @@ private:
 
     String name_;
     std::shared_ptr<Driver> driver_;
-    std::recursive_mutex mutex_;
+    mutable std::recursive_mutex mutex_;
+    std::vector<std::vector<std::function<void()>>> commit_callbacks_;
     std::size_t transaction_depth_{0};
     std::uint64_t savepoint_sequence_{0};
 };

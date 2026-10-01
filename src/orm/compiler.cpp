@@ -217,6 +217,8 @@ CompiledQuery compile_sql(
     const QueryPlan& plan,
     database::Backend backend
 ) {
+    if (backend == database::Backend::sqlite && plan.lock != LockMode::none)
+        throw std::logic_error("SQLite does not support SQL row-lock clauses; use a transaction");
     CompiledQuery result;
     result.kind = CompiledQueryKind::sql;
     result.text = "SELECT ";
@@ -331,6 +333,7 @@ CompiledQuery compile_sql(
                            std::to_string(*plan.offset) +
                            " ROWS";
         } else {
+            if (backend == database::Backend::sqlite) result.text += " LIMIT -1";
             result.text += " OFFSET " + std::to_string(*plan.offset);
         }
     }

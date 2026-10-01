@@ -200,16 +200,11 @@ public:
           ),
           base_path(
             normalize_base_path({})
-          ),
-          server(
-            std::make_unique<
-                http::detail::Server
-            >(router)
           ) {}
 
-    Container container;
-    routing::Router router;
-    database::Manager database;
+    std::shared_ptr<Container> container{std::make_shared<Container>()};
+    std::shared_ptr<routing::Router> router{std::make_shared<routing::Router>()};
+    std::shared_ptr<database::Manager> database{std::make_shared<database::Manager>()};
     std::shared_ptr<database::DriverRegistry> drivers{
         std::make_shared<database::DriverRegistry>()
     };
@@ -222,7 +217,11 @@ public:
     std::unique_ptr<http::detail::Server> server;
     bool booted{false};
     Lifecycle lifecycle;
-    http::MiddlewareRegistry middleware_registry;
+    std::shared_ptr<http::MiddlewareRegistry> middleware_registry{std::make_shared<http::MiddlewareRegistry>()};
+    detail::ContextHandle context{std::make_shared<detail::ExecutionContext>()};
+    http::RuntimeOptions runtime_options;
+    std::vector<std::exception_ptr> shutdown_errors;
+    std::size_t registered_providers{0};
     std::vector<std::shared_ptr<Provider>> providers;
 };
 
@@ -246,30 +245,25 @@ Application Application::create(
 
 Application::Application()
     : impl_(std::make_unique<Impl>()) {
-    routing::detail::bind_route_runtime(
-        impl_->router,
-        impl_->container
-    );
-    impl_->router.middleware_registry(impl_->middleware_registry);
-    impl_->router.service_container(impl_->container);
+    impl_->context->router = impl_->router;
+    impl_->context->container = impl_->container;
+    impl_->context->middleware = impl_->middleware_registry;
+    impl_->context->manager = impl_->database;
+    impl_->context->view = impl_->views;
+    detail::applications.push_back(impl_->context);
+    impl_->router->execution_context(impl_->context);
+    impl_->router->middleware_registry(*impl_->middleware_registry);
+    impl_->router->service_container(*impl_->container);
 
-    view::runtime::use(
-        impl_->views
-    );
-
-    impl_->server->view_engine(
-        impl_->views
-    );
-
-    impl_->container.instance<
+    impl_->container->instance<
         config::Repository
     >(impl_->config);
 
-    impl_->container.instance<
+    impl_->container->instance<
         config::Environment
     >(impl_->environment);
 
-    impl_->container.instance<
+    impl_->container->instance<
         database::DriverRegistry
     >(impl_->drivers);
 
@@ -287,131 +281,47 @@ Application::Application()
     );
 }
 
-Application::~Application() {
-    stop();
+Application::~Application() { shutdown(); }
 
-    if (impl_) {
-        routing::detail::unbind_route_runtime(
-            impl_->router,
-            impl_->container
-        );
-
-        if (
-            view::runtime::using_engine(
-                *impl_->views
-            )
-        ) {
-            view::runtime::clear();
-        }
-    }
-
-    shutdown();
-}
-
-Application::Application(
-    Application&& other
-) noexcept
-    : impl_(std::move(other.impl_)) {
-    if (impl_) {
-        routing::detail::bind_route_runtime(
-            impl_->router,
-            impl_->container
-        );
-
-        view::runtime::use(
-            impl_->views
-        );
-
-        impl_->server->view_engine(
-            impl_->views
-        );
-    }
-
-    if (
-        impl_ &&
-        impl_->booted
-    ) {
-        database::runtime::use(
-            impl_->database
-        );
-    }
-}
-
-Application& Application::operator=(
-    Application&& other
-) noexcept {
-    if (this == &other) {
-        return *this;
-    }
-
-    if (impl_) {
-        routing::detail::unbind_route_runtime(
-            impl_->router,
-            impl_->container
-        );
-
-        if (
-            view::runtime::using_engine(
-                *impl_->views
-            )
-        ) {
-            view::runtime::clear();
-        }
-    }
-
-    shutdown();
-    impl_ = std::move(other.impl_);
-
-    if (impl_) {
-        routing::detail::bind_route_runtime(
-            impl_->router,
-            impl_->container
-        );
-
-        view::runtime::use(
-            impl_->views
-        );
-    }
-
-    if (
-        impl_ &&
-        impl_->booted
-    ) {
-        database::runtime::use(
-            impl_->database
-        );
-    }
-
+Application::Application(Application&& other) noexcept = default;
+Application& Application::operator=(Application&& other) noexcept {
+    if (this != &other) { shutdown(); impl_ = std::move(other.impl_); }
     return *this;
 }
 
+detail::ContextHandle Application::execution_context() const { return impl_->context; }
+detail::ExecutionScope Application::activate() const { return detail::ExecutionScope{impl_->context}; }
+const std::vector<std::exception_ptr>& Application::shutdown_errors() const noexcept {
+    return impl_->shutdown_errors;
+}
+
 Container& Application::container() noexcept {
-    return impl_->container;
+    return *impl_->container;
 }
 
 const Container&
 Application::container() const noexcept {
-    return impl_->container;
+    return *impl_->container;
 }
 
 routing::Router&
 Application::router() noexcept {
-    return impl_->router;
+    return *impl_->router;
 }
 
 const routing::Router&
 Application::router() const noexcept {
-    return impl_->router;
+    return *impl_->router;
 }
 
 database::Manager&
 Application::database() noexcept {
-    return impl_->database;
+    return *impl_->database;
 }
 
 const database::Manager&
 Application::database() const noexcept {
-    return impl_->database;
+    return *impl_->database;
 }
 
 database::DriverRegistry&
@@ -455,7 +365,7 @@ Application::env() const noexcept {
 }
 
 http::MiddlewareRegistry& Application::middleware_registry() noexcept {
-    return impl_->middleware_registry;
+    return *impl_->middleware_registry;
 }
 
 const std::filesystem::path&
@@ -484,7 +394,7 @@ LifecycleStage Application::lifecycle_stage() const noexcept {
 
 Application& Application::provider(std::shared_ptr<Provider> value) {
     if (!value) throw std::invalid_argument("Gungnir provider cannot be null");
-    if (impl_->booted) throw std::logic_error("Providers must be registered before application boot");
+    if (impl_->lifecycle.stage() != LifecycleStage::created) throw std::logic_error("Providers must be registered before application boot");
     impl_->providers.push_back(std::move(value));
     return *this;
 }
@@ -560,7 +470,7 @@ Application& Application::database(
     database::DriverFactory factory,
     std::size_t pool_size
 ) {
-    impl_->database.add(
+    impl_->database->add(
         std::move(name),
         backend,
         std::move(factory),
@@ -592,20 +502,25 @@ Application& Application::configure_database() {
         return *this;
     }
 
-    const auto settings =
+    auto settings =
         database::settings_from(
             *impl_->config
         );
 
+    if (settings.backend == database::Backend::sqlite) {
+        if (settings.database != ":memory:") settings.database = resolve_from(impl_->base_path, settings.database).string();
+        if (settings.database == ":memory:" && settings.pool_size != 1)
+            throw std::invalid_argument("SQLite :memory: requires a one-connection pool");
+    }
     if (
-        impl_->database.has(
+        impl_->database->has(
             settings.name
         )
     ) {
         return *this;
     }
 
-    impl_->database.add(
+    impl_->database->add(
         settings.name,
         settings.backend,
         impl_->drivers->bind(
@@ -627,52 +542,50 @@ Application& Application::configure_database() {
 }
 
 void Application::boot() {
-    if (impl_->booted) {
-        throw std::logic_error(
-            "Gungnir application is already booted"
-        );
+    if (!impl_ || impl_->lifecycle.stage() != LifecycleStage::created)
+        throw std::logic_error("Gungnir application can only boot once; create a new application after shutdown");
+    auto scope = activate();
+    impl_->shutdown_errors.clear();
+    try {
+        impl_->lifecycle.stage(LifecycleStage::registering);
+        for (auto& provider : impl_->providers) {
+            ++impl_->registered_providers; // Includes a partially registered provider.
+            provider->register_services(*this);
+        }
+        impl_->lifecycle.stage(LifecycleStage::booting);
+        configure_database();
+        for (auto& provider : impl_->providers) provider->boot(*this);
+        impl_->lifecycle.fire_boot(*this);
+        for (auto& provider : impl_->providers) provider->ready(*this);
+        impl_->lifecycle.fire_ready(*this);
+        impl_->booted = true;
+        impl_->lifecycle.stage(LifecycleStage::ready);
+    } catch (...) {
+        const auto failure = std::current_exception();
+        shutdown();
+        std::rethrow_exception(failure);
     }
-
-    impl_->lifecycle.stage(LifecycleStage::registering);
-    for (auto& provider : impl_->providers) provider->register_services(*this);
-
-    impl_->lifecycle.stage(LifecycleStage::booting);
-    configure_database();
-    for (auto& provider : impl_->providers) provider->boot(*this);
-    impl_->lifecycle.fire_boot(*this);
-
-    database::runtime::use(
-        impl_->database
-    );
-
-    impl_->booted = true;
-    impl_->lifecycle.stage(LifecycleStage::ready);
-    for (auto& provider : impl_->providers) provider->ready(*this);
-    impl_->lifecycle.fire_ready(*this);
 }
 
 void Application::shutdown() noexcept {
-    if (
-        !impl_ ||
-        !impl_->booted
-    ) {
-        return;
-    }
-
+    if (!impl_ || impl_->lifecycle.stage() == LifecycleStage::stopped ||
+        impl_->lifecycle.stage() == LifecycleStage::stopping) return;
+    const auto was_started = impl_->lifecycle.stage() != LifecycleStage::created;
+    auto scope = activate();
     impl_->lifecycle.stage(LifecycleStage::stopping);
-    for (auto it = impl_->providers.rbegin(); it != impl_->providers.rend(); ++it) (*it)->shutdown(*this);
-    impl_->lifecycle.fire_shutdown(*this);
-
-    if (
-        database::runtime::using_manager(
-            impl_->database
-        )
-    ) {
-        database::runtime::clear();
+    stop();
+    while (impl_->registered_providers > 0) {
+        auto& provider = impl_->providers[--impl_->registered_providers];
+        try { provider->shutdown(*this); }
+        catch (...) { impl_->shutdown_errors.push_back(std::current_exception()); }
     }
-
+    if (was_started) impl_->lifecycle.fire_shutdown(*this, impl_->shutdown_errors);
     impl_->booted = false;
     impl_->lifecycle.stage(LifecycleStage::stopped);
+    std::erase_if(detail::applications, [&](const auto& weak) {
+        auto context = weak.lock();
+        return !context || context == impl_->context;
+    });
 }
 
 bool Application::is_booted()
@@ -691,9 +604,8 @@ Application& Application::http_runtime(
         );
     }
 
-    impl_->server->configure(
-        std::move(options)
-    );
+    if (impl_->server) impl_->server->configure(options);
+    impl_->runtime_options = std::move(options);
 
     return *this;
 }
@@ -729,7 +641,7 @@ Application& Application::http2(
 const http::RuntimeOptions&
 Application::http_runtime()
     const noexcept {
-    return impl_->server->options();
+    return impl_->runtime_options;
 }
 
 void Application::run() {
@@ -790,15 +702,18 @@ void Application::listen(
         boot();
     }
 
-    impl_->lifecycle.stage(
-        LifecycleStage::running
-    );
+    auto scope = activate();
+    if (!impl_->server) {
+        auto server = std::make_unique<http::detail::Server>(*impl_->router);
+        server->configure(impl_->runtime_options);
+        server->view_engine(impl_->views);
+        impl_->server = std::move(server);
+    }
+    impl_->lifecycle.stage(LifecycleStage::running);
 
-    impl_->server->listen(
-        std::move(host),
-        port,
-        std::move(cancellation)
-    );
+    try { impl_->server->listen(std::move(host), port, std::move(cancellation)); }
+    catch (...) { impl_->lifecycle.stage(LifecycleStage::ready); throw; }
+    impl_->lifecycle.stage(LifecycleStage::ready);
 }
 
 void Application::stop() noexcept {

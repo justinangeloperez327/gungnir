@@ -104,7 +104,8 @@ template <typename Parent, typename Descriptor>
 void load_relation(
     Collection<Parent>& parents,
     const Descriptor& descriptor,
-    const String& nested = {}
+    const String& nested = {},
+    const RelationConstraint* constraint = nullptr
 ) {
     if (parents.empty()) {
         return;
@@ -129,6 +130,7 @@ void load_relation(
         if (!nested.empty()) {
             related_query.with(nested);
         }
+        if (constraint) related_query.constrain(*constraint);
         auto related = related_query.get();
 
         for (auto& parent : parents) {
@@ -159,6 +161,7 @@ void load_relation(
         if (!nested.empty()) {
             related_query.with(nested);
         }
+        if (constraint) related_query.constrain(*constraint);
         auto related = related_query.get();
 
         for (auto& parent : parents) {
@@ -193,6 +196,7 @@ void load_relation(
         if (!nested.empty()) {
             related_query.with(nested);
         }
+        if (constraint) related_query.constrain(*constraint);
         auto related = related_query.get();
 
         for (auto& parent : parents) {
@@ -266,6 +270,7 @@ void load_relation(
         if (!nested.empty()) {
             related_query.with(nested);
         }
+        if (constraint) related_query.constrain(*constraint);
         auto related = related_query.get();
 
         for (auto& parent : parents) {
@@ -326,6 +331,7 @@ void load_relation(
         if (!nested.empty()) {
             related_query.with(nested);
         }
+        if (constraint) related_query.constrain(*constraint);
         auto related = related_query.get();
 
         for (auto& parent : parents) {
@@ -382,7 +388,8 @@ void load_relation(
 template <typename ModelType>
 void eager_load(
     Collection<ModelType>& models,
-    const std::vector<String>& relations
+    const std::vector<String>& relations,
+    const std::unordered_map<String,RelationConstraint>& constraints = {}
 ) {
     if (models.empty() || relations.empty()) {
         return;
@@ -402,7 +409,8 @@ void eager_load(
             [&](const auto& descriptor) {
                 if (descriptor.name == root) {
                     found = true;
-                    load_relation(models, descriptor, nested);
+                    const auto constraint = constraints.find(root);
+                    load_relation(models, descriptor, nested, constraint == constraints.end() ? nullptr : &constraint->second);
                 }
             }
         );
@@ -436,7 +444,7 @@ Collection<ModelType> Query<ModelType>::get() const {
     // A transaction scope retains its own lease. Ordinary queries must release
     // theirs before relation loading acquires another connection from the pool.
     connection.reset();
-    detail::eager_load(models, plan_.eager_loads);
+    detail::eager_load(models, plan_.eager_loads, plan_.eager_constraints);
     return models;
 }
 

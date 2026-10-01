@@ -4,11 +4,11 @@
 
 ## Current behavior
 
-`Validator::check` returns `Result { values, errors }`; `Validator::validate` throws `ValidationException` on failure. Request methods use these contracts. Inputs and validated values are string maps; errors map each field to a vector of messages.
+`Validator::check` returns `Result { values, errors }`; `Validator::validate` throws `ValidationException` on failure. Request methods use these contracts. The legacy overload uses string maps. JSON overloads return `StructuredResult` and preserve scalar, array, object and null types. Native request methods are `structured_input`, `check_structured` and `validate_structured`; structured `.gnr` controllers use `request.structuredInput()` and `request.validate({...})`. Errors map each field to a vector of messages.
 
-The current rule names are `required`, `present`, `nullable`, `sometimes`, `string`, `integer`, `numeric`, `boolean`, `email`, `accepted`, `length`, `min`, `max`, `in`, `same` and `confirmed`. Numeric `min`/`max` semantics depend on the numeric rules on that field.
+The current rule names are `required`, `present`, `nullable`, `sometimes`, `string`, `integer`, `numeric`, `boolean`, `email`, `accepted`, `length`, `min`, `max`, `in`, `same`, `confirmed`, `array`, `object`, `bail`, `unique` and `exists`. Numeric `min`/`max` semantics depend on the numeric rules on that field.
 
-Unknown rules are rejected. See the native validator for exact value parsing and error messages.
+Nested fields use dot paths; array elements use complete wildcard segments such as `users.*.email`. Selecting a parent object validates and returns that subtree; select child paths when only those fields should be returned. SQL `unique:table,column` and `exists:table,column` use bound values and checked identifiers on the active connection. `unique:table,column,ignored_id,id_column` supports updates. These checks supplement database constraints and cannot eliminate concurrent-write races. Unknown rules are rejected before inspecting optional or missing fields. See the native validator for exact value parsing and error messages.
 
 ## Example
 
@@ -25,7 +25,7 @@ controller FormController {
 
 ## Limits and planned work
 
-Database `unique`/`exists`, array/object rules, URL/UUID/date rules, file/image rules, `bail`, conditional required rules and custom-rule registration in the target catalogue are not all implemented. Validation does not currently turn the string map into a fully typed object.
+URL/UUID/date, file/image, conditional-required rules and custom-rule registration remain planned. Structured validation preserves the supplied JSON types; it does not coerce numeric strings to numbers. Database rules currently require SQL connections.
 
 ## Implementation references
 

@@ -11,7 +11,7 @@ public:
     virtual void register_services(Application&) {}
     virtual void boot(Application&) {}
     virtual void ready(Application&) {}
-    virtual void shutdown(Application&) noexcept {}
+    virtual void shutdown(Application&) {}
     [[nodiscard]] virtual std::string_view name() const noexcept { return "provider"; }
 };
 

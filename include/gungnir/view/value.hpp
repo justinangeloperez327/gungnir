@@ -117,6 +117,8 @@ template <std::floating_point T>
     return Value{value};
 }
 
+[[nodiscard]] inline Value make_value(const model::Decimal& value) { return Value{value.string()}; }
+
 [[nodiscard]] inline Value make_value(
     const model::AttributeValue& value
 ) {
@@ -152,7 +154,11 @@ template <ModelLike T>
 [[nodiscard]] Value make_value(const T& value) {
     std::unordered_map<String, Value> object;
 
-    for (const auto& [name, attribute] : value.attributes()) {
+    const auto attributes = [&] {
+        if constexpr (requires { value.serialized_attributes(); }) return value.serialized_attributes();
+        else return value.attributes();
+    }();
+    for (const auto& [name, attribute] : attributes) {
         object.insert_or_assign(name, make_value(attribute));
     }
 

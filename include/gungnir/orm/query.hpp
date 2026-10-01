@@ -13,6 +13,7 @@
 #include <gungnir/model/model.hpp>
 #include <gungnir/orm/collection.hpp>
 #include <gungnir/orm/compiler.hpp>
+#include <gungnir/orm/error.hpp>
 #include <gungnir/orm/page.hpp>
 #include <gungnir/orm/plan.hpp>
 
@@ -51,6 +52,7 @@ public:
 
     Query& without_eager_loads() noexcept {
         plan_.eager_loads.clear();
+        plan_.eager_constraints.clear();
         return *this;
     }
 
@@ -339,6 +341,23 @@ public:
     template <typename Callback>
     Query& scope(Callback&& callback) {
         return tap(std::forward<Callback>(callback));
+    }
+
+    Query& constrain(const RelationConstraint& constraint) {
+        for (auto predicate : constraint.predicates) {
+            if (predicate.connector != BooleanConnector::and_) throw QueryError{"Relation constraints must use AND predicates"};
+            plan_.predicates.push_back(std::move(predicate));
+        }
+        plan_.orders.insert(plan_.orders.end(),constraint.orders.begin(),constraint.orders.end());
+        return *this;
+    }
+    Query& with(String relation, RelationConstraint constraint) {
+        if (relation.find('.') != String::npos) throw QueryError{"Configure constraints on the direct relation; nested names remain supported without constraints"};
+        for (const auto& predicate : constraint.predicates)
+            if (predicate.connector != BooleanConnector::and_) throw QueryError{"Relation constraints must use AND predicates"};
+        with(relation);
+        plan_.eager_constraints.insert_or_assign(std::move(relation),std::move(constraint));
+        return *this;
     }
 
     Query& with(String relation) {

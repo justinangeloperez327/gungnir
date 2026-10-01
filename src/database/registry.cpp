@@ -1,9 +1,18 @@
+#ifdef GUNGNIR_WITH_SQLITE
+#include <gungnir/database/sqlite.hpp>
+#endif
 #include <gungnir/database/registry.hpp>
 
 #include <stdexcept>
 #include <utility>
 
 namespace gungnir::database {
+DriverRegistry::DriverRegistry() {
+#ifdef GUNGNIR_WITH_SQLITE
+    add(Backend::sqlite, [](const Settings& settings) { return std::make_shared<SQLiteDriver>(settings); });
+#endif
+}
+
 
 DriverUnavailableError::DriverUnavailableError(
     Backend backend

@@ -11,6 +11,10 @@ list(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
 )
 
+option(GUNGNIR_WITH_S3 "Build the libcurl S3-compatible object storage adapter" OFF)
+option(GUNGNIR_WITH_SQLITE "Build and register the SQLite adapter" OFF)
+option(GUNGNIR_WITH_PASSWORD "Build OpenSSL scrypt password hashing" OFF)
+
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 option(GUNGNIR_WITH_POSTGRESQL "Build the libpq PostgreSQL adapter" OFF)
@@ -208,7 +212,7 @@ if(
     find_package(CURL 7.56 REQUIRED)
 endif()
 
-if(GUNGNIR_WITH_TLS)
+if(GUNGNIR_WITH_TLS OR GUNGNIR_WITH_PASSWORD)
     find_package(OpenSSL 3.0 REQUIRED)
 endif()
 
@@ -265,6 +269,23 @@ add_library(gungnir
 )
 
 add_library(gungnir::gungnir ALIAS gungnir)
+if(GUNGNIR_WITH_S3)
+    find_package(CURL 7.75 REQUIRED)
+    target_sources(gungnir PRIVATE src/storage/s3_disk.cpp)
+    target_link_libraries(gungnir PUBLIC CURL::libcurl)
+    target_compile_definitions(gungnir PUBLIC GUNGNIR_WITH_S3=1)
+endif()
+if(GUNGNIR_WITH_SQLITE)
+    find_package(SQLite3 REQUIRED)
+    target_sources(gungnir PRIVATE src/database/sqlite.cpp)
+    target_link_libraries(gungnir PUBLIC SQLite::SQLite3)
+    target_compile_definitions(gungnir PUBLIC GUNGNIR_WITH_SQLITE=1)
+endif()
+if(GUNGNIR_WITH_PASSWORD)
+    target_sources(gungnir PRIVATE src/auth/password.cpp)
+    target_link_libraries(gungnir PUBLIC OpenSSL::Crypto)
+    target_compile_definitions(gungnir PUBLIC GUNGNIR_WITH_PASSWORD=1)
+endif()
 
 add_library(gungnir-orm
     src/orm/compiler.cpp
@@ -2043,3 +2064,22 @@ if(GUNGNIR_BUILD_TOOLS)
     )
 endif()
 
+
+if(GUNGNIR_BUILD_TESTS)
+    add_executable(gungnir_priority3_runtime_test tests/priority3_runtime.cpp)
+    target_link_libraries(gungnir_priority3_runtime_test PRIVATE gungnir::gungnir)
+    add_test(NAME gungnir_priority3_runtime COMMAND gungnir_priority3_runtime_test)
+    set_tests_properties(gungnir_priority3_runtime PROPERTIES TIMEOUT 30)
+    add_executable(gungnir_priority3_integrations_test tests/priority3_integrations.cpp)
+    target_link_libraries(gungnir_priority3_integrations_test PRIVATE gungnir::gungnir gungnir::orm)
+    add_test(NAME gungnir_priority3_integrations COMMAND gungnir_priority3_integrations_test)
+    set_tests_properties(gungnir_priority3_integrations PROPERTIES TIMEOUT 30)
+    if(GUNGNIR_WITH_S3)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_executable(gungnir_storage_s3_test tests/storage_s3.cpp)
+        target_link_libraries(gungnir_storage_s3_test PRIVATE gungnir::gungnir)
+        add_test(NAME gungnir_storage_s3 COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/s3_mock.py $<TARGET_FILE:gungnir_storage_s3_test>)
+        set_tests_properties(gungnir_storage_s3 PROPERTIES TIMEOUT 30)
+    endif()
+endif()

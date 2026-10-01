@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <exception>
 #include <vector>
 #include <utility>
 
@@ -19,7 +20,11 @@ public:
     void stage(LifecycleStage value) noexcept { stage_ = value; }
     void fire_boot(Application& app) { for (auto& hook : boot_) hook(app); }
     void fire_ready(Application& app) { for (auto& hook : ready_) hook(app); }
-    void fire_shutdown(Application& app) { for (auto it = shutdown_.rbegin(); it != shutdown_.rend(); ++it) (*it)(app); }
+    void fire_shutdown(Application& app, std::vector<std::exception_ptr>& errors) noexcept {
+        for (auto it = shutdown_.rbegin(); it != shutdown_.rend(); ++it) {
+            try { (*it)(app); } catch (...) { errors.push_back(std::current_exception()); }
+        }
+    }
 private:
     LifecycleStage stage_{LifecycleStage::created};
     std::vector<Hook> boot_, ready_, shutdown_;

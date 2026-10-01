@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <initializer_list>
 #include <optional>
@@ -352,6 +353,24 @@ public:
             }
         });
 
+        return result;
+    }
+
+    [[nodiscard]] bool serializes(std::string_view name) const {
+        if constexpr (requires { Derived::hidden; })
+            for (auto field : Derived::hidden) if (field == name) return false;
+        if constexpr (requires { Derived::visible; }) {
+            if (!Derived::visible.empty()) {
+                for (auto field : Derived::visible) if (field == name) return true;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] AttributeMap serialized_attributes() const {
+        auto result = attributes();
+        std::erase_if(result, [&](const auto& entry) { return !serializes(entry.first); });
         return result;
     }
 

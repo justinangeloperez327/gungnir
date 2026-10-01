@@ -1,6 +1,8 @@
 #include "structured_program.cpp"
 #include "structured_modules.cpp"
 #include <gungnir/queue/memory_driver.hpp>
+#include <gungnir/mail/memory_transport.hpp>
+#include <gungnir/testing/http.hpp>
 #include <cassert>
 int main() {
     gungnir::Request request{gungnir::http::Method::get,"/"}; request.set_header("X-Name","Ada");
@@ -31,4 +33,55 @@ int main() {
     Greeting notification{"Hello"}; auto bound = notification.bind(user); assert(bound.channels().size() == 2); assert(bound.to_database().get("title")->string() == "Hello");
     assert(User::hidden[0] == "secret" && User::casts[0].first == "active");
     static_assert(std::tuple_size_v<decltype(gungnir::model::Generated<User>::attributes)> == 4);
+    gungnir::Request payload{gungnir::http::Method::post,"/",R"({"enabled":false,"count":4,"extra":true})"};
+    payload.set_header("Content-Type","application/json");
+    auto validated=validatePayload(payload);
+    assert(validated.get("enabled")->is_boolean() && validated.get("count")->is_integer() && !validated.get("extra"));
+    const auto precise = exactAmount();
+    assert(precise.string() == "12345678901234567890.123400");
+    auto price = Price::hydrate({{"amount",precise}});
+    assert(price.amount.get() == precise);
+    auto queue = std::make_shared<gungnir::queue::MemoryDriver>();
+    auto transport = std::make_shared<gungnir::mail::MemoryTransport>();
+    gungnir::Application app;
+    app.provider<gungnir::ServicesProvider>(gungnir::ServiceOptions{
+        .queue=queue,.mail=transport,.sender={"sender@example.com","Gungnir"}});
+    app.on_boot([&](gungnir::Application& application) {
+        gungnir::register_job<Ping>(application);
+        gungnir::register_job<InjectedPing>(application);
+        gungnir::register_listener<RecordCreated>(application,std::make_shared<RecordCreated>());
+        gungnir::register_policy<UserPolicy>(application,std::make_shared<UserPolicy>());
+    });
+    app.boot();
+    auto resources=app.container().resolve<gungnir::auth::ResourceAuthorization>();
+    resources->actor<User>([user](const gungnir::auth::Identity&) { return std::optional{user}; });
+    app.router().use(gungnir::session::middleware(std::make_shared<gungnir::session::MemoryStore>()));
+    app.router().use(gungnir::auth::session([](std::string_view id) -> std::optional<gungnir::auth::Identity> { return gungnir::auth::Identity{.id=std::string{id}}; }));
+    app.router().get("/policy",[&](gungnir::Request& current) -> gungnir::Task<gungnir::Response> {
+        current.auth().login(gungnir::auth::Identity{.id="8"});
+        checkUser(current,user);
+        bool forbidden=false;
+        try { checkUser(current,other); } catch (const gungnir::auth::AuthorizationError&) { forbidden=true; }
+        assert(forbidden);
+        co_return gungnir::Response::text("authorized");
+    });
+    gungnir::testing::Http client{app.router()};
+    assert(client.get("/policy").body()=="authorized");
+    app.container().resolve<gungnir::queue::Dispatcher>()->dispatch(Ping{4},1,false);
+    assert(app.container().resolve<gungnir::queue::Worker>()->run_one());
+    app.container().resolve<gungnir::events::Dispatcher>()->dispatch(event);
+    app.container().resolve<gungnir::notifications::Manager>()->send("user@example.com",WelcomeNotice{}.bind(user));
+    assert(transport->messages().size()==1 && transport->messages()[0].subject_line()=="Welcome Ada");
+    auto detached_queue=std::make_shared<gungnir::queue::MemoryDriver>();
+    std::shared_ptr<gungnir::queue::Worker> retained_worker;
+    {
+        gungnir::Application temporary;
+        temporary.provider<gungnir::ServicesProvider>(gungnir::ServiceOptions{.queue=detached_queue});
+        temporary.boot();
+        gungnir::register_job<InjectedPing>(temporary);
+        retained_worker=temporary.container().resolve<gungnir::queue::Worker>();
+    }
+    detached_queue->push({"expired","InjectedPing","{\"id\":4}"});
+    assert(retained_worker->run_one() && detached_queue->failed()==1);
+
 }

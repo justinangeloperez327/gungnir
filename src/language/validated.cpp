@@ -71,7 +71,7 @@ public:
     SymbolId symbol(ResolvedSymbol value) { v.symbols_.push_back(std::move(value)); return v.symbols_.size() - 1; }
     void builtin_types() {
         for (const auto& [name, cpp] : std::vector<std::pair<std::string,std::string>>{
-            {"void","void"},{"int","gungnir::Int64"},{"uint64","gungnir::UInt64"},{"double","double"},{"decimal","double"},{"bool","bool"},{"string","gungnir::String"},
+            {"void","void"},{"int","gungnir::Int64"},{"uint64","gungnir::UInt64"},{"double","double"},{"decimal","double"},{"Decimal","gungnir::model::Decimal"},{"bool","bool"},{"string","gungnir::String"},
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
             {"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
@@ -236,7 +236,7 @@ public:
                         for (std::size_t i = 0; i < expression.argument_names.size(); ++i) if (expression.argument_names[i] == name) {
                             const auto& cast = v.syntax_.expressions[expression.operands[i]];
                             if (cast.text == "bool" || cast.text == "int" || cast.text == "double") type_name = cast.text;
-                            else if (cast.text == "integer") type_name = "int"; else if (cast.text == "decimal") type_name = "double";
+                            else if (cast.text == "integer") type_name = "int"; else if (cast.text == "decimal") type_name = "Decimal";
                         }
                     }
                     declaration.fields.push_back({declaration.origin, name, {type_name, {}, false, declaration.origin}});
@@ -414,6 +414,8 @@ public:
         if (callable_id == invalid_id && receiver == invalid_id) {
             if (name == "text" || name == "html" || name == "json" || name == "view" || name == "redirect" || name == "response") { arity(1, name == "view" ? 3 : 2); return finish_builtin(type_id("Response"), "gungnir::language::runtime::" + name,
                 name == "view" ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("Json"),type_id("int")} : std::vector<std::optional<TypeId>>{name == "json" ? type_id("Json") : type_id("string"),type_id("int")}); }
+            if (name == "exactDecimal") { arity(1,1); return finish_builtin(type_id("Decimal"), "gungnir::model::Decimal", {type_id("string")}); }
+            if (name == "authorize") { arity(3,3); return finish_builtin(type_id("void"), "gungnir::language::runtime::authorize", {type_id("Request"),type_id("string"),std::nullopt}); }
             if (name == "allow" || name == "deny") { arity(0, name == "allow" ? 0 : 1); return finish_builtin(type_id("Decision"), "gungnir::auth::Decision::" + name, {type_id("string")}); }
         }
         if (callable_id == invalid_id && receiver != invalid_id) {
@@ -438,7 +440,10 @@ public:
                 static const std::unordered_set<std::string> modifiers{"nullable","defaultValue","unique","index","primary","unsigned","references","on","onDelete","onUpdate","cascadeOnDelete","cascadeOnUpdate","restrictOnDelete","nullOnDelete"};
                 if (modifiers.contains(name)) { arity(0, 1); return finish_builtin(unoptional(receiver), snake(name)); }
             }
+            if (callable_id == invalid_id && t.name == "Decimal" && (name == "string" || name == "toDouble")) { arity(0,0); return finish_builtin(type_id(name == "string" ? "string" : "double"), name == "string" ? "string" : "to_double"); }
             if (callable_id == invalid_id && t.name == "Request") {
+                if (name == "structuredInput") { arity(0,0); return finish_builtin(type_id("Json"), "structured_input"); }
+                if (name == "validate") { arity(1,1); return finish_builtin(type_id("Json"), "gungnir::language::runtime::validate", {type_id("Json")}); }
                 static const std::unordered_set<std::string> strings{"header","parameter","query","input","body","path","target"};
                 if (strings.contains(name)) { const auto count = name == "body" || name == "path" || name == "target" ? 0 : 1; arity(count,count); return finish_builtin(type_id("string"), name, {type_id("string")}); }
             }

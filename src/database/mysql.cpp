@@ -212,8 +212,8 @@ encode_bindings(
         auto& item =
             storage[index];
 
-        const auto& value =
-            values[index];
+        auto value = values[index];
+        if (const auto* decimal = std::get_if<model::Decimal>(&value)) value = decimal->string();
 
         if (
             std::holds_alternative<
@@ -452,10 +452,12 @@ model::AttributeValue decode_value(
                     parse_signed(value)
                   };
 
-    case MYSQL_TYPE_FLOAT:
-    case MYSQL_TYPE_DOUBLE:
     case MYSQL_TYPE_DECIMAL:
     case MYSQL_TYPE_NEWDECIMAL:
+        return model::Decimal{value};
+
+    case MYSQL_TYPE_FLOAT:
+    case MYSQL_TYPE_DOUBLE:
         return parse_number(value);
 
     case MYSQL_TYPE_NULL:

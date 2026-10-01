@@ -1,6 +1,9 @@
 #pragma once
 
 #include <optional>
+#include <limits>
+#include <utility>
+#include <gungnir/model/decimal.hpp>
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_map>
@@ -17,6 +20,7 @@ using AttributeValue = std::variant<
     Int64,
     UInt64,
     Double,
+    Decimal,
     String
 >;
 
@@ -46,7 +50,11 @@ template <typename T>
         }
 
         return T{value_cast<Inner>(value)};
+    } else if constexpr (std::same_as<T, Decimal>) {
+        if (const auto* found = std::get_if<Decimal>(&value)) return *found;
+        if (const auto* found = std::get_if<String>(&value)) return Decimal{*found};
     } else if constexpr (std::same_as<T, String>) {
+        if (const auto* found = std::get_if<Decimal>(&value)) return found->string();
         if (const auto* found = std::get_if<String>(&value)) {
             return *found;
         }
@@ -64,14 +72,23 @@ template <typename T>
         }
     } else if constexpr (std::signed_integral<T>) {
         if (const auto* found = std::get_if<Int64>(&value)) {
+            if constexpr (std::integral<T>) {
+                if (!std::in_range<T>(*found)) throw std::out_of_range("Database integer is outside the model field range");
+            }
             return static_cast<T>(*found);
         }
 
         if (const auto* found = std::get_if<UInt64>(&value)) {
+            if constexpr (std::integral<T>) {
+                if (!std::in_range<T>(*found)) throw std::out_of_range("Database integer is outside the model field range");
+            }
             return static_cast<T>(*found);
         }
     } else if constexpr (std::unsigned_integral<T>) {
         if (const auto* found = std::get_if<UInt64>(&value)) {
+            if constexpr (std::integral<T>) {
+                if (!std::in_range<T>(*found)) throw std::out_of_range("Database integer is outside the model field range");
+            }
             return static_cast<T>(*found);
         }
 
@@ -80,6 +97,9 @@ template <typename T>
                 throw std::invalid_argument(
                     "Cannot assign a negative database value to an unsigned model field"
                 );
+            }
+            if constexpr (std::integral<T>) {
+                if (!std::in_range<T>(*found)) throw std::out_of_range("Database integer is outside the model field range");
             }
             return static_cast<T>(*found);
         }
@@ -110,7 +130,7 @@ template <typename T>
         }
 
         return to_value(*value);
-    } else if constexpr (std::same_as<T, String>) {
+    } else if constexpr (std::same_as<T, String> || std::same_as<T, Decimal>) {
         return value;
     } else if constexpr (std::same_as<T, Boolean>) {
         return value;

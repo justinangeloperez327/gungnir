@@ -1,5 +1,6 @@
 #pragma once
 #include <gungnir/gungnir.hpp>
+#include <gungnir/core/services.hpp>
 #include <gungnir/queue/job.hpp>
 #include <gungnir/queue/worker.hpp>
 #include <charconv>
@@ -9,6 +10,19 @@
 #include <stdexcept>
 #include <vector>
 namespace gungnir::language::runtime {
+inline Json validate(Request& request, const Json& definitions) {
+    if (!definitions.is_object()) throw std::invalid_argument("Validation rules must be an object");
+    validation::Rules rules;
+    for (const auto& [field, expression] : definitions.as_object()) {
+        if (!expression.is_string()) throw std::invalid_argument("Validation rule expressions must be strings");
+        rules.add(field, expression.string());
+    }
+    return request.validate_structured(rules);
+}
+template<class Resource> void authorize(Request& request,String ability,const Resource& resource) {
+    auto authorization = request.services().resolve<auth::ResourceAuthorization>();
+    authorization->authorize(request,ability,resource);
+}
 template<class T> auto hold_receiver(T& value) { return std::ref(value); }
 template<class T> auto hold_receiver(T&& value) { return std::forward<T>(value); }
 template<class T> T& receiver(std::reference_wrapper<T>& value) { return value.get(); }
@@ -39,6 +53,7 @@ template<class Range,class Fn> void each(const Range& range, Fn fn) { for (const
 template<class T> T decode(const Json& value) {
     if constexpr (std::same_as<T,Json>) return value;
     else if constexpr (model::is_optional_v<T>) { if (value.is_null()) return std::nullopt; return T{decode<typename model::is_optional<T>::value_type>(value)}; }
+    else if constexpr (std::same_as<T,model::Decimal>) { if (!value.is_string()) throw std::invalid_argument("Exact decimal payload must be a string"); return model::Decimal{value.string()}; }
     else if constexpr (std::same_as<T,String>) { if (!value.is_string()) throw std::invalid_argument("Expected string payload"); return value.string(); }
     else if constexpr (std::same_as<T,bool>) { if (!value.is_boolean()) throw std::invalid_argument("Expected bool payload"); return value.string() == "true"; }
     else if constexpr (std::integral<T>) { if (!value.is_integer()) throw std::invalid_argument("Expected integer payload"); T result{}; const auto text = value.string(); auto [end,error] = std::from_chars(text.data(),text.data()+text.size(),result); if (error != std::errc{} || end != text.data()+text.size()) throw std::invalid_argument("Invalid integer payload"); return result; }
@@ -95,6 +110,18 @@ public:
     std::vector<std::string> channels() const override { return source_.via(recipient_); }
     auto to_mail() const requires requires { source_.toMail(recipient_); } { return source_.toMail(recipient_); }
     auto to_database() const requires requires { source_.toDatabase(recipient_); } { return source_.toDatabase(recipient_); }
+    std::optional<mail::Message> mail_message() const override {
+        if constexpr (requires { source_.toMail(recipient_); }) {
+            auto value = source_.toMail(recipient_);
+            if constexpr (requires { value.message(); }) return value.message();
+            else return value;
+        }
+        return std::nullopt;
+    }
+    std::optional<Json> database_payload() const override {
+        if constexpr (requires { source_.toDatabase(recipient_); }) return http::make_json(source_.toDatabase(recipient_));
+        return std::nullopt;
+    }
 };
 
 }

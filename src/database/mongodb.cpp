@@ -339,6 +339,13 @@ void append_binding(
         return;
     }
 
+    if (const auto* decimal = std::get_if<model::Decimal>(&value)) {
+        bson_decimal128_t encoded{};
+        if (!bson_decimal128_from_string(decimal->string().c_str(), &encoded))
+            throw std::out_of_range("Decimal is outside MongoDB Decimal128 range");
+        BSON_APPEND_DECIMAL128(target, key, &encoded);
+        return;
+    }
     const auto* string =
         std::get_if<String>(
             &value
@@ -974,7 +981,7 @@ model::AttributeValue bson_value(
             text
         );
 
-        return String{text};
+        return model::Decimal{text};
     }
 
     if (

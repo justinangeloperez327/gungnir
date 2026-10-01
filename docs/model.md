@@ -17,7 +17,7 @@ model User {
 }
 ```
 
-The structured compiler emits native attribute descriptors and table/connection/fillable/hidden/visible/cast metadata. Metadata-only attributes receive inferred fields. Serialization enforcement and runtime cast semantics remain separate ORM work; metadata emission does not guarantee those effects.
+The structured compiler emits native attribute descriptors and table/connection/fillable/hidden/visible/cast metadata. Metadata-only attributes receive inferred fields. JSON and view serialization honor native/generated `hidden` and `visible` metadata; hidden fields always win. Persistence and dirty tracking still use all attributes. Decimal casts generate exact `model::Decimal` fields. Other runtime casting follows each declared field type.
 
 ## Limits and planned work
 

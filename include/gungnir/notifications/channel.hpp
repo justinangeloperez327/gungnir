@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdexcept>
+#include <memory>
+#include <vector>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -18,6 +20,11 @@ public:
 
 class Manager {
 public:
+    Manager& channel(std::string name, std::shared_ptr<Channel> channel) {
+        if (!channel) throw std::invalid_argument("Notification channel cannot be null");
+        channels_.insert_or_assign(std::move(name), channel.get());
+        owners_.push_back(std::move(channel)); return *this;
+    }
     Manager& channel(std::string name, Channel& channel) {
         channels_.insert_or_assign(std::move(name), &channel);
         return *this;
@@ -35,6 +42,7 @@ public:
 
 private:
     std::unordered_map<std::string, Channel*> channels_;
+    std::vector<std::shared_ptr<Channel>> owners_;
 };
 
 } // namespace gungnir::notifications

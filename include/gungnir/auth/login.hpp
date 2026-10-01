@@ -1,0 +1,129 @@
+#pragma once
+#include <chrono>
+#include <mutex>
+#include <unordered_map>
+#include <gungnir/auth/session.hpp>
+#include <gungnir/auth/password.hpp>
+#include <gungnir/auth/context.hpp>
+#include <gungnir/http/request.hpp>
+#include <gungnir/http/response.hpp>
+#include <gungnir/session/session.hpp>
+
+namespace gungnir::auth {
+struct PasswordIdentity { Identity identity; std::string password_hash; };
+using PasswordResolver = std::function<std::optional<PasswordIdentity>(std::string_view)>;
+
+class RememberStore {
+public:
+    virtual ~RememberStore() = default;
+    virtual void put(std::string digest, std::string identity, std::chrono::system_clock::time_point expires) = 0;
+    // Atomically consume a token so replay cannot authenticate twice.
+    virtual std::optional<std::string> consume(std::string_view digest) = 0;
+    virtual void revoke(std::string_view digest) = 0;
+};
+class MemoryRememberStore final : public RememberStore {
+    struct Entry { std::string identity; std::chrono::system_clock::time_point expires; };
+    std::mutex mutex_;
+    std::unordered_map<std::string, Entry> entries_;
+public:
+    void put(std::string digest, std::string identity, std::chrono::system_clock::time_point expires) override {
+        std::lock_guard lock{mutex_};
+        const auto now = std::chrono::system_clock::now();
+        std::erase_if(entries_, [&](const auto& item) { return item.second.expires <= now; });
+        entries_.insert_or_assign(std::move(digest), Entry{std::move(identity), expires});
+    }
+    std::optional<std::string> consume(std::string_view digest) override {
+        std::lock_guard lock{mutex_};
+        auto found = entries_.find(std::string{digest});
+        if (found == entries_.end()) return std::nullopt;
+        auto entry = std::move(found->second); entries_.erase(found);
+        if (entry.expires <= std::chrono::system_clock::now()) return std::nullopt;
+        return std::move(entry.identity);
+    }
+    void revoke(std::string_view digest) override { std::lock_guard lock{mutex_}; entries_.erase(std::string{digest}); }
+};
+
+struct LoginOptions {
+    SessionOptions session;
+    std::string remember_cookie{"gungnir_remember"};
+    std::chrono::seconds remember_for{std::chrono::hours{24 * 30}};
+    bool secure{true};
+};
+// Use after session and AuthenticateSession middleware. Password hashes and
+// remember digests stay in providers/stores; they are never exposed as Identity attributes.
+class SessionGuard {
+public:
+    SessionGuard(PasswordResolver credentials, SessionIdentityResolver identities,
+        std::shared_ptr<RememberStore> remember = {}, LoginOptions options = {})
+        : credentials_(std::move(credentials)), identities_(std::move(identities)), remember_(std::move(remember)), options_(std::move(options)) {
+        if (!credentials_ || !identities_ || options_.remember_for.count() <= 0)
+            throw std::invalid_argument("SessionGuard requires identity providers and a positive remember lifetime");
+    }
+    bool attempt(http::Request& request, http::Response& response, std::string_view login,
+        std::string_view password, bool remember = false) const {
+        auto account = credentials_(login);
+        // Use a real dummy hash for an unknown account to avoid a cheap timing oracle.
+        static const auto dummy = Password::hash(security::random_token());
+        const bool valid = Password::verify(password, account ? account->password_hash : dummy);
+        if (!account || !valid) return false;
+        this->login(request, response, account->identity, remember);
+        return true;
+    }
+    void login(http::Request& request, http::Response& response, Identity identity, bool remember = false) const {
+        if (!request.has_session()) throw std::logic_error("Login requires session middleware");
+        if (identity.id.empty()) throw std::invalid_argument("Login identity cannot be empty");
+        if (remember && !remember_) throw std::logic_error("Remember login requires a token store");
+        revoke(request);
+        request.session().regenerate();
+        request.session().put(options_.session.key, identity.id);
+        request.session().forget("_gungnir_csrf_token");
+        if (!request.has_auth()) request.attach_auth(std::make_shared<Context>());
+        request.auth().login(identity);
+        if (remember) issue(request, response, identity.id);
+        else expire(response);
+    }
+    bool recall(http::Request& request, http::Response& response) const {
+        if (!request.has_session()) throw std::logic_error("Remember login requires session middleware");
+        if (request.authenticated() || !remember_) return false;
+        const auto token = request.cookie(options_.remember_cookie);
+        if (token.empty() || token.size() != 64) return false;
+        auto id = remember_->consume(Password::token_digest(token));
+        if (!id) { expire(response); return false; }
+        auto identity = identities_(*id);
+        if (!identity || identity->id != *id) { expire(response); return false; }
+        login(request, response, *identity, true);
+        return true;
+    }
+    void logout(http::Request& request, http::Response& response) const {
+        if (!request.has_session()) throw std::logic_error("Logout requires session middleware");
+        revoke(request);
+        request.session().invalidate();
+        if (request.has_auth()) request.auth().logout();
+        expire(response);
+    }
+private:
+    void revoke(http::Request& request) const {
+        if (remember_) {
+            const auto digest = request.session().get("_gungnir_remember_digest");
+            if (!digest.empty()) remember_->revoke(digest);
+            const auto token = request.cookie(options_.remember_cookie);
+            if (token.size() == 64) remember_->revoke(Password::token_digest(token));
+        }
+        request.session().forget("_gungnir_remember_digest");
+    }
+    void issue(http::Request& request, http::Response& response, const std::string& identity) const {
+        auto token = security::random_token();
+        auto digest = Password::token_digest(token);
+        remember_->put(digest, identity, std::chrono::system_clock::now() + options_.remember_for);
+        request.session().put("_gungnir_remember_digest", std::move(digest));
+        response.cookie(http::Cookie{.name = options_.remember_cookie, .value = std::move(token), .max_age = options_.remember_for, .secure = options_.secure});
+    }
+    void expire(http::Response& response) const {
+        response.cookie(http::Cookie{.name = options_.remember_cookie, .value = "", .max_age = std::chrono::seconds{0}, .secure = options_.secure});
+    }
+    PasswordResolver credentials_;
+    SessionIdentityResolver identities_;
+    std::shared_ptr<RememberStore> remember_;
+    LoginOptions options_;
+};
+}

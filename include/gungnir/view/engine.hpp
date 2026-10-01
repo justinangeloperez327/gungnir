@@ -1,6 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <unordered_map>
+#include <vector>
 #include <shared_mutex>
 #include <string_view>
 
@@ -11,6 +14,10 @@ namespace gungnir::view {
 
 class Engine {
 public:
+    using Helper = std::function<Value(const std::vector<Value>&)>;
+    Engine& helper(String name, Helper helper);
+    [[nodiscard]] String source(std::string_view name) const;
+    [[nodiscard]] Value call(std::string_view name, const std::vector<Value>& arguments) const;
     explicit Engine(std::filesystem::path root = "views");
 
     Engine& root(std::filesystem::path value);
@@ -31,6 +38,7 @@ public:
 private:
     mutable std::shared_mutex mutex_;
     std::filesystem::path root_;
+    std::unordered_map<String, Helper> helpers_;
 };
 
 } // namespace gungnir::view

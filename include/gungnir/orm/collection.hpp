@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <algorithm>
+#include <map>
+#include <limits>
 #include <functional>
 #include <optional>
 #include <stdexcept>
@@ -151,6 +154,77 @@ public:
         }
 
         return result;
+    }
+
+    template<class Predicate> [[nodiscard]] bool contains(Predicate predicate) const {
+        return std::any_of(values_.begin(), values_.end(), std::move(predicate));
+    }
+    template<class Predicate> [[nodiscard]] bool every(Predicate predicate) const {
+        return std::all_of(values_.begin(), values_.end(), std::move(predicate));
+    }
+    template<class Predicate> [[nodiscard]] Collection reject(Predicate predicate) const {
+        return filter([&](const auto& item) { return !std::invoke(predicate,item); });
+    }
+    template<class Result,class Callback> [[nodiscard]] Result reduce(Result initial, Callback callback) const {
+        for (const auto& item : values_) initial = std::invoke(callback,std::move(initial),item);
+        return initial;
+    }
+    [[nodiscard]] Collection take(std::size_t count) const {
+        return Collection{container_type{values_.begin(), values_.begin() + std::min(count,size())}};
+    }
+    [[nodiscard]] Collection skip(std::size_t count) const {
+        return Collection{container_type{values_.begin() + std::min(count,size()), values_.end()}};
+    }
+    [[nodiscard]] std::vector<Collection> chunk(std::size_t count) const {
+        if (!count) throw std::invalid_argument("Collection chunk size must be positive");
+        std::vector<Collection> result;
+        for (std::size_t i = 0; i < size();) {
+            auto end = i + std::min(count,size()-i);
+            result.emplace_back(container_type{values_.begin()+i,values_.begin()+end}); i=end;
+        }
+        return result;
+    }
+    template<class Projection> [[nodiscard]] Collection sort_by(Projection projection, bool descending = false) const {
+        auto result = *this;
+        std::stable_sort(result.values_.begin(),result.values_.end(),[&](const auto& a,const auto& b) {
+            return descending ? std::invoke(projection,b) < std::invoke(projection,a) : std::invoke(projection,a) < std::invoke(projection,b);
+        });
+        return result;
+    }
+    template<class Projection> [[nodiscard]] auto group_by(Projection projection) const {
+        using Key = std::remove_cvref_t<std::invoke_result_t<Projection,const Model&>>;
+        std::map<Key,Collection> result;
+        for (const auto& item : values_) result[std::invoke(projection,item)].push(item);
+        return result;
+    }
+    template<class Projection> [[nodiscard]] auto key_by(Projection projection) const {
+        using Key = std::remove_cvref_t<std::invoke_result_t<Projection,const Model&>>;
+        std::map<Key,Model> result;
+        for (const auto& item : values_) result.insert_or_assign(std::invoke(projection,item),item);
+        return result;
+    }
+    template<class Projection> [[nodiscard]] Collection unique(Projection projection) const {
+        using Key = std::remove_cvref_t<std::invoke_result_t<Projection,const Model&>>;
+        std::vector<Key> seen; Collection result;
+        for (const auto& item : values_) {
+            auto key = std::invoke(projection,item);
+            if (std::find(seen.begin(),seen.end(),key) == seen.end()) { seen.push_back(std::move(key)); result.push(item); }
+        }
+        return result;
+    }
+    template<class Projection> [[nodiscard]] auto sum(Projection projection) const {
+        using Number = std::remove_cvref_t<std::invoke_result_t<Projection,const Model&>>;
+        Number total{};
+        for (const auto& item : values_) {
+            auto value = std::invoke(projection,item);
+            if constexpr (std::integral<Number>) {
+                if ((value > 0 && total > std::numeric_limits<Number>::max()-value) ||
+                    (std::signed_integral<Number> && value < 0 && total < std::numeric_limits<Number>::min()-value))
+                    throw std::overflow_error("Collection sum overflow");
+            }
+            total += value;
+        }
+        return total;
     }
 
     void push(Model value) {

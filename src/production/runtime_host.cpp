@@ -107,11 +107,9 @@ void RuntimeHost::start() {
         );
     }
 
-    threads_.reserve(
-        services_.size()
-    );
-
     try {
+        if (!application_->is_booted()) application_->boot();
+        threads_.reserve(services_.size());
         for (
             const auto& service :
             services_
@@ -122,6 +120,7 @@ void RuntimeHost::start() {
                     run = service.run
                 ]() mutable {
                     try {
+                        auto context = application_->activate();
                         run(
                             supervisor_.token()
                         );
@@ -151,6 +150,7 @@ ShutdownResult RuntimeHost::shutdown() {
 
     if (result.graceful) {
         join();
+        application_->shutdown();
     }
 
     return result;
