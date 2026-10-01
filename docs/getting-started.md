@@ -23,7 +23,7 @@ gungnir new hello
 cd hello
 ```
 
-The generator creates `.gungnir-project`, environment configuration, application and route directories, and a welcome view. Some generated declarations still use legacy C++ class syntax; the current frontend also accepts first-class controller declarations.
+The generator creates a structured project, environment configuration, application and route directories, a welcome view, and an editable `bootstrap/app.hpp`.
 
 Replace `app/controllers/home_controller.gnr` with:
 
@@ -44,30 +44,22 @@ Route::get("/", HomeController::index);
 ## Validate and run
 
 ```sh
-gungnirc app/controllers/home_controller.gnr --check
+gungnirc app/controllers/home_controller.gnr --strict --check
 gungnir build
 gungnir run
 ```
 
 The generated environment uses `APP_HOST=127.0.0.1` and `APP_PORT=8000`. Open `http://127.0.0.1:8000/`; the expected response is `Hello from Gungnir`.
 
-`--check` runs frontend/lowering diagnostics for one file. `gungnir build` also compiles generated native code against the installed framework. Both checks matter. `gungnir dev` runs in development mode; it does not provide a file-watch/hot-reload guarantee.
+`--check` runs frontend/lowering diagnostics for one file. `gungnir build` also compiles generated native code against the installed framework. Both checks matter. `gungnir dev` watches sources, configuration, bootstrap, and views, rebuilds after changes, and restarts the application on a successful build. See [CLI details](cli-codegen.md).
 
 ## Inspect generated C++
 
 ```sh
-gungnirc app/controllers/home_controller.gnr -o .gungnir/home_controller.cpp
+gungnirc app/controllers/home_controller.gnr --strict -o .gungnir/home_controller.cpp
 ```
 
-Standalone generated code needs framework includes and aliases supplied by a native translation unit. Project builds supply this bootstrap. A compile-only wrapper for inspecting the controller is:
-
-```cpp
-#include <gungnir/controller/controller.hpp>
-using gungnir::Response;
-#include "home_controller.cpp"
-```
-
-Compile that wrapper with the Gungnir include directory and `-std=c++23` (or the equivalent compiler option). A compile-only check validates the real interfaces; it does not link or run the HTTP server.
+Structured output includes the runtime headers and can be compiled with the installed Gungnir include directory and `-std=c++23` (or the equivalent compiler option). Use `gungnir build` to link the framework and supply the project bootstrap. Imported modules must be checked together through the project build or `gungnirc ROOT --project`.
 
 ## Next steps
 
@@ -78,4 +70,4 @@ Compile that wrapper with the Gungnir include directory and `-std=c++23` (or the
 
 ## Verification scope
 
-The controller above is checked through the current transpiler and a native compile-only wrapper. The build/install/run commands describe the project CLI path; they require a full checkout and a configured CMake toolchain. They do not constitute a live database, TLS or production load test.
+The project integration test installs the framework, generates and compiles an application, checks HTTP startup, and exercises incremental rebuilds and development restarts. It does not replace external-service or production load tests.

@@ -85,3 +85,5 @@ Gungnir is experimental. Start with the current usage guides below. The full pro
 - [Transpiler](transpiler.md)
 
 - [Compiler profiles and feature status](compiler-profiles.md)
+
+[Editor tooling](editor-tooling.md) covers the structured language server and formatter.

@@ -1,251 +1,65 @@
 #include <exception>
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <string>
-#include <string_view>
-#include <vector>
-
 #include <gungnir/cli/project.hpp>
-
+#include <gungnir/cli/lsp.hpp>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 namespace {
-
-constexpr std::string_view version{
-    "0.1.0"
-};
-
 void help() {
-    std::cout
-        << "Gungnir " << version << "\n\n"
-        << "Usage:\n"
-        << "  gungnir new <name> [path]\n"
-        << "  gungnir build [--release]\n"
-        << "  gungnir run [--release]\n"
-        << "  gungnir dev\n"
-        << "  gungnir make:model <name>\n"
-        << "  gungnir make:controller <name>\n"
-        << "  gungnir make:middleware <name>\n"
-        << "  gungnir make:migration <name>\n"
-        << "  gungnir make:request <name>\n"
-        << "  gungnir make:job <name>\n"
-        << "  gungnir migrate\n"
-        << "  gungnir migrate:rollback\n"
-        << "  gungnir migrate:reset\n"
-        << "  gungnir migrate:status\n"
-        << "  gungnir migrate:plan\n"
-        << "  gungnir --version\n";
+    std::cout << "Gungnir 0.1.0\n\n"
+        "  gungnir new <name> [path]\n"
+        "  gungnir build|run [--release]\n"
+        "  gungnir dev\n"
+        "  gungnir lsp\n"
+        "  gungnir make:model|controller|middleware|migration|request|job|event|mail <name>\n"
+        "  gungnir make:listener|policy|notification <name> <module.path::Type>\n"
+        "  gungnir migrate[:rollback|:reset|:status|:plan] [--release]\n";
 }
-
-bool release_flag(
-    const std::vector<std::string>& arguments
-) {
-    for (const auto& argument : arguments) {
-        if (argument == "--release") {
-            return true;
-        }
-    }
-
-    return false;
 }
-
-} // namespace
-
-int main(
-    int argc,
-    char** argv
-) {
-    if (argc < 2) {
-        help();
-        return 0;
-    }
-
-    const std::string command{
-        argv[1]
-    };
-
-    if (
-        command == "--help" ||
-        command == "-h" ||
-        command == "help"
-    ) {
-        help();
-        return 0;
-    }
-
-    if (
-        command == "--version" ||
-        command == "-V"
-    ) {
-        std::cout
-            << "Gungnir "
-            << version
-            << '\n';
-
-        return 0;
-    }
-
+int main(int argc,char** argv) {
     try {
-        if (command == "new") {
-            if (argc < 3) {
-                throw std::invalid_argument(
-                    "new requires a project name"
-                );
-            }
-
-            const std::string name{
-                argv[2]
-            };
-
-            const auto destination =
-                argc >= 4
-                    ? std::filesystem::path{
-                        argv[3]
-                    }
-                    : std::filesystem::path{
-                        name
-                    };
-
-            const auto project =
-                gungnir::cli::Project::create(
-                    destination,
-                    name
-                );
-
-            std::cout
-                << "Created Gungnir project: "
-                << project.root().string()
-                << '\n';
-
-            return 0;
+        const std::string command=argc>1?argv[1]:"help";
+        if(command=="help" || command=="--help" || command=="-h") { help(); return 0; }
+        if(command=="--version" || command=="-V") { std::cout << "Gungnir 0.1.0\n"; return 0; }
+        if(command=="lsp") {
+            if(argc!=2) throw std::invalid_argument("Usage: gungnir lsp");
+#ifdef _WIN32
+            _setmode(_fileno(stdin),_O_BINARY); _setmode(_fileno(stdout),_O_BINARY);
+#endif
+            return gungnir::cli::run_language_server(std::cin,std::cout);
         }
-
-        std::vector<std::string> arguments;
-
-        for (
-            int index = 2;
-            index < argc;
-            ++index
-        ) {
-            arguments.emplace_back(
-                argv[index]
-            );
+        if(command=="new") {
+            if(argc<3 || argc>4) throw std::invalid_argument("Usage: gungnir new <name> [path]");
+            const auto project=gungnir::cli::Project::create(argc==4?argv[3]:argv[2],argv[2]);
+            std::cout << "Created Gungnir project: " << project.root().string() << '\n'; return 0;
         }
-
-        auto project =
-            gungnir::cli::Project::open();
-
-        if (command == "build") {
-            return project.build(
-                release_flag(arguments)
-            );
-        }
-
-        if (command == "dev") {
-            return project.run(false);
-        }
-
-        if (command == "run") {
-            return project.run(
-                release_flag(arguments)
-            );
-        }
-
-        if (
-            command == "migrate" ||
-            command == "migrate:rollback" ||
-            command == "migrate:reset" ||
-            command == "migrate:status" ||
-            command == "migrate:plan"
-        ) {
-            return project.migrate(
-                command,
-                release_flag(arguments)
-            );
-        }
-
-        if (
-            command == "make:model" ||
-            command == "make:controller" ||
-            command == "make:middleware" ||
-            command == "make:migration" ||
-            command == "make:request" ||
-            command == "make:job"
-        ) {
-            if (argc < 3) {
-                throw std::invalid_argument(
-                    command +
-                    " requires a name"
-                );
-            }
-
+        auto project=gungnir::cli::Project::open();
+        if(command.starts_with("make:")) {
+            if(argc<3 || argc>4) throw std::invalid_argument("Generator requires a name and, where applicable, module.path::Type");
+            const auto kind=command.substr(5);
             std::filesystem::path created;
-
-            if (command == "make:model") {
-                created =
-                    project.make_model(
-                        argv[2]
-                    );
-            } else if (
-                command ==
-                "make:controller"
-            ) {
-                created =
-                    project.make_controller(
-                        argv[2]
-                    );
-            } else if (
-                command ==
-                "make:middleware"
-            ) {
-                created =
-                    project.make_middleware(
-                        argv[2]
-                    );
-            } else if (
-                command ==
-                "make:migration"
-            ) {
-                created =
-                    project.make_migration(
-                        argv[2]
-                    );
-            } else if (
-                command ==
-                "make:request"
-            ) {
-                created =
-                    project.make_request(
-                        argv[2]
-                    );
-            } else {
-                created =
-                    project.make_job(
-                        argv[2]
-                    );
+            if(project.structured()) created=project.make(kind,argv[2],argc==4?argv[3]:"");
+            else {
+                if(argc!=3) throw std::invalid_argument("Legacy generators take one name");
+                if(kind=="model") created=project.make_model(argv[2]);
+                else if(kind=="controller") created=project.make_controller(argv[2]);
+                else if(kind=="middleware") created=project.make_middleware(argv[2]);
+                else if(kind=="migration") created=project.make_migration(argv[2]);
+                else throw std::invalid_argument("Generator requires profile=structured");
             }
-
-            std::cout
-                << "Created "
-                << std::filesystem::relative(
-                    created,
-                    project.root()
-                ).generic_string()
-                << '\n';
-
-            return 0;
+            std::cout << "Created " << std::filesystem::relative(created,project.root()).generic_string() << '\n'; return 0;
         }
-
-        throw std::invalid_argument(
-            "Unknown command: " +
-            command
-        );
-    } catch (
-        const std::exception& error
-    ) {
-        std::cerr
-            << "gungnir: error: "
-            << error.what()
-            << '\n';
-
-        return 1;
-    }
+        if(command=="dev") { if(argc!=2) throw std::invalid_argument("Usage: gungnir dev"); return project.dev(); }
+        if(argc>3 || (argc==3 && std::string{argv[2]}!="--release")) throw std::invalid_argument("Only --release is supported for this command");
+        const bool release=argc==3;
+        if(command=="build") return project.build(release);
+        if(command=="run") return project.run(release);
+        if(command=="migrate" || command=="migrate:rollback" || command=="migrate:reset" || command=="migrate:status" || command=="migrate:plan") return project.migrate(command,release);
+        throw std::invalid_argument("Unknown command: " + command);
+    } catch(const std::exception& e) { std::cerr << "gungnir: error: " << e.what() << '\n'; return 1; }
 }

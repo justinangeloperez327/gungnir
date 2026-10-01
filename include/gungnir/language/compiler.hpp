@@ -148,9 +148,12 @@ class ProgramValidator {
 public:
     [[nodiscard]] ValidationResult validate(SyntaxProject project, const CompilerOptions& options = {}) const;
 };
+struct EmittedUnit { std::string module, code; };
+struct EmittedProject { std::string declarations; std::vector<EmittedUnit> units; };
 class CppEmitter {
 public:
     [[nodiscard]] std::string emit(const ValidatedProject& project, bool line_directives = true) const;
+    [[nodiscard]] EmittedProject emit_units(const ValidatedProject& project, bool line_directives = true) const;
 };
 struct CompilationResult {
     std::string code;
@@ -158,8 +161,10 @@ struct CompilationResult {
     std::optional<ValidatedProject> validated;
     [[nodiscard]] bool success() const noexcept;
 };
+struct SourceFile { std::string file, module, source; };
 class Compiler {
 public:
+    [[nodiscard]] CompilationResult compile_sources(std::vector<SourceFile> files, const CompilerOptions& options = {}) const;
     [[nodiscard]] CompilationResult compile(std::string_view source, std::string file = "<memory>", const CompilerOptions& options = {}) const;
     [[nodiscard]] CompilationResult compile_project(const std::filesystem::path& root, const CompilerOptions& options = {}) const;
     [[nodiscard]] CompilationResult compile_files(const std::filesystem::path& root, std::vector<std::filesystem::path> files, const CompilerOptions& options = {}) const;

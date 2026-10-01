@@ -51,6 +51,9 @@ public:
         String name
     );
 
+    [[nodiscard]] std::filesystem::path make(std::string_view kind, String name, String dependency = {});
+    [[nodiscard]] bool structured() const;
+    int dev() const;
     [[nodiscard]] std::filesystem::path assemble() const;
     [[nodiscard]] std::filesystem::path assemble_migrations() const;
 
@@ -63,6 +66,7 @@ public:
 
 private:
     std::filesystem::path root_;
+    [[nodiscard]] std::filesystem::path assemble_structured() const;
 
     [[nodiscard]] static String normalize_class_name(
         std::string_view value

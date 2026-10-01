@@ -1,0 +1,155 @@
+"""Installed CLI: generators -> validation -> native build -> live HTTP + dev restart."""
+import os
+import pathlib
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+cli, project_arg, stage, sqlite = sys.argv[1:]
+project = pathlib.Path(project_arg)
+env = os.environ.copy()
+env["GUNGNIR_CMAKE_PREFIX"] = stage
+env["CMAKE_BUILD_PARALLEL_LEVEL"] = "2"
+
+
+def run(*args, expect=0):
+    value = subprocess.run([cli, *args], cwd=project, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=240)
+    if (expect is None and value.returncode == 0) or (expect is not None and value.returncode != expect):
+        raise AssertionError(f"{args}: exit {value.returncode}\n{value.stdout}")
+    return value.stdout
+
+
+for kind, name in (("model", "User"), ("event", "Created"), ("job", "Ping"), ("mail", "Welcome"), ("request", "StoreUser"), ("middleware", "Pass"), ("controller", "Extra"), ("migration", "create_users_table")):
+    run("make:" + kind, name)
+for kind, name, dependency in (("listener", "Record", "app.events.created::Created"), ("policy", "User", "app.models.user::User"), ("notification", "Greeting", "app.models.user::User")):
+    run("make:" + kind, name, dependency)
+# Exercise import ordering and injection in a real application.
+home = project / "app/controllers/home_controller.gnr"
+home.write_text("import app.controllers.extra_controller;\ncontroller HomeController { inject ExtraController extra; index() { return extra.index(); } }\n")
+extra = project / "app/controllers/extra_controller.gnr"
+extra.write_text("controller ExtraController { index() { return text('first'); } }\n")
+bootstrap = project / "bootstrap/app.hpp"
+bootstrap.write_text(bootstrap.read_text().replace("// Add service bindings, middleware, and providers here.", "app.middleware<PassMiddleware>();").replace("inline void boot(gungnir::Application&)", "inline void boot(gungnir::Application& app)").replace("// Services and generated listeners, policies, and jobs are registered.", """
+    auto events = app.container().resolve<gungnir::events::Dispatcher>();
+    if (events->listener_count(Created::event_name) != 1) throw std::logic_error("listener not registered");
+    events->dispatch(Created{1});
+    auto dispatcher = app.container().resolve<gungnir::queue::Dispatcher>();
+    dispatcher->dispatch(PingJob{});
+    if (!app.container().resolve<gungnir::queue::Worker>()->run_one()) throw std::logic_error("job not registered");
+    User user;
+    user.id = 7;
+    if (!app.container().resolve<gungnir::auth::ResourceAuthorization>()->inspect("view", user, user).allowed) throw std::logic_error("policy not registered");
+    (void)WelcomeMail{}.message();
+    (void)GreetingNotification{}.bind(user);
+"""))
+# Use a dynamically reserved port and tolerate startup scheduling variability.
+with socket.socket() as reservation:
+    reservation.bind(("127.0.0.1", 0))
+    port = reservation.getsockname()[1]
+env["APP_HOST"] = "127.0.0.1"
+env["APP_PORT"] = str(port)
+(project / ".env").write_text(f"APP_HOST=127.0.0.1\nAPP_PORT={port}\nAPP_ENV=testing\nAPP_DEBUG=true\nVIEW_PATH=views\nDB_CONNECTION=\n")
+run("build")
+generated = project / ".gungnir/generated"
+header = generated / "program.hpp"
+unit = generated / "app.controllers.extra_controller.cpp"
+header_time, unit_time = header.stat().st_mtime_ns, unit.stat().st_mtime_ns
+build = project / ".gungnir/build"
+objects = {p: p.stat().st_mtime_ns for p in build.rglob("*") if p.suffix in (".o", ".obj")}
+assert objects, "No native object files"
+run("build")
+assert header.stat().st_mtime_ns == header_time and unit.stat().st_mtime_ns == unit_time
+assert all(p.stat().st_mtime_ns == stamp for p, stamp in objects.items()), "No-op build recompiled native objects"
+# Migration planning is independent of a live database adapter.
+with (project / ".env").open("a") as output:
+    output.write("DB_CONNECTION=postgresql\n")
+assert 'CREATE TABLE' in run("migrate:plan")
+if sqlite == "ON":
+    with (project / ".env").open("a") as output:
+        output.write("DB_CONNECTION=sqlite\nDB_DATABASE=" + str(project / "test.sqlite") + "\n")
+    assert "1 migration(s) applied" in run("migrate")
+    assert "0 migration(s) applied" in run("migrate")
+    assert "[x] create_users_table" in run("migrate:status")
+    assert "1 migration(s) rolled back" in run("migrate:rollback")
+# Remove the DB selection before HTTP startup.
+(project / ".env").write_text(f"APP_HOST=127.0.0.1\nAPP_PORT={port}\nAPP_ENV=testing\nAPP_DEBUG=true\nVIEW_PATH=views\nDB_CONNECTION=\n")
+
+
+def wait_response(expected, process, timeout=180):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise AssertionError(f"App exited {process.returncode}; see {project / 'dev.log'}")
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
+                if response.status == 200 and response.read().decode() == expected:
+                    return
+        except (OSError, urllib.error.URLError):
+            pass
+        time.sleep(0.1)
+    raise AssertionError(f"Timed out waiting for {expected}; see {project / 'dev.log'}")
+
+
+def stop(process):
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+        raise AssertionError("Process failed to stop")
+
+
+# `run` propagates child failure status, including bootstrap failures.
+with (project / ".env").open("a") as output:
+    output.write("DB_CONNECTION=does-not-exist\n")
+assert run("run", expect=1)
+(project / ".env").write_text(f"APP_HOST=127.0.0.1\nAPP_PORT={port}\nAPP_ENV=testing\nAPP_DEBUG=true\nVIEW_PATH=views\nDB_CONNECTION=\n")
+with (project / "dev.log").open("w") as log:
+    if os.name == "nt":
+        # Windows verifies native HTTP startup; signal/watch lifecycle runs on
+        # POSIX where Python can deliver the same console signals as a terminal.
+        binary = build / "Debug/app.exe"
+        if not binary.exists():
+            binary = build / "app.exe"
+        process = subprocess.Popen([str(binary)], cwd=project, env=env, stdout=log, stderr=log)
+    else:
+        process = subprocess.Popen([cli, "dev"], cwd=project, env=env, stdout=log, stderr=log)
+    try:
+        wait_response("first", process)
+        if os.name != "nt":
+            time.sleep(0.4)
+            extra.write_text("controller ExtraController { index() { return text('second'); } }\n")
+            wait_response("second", process)
+            assert header.stat().st_mtime_ns == header_time, "Body edit changed the shared interface"
+            # Break an imported module: diagnostics appear and the healthy child stays up.
+            extra.write_text("controller ExtraController { index() { return absent; } }\n")
+            deadline = time.monotonic() + 15
+            while "Unknown" not in (project / "dev.log").read_text() and "Unresolved" not in (project / "dev.log").read_text():
+                if time.monotonic() > deadline:
+                    raise AssertionError("Missing rebuild diagnostic")
+                time.sleep(0.1)
+            wait_response("second", process, 5)
+            extra.write_text("controller ExtraController { index() { return text('third'); } }\n")
+            wait_response("third", process)
+            process.send_signal(signal.SIGINT)
+            assert process.wait(timeout=10) == 130
+            with socket.socket() as probe:
+                probe.settimeout(1)
+                assert probe.connect_ex(("127.0.0.1", port)) != 0, "Watcher left the child serving after exit"
+    finally:
+        if process.poll() is None:
+            stop(process)
+# Failed compilation and bad flags must be observable by CI callers.
+extra.write_text("controller ExtraController { index() { return missing; } }\n")
+run("build", expect=1)
+run("build", "--typo", expect=1)
+extra.write_text("controller ExtraController { index() { return text('valid'); } }\n")
+with bootstrap.open("a") as output:
+    output.write("\n#error intentional_native_failure\n")
+assert "intentional_native_failure" in run("build", expect=None)
+print("Generated application, incremental build, bootstrap, migrations, and dev checks passed")

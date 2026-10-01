@@ -72,6 +72,8 @@ class Emitter {
         case SyntaxExpressionKind::call: {
             const auto& callable = symbol(r.symbol); const auto& callee = s.expressions[e.operands[0]];
             std::string target = callable.cpp_name, receiver;
+            if (callable.owner != invalid_id && p.types()[symbol(callable.owner).type].name == "Next")
+                return access(callable.owner) + "(" + expr(e.operands.at(1)) + ")";
             if (callable.owner != invalid_id && (symbol(callable.owner).kind == ResolvedSymbolKind::local || symbol(callable.owner).kind == ResolvedSymbolKind::parameter)) target = access(callable.owner);
             bool receiver_argument = false;
             if (callee.kind == SyntaxExpressionKind::member) {
@@ -128,7 +130,7 @@ class Emitter {
     std::string result(const CallableSyntax& method, const CallableResolution& resolved) const { auto value = type(symbol(resolved.symbol).type); return method.asynchronous ? "gungnir::Task<" + value + ">" : value; }
     std::string params(const CallableSyntax& method,const CallableResolution& resolved,bool defaults = false) {
         std::string result; const auto& fn = symbol(resolved.symbol);
-        for (std::size_t i = 0; i < method.parameters.size(); ++i) { if (i) result += ','; result += type(fn.parameters[i]) + " " + method.parameters[i].name; if (defaults && method.parameters[i].default_value != invalid_id) result += " = " + expr(method.parameters[i].default_value); } return result;
+        for (std::size_t i = 0; i < method.parameters.size(); ++i) { if (i) result += ','; result += type(fn.parameters[i]) + (p.types()[fn.parameters[i]].name == "Request" ? "& " : " ") + method.parameters[i].name; if (defaults && method.parameters[i].default_value != invalid_id) result += " = " + expr(method.parameters[i].default_value); } return result;
     }
     std::string ns(std::size_t module) const { std::string name = s.modules[module].name; std::string value = "gnr"; for (char c : name) value += c == '.' ? "::" : std::string{c}; return name.empty() ? "" : "gnr::" + value.substr(3); }
     void open(std::size_t module) { if (!ns(module).empty()) out << "namespace " << ns(module) << " {\n"; }
@@ -136,7 +138,7 @@ class Emitter {
     void origin(const Origin& origin) { if (lines) out << "#line " << origin.line << ' ' << quote(origin.file) << '\n'; }
 public:
     Emitter(const ValidatedProject& project,bool lines) : p(project),s(project.syntax()),lines(lines) { for (std::size_t d = 0; d < s.declarations.size(); ++d) if (s.declarations[d].kind == DeclarationKind::model) for (auto f : p.declarations()[d].fields) model_fields.insert(f); }
-    std::string run() {
+    std::string declarations() {
         out << "// Generated from a validated Gungnir program.\n#include <gungnir/language/runtime.hpp>\n#include <optional>\n#include <tuple>\n";
         for (std::size_t d = 0; d < s.declarations.size(); ++d) { const auto& decl = s.declarations[d]; open(decl.module); if (decl.kind == DeclarationKind::function) out << result(decl.methods[0],p.declarations()[d].methods[0]) << ' ' << decl.name << '(' << params(decl.methods[0],p.declarations()[d].methods[0],true) << ");\n"; else out << "class " << decl.name << ";\n"; close(decl.module); }
         for (auto d : p.declaration_order()) {
@@ -145,6 +147,7 @@ public:
             open(module); origin(decl.origin); out << "class " << decl.name;
             switch (decl.kind) {
             case DeclarationKind::model: out << " : public gungnir::Model<" << decl.name << '>'; break;
+            case DeclarationKind::middleware: out << " : public gungnir::Middleware"; break;
             case DeclarationKind::controller: out << " : public gungnir::Controller"; break;
             case DeclarationKind::migration: out << " : public gungnir::Migration"; break;
             case DeclarationKind::event: out << " : public gungnir::events::Event"; break;
@@ -237,11 +240,23 @@ public:
             for (auto f : p.declarations()[d].fields) out << "attribute(" << quote(symbol(f).name) << ",&" << qualified << "::" << symbol(f).name << "),";
             out << "}; inline static constexpr auto relations = std::tuple{}; }; }\n";
         }
+        return out.str();
+    }
+    std::string definitions(std::size_t module = invalid_id) {
         // Out-of-class definitions keep declaration resolution independent of source order.
-        for (std::size_t d = 0; d < s.declarations.size(); ++d) { const auto& decl = s.declarations[d]; open(decl.module); for (std::size_t m = 0; m < decl.methods.size(); ++m) { const auto& method = decl.methods[m]; const auto& resolved = p.declarations()[d].methods[m]; origin(method.origin); out << result(method,resolved) << ' ' << (decl.kind == DeclarationKind::function ? "" : decl.name + "::") << method.name << '(' << params(method,resolved) << ") {\n"; async = method.asynchronous; return_type = symbol(resolved.symbol).type; for (auto id : method.body) out << stmt(id); if (async && type(symbol(resolved.symbol).type) == "void") out << "co_return;\n"; out << "}\n"; } close(decl.module); }
+        for (std::size_t d = 0; d < s.declarations.size(); ++d) { const auto& decl = s.declarations[d]; if (module != invalid_id && decl.module != module) continue; open(decl.module); for (std::size_t m = 0; m < decl.methods.size(); ++m) { const auto& method = decl.methods[m]; const auto& resolved = p.declarations()[d].methods[m]; origin(method.origin); out << result(method,resolved) << ' ' << (decl.kind == DeclarationKind::function ? "" : decl.name + "::") << method.name << '(' << params(method,resolved) << ") {\n"; async = method.asynchronous; return_type = symbol(resolved.symbol).type; for (auto id : method.body) out << stmt(id); if (async && type(symbol(resolved.symbol).type) == "void") out << "co_return;\n"; out << "}\n"; } close(decl.module); }
         return out.str();
     }
 };
 }
-std::string CppEmitter::emit(const ValidatedProject& project,bool line_directives) const { return Emitter{project,line_directives}.run(); }
+std::string CppEmitter::emit(const ValidatedProject& project,bool line_directives) const { return Emitter{project,line_directives}.declarations() + Emitter{project,line_directives}.definitions(); }
+EmittedProject CppEmitter::emit_units(const ValidatedProject& project, bool line_directives) const {
+    // The shared interface changes only when declarations change. CMake tracks
+    // that header and each module's implementation separately.
+    EmittedProject result;
+    result.declarations = "#pragma once\n" + Emitter{project,false}.declarations();
+    for (auto module : project.module_order()) result.units.push_back({project.syntax().modules[module].name,
+        "#include \"program.hpp\"\n" + Emitter{project,line_directives}.definitions(module)});
+    return result;
+}
 }

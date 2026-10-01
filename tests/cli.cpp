@@ -112,6 +112,11 @@ int main() {
         )
     );
 
+    // Projects without a profile retain the compatibility compiler contract.
+    std::ofstream{destination / ".gungnir-project"} << "name=sample-app\n";
+    std::ofstream{destination / "app/controllers/home_controller.gnr"}
+        << "class HomeController : Controller { Response index() { return text(\"ok\"); } }\n";
+
     const auto model =
         project.make_model("User");
     const auto post = project.make_model("Zpost");

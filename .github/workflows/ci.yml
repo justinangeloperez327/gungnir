@@ -10,7 +10,36 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  validate:
+    name: Validate · compiler and generated application
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsqlite3-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DGUNGNIR_WITH_SQLITE=ON
+      - name: Build validation targets
+        run: >
+          cmake --build build --parallel 2 --target
+          gungnir_public_headers gungnir_project_tooling_test
+          gungnir_frontend_diagnostics_test gungnir_structured_language_test
+          gungnir_structured_generated_test gungnir_language_test
+          gungnir_cli_test gungnir-cli gungnirc
+      - name: Validate
+        run: >
+          ctest --test-dir build --output-on-failure --no-tests=error
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|structured_generated|language|cli|lsp_protocol|cli_integration)$'
+
   postgresql:
     name: Integration · PostgreSQL
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -50,7 +79,7 @@ jobs:
       - name: Build adapter test
         run: cmake --build build --target gungnir_postgresql_integration_test --parallel
       - name: Test adapter
-        run: ctest --test-dir build -R "^gungnir.postgresql$" --output-on-failure
+        run: ctest --test-dir build --no-tests=error -R "^gungnir.postgresql$" --output-on-failure
 
   mysql:
     name: Integration · MySQL
@@ -90,7 +119,7 @@ jobs:
       - name: Build adapter test
         run: cmake --build build --target gungnir_mysql_integration_test --parallel
       - name: Test adapter
-        run: ctest --test-dir build -R "^gungnir.mysql$" --output-on-failure
+        run: ctest --test-dir build --no-tests=error -R "^gungnir.mysql$" --output-on-failure
 
   redis:
     name: Integration · Redis
@@ -124,7 +153,7 @@ jobs:
       - name: Build adapter test
         run: cmake --build build --target gungnir_redis_integration_test --parallel
       - name: Test adapter
-        run: ctest --test-dir build -R "^gungnir.redis$" --output-on-failure
+        run: ctest --test-dir build --no-tests=error -R "^gungnir.redis$" --output-on-failure
 
   tls:
     name: Integration · TLS
@@ -143,4 +172,4 @@ jobs:
       - name: Build TLS test
         run: cmake --build build --target gungnir_tls_server_test --parallel
       - name: Test TLS
-        run: ctest --test-dir build -R "^gungnir.tls_server$" --output-on-failure
+        run: ctest --test-dir build --no-tests=error -R "^gungnir.tls_server$" --output-on-failure
