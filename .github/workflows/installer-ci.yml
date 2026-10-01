@@ -62,56 +62,125 @@ jobs:
           "GUNGNIR_INSTALLER=$($installer.FullName)" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Install and build a project
+      - name: Install with long PATH and build a project
         shell: pwsh
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-ci"
           $projectDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-ci-app"
+          $originalUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 
-          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
-
-          $install = Start-Process `
-            -FilePath $env:GUNGNIR_INSTALLER `
-            -ArgumentList @("/S", "/D=$installDir") `
-            -Wait `
-            -PassThru
-
-          if ($install.ExitCode -ne 0) {
-              throw "Installer exited with code $($install.ExitCode)"
+          $longEntries = 1..140 | ForEach-Object {
+              "C:\test-path-segment-$($_.ToString('000'))\bin"
           }
+          $longUserPath = [string]::Join(';', $longEntries)
 
-          $cli = Join-Path $installDir "bin\gungnir.exe"
-          if (-not (Test-Path $cli)) {
-              throw "Installed CLI was not found"
-          }
-
-          $cmake = Get-Content CMakeLists.txt -Raw
-          if ($cmake -notmatch 'project\(gungnir VERSION (\d+\.\d+\.\d+)') {
-              throw "Unable to read the Gungnir version"
-          }
-
-          $expectedVersion = "Gungnir $($Matches[1])"
-          $actualVersion = (& $cli --version).Trim()
-
-          if ($actualVersion -ne $expectedVersion) {
-              throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
-          }
-
-          Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
-
-          & $cli new InstallerCI $projectDir
-          if ($LASTEXITCODE -ne 0) {
-              throw "Installed CLI failed to create a project"
-          }
-
-          Push-Location $projectDir
           try {
-              & $cli build --release
+              [Environment]::SetEnvironmentVariable(
+                  "Path",
+                  $longUserPath,
+                  "User"
+              )
+
+              if ($longUserPath.Length -le 1024) {
+                  throw "Long PATH fixture did not exceed the historical NSIS limit"
+              }
+
+              Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
+
+              $install = Start-Process `
+                -FilePath $env:GUNGNIR_INSTALLER `
+                -ArgumentList @("/S", "/D=$installDir") `
+                -Wait `
+                -PassThru
+
+              if ($install.ExitCode -ne 0) {
+                  throw "Installer exited with code $($install.ExitCode)"
+              }
+
+              $cli = Join-Path $installDir "bin\gungnir.exe"
+              if (-not (Test-Path $cli)) {
+                  throw "Installed CLI was not found"
+              }
+
+              $installedUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+              $expectedBin = (Join-Path $installDir "bin").TrimEnd('\')
+
+              $pathEntries = $installedUserPath -split ';' |
+                ForEach-Object { $_.Trim().Trim('"').TrimEnd('\') }
+
+              if ($pathEntries -notcontains $expectedBin) {
+                  throw "Installer did not add Gungnir to the current user's PATH"
+              }
+
+              if (-not $installedUserPath.StartsWith(
+                  $longUserPath,
+                  [StringComparison]::OrdinalIgnoreCase
+              )) {
+                  throw "Installer changed or truncated the existing long user PATH"
+              }
+
+              $cmake = Get-Content CMakeLists.txt -Raw
+              if ($cmake -notmatch 'project\(gungnir VERSION (\d+\.\d+\.\d+)') {
+                  throw "Unable to read the Gungnir version"
+              }
+
+              $expectedVersion = "Gungnir $($Matches[1])"
+              $actualVersion = (& $cli --version).Trim()
+
+              if ($actualVersion -ne $expectedVersion) {
+                  throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+              }
+
+              Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
+
+              & $cli new InstallerCI $projectDir
               if ($LASTEXITCODE -ne 0) {
-                  throw "Installed CLI failed to build a project"
+                  throw "Installed CLI failed to create a project"
+              }
+
+              Push-Location $projectDir
+              try {
+                  & $cli build --release
+                  if ($LASTEXITCODE -ne 0) {
+                      throw "Installed CLI failed to build a project"
+                  }
+              }
+              finally {
+                  Pop-Location
+              }
+
+              $uninstaller = Join-Path $installDir "Uninstall Gungnir.exe"
+              if (-not (Test-Path $uninstaller)) {
+                  throw "Gungnir uninstaller was not found"
+              }
+
+              $uninstall = Start-Process `
+                -FilePath $uninstaller `
+                -ArgumentList @("/S") `
+                -Wait `
+                -PassThru
+
+              if ($uninstall.ExitCode -ne 0) {
+                  throw "Uninstaller exited with code $($uninstall.ExitCode)"
+              }
+
+              $afterUninstall = [Environment]::GetEnvironmentVariable("Path", "User")
+              $afterEntries = $afterUninstall -split ';' |
+                ForEach-Object { $_.Trim().Trim('"').TrimEnd('\') }
+
+              if ($afterEntries -contains $expectedBin) {
+                  throw "Uninstaller left Gungnir in the current user's PATH"
+              }
+
+              if ($afterUninstall -ne $longUserPath) {
+                  throw "Uninstaller did not restore the pre-install user PATH"
               }
           }
           finally {
-              Pop-Location
+              [Environment]::SetEnvironmentVariable(
+                  "Path",
+                  $originalUserPath,
+                  "User"
+              )
           }
