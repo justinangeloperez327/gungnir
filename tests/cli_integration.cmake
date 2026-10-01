@@ -42,8 +42,18 @@ if(NOT install_result EQUAL 0)
     message(FATAL_ERROR "Gungnir staged install failed")
 endif()
 
+if(WIN32)
+    set(installed_cli "${stage}/bin/gungnir.exe")
+else()
+    set(installed_cli "${stage}/bin/gungnir")
+endif()
+
+if(NOT EXISTS "${installed_cli}")
+    message(FATAL_ERROR "Installed Gungnir CLI was not found")
+endif()
+
 execute_process(
-    COMMAND "${GUNGNIR_CLI}" new SampleApp "${project}"
+    COMMAND "${installed_cli}" new SampleApp "${project}"
     RESULT_VARIABLE new_result
 )
 if(NOT new_result EQUAL 0)
@@ -52,7 +62,7 @@ endif()
 
 execute_process(
     COMMAND "${Python3_EXECUTABLE}" "${GUNGNIR_SOURCE_DIR}/tests/generated_project.py"
-        "${GUNGNIR_CLI}" "${project}" "${stage}" "${GUNGNIR_WITH_SQLITE}"
+        "${installed_cli}" "${project}" "${GUNGNIR_WITH_SQLITE}"
     RESULT_VARIABLE integration_result
 )
 if(NOT integration_result EQUAL 0)
