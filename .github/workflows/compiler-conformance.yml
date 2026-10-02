@@ -111,6 +111,7 @@ jobs:
           cmake --build build --config Release --parallel 2 --target
           gungnir_public_headers
           gungnir_compiler_correctness_test
+          gungnir_compiler_stability_test
           gungnir_compiler_robustness_test
           gungnir_structured_generated_test
           gungnirc
