@@ -735,4 +735,26 @@ bool Application::is_running()
         impl_->server->running();
 }
 
+bool Application::is_accepting()
+    const noexcept {
+    return
+        impl_ &&
+        impl_->server &&
+        impl_->server->accepting();
+}
+
+std::size_t Application::active_http_dispatches()
+    const noexcept {
+    if (
+        !impl_ ||
+        !impl_->server
+    ) {
+        return 0;
+    }
+
+    return
+        impl_->server
+            ->active_dispatches();
+}
+
 } // namespace gungnir
