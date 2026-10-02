@@ -34,7 +34,9 @@
 | Canonical compiler selection | Complete | `gungnirc` defaults to `Compiler`; `--compat` is explicit and profile behavior is CI-tested |
 | Structured project route emission | Complete baseline | Route URI/controller/action/middleware are structural legacy-route AST data, semantically checked, then emitted directly without SourceEdit |
 | Legacy source-edit elimination | Transitional | `CompatibilityTranspiler` and specialized source/token lowerers remain only for explicit `--compat` legacy/native compatibility |
-| Authoritative `--check` | Partial | Structured validation catches many source errors; native compilation can still expose remaining interface/type failures |
+| Authoritative `--check` | Complete for current structured profile | Phase 6 enforces validation-only/full-pipeline semantic parity before C++ IR |
+| Diagnostic/source mapping | Complete baseline | Phase 7 preserves source spans, deterministic diagnostic order, rich CLI rendering and statement-level `#line` mapping |
+| Fuzzing and compiler robustness | Complete baseline | Phase 8 adds bounded parser nesting, deterministic adversarial mutations and ASan/UBSan-backed libFuzzer targets for lexer and structured compiler |
 
 ## Feature completion rule
 
