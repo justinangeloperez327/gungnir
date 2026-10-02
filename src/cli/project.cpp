@@ -177,7 +177,7 @@ String transpile_file(
     const std::filesystem::path& path,
     const language::SemanticIndex* index = nullptr
 ) {
-    language::Transpiler transpiler;
+    language::CompatibilityTranspiler transpiler;
 
     const auto source =
         read_file(path);
