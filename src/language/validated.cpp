@@ -46,7 +46,20 @@ public:
         builtin_types();
     }
     void report(const Origin& origin, std::string message, std::string code = "GNR2201") {
-        diagnostics.push_back({DiagnosticLevel::error, {origin.file, origin.line, origin.column}, std::move(message), std::move(code), {}});
+        Diagnostic diagnostic{
+            DiagnosticLevel::error,
+            {origin.file, origin.line, origin.column},
+            std::move(message),
+            std::move(code),
+            {}
+        };
+        if (!origin.file.empty()) {
+            diagnostic.span.begin_offset = origin.begin;
+            diagnostic.span.end_offset =
+                origin.end > origin.begin ? origin.end : origin.begin + 1;
+            diagnostic.span.valid = true;
+        }
+        diagnostics.push_back(std::move(diagnostic));
     }
     TypeId intern(std::string name, std::string cpp, std::vector<TypeId> arguments = {}, bool optional = false) {
         std::string key = name;
