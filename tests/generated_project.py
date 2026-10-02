@@ -25,12 +25,16 @@ def run(*args, expect=0):
 
 for kind, name in (("model", "User"), ("event", "Created"), ("job", "Ping"), ("mail", "Welcome"), ("request", "StoreUser"), ("middleware", "Pass"), ("controller", "Extra"), ("migration", "create_users_table")):
     run("make:" + kind, name)
-for kind, name, dependency in (("listener", "Record", "app.events.created::Created"), ("policy", "User", "app.models.user::User"), ("notification", "Greeting", "app.models.user::User")):
+for kind, name, dependency in (("listener", "Record", "app.events.Created::Created"), ("policy", "User", "app.models.User::User"), ("notification", "Greeting", "app.models.User::User")):
     run("make:" + kind, name, dependency)
+assert (project / "app/models/User.gnr").is_file()
+assert (project / "app/controllers/ExtraController.gnr").is_file()
+assert (project / "app/middleware/PassMiddleware.gnr").is_file()
+assert (project / "database/migrations/create_users_table.gnr").is_file()
 # Exercise import ordering and injection in a real application.
-home = project / "app/controllers/home_controller.gnr"
-home.write_text("import app.controllers.extra_controller;\ncontroller HomeController { inject ExtraController extra; index() { return extra.index(); } }\n")
-extra = project / "app/controllers/extra_controller.gnr"
+home = project / "app/controllers/HomeController.gnr"
+home.write_text("import app.controllers.ExtraController;\ncontroller HomeController { inject ExtraController extra; index() { return extra.index(); } }\n")
+extra = project / "app/controllers/ExtraController.gnr"
 extra.write_text("controller ExtraController { index() { return text('first'); } }\n")
 bootstrap = project / "bootstrap/app.hpp"
 bootstrap.write_text(bootstrap.read_text().replace("// Add service bindings, middleware, and providers here.", "app.middleware<PassMiddleware>();").replace("inline void boot(gungnir::Application&)", "inline void boot(gungnir::Application& app)").replace("// Services and generated listeners, policies, and jobs are registered.", """
@@ -56,7 +60,7 @@ env["APP_PORT"] = str(port)
 run("build")
 generated = project / ".gungnir/generated"
 header = generated / "program.hpp"
-unit = generated / "app.controllers.extra_controller.cpp"
+unit = generated / "app.controllers.ExtraController.cpp"
 header_time, unit_time = header.stat().st_mtime_ns, unit.stat().st_mtime_ns
 build = project / ".gungnir/build"
 objects = {p: p.stat().st_mtime_ns for p in build.rglob("*") if p.suffix in (".o", ".obj")}
