@@ -15,7 +15,7 @@ CompilationResult finish(SyntaxProject syntax, std::vector<Diagnostic> diagnosti
     if (!result.diagnostics.empty()) return result;
     auto validation = ProgramValidator{}.validate(std::move(syntax), options);
     result.diagnostics = std::move(validation.diagnostics); result.validated = std::move(validation.project);
-    if (result.validated) {
+    if (result.validated && !options.validate_only) {
         const auto ir = CppIrLowerer{}.lower(
             *result.validated,
             options.emit_line_directives
