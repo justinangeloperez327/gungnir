@@ -1,0 +1,75 @@
+# Compiler Conformance
+
+> **Status: living implementation matrix.** A feature is not considered compiler-complete merely because it parses. Completion requires the relevant syntax, semantic validation, validated representation, code generation, diagnostics and tests.
+
+## Status values
+
+| Status | Meaning |
+| --- | --- |
+| Complete | Structured path covers the feature and correctness tests exist |
+| Partial | Structured support exists but one or more correctness layers remain incomplete |
+| Transitional | Compatibility/source-edit behavior still participates materially |
+| Planned | Contract exists but implementation is not yet complete |
+
+## Core compiler
+
+| Capability | Current status | Evidence / remaining gate |
+| --- | --- | --- |
+| Tokenization and source origins | Complete | Lexer/parser diagnostics and source origins are tested |
+| Structural parser | Complete for current structured profile | `SyntaxParser` produces declarations, statements and expressions |
+| Syntax AST arenas | Complete for current structured profile | `SyntaxProject` owns declarations, expressions and statements with stable IDs |
+| Module resolution | Complete for current structured profile | Project compilation tests cover aliases, missing modules, cycles and module mismatch |
+| Symbol/name resolution | Complete for current structured profile | `ProgramValidator` produces resolved symbols and rejects unknown names |
+| Type analysis | Partial | Current structured types are resolved; advanced null-flow/native overload behavior remains outside the current profile |
+| Call/argument binding | Complete for current structured profile | Named/default argument checks and bound argument order are represented before emission |
+| Async/await validation | Complete for current structured profile | Invalid await/async calls are rejected before emission |
+| Return-path validation | Partial | Required return checks exist; loop termination is not proof of return |
+| Framework contract validation | Partial | Core declaration contracts are checked; coverage must expand with the supported surface |
+| Validated AST boundary | Complete for structured path | `ValidatedProject` can only be created by validation and `CppEmitter` consumes it |
+| Deterministic multi-file compilation | Complete baseline | Source files are sorted before parsing/merging; dedicated correctness tests enforce output stability |
+| Dedicated C++ IR | Planned | Current emitter consumes `ValidatedProject`; a separate complete C++ IR layer is still a target |
+| Legacy source-edit elimination | Transitional | Compatibility `Transpiler` and specialized source/token lowerers still exist |
+| Authoritative `--check` | Partial | Structured validation catches many source errors; native compilation can still expose remaining interface/type failures |
+
+## Feature completion rule
+
+For each supported feature, track the following columns:
+
+| Feature | Parse | AST | Semantics | Validated | Emit | Compile-fail | Run-pass | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Functions | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Complete |
+| Variables / mutability | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Complete |
+| Named/default arguments | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Complete |
+| Lambdas/captures | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Complete |
+| Optional types | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Async/await | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Complete |
+| Modules/imports | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Complete |
+| Models | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Controllers | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Migrations | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Middleware | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Policies | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Events/listeners | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Notifications/mail | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+| Jobs | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
+
+“Partial” does not mean unusable. It means the correctness contract has additional semantic or framework-specific cases that must be closed before a 1.0 language guarantee.
+
+## Definition of compiler-complete
+
+A row may move to **Complete** only when:
+
+1. grammar acceptance/rejection is specified;
+2. AST shape is structural;
+3. semantic rules are explicit;
+4. all symbols/types needed by lowering are resolved;
+5. emission requires no source-string semantic inference;
+6. valid examples compile through a supported C++23 backend;
+7. invalid examples fail with Gungnir diagnostics;
+8. at least one regression/run-pass test covers representative behavior.
+
+## Maintenance rule
+
+Any compiler PR that changes a row in this table must update the status/evidence in the same pull request. New framework syntax must not be marked complete at parser-only stage.
+
+See [Compiler Correctness](compiler-correctness.md) for the normative invariants.
