@@ -1,6 +1,4 @@
 #include <gungnir/language/transpiler.hpp>
-#include <gungnir/language/compiler.hpp>
-
 #include <algorithm>
 #include <array>
 #include <concepts>
@@ -82,16 +80,11 @@ bool TranspileResult::success() const noexcept {
     );
 }
 
-TranspileResult Transpiler::transpile(
+TranspileResult CompatibilityTranspiler::transpile(
     std::string_view source,
     std::string source_name,
     TranspileOptions options
 ) const {
-    if (options.structured_frontend) {
-        CompilerOptions compiler_options; compiler_options.emit_line_directives = options.emit_line_directives;
-        auto result = Compiler{}.compile(source,source_name,compiler_options);
-        return {std::move(result.code),std::move(result.diagnostics)};
-    }
     std::vector<Diagnostic> lexical_diagnostics;
     const auto tokens = Lexer{source}.tokenize(&lexical_diagnostics, source_name);
     if (!lexical_diagnostics.empty()) return {{}, std::move(lexical_diagnostics)};

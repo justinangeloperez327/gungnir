@@ -39,7 +39,7 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|structured_generated|language|cli|lsp_protocol|cli_integration)$'
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli)$'
 
   postgresql:
     name: Integration · PostgreSQL

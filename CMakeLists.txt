@@ -1014,6 +1014,7 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 $<TARGET_FILE:gungnirc>
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/async_controller.gnr"
+                --compat
                 -o
                 "${GUNGNIR_GENERATED_ASYNC_TEST}"
             DEPENDS
@@ -1054,6 +1055,7 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 $<TARGET_FILE:gungnirc>
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/view_controller.gnr"
+                --compat
                 -o
                 "${GUNGNIR_GENERATED_VIEW_TEST}"
             DEPENDS
@@ -1095,6 +1097,7 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 $<TARGET_FILE:gungnirc>
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/collections_controller.gnr"
+                --compat
                 -o
                 "${GUNGNIR_GENERATED_COLLECTIONS_TEST}"
             DEPENDS
@@ -1153,6 +1156,14 @@ if(GUNGNIR_BUILD_TESTS)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_integration.cmake
         )
         set_tests_properties(gungnir.cli_integration PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
+        add_test(
+            NAME gungnir.compiler_profiles_cli
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DGUNGNIRC=$<TARGET_FILE:gungnirc>
+                -P
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/compiler_profiles.cmake
+        )
     endif()
 
     add_executable(gungnir_bootstrap_test tests/bootstrap.cpp)

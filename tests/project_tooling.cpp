@@ -29,6 +29,20 @@ int main() {
     (void)project.make("notification","Welcome","app.models.User::User");
     for(const auto kind:{"job","mail","request","middleware","migration","controller"}) (void)project.make(kind,"Sample");
     const auto main=project.assemble();
+    const auto route_file=root/"routes/web.gnr";
+    auto generated_app=read(main);
+    assert(generated_app.find("gungnir::Route::get<HomeController>")!=std::string::npos);
+    assert(generated_app.find("&HomeController::index")!=std::string::npos);
+    write(route_file,"Route::get(\"/\", HomeController::index).middleware(SampleMiddleware);\n");
+    (void)project.assemble();
+    generated_app=read(main);
+    assert(generated_app.find(".middleware<SampleMiddleware>()")!=std::string::npos);
+    write(route_file,"Route::get(path, HomeController::index);\n");
+    bool invalid_route_rejected=false;
+    try {(void)project.assemble();} catch(const std::runtime_error&) {invalid_route_rejected=true;}
+    assert(invalid_route_rejected);
+    write(route_file,"Route::get(\"/\", HomeController::index);\n");
+    (void)project.assemble();
     const auto generated_cmake=read(root/".gungnir/CMakeLists.txt");
     assert(generated_cmake.find("CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL")!=std::string::npos);
     const auto header=root/".gungnir/generated/program.hpp";

@@ -1587,6 +1587,15 @@ void Parser::parse_route_declaration(
         return;
     }
 
+    const auto uri = next_significant(*open);
+    const auto after_uri = uri ? next_significant(*uri) : std::nullopt;
+    const bool literal_uri =
+        uri &&
+        *uri < *comma &&
+        tokens_[*uri].kind == TokenKind::string_literal &&
+        after_uri &&
+        *after_uri == *comma;
+
     const auto controller = next_significant(*comma);
     const auto handler_colon_one =
         controller ? next_significant(*controller) : std::nullopt;
@@ -1717,7 +1726,9 @@ void Parser::parse_route_declaration(
         tokens_[*controller].lexeme,
         tokens_[*action].lexeme,
         middleware_type,
-        has_middleware
+        has_middleware,
+        literal_uri ? unquote(tokens_[*uri].lexeme) : std::string{},
+        literal_uri
     });
 }
 

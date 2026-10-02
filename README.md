@@ -851,6 +851,8 @@ The compiler follows one important rule:
 
 Supported Gungnir syntax should not be rediscovered later through raw-source scanning or string matching.
 
+The structured compiler is the default `gungnirc` path. Legacy native-compatible source must opt into `gungnirc --compat`; the source-edit transpiler is no longer a default compiler path.
+
 Key compiler specifications:
 
 - [Grammar](docs/grammar.md)

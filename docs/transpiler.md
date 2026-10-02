@@ -1,20 +1,52 @@
-# Transpiler
+# Compatibility Transpiler
 
-> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/transpiler.md).
+> **Status: transitional, pre-1.0.** The source-edit transpiler exists only for legacy/native-compatible Gungnir applications. It is not the canonical language compiler.
 
-The structured profile (`gungnirc --strict`) supports typed functions and framework actions, structured callbacks, and validated C++ emission. See [compiler profiles](compiler-profiles.md) for usage and current limits. The compatibility profile retains the native syntax described below.
+The canonical path is `language::Compiler` and is used by `gungnirc` by default:
 
-## Current behavior
+```text
+.gnr
+  -> SyntaxParser
+  -> ProgramValidator
+  -> ValidatedProject
+  -> CppEmitter
+```
 
-Transpiler tokenizes source, parses Program, runs semantic diagnostics, invokes specialized lowerers and applies SourceEdit replacements to source. It emits inspectable C++ with optional line directives.
+Use `gungnirc --compat` only for source that intentionally depends on the earlier native-C++ compatibility grammar.
 
-## Limits and planned work
+## Current compatibility behavior
 
-Lowerers still accept source/tokens. There is no separate complete C++ IR emitter consuming a dedicated Validated AST. Native compilation is required to catch remaining type/interface failures; --check only validates the current frontend/lowering diagnostics.
+`CompatibilityTranspiler` tokenizes source, parses the legacy `Program`, runs compatibility semantic diagnostics, invokes specialized lowerers and applies `SourceEdit` replacements to the original source.
+
+The historical `Transpiler` C++ name remains as an alias to `CompatibilityTranspiler` so existing pre-1.0 callers continue to build.
+
+## Rules for new compiler work
+
+The compatibility pipeline is frozen for new language semantics.
+
+Do not add new Gungnir language behavior to:
+
+- `ModelLowerer`;
+- `ControllerLowerer`;
+- `MiddlewareLowerer`;
+- `MigrationLowerer`;
+- `AsyncLowerer`;
+- `ValidationLowerer`;
+- `ViewLowerer`;
+- generic `SourceEdit` rewriting.
+
+New syntax and framework semantics belong in the structured parser, semantic validator, validated compiler structures and emitter.
+
+Compatibility fixes are limited to regressions required to keep explicitly opted-in legacy applications working during the pre-1.0 migration window.
+
+## Remaining migration work
+
+Structured application declarations use validated-only emission, and structured project routes are parsed into route nodes, semantically checked against the project index, and emitted directly without SourceEdit. The remaining SourceEdit lowerers are confined to explicit `--compat` use and legacy/native-C++ fixture coverage.
 
 ## Implementation references
 
-- [src/language/transpiler.cpp](../src/language/transpiler.cpp)
-- [include/gungnir/language/transpiler.hpp](../include/gungnir/language/transpiler.hpp)
+- [Structured compiler](../include/gungnir/language/compiler.hpp)
+- [Compatibility API](../include/gungnir/language/transpiler.hpp)
+- [Compatibility implementation](../src/language/transpiler.cpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/transpiler.md).
+See [Compiler Correctness](compiler-correctness.md), [Compiler Conformance](compiler-conformance.md), and [Compiler Profiles](compiler-profiles.md).
