@@ -83,13 +83,13 @@ The portable ZIP remains available for users who prefer a manual installation. T
 Download:
 
 ~~~text
-gungnir-v0.1.0-linux-x86_64.tar.gz
+gungnir-v0.9.0-linux-x86_64.tar.gz
 ~~~
 
 Extract the archive:
 
 ~~~sh
-tar -xzf gungnir-v0.1.0-linux-x86_64.tar.gz
+tar -xzf gungnir-v0.9.0-linux-x86_64.tar.gz
 ~~~
 
 Add the extracted `bin` directory to `PATH`, and set `GUNGNIR_CMAKE_PREFIX` to the extracted Gungnir directory.
@@ -870,32 +870,24 @@ Key compiler specifications:
 
 ## Project Direction
 
-Gungnir is moving away from a compatibility/source-edit transpiler toward a compiler with explicit frontend and semantic phases.
+The structured compiler has reached its 0.9 stabilization phase. Its current source-language behavior is feature-frozen while correctness, diagnostics, robustness, portability, and release packaging are hardened.
 
-Current priority:
+The canonical compiler pipeline is now structural from parsing through validated semantics and C++ IR. New structured-language features are deferred during the 0.9 stabilization line unless the compiler contract version is intentionally advanced.
 
-1. canonical language contracts;
-2. complete lexer/parser coverage;
-3. structural Syntax AST;
-4. module and symbol resolution;
-5. semantic and type analysis;
-6. Validated AST;
-7. structural framework lowering;
-8. C++23 IR and emitter;
-9. removal of remaining source-rewrite compatibility passes;
-10. full compiler/runtime conformance tests.
-
-The objective is not merely to generate C++ that compiles.
-
-The objective is to make Gungnir a coherent, predictable application framework where the compiler understands the application before generating native code.
+The remaining work toward 1.0 is primarily closing framework semantics still marked partial, retiring compatibility-only paths where practical, and stabilizing the public runtime/application API.
 
 ---
 
 ## Stability
 
-Gungnir is currently pre-1.0.
+Gungnir 0.9 remains pre-1.0. The structured compiler profile is feature-frozen for the 0.9 line, but generated C++ ABI, native runtime APIs, compatibility mode, and partial framework semantics are not yet 1.0-stable.
 
-Pin the exact version or commit used by an application until a stable compatibility policy is declared.
+Inspect the active compiler contract with:
+
+~~~sh
+gungnirc --version
+gungnirc --print-contract
+~~~
 
 See [docs/stability.md](docs/stability.md).
 
