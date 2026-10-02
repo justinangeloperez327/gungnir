@@ -12,6 +12,8 @@ Current usage guides live at this directory level; proposed contracts live under
 
 The compiler now reports `language_version = "0.1"` and experimental compatibility. Feature flags in spec.hpp describe implemented structured syntax rather than a complete stable grammar. Feature acceptance must be established by parsing, semantic checks and native compilation.
 
+For compiler-facing features, the repository uses the [Compiler Correctness](compiler-correctness.md) invariants and [Compiler Conformance](compiler-conformance.md) matrix. Parser-only support is not considered a stable or complete language feature. A feature reaches compiler-complete status only after structural parsing, semantic validation, validated representation, code generation, negative diagnostics and representative native execution are covered.
+
 ## Implementation references
 
 - [README.md](../README.md)
