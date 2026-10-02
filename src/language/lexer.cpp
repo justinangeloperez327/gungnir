@@ -1,5 +1,6 @@
 #include <gungnir/language/lexer.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <regex>
 #include <string>
