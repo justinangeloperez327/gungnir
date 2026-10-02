@@ -1,6 +1,6 @@
 # Gungnir Documentation
 
-Implementation baseline: source commit `f267605637698522511ab7db02165ea04da03536`, reviewed on 30 September 2026.
+Implementation baseline: source commit `83c29209a83e2696f40d7db22e3eba618cb77cb4`, reviewed on 2 October 2026.
 
 Gungnir is experimental. Start with the current usage guides below. The full proposed language and architecture contracts are preserved under [design/](design/README.md).
 
@@ -82,8 +82,9 @@ Gungnir is experimental. Start with the current usage guides below. The full pro
 - [Abstract Syntax Tree](ast.md)
 - [Semantic Analysis](semantics.md)
 - [Validated AST](validated-ast.md)
+- [Compiler Correctness](compiler-correctness.md)
+- [Compiler Conformance](compiler-conformance.md)
 - [Transpiler](transpiler.md)
-
 - [Compiler profiles and feature status](compiler-profiles.md)
 
 [Editor tooling](editor-tooling.md) covers the structured language server and formatter.
