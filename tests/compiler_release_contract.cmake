@@ -43,8 +43,8 @@ if(NOT contract_result EQUAL 0)
 endif()
 
 string(REPLACE "\r\n" "\n" contract_output "${contract_output}")
-set(
-    expected_contract
+string(
+    CONCAT expected_contract
     "package_version=${GUNGNIR_VERSION}\n"
     "language_version=0.9\n"
     "compiler_contract=0.9\n"
