@@ -39,7 +39,12 @@ public:
         std::shared_ptr<view::Engine> engine
     );
 
+    // running() remains true while the server is accepting or draining
+    // in-flight cooperative work. accepting() becomes false as soon as
+    // stop() begins graceful shutdown.
     [[nodiscard]] bool running() const noexcept;
+    [[nodiscard]] bool accepting() const noexcept;
+    [[nodiscard]] std::size_t active_dispatches() const noexcept;
     [[nodiscard]] std::uint16_t bound_port() const noexcept;
     [[nodiscard]] const RuntimeOptions& options() const noexcept;
 
