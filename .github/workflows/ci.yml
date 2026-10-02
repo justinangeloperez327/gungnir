@@ -39,7 +39,58 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli)    name: Integration · PostgreSQL
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli)
+  fuzz:
+    name: Robustness · lexer and compiler fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install Clang and Ninja
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+      - name: Configure fuzz build
+        run: >
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_BUILD_FUZZERS=ON
+      - name: Build fuzz targets
+        run: >
+          cmake --build build-fuzz --parallel 2 --target
+          gungnir_lexer_fuzzer gungnir_compiler_fuzzer
+      - name: Run short fuzz campaign
+        run: |
+          mkdir -p fuzz-artifacts/lexer fuzz-artifacts/compiler
+          ./build-fuzz/gungnir_lexer_fuzzer \
+            tests/fuzz/corpus/lexer \
+            -max_total_time=10 \
+            -timeout=2 \
+            -max_len=65536 \
+            -rss_limit_mb=2048 \
+            -artifact_prefix=fuzz-artifacts/lexer/
+          ./build-fuzz/gungnir_compiler_fuzzer \
+            tests/fuzz/corpus/compiler \
+            -max_total_time=10 \
+            -timeout=2 \
+            -max_len=65536 \
+            -rss_limit_mb=2048 \
+            -artifact_prefix=fuzz-artifacts/compiler/
+      - name: Upload fuzz crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-fuzz-crashes
+          path: fuzz-artifacts/
+          if-no-files-found: ignore
+
+  postgresql:
+    name: Integration · PostgreSQL
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
@@ -172,43 +223,6 @@ jobs:
       - name: Test TLS
         run: ctest --test-dir build --no-tests=error -R "^gungnir.tls_server$" --output-on-failure
 
-
-  fuzz:
-    name: Robustness · lexer and compiler fuzzing
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
-      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Install Clang and Ninja
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
-      - name: Configure fuzz build
-        run: >
-          cmake -S . -B build-fuzz -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=clang++
-          -DGUNGNIR_BUILD_TESTS=OFF
-          -DGUNGNIR_BUILD_TOOLS=OFF
-          -DGUNGNIR_BUILD_FUZZERS=ON
-      - name: Build fuzz targets
-        run: >
-          cmake --build build-fuzz --parallel 2 --target
-          gungnir_lexer_fuzzer gungnir_compiler_fuzzer
-      - name: Run short fuzz campaign
-        run: |
-          mkdir -p fuzz-artifacts/lexer fuzz-artifacts/compiler
-          ./build-fuzz/gungnir_lexer_fuzzer             tests/fuzz/corpus/lexer             -max_total_time=10             -timeout=2             -max_len=65536             -rss_limit_mb=2048             -artifact_prefix=fuzz-artifacts/lexer/
-          ./build-fuzz/gungnir_compiler_fuzzer             tests/fuzz/corpus/compiler             -max_total_time=10             -timeout=2             -max_len=65536             -rss_limit_mb=2048             -artifact_prefix=fuzz-artifacts/compiler/
-      - name: Upload fuzz crash artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compiler-fuzz-crashes
-          path: fuzz-artifacts/
-          if-no-files-found: ignore
 
   postgresql:
     name: Integration · PostgreSQL
