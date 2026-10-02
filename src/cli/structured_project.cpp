@@ -10,6 +10,7 @@
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#include <variant>
 
 namespace gungnir::cli {
 namespace {
@@ -80,6 +81,15 @@ std::string compile_routes(
     for (const auto& node : parsed.program.nodes) {
         const auto* route = std::get_if<language::RouteDeclaration>(&node);
         if (!route) continue;
+        if (!route->literal_uri) {
+            check({language::Diagnostic{
+                language::DiagnosticLevel::error,
+                {path.generic_string(),route->route_span.line,route->route_span.column},
+                "Route URI must be one string literal",
+                "GNR1302",
+                "Use Route::get(\"/path\", Controller::action)."
+            }});
+        }
         output += "gungnir::Route::" + route_method_name(route->method) +
             "<" + route->controller_name + ">(" +
             quote(route->uri) + ",&" + route->controller_name + "::" +
