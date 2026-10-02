@@ -41,7 +41,7 @@ Compatibility fixes are limited to regressions required to keep explicitly opted
 
 ## Remaining migration work
 
-Structured application declarations already use validated-only emission. Remaining compatibility islands, such as legacy route-source handling and native-C++ fixture tests, must remain explicit and should be migrated or retired rather than expanded.
+Structured application declarations use validated-only emission, and structured project routes are parsed into route nodes, semantically checked against the project index, and emitted directly without SourceEdit. The remaining SourceEdit lowerers are confined to explicit `--compat` use and legacy/native-C++ fixture coverage.
 
 ## Implementation references
 
