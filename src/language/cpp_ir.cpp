@@ -530,110 +530,1017 @@ public:
     void lower_structural_functions(CppIrProject& ir) {
         lower_functions(ir);
     }
-    std::string declarations() {
-        out << "// Generated from a validated Gungnir program.\n#include <gungnir/language/runtime.hpp>\n#include <optional>\n#include <tuple>\n";
-        for (std::size_t d = 0; d < s.declarations.size(); ++d) { const auto& decl = s.declarations[d]; open(decl.module); if (decl.kind == DeclarationKind::function) out << result(decl.methods[0],p.declarations()[d].methods[0]) << ' ' << decl.name << '(' << params(decl.methods[0],p.declarations()[d].methods[0],true) << ");\n"; else out << "class " << decl.name << ";\n"; close(decl.module); }
-        for (auto d : p.declaration_order()) {
-            const auto module = s.declarations[d].module;
-            const auto& decl = s.declarations[d]; const auto& resolution = p.declarations()[d]; if (decl.kind == DeclarationKind::function) continue;
-            open(module); origin(decl.origin); out << "class " << decl.name;
-            switch (decl.kind) {
-            case DeclarationKind::model: out << " : public gungnir::Model<" << decl.name << '>'; break;
-            case DeclarationKind::middleware: out << " : public gungnir::Middleware"; break;
-            case DeclarationKind::controller: out << " : public gungnir::Controller"; break;
-            case DeclarationKind::migration: out << " : public gungnir::Migration"; break;
-            case DeclarationKind::event: out << " : public gungnir::events::Event"; break;
-            case DeclarationKind::job: out << " : public gungnir::queue::Job"; break;
-            default: break;
+    std::string wrap_module(
+        std::size_t module,
+        std::string code
+    ) const {
+        const auto name = ns(module);
+        if (name.empty()) {
+            return code;
+        }
+
+        return "namespace " + name + " {\n" +
+            code + "}\n";
+    }
+
+    std::string origin_prefix(
+        const Origin& value
+    ) const {
+        if (!lines) {
+            return {};
+        }
+
+        return "#line " + std::to_string(value.line) +
+            " " + quote(value.file) + "\n";
+    }
+
+    CppIrDeclaration forward_declaration(
+        std::size_t id
+    ) {
+        const auto& declaration = s.declarations[id];
+        std::ostringstream block;
+
+        if (
+            declaration.kind ==
+            DeclarationKind::function
+        ) {
+            block
+                << result(
+                    declaration.methods[0],
+                    p.declarations()[id].methods[0]
+                )
+                << ' '
+                << declaration.name
+                << '('
+                << params(
+                    declaration.methods[0],
+                    p.declarations()[id].methods[0],
+                    true
+                )
+                << ");\n";
+
+            return CppIrDeclaration{
+                CppIrDeclarationKind::function_forward,
+                s.modules[declaration.module].name,
+                declaration.name,
+                wrap_module(
+                    declaration.module,
+                    block.str()
+                )
+            };
+        }
+
+        block << "class " << declaration.name << ";\n";
+
+        return CppIrDeclaration{
+            CppIrDeclarationKind::class_forward,
+            s.modules[declaration.module].name,
+            declaration.name,
+            wrap_module(
+                declaration.module,
+                block.str()
+            )
+        };
+    }
+
+    CppIrDeclaration class_declaration(
+        std::size_t id
+    ) {
+        const auto& declaration = s.declarations[id];
+        const auto& resolution = p.declarations()[id];
+        const auto module = declaration.module;
+        std::ostringstream block;
+
+        block << origin_prefix(declaration.origin)
+              << "class " << declaration.name;
+
+        switch (declaration.kind) {
+        case DeclarationKind::model:
+            block << " : public gungnir::Model<"
+                  << declaration.name << '>';
+            break;
+        case DeclarationKind::middleware:
+            block << " : public gungnir::Middleware";
+            break;
+        case DeclarationKind::controller:
+            block << " : public gungnir::Controller";
+            break;
+        case DeclarationKind::migration:
+            block << " : public gungnir::Migration";
+            break;
+        case DeclarationKind::event:
+            block << " : public gungnir::events::Event";
+            break;
+        case DeclarationKind::job:
+            block << " : public gungnir::queue::Job";
+            break;
+        default:
+            break;
+        }
+
+        block << " {\npublic:\n";
+
+        std::string primary{"id"};
+        for (const auto& metadata : declaration.metadata) {
+            if (metadata.name == "primaryKey") {
+                primary =
+                    s.expressions[metadata.value].text;
             }
-            out << " {\npublic:\n";
-            std::string primary = "id"; for (const auto& metadata : decl.metadata) if (metadata.name == "primaryKey") primary = s.expressions[metadata.value].text;
-            for (auto f : resolution.fields) {
-                const auto& field = symbol(f); const bool readonly = field.immutable && field.kind != ResolvedSymbolKind::injection;
-                out << (field.visibility == Visibility::private_ ? "private:\n" : field.visibility == Visibility::protected_ ? "protected:\n" : "public:\n");
-                out << (readonly ? "const " : "");
-                if (decl.kind == DeclarationKind::model) out << (field.name == primary ? "gungnir::PrimaryKey<" : "gungnir::Field<") << type(field.type) << '>';
-                else if (field.kind == ResolvedSymbolKind::injection) out << "std::shared_ptr<" << type(field.type) << '>';
-                else out << type(field.type);
-                out << ' ' << field.name;
-                const auto original = std::find_if(decl.fields.begin(),decl.fields.end(),[&](const auto& value){return value.name == field.name;});
-                if (original != decl.fields.end() && original->initializer != invalid_id) out << " = " << expr(original->initializer);
-                else if (decl.kind == DeclarationKind::model && field.name == primary) { bool incrementing = true; for (const auto& metadata : decl.metadata) if (metadata.name == "incrementing") incrementing = s.expressions[metadata.value].text == "true"; out << '{' << quote(primary) << ',' << (incrementing && p.types()[field.type].name != "string" ? "true" : "false") << '}'; }
-                else out << "{}";
-                out << ";\n";
+        }
+
+        for (auto field_id : resolution.fields) {
+            const auto& field = symbol(field_id);
+            const bool readonly =
+                field.immutable &&
+                field.kind !=
+                    ResolvedSymbolKind::injection;
+
+            block
+                << (
+                    field.visibility == Visibility::private_
+                        ? "private:\n"
+                        : field.visibility ==
+                                Visibility::protected_
+                            ? "protected:\n"
+                            : "public:\n"
+                )
+                << (readonly ? "const " : "");
+
+            if (
+                declaration.kind ==
+                DeclarationKind::model
+            ) {
+                block
+                    << (
+                        field.name == primary
+                            ? "gungnir::PrimaryKey<"
+                            : "gungnir::Field<"
+                    )
+                    << type(field.type)
+                    << '>';
+            } else if (
+                field.kind ==
+                ResolvedSymbolKind::injection
+            ) {
+                block
+                    << "std::shared_ptr<"
+                    << type(field.type)
+                    << '>';
+            } else {
+                block << type(field.type);
             }
-            out << "public:\n";
-            if (decl.kind == DeclarationKind::model) out << "template<class> friend struct gungnir::model::Generated;\n";
-            if (decl.kind != DeclarationKind::model && !resolution.fields.empty()) {
-                out << decl.name << '('; bool comma = false; for (auto f : resolution.fields) { const auto& field = symbol(f); if (comma) out << ','; comma = true; if (field.kind == ResolvedSymbolKind::injection) out << "std::shared_ptr<" << type(field.type) << ">"; else out << type(field.type); out << " gnr_" << field.name; }
-                out << ") : "; comma = false; for (auto f : resolution.fields) { const auto& field = symbol(f); if (comma) out << ','; comma = true; out << field.name << "(std::move(gnr_" << field.name << "))"; } out << " {}\n";
-            }
-            if (std::any_of(resolution.fields.begin(),resolution.fields.end(),[&](auto id){return symbol(id).kind == ResolvedSymbolKind::injection;})) {
-                out << "static std::shared_ptr<" << decl.name << "> make(gungnir::Container& container";
-                for (auto f : resolution.fields) if (symbol(f).kind != ResolvedSymbolKind::injection) out << ',' << type(symbol(f).type) << " gnr_" << symbol(f).name;
-                out << ") { return std::make_shared<" << decl.name << ">(";
-                bool comma = false; for (auto f : resolution.fields) { if (comma) out << ','; comma = true; const auto& field = symbol(f); if (field.kind == ResolvedSymbolKind::injection) out << "container.resolve<" << type(field.type) << ">()"; else out << "std::move(gnr_" << field.name << ')'; } out << "); }\n";
-            }
-            if (decl.kind == DeclarationKind::model && std::none_of(decl.metadata.begin(),decl.metadata.end(),[](const auto& metadata){return metadata.name == "table";})) {
-                std::string table; for (std::size_t i = 0; i < decl.name.size(); ++i) { const auto c = decl.name[i]; if (c >= 'A' && c <= 'Z') { if (i) table += '_'; table += static_cast<char>(c+32); } else table += c; }
-                if (table.ends_with("y") && table.size() > 1 && std::string{"aeiou"}.find(table[table.size()-2]) == std::string::npos) { table.pop_back(); table += "ies"; } else if (table.ends_with("s") || table.ends_with("x") || table.ends_with("ch") || table.ends_with("sh")) table += "es"; else table += 's';
-                out << "inline static constexpr gungnir::Table table{" << quote(table) << "};\n";
-            }
-            for (const auto& metadata : decl.metadata) {
-                const auto& value = s.expressions[metadata.value];
-                if (metadata.name == "table" || metadata.name == "connection") out << "inline static constexpr gungnir::" << (metadata.name == "table" ? "Table" : "Connection") << ' ' << metadata.name << '{' << quote(value.text) << "};\n";
-                else if (metadata.name == "fillable") { out << "inline static constexpr auto fillable = gungnir::Fillable{"; for (std::size_t i = 0; i < value.operands.size(); ++i) { if (i) out << ','; out << quote(s.expressions[value.operands[i]].text); } out << "};\n"; }
-                else if (metadata.name == "hidden" || metadata.name == "visible") { out << "inline static constexpr std::array<std::string_view," << value.operands.size() << "> " << metadata.name << "{"; for (auto id : value.operands) out << quote(s.expressions[id].text) << ','; out << "};\n"; }
-                else if (metadata.name == "primaryKey") out << "inline static constexpr std::string_view primaryKey = " << quote(value.text) << ";\n";
-                else if (metadata.name == "softDeletes") { if (value.text == "true") out << "inline static constexpr gungnir::SoftDeletes soft_deletes{};\n"; }
-                else if (metadata.name == "casts") { out << "inline static constexpr std::array<std::pair<std::string_view,std::string_view>," << value.operands.size() << "> casts{{"; for (std::size_t i = 0; i < value.operands.size(); ++i) out << '{' << quote(value.argument_names[i]) << ',' << quote(s.expressions[value.operands[i]].text) << "},"; out << "}};\n"; }
-                else out << "inline static constexpr auto " << metadata.name << " = " << expr(metadata.value) << ";\n";
-            }
-            if (decl.kind == DeclarationKind::event || decl.kind == DeclarationKind::job) out << "inline static constexpr std::string_view event_name = " << quote(s.modules[module].name.empty() ? decl.name : s.modules[module].name + "." + decl.name) << ";\nstd::string_view name() const noexcept override { return event_name; }\n";
-            for (std::size_t m = 0; m < decl.methods.size(); ++m) { const auto& method = decl.methods[m]; out << (method.visibility == Visibility::private_ ? "private:\n" : method.visibility == Visibility::protected_ ? "protected:\n" : "public:\n") << result(method,resolution.methods[m]) << ' ' << method.name << '(' << params(method,resolution.methods[m],true) << ')' << (decl.kind == DeclarationKind::migration && (method.name == "up" || method.name == "down") ? " override" : "") << ";\n"; }
-            out << "public:\n";
-            if (decl.kind == DeclarationKind::listener) {
-                const auto it = std::find_if(decl.methods.begin(),decl.methods.end(),[](const auto& m){return m.name == "handle";}); const auto index = static_cast<std::size_t>(it-decl.methods.begin()); const auto event = type(symbol(resolution.methods[index].symbol).parameters[0]);
-                out << "static void register_listener(gungnir::events::Dispatcher& dispatcher, std::shared_ptr<" << decl.name << "> listener, int priority = 0) { (void)dispatcher." << (it->asynchronous ? "listen_async" : "listen") << "(std::string{" << event << "::event_name}, [listener](const gungnir::events::Event& event) " << (it->asynchronous ? "-> gungnir::Task<void> " : "") << "{ " << (it->asynchronous ? "co_await " : "") << "listener->handle(dynamic_cast<const " << event << "&>(event)); },priority); }\n";
-            }
-            if (decl.kind == DeclarationKind::policy) {
-                out << "static void register_policy(gungnir::auth::ResourceAuthorization& authorization, std::shared_ptr<" << decl.name << "> policy) {\n";
-                for (std::size_t m = 0; m < decl.methods.size(); ++m) { const auto& method = decl.methods[m]; const auto& fn = symbol(resolution.methods[m].symbol); if (fn.parameters.size() == 2 && !method.asynchronous && method.visibility == Visibility::public_) out << "authorization.define<" << type(fn.parameters[0]) << ',' << type(fn.parameters[1]) << ">(" << quote(method.name) << ",[policy](const " << type(fn.parameters[0]) << "& actor,const " << type(fn.parameters[1]) << "& resource) { return policy->" << method.name << "(actor,resource); });\n"; }
-                out << "}\n";
-            }
-            if (decl.kind == DeclarationKind::notification) {
-                const auto it = std::find_if(decl.methods.begin(),decl.methods.end(),[](const auto& m){return m.name == "via";}); const auto index = static_cast<std::size_t>(it-decl.methods.begin()); const auto& fn = symbol(resolution.methods[index].symbol);
-                out << "inline static constexpr std::string_view notification_name = " << quote(s.modules[module].name.empty() ? decl.name : s.modules[module].name + "." + decl.name) << ";\n";
-                if (fn.parameters.size() == 1) out << "auto bind(" << type(fn.parameters[0]) << " recipient) const { return gungnir::language::runtime::BoundNotification<" << decl.name << ',' << type(fn.parameters[0]) << ">{*this,std::move(recipient)}; }\n";
-            }
-            if (decl.kind == DeclarationKind::mail) {
-                out << "gungnir::mail::Message message() { gungnir::mail::Message value; value.subject(subject());";
-                for (const auto& method : decl.methods) { if (method.name == "text" || method.name == "html") out << "value." << method.name << '(' << method.name << "());"; if (method.name == "content") out << "value.html(std::string{content().body()});"; } out << "return value; }\n";
-            }
-            if (decl.kind == DeclarationKind::job) {
-                out << "std::string payload() const override { return gungnir::Json::object({"; for (auto f : resolution.fields) if (symbol(f).kind != ResolvedSymbolKind::injection) out << '{' << quote(symbol(f).name) << ",gungnir::http::make_json(" << symbol(f).name << ")},"; out << "}).dump(); }\n";
-                const bool injectable = std::any_of(resolution.fields.begin(),resolution.fields.end(),[&](auto id){return symbol(id).kind == ResolvedSymbolKind::injection;});
-                out << "static " << decl.name << " from_payload(std::string_view text" << (injectable ? ", gungnir::Container& container" : "") << ") { auto value = gungnir::Json::parse(text); return " << decl.name << '(';
-                bool comma = false;
-                for (auto f : resolution.fields) { if (comma) out << ','; comma = true; const auto& field = symbol(f); if (field.kind == ResolvedSymbolKind::injection) out << "container.resolve<" << type(field.type) << ">()"; else out << "gungnir::language::runtime::required<" << type(field.type) << ">(value," << quote(field.name) << ')'; }
-                out << "); }\n";
-                const auto it = std::find_if(decl.methods.begin(),decl.methods.end(),[](const auto& m){return m.name == "handle";});
-                out << "static void register_job(gungnir::queue::Worker& worker" << (injectable ? ", gungnir::Container& container" : "") << ") { worker.handle(std::string{event_name},[" << (injectable ? "&container" : "") << "](std::string_view payload) { auto job = from_payload(payload" << (injectable ? ",container" : "") << "); " << (it->asynchronous ? "gungnir::language::runtime::wait(job.handle());" : "job.handle();") << " }); }\n";
-                if (injectable) {
-                    out << "static void register_job(gungnir::queue::Worker& worker, std::weak_ptr<gungnir::Container> owner) { worker.handle(std::string{event_name},[owner](std::string_view payload) { auto container = owner.lock(); if (!container) throw std::logic_error(\"Job application is no longer available\"); auto job = from_payload(payload,*container); " << (it->asynchronous ? "gungnir::language::runtime::wait(job.handle());" : "job.handle();") << " }); }\n";
+
+            block << ' ' << field.name;
+
+            const auto original = std::find_if(
+                declaration.fields.begin(),
+                declaration.fields.end(),
+                [&](const auto& value) {
+                    return value.name == field.name;
+                }
+            );
+
+            if (
+                original != declaration.fields.end() &&
+                original->initializer != invalid_id
+            ) {
+                block
+                    << " = "
+                    << expr(original->initializer);
+            } else if (
+                declaration.kind ==
+                    DeclarationKind::model &&
+                field.name == primary
+            ) {
+                bool incrementing = true;
+                for (const auto& metadata :
+                     declaration.metadata) {
+                    if (
+                        metadata.name ==
+                        "incrementing"
+                    ) {
+                        incrementing =
+                            s.expressions[
+                                metadata.value
+                            ].text == "true";
+                    }
                 }
 
+                block
+                    << '{'
+                    << quote(primary)
+                    << ','
+                    << (
+                        incrementing &&
+                        p.types()[field.type].name !=
+                            "string"
+                            ? "true"
+                            : "false"
+                    )
+                    << '}';
+            } else {
+                block << "{}";
             }
-            out << "};\n"; close(module);
+
+            block << ";\n";
         }
-        for (std::size_t d = 0; d < s.declarations.size(); ++d) if (s.declarations[d].kind == DeclarationKind::model) {
-            const auto qualified = symbol(p.declarations()[d].symbol).cpp_name;
-            out << "namespace gungnir::model { template<> struct Generated<" << qualified << "> { inline static constexpr auto attributes = std::tuple{";
-            for (auto f : p.declarations()[d].fields) out << "attribute(" << quote(symbol(f).name) << ",&" << qualified << "::" << symbol(f).name << "),";
-            out << "}; inline static constexpr auto relations = std::tuple{}; }; }\n";
+
+        block << "public:\n";
+
+        if (
+            declaration.kind ==
+            DeclarationKind::model
+        ) {
+            block
+                << "template<class> friend struct "
+                   "gungnir::model::Generated;\n";
         }
-        return out.str();
+
+        if (
+            declaration.kind !=
+                DeclarationKind::model &&
+            !resolution.fields.empty()
+        ) {
+            block << declaration.name << '(';
+            bool comma = false;
+
+            for (auto field_id : resolution.fields) {
+                const auto& field = symbol(field_id);
+
+                if (comma) {
+                    block << ',';
+                }
+                comma = true;
+
+                if (
+                    field.kind ==
+                    ResolvedSymbolKind::injection
+                ) {
+                    block
+                        << "std::shared_ptr<"
+                        << type(field.type)
+                        << ">";
+                } else {
+                    block << type(field.type);
+                }
+
+                block << " gnr_" << field.name;
+            }
+
+            block << ") : ";
+            comma = false;
+
+            for (auto field_id : resolution.fields) {
+                const auto& field = symbol(field_id);
+
+                if (comma) {
+                    block << ',';
+                }
+                comma = true;
+
+                block
+                    << field.name
+                    << "(std::move(gnr_"
+                    << field.name
+                    << "))";
+            }
+
+            block << " {}\n";
+        }
+
+        if (
+            std::any_of(
+                resolution.fields.begin(),
+                resolution.fields.end(),
+                [&](auto field_id) {
+                    return symbol(field_id).kind ==
+                        ResolvedSymbolKind::injection;
+                }
+            )
+        ) {
+            block
+                << "static std::shared_ptr<"
+                << declaration.name
+                << "> make(gungnir::Container& container";
+
+            for (auto field_id : resolution.fields) {
+                const auto& field = symbol(field_id);
+                if (
+                    field.kind !=
+                    ResolvedSymbolKind::injection
+                ) {
+                    block
+                        << ','
+                        << type(field.type)
+                        << " gnr_"
+                        << field.name;
+                }
+            }
+
+            block
+                << ") { return std::make_shared<"
+                << declaration.name
+                << ">(";
+
+            bool comma = false;
+            for (auto field_id : resolution.fields) {
+                const auto& field = symbol(field_id);
+                if (comma) {
+                    block << ',';
+                }
+                comma = true;
+
+                if (
+                    field.kind ==
+                    ResolvedSymbolKind::injection
+                ) {
+                    block
+                        << "container.resolve<"
+                        << type(field.type)
+                        << ">()";
+                } else {
+                    block
+                        << "std::move(gnr_"
+                        << field.name
+                        << ')';
+                }
+            }
+
+            block << "); }\n";
+        }
+
+        if (
+            declaration.kind ==
+                DeclarationKind::model &&
+            std::none_of(
+                declaration.metadata.begin(),
+                declaration.metadata.end(),
+                [](const auto& metadata) {
+                    return metadata.name == "table";
+                }
+            )
+        ) {
+            std::string table;
+            for (
+                std::size_t i = 0;
+                i < declaration.name.size();
+                ++i
+            ) {
+                const auto value =
+                    declaration.name[i];
+
+                if (
+                    value >= 'A' &&
+                    value <= 'Z'
+                ) {
+                    if (i) {
+                        table += '_';
+                    }
+                    table += static_cast<char>(
+                        value + 32
+                    );
+                } else {
+                    table += value;
+                }
+            }
+
+            if (
+                table.ends_with("y") &&
+                table.size() > 1 &&
+                std::string{"aeiou"}.find(
+                    table[table.size() - 2]
+                ) == std::string::npos
+            ) {
+                table.pop_back();
+                table += "ies";
+            } else if (
+                table.ends_with("s") ||
+                table.ends_with("x") ||
+                table.ends_with("ch") ||
+                table.ends_with("sh")
+            ) {
+                table += "es";
+            } else {
+                table += 's';
+            }
+
+            block
+                << "inline static constexpr "
+                   "gungnir::Table table{"
+                << quote(table)
+                << "};\n";
+        }
+
+        for (const auto& metadata :
+             declaration.metadata) {
+            const auto& value =
+                s.expressions[metadata.value];
+
+            if (
+                metadata.name == "table" ||
+                metadata.name == "connection"
+            ) {
+                block
+                    << "inline static constexpr "
+                       "gungnir::"
+                    << (
+                        metadata.name == "table"
+                            ? "Table"
+                            : "Connection"
+                    )
+                    << ' '
+                    << metadata.name
+                    << '{'
+                    << quote(value.text)
+                    << "};\n";
+            } else if (
+                metadata.name == "fillable"
+            ) {
+                block
+                    << "inline static constexpr auto "
+                       "fillable = gungnir::Fillable{";
+
+                for (
+                    std::size_t i = 0;
+                    i < value.operands.size();
+                    ++i
+                ) {
+                    if (i) {
+                        block << ',';
+                    }
+
+                    block << quote(
+                        s.expressions[
+                            value.operands[i]
+                        ].text
+                    );
+                }
+
+                block << "};\n";
+            } else if (
+                metadata.name == "hidden" ||
+                metadata.name == "visible"
+            ) {
+                block
+                    << "inline static constexpr "
+                       "std::array<std::string_view,"
+                    << value.operands.size()
+                    << "> "
+                    << metadata.name
+                    << "{";
+
+                for (auto expression_id :
+                     value.operands) {
+                    block << quote(
+                        s.expressions[
+                            expression_id
+                        ].text
+                    ) << ',';
+                }
+
+                block << "};\n";
+            } else if (
+                metadata.name == "primaryKey"
+            ) {
+                block
+                    << "inline static constexpr "
+                       "std::string_view primaryKey = "
+                    << quote(value.text)
+                    << ";\n";
+            } else if (
+                metadata.name == "softDeletes"
+            ) {
+                if (value.text == "true") {
+                    block
+                        << "inline static constexpr "
+                           "gungnir::SoftDeletes "
+                           "soft_deletes{};\n";
+                }
+            } else if (
+                metadata.name == "casts"
+            ) {
+                block
+                    << "inline static constexpr "
+                       "std::array<std::pair<"
+                       "std::string_view,"
+                       "std::string_view>,"
+                    << value.operands.size()
+                    << "> casts{{";
+
+                for (
+                    std::size_t i = 0;
+                    i < value.operands.size();
+                    ++i
+                ) {
+                    block
+                        << '{'
+                        << quote(
+                            value.argument_names[i]
+                        )
+                        << ','
+                        << quote(
+                            s.expressions[
+                                value.operands[i]
+                            ].text
+                        )
+                        << "},";
+                }
+
+                block << "}};\n";
+            } else {
+                block
+                    << "inline static constexpr auto "
+                    << metadata.name
+                    << " = "
+                    << expr(metadata.value)
+                    << ";\n";
+            }
+        }
+
+        if (
+            declaration.kind ==
+                DeclarationKind::event ||
+            declaration.kind ==
+                DeclarationKind::job
+        ) {
+            block
+                << "inline static constexpr "
+                   "std::string_view event_name = "
+                << quote(
+                    s.modules[module].name.empty()
+                        ? declaration.name
+                        : s.modules[module].name +
+                            "." + declaration.name
+                )
+                << ";\nstd::string_view name() "
+                   "const noexcept override { "
+                   "return event_name; }\n";
+        }
+
+        for (
+            std::size_t method_id = 0;
+            method_id < declaration.methods.size();
+            ++method_id
+        ) {
+            const auto& method =
+                declaration.methods[method_id];
+
+            block
+                << (
+                    method.visibility ==
+                            Visibility::private_
+                        ? "private:\n"
+                        : method.visibility ==
+                                Visibility::protected_
+                            ? "protected:\n"
+                            : "public:\n"
+                )
+                << result(
+                    method,
+                    resolution.methods[method_id]
+                )
+                << ' '
+                << method.name
+                << '('
+                << params(
+                    method,
+                    resolution.methods[method_id],
+                    true
+                )
+                << ')'
+                << (
+                    declaration.kind ==
+                            DeclarationKind::migration &&
+                    (
+                        method.name == "up" ||
+                        method.name == "down"
+                    )
+                        ? " override"
+                        : ""
+                )
+                << ";\n";
+        }
+
+        block << "public:\n";
+
+        if (
+            declaration.kind ==
+            DeclarationKind::listener
+        ) {
+            const auto it = std::find_if(
+                declaration.methods.begin(),
+                declaration.methods.end(),
+                [](const auto& method) {
+                    return method.name == "handle";
+                }
+            );
+            const auto index =
+                static_cast<std::size_t>(
+                    it - declaration.methods.begin()
+                );
+            const auto event = type(
+                symbol(
+                    resolution.methods[index].symbol
+                ).parameters[0]
+            );
+
+            block
+                << "static void register_listener("
+                   "gungnir::events::Dispatcher& "
+                   "dispatcher, std::shared_ptr<"
+                << declaration.name
+                << "> listener, int priority = 0) { "
+                   "(void)dispatcher."
+                << (
+                    it->asynchronous
+                        ? "listen_async"
+                        : "listen"
+                )
+                << "(std::string{"
+                << event
+                << "::event_name}, [listener]("
+                   "const gungnir::events::Event& "
+                   "event) "
+                << (
+                    it->asynchronous
+                        ? "-> gungnir::Task<void> "
+                        : ""
+                )
+                << "{ "
+                << (
+                    it->asynchronous
+                        ? "co_await "
+                        : ""
+                )
+                << "listener->handle(dynamic_cast<const "
+                << event
+                << "&>(event)); },priority); }\n";
+        }
+
+        if (
+            declaration.kind ==
+            DeclarationKind::policy
+        ) {
+            block
+                << "static void register_policy("
+                   "gungnir::auth::ResourceAuthorization& "
+                   "authorization, std::shared_ptr<"
+                << declaration.name
+                << "> policy) {\n";
+
+            for (
+                std::size_t method_id = 0;
+                method_id <
+                    declaration.methods.size();
+                ++method_id
+            ) {
+                const auto& method =
+                    declaration.methods[method_id];
+                const auto& function = symbol(
+                    resolution.methods[method_id].symbol
+                );
+
+                if (
+                    function.parameters.size() == 2 &&
+                    !method.asynchronous &&
+                    method.visibility ==
+                        Visibility::public_
+                ) {
+                    block
+                        << "authorization.define<"
+                        << type(function.parameters[0])
+                        << ','
+                        << type(function.parameters[1])
+                        << ">("
+                        << quote(method.name)
+                        << ",[policy](const "
+                        << type(function.parameters[0])
+                        << "& actor,const "
+                        << type(function.parameters[1])
+                        << "& resource) { return "
+                           "policy->"
+                        << method.name
+                        << "(actor,resource); });\n";
+                }
+            }
+
+            block << "}\n";
+        }
+
+        if (
+            declaration.kind ==
+            DeclarationKind::notification
+        ) {
+            const auto it = std::find_if(
+                declaration.methods.begin(),
+                declaration.methods.end(),
+                [](const auto& method) {
+                    return method.name == "via";
+                }
+            );
+            const auto index =
+                static_cast<std::size_t>(
+                    it - declaration.methods.begin()
+                );
+            const auto& function = symbol(
+                resolution.methods[index].symbol
+            );
+
+            block
+                << "inline static constexpr "
+                   "std::string_view "
+                   "notification_name = "
+                << quote(
+                    s.modules[module].name.empty()
+                        ? declaration.name
+                        : s.modules[module].name +
+                            "." + declaration.name
+                )
+                << ";\n";
+
+            if (function.parameters.size() == 1) {
+                block
+                    << "auto bind("
+                    << type(function.parameters[0])
+                    << " recipient) const { return "
+                       "gungnir::language::runtime::"
+                       "BoundNotification<"
+                    << declaration.name
+                    << ','
+                    << type(function.parameters[0])
+                    << ">{*this,std::move(recipient)}; }\n";
+            }
+        }
+
+        if (
+            declaration.kind ==
+            DeclarationKind::mail
+        ) {
+            block
+                << "gungnir::mail::Message message() { "
+                   "gungnir::mail::Message value; "
+                   "value.subject(subject());";
+
+            for (const auto& method :
+                 declaration.methods) {
+                if (
+                    method.name == "text" ||
+                    method.name == "html"
+                ) {
+                    block
+                        << "value."
+                        << method.name
+                        << '('
+                        << method.name
+                        << "());";
+                }
+
+                if (method.name == "content") {
+                    block
+                        << "value.html(std::string{"
+                           "content().body()});";
+                }
+            }
+
+            block << "return value; }\n";
+        }
+
+        if (
+            declaration.kind ==
+            DeclarationKind::job
+        ) {
+            block
+                << "std::string payload() const override "
+                   "{ return gungnir::Json::object({";
+
+            for (auto field_id : resolution.fields) {
+                const auto& field = symbol(field_id);
+                if (
+                    field.kind !=
+                    ResolvedSymbolKind::injection
+                ) {
+                    block
+                        << '{'
+                        << quote(field.name)
+                        << ",gungnir::http::make_json("
+                        << field.name
+                        << ")},";
+                }
+            }
+
+            block << "}).dump(); }\n";
+
+            const bool injectable = std::any_of(
+                resolution.fields.begin(),
+                resolution.fields.end(),
+                [&](auto field_id) {
+                    return symbol(field_id).kind ==
+                        ResolvedSymbolKind::injection;
+                }
+            );
+
+            block
+                << "static "
+                << declaration.name
+                << " from_payload(std::string_view text"
+                << (
+                    injectable
+                        ? ", gungnir::Container& container"
+                        : ""
+                )
+                << ") { auto value = "
+                   "gungnir::Json::parse(text); return "
+                << declaration.name
+                << '(';
+
+            bool comma = false;
+            for (auto field_id : resolution.fields) {
+                const auto& field = symbol(field_id);
+
+                if (comma) {
+                    block << ',';
+                }
+                comma = true;
+
+                if (
+                    field.kind ==
+                    ResolvedSymbolKind::injection
+                ) {
+                    block
+                        << "container.resolve<"
+                        << type(field.type)
+                        << ">()";
+                } else {
+                    block
+                        << "gungnir::language::runtime::"
+                           "required<"
+                        << type(field.type)
+                        << ">(value,"
+                        << quote(field.name)
+                        << ')';
+                }
+            }
+
+            block << "); }\n";
+
+            const auto it = std::find_if(
+                declaration.methods.begin(),
+                declaration.methods.end(),
+                [](const auto& method) {
+                    return method.name == "handle";
+                }
+            );
+
+            block
+                << "static void register_job("
+                   "gungnir::queue::Worker& worker"
+                << (
+                    injectable
+                        ? ", gungnir::Container& container"
+                        : ""
+                )
+                << ") { worker.handle(std::string{"
+                   "event_name},["
+                << (injectable ? "&container" : "")
+                << "](std::string_view payload) { "
+                   "auto job = from_payload(payload"
+                << (injectable ? ",container" : "")
+                << "); "
+                << (
+                    it->asynchronous
+                        ? "gungnir::language::runtime::"
+                          "wait(job.handle());"
+                        : "job.handle();"
+                )
+                << " }); }\n";
+
+            if (injectable) {
+                block
+                    << "static void register_job("
+                       "gungnir::queue::Worker& worker, "
+                       "std::weak_ptr<gungnir::Container> "
+                       "owner) { worker.handle(std::string{"
+                       "event_name},[owner](std::string_view "
+                       "payload) { auto container = "
+                       "owner.lock(); if (!container) throw "
+                       "std::logic_error(\"Job application "
+                       "is no longer available\"); auto job "
+                       "= from_payload(payload,*container); "
+                    << (
+                        it->asynchronous
+                            ? "gungnir::language::runtime::"
+                              "wait(job.handle());"
+                            : "job.handle();"
+                    )
+                    << " }); }\n";
+            }
+        }
+
+        block << "};\n";
+
+        return CppIrDeclaration{
+            CppIrDeclarationKind::class_definition,
+            s.modules[module].name,
+            declaration.name,
+            wrap_module(module, block.str())
+        };
     }
+
+    CppIrDeclaration model_metadata(
+        std::size_t id
+    ) {
+        const auto& declaration = s.declarations[id];
+        const auto qualified = symbol(
+            p.declarations()[id].symbol
+        ).cpp_name;
+        std::ostringstream block;
+
+        block
+            << "namespace gungnir::model { "
+               "template<> struct Generated<"
+            << qualified
+            << "> { inline static constexpr auto "
+               "attributes = std::tuple{";
+
+        for (auto field_id :
+             p.declarations()[id].fields) {
+            block
+                << "attribute("
+                << quote(symbol(field_id).name)
+                << ",&"
+                << qualified
+                << "::"
+                << symbol(field_id).name
+                << "),";
+        }
+
+        block
+            << "}; inline static constexpr auto "
+               "relations = std::tuple{}; }; }\n";
+
+        return CppIrDeclaration{
+            CppIrDeclarationKind::model_metadata,
+            s.modules[declaration.module].name,
+            declaration.name,
+            block.str()
+        };
+    }
+
+    std::vector<CppIrDeclaration> declarations() {
+        std::vector<CppIrDeclaration> result;
+
+        result.push_back(CppIrDeclaration{
+            CppIrDeclarationKind::preamble,
+            {},
+            {},
+            "// Generated from a validated Gungnir "
+            "program.\n"
+            "#include <gungnir/language/runtime.hpp>\n"
+            "#include <optional>\n"
+            "#include <tuple>\n"
+        });
+
+        for (
+            std::size_t id = 0;
+            id < s.declarations.size();
+            ++id
+        ) {
+            result.push_back(
+                forward_declaration(id)
+            );
+        }
+
+        for (auto id : p.declaration_order()) {
+            if (
+                s.declarations[id].kind ==
+                DeclarationKind::function
+            ) {
+                continue;
+            }
+
+            result.push_back(
+                class_declaration(id)
+            );
+        }
+
+        for (
+            std::size_t id = 0;
+            id < s.declarations.size();
+            ++id
+        ) {
+            if (
+                s.declarations[id].kind ==
+                DeclarationKind::model
+            ) {
+                result.push_back(
+                    model_metadata(id)
+                );
+            }
+        }
+
+        return result;
+    }
+
 };
 }
 CppIrProject CppIrLowerer::lower(
