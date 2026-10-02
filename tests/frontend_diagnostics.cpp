@@ -66,4 +66,6 @@ int main() {
     const auto tokens = Lexer{"\n  /* unfinished"}.tokenize(&diagnostics, "lex.gnr");
     assert(!tokens.empty() && diagnostics.size() == 1);
     assert(diagnostics[0].location.line == 2 && diagnostics[0].location.column == 3);
+    assert(diagnostics[0].span.valid);
+    assert(diagnostics[0].span.end_offset > diagnostics[0].span.begin_offset);
 }
