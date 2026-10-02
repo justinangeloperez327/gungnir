@@ -150,9 +150,23 @@ Required properties:
 - transformations preserve source-language meaning;
 - failures caused by ordinary user mistakes are diagnostics before lowering, not backend compiler errors.
 
+### C++ IR
+
+`CppIrLowerer` is the only structured backend stage allowed to translate validated Gungnir semantics into target-specific C++ operations/fragments.
+
+Required properties:
+
+- input is `ValidatedProject`;
+- lowering is deterministic;
+- module ordering is preserved;
+- semantic binding and conversion decisions are copied from validated state rather than recomputed;
+- the resulting `CppIrProject` contains everything required for final serialization.
+
+See [C++ IR](cpp-ir.md).
+
 ### C++ emission
 
-The emitter should be mechanical.
+`CppEmitter` is mechanical. Its canonical input is `CppIrProject`.
 
 It may decide C++ spelling, namespaces, helper names and source mapping, but must not decide:
 
@@ -243,6 +257,11 @@ Validated AST
   [ ] no unresolved expression types
   [ ] resolved symbols/bindings are valid
   [ ] deterministic module/declaration order
+
+C++ IR
+  [ ] deterministic lowering
+  [ ] validated module order preserved
+  [ ] emitter requires no semantic lookup
 
 Code generation
   [ ] deterministic output
