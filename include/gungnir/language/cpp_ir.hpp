@@ -119,10 +119,10 @@ struct CppIrUnit {
 };
 
 struct CppIrProject {
-    // Framework-generated class declarations and metadata remain explicit
-    // support blocks. User-authored executable bodies are represented by typed
-    // function/statement/expression IR and never as monolithic text fragments.
-    std::vector<CppIrSupportBlock> support;
+    // Interface output is ordered structural declaration IR. Executable bodies
+    // are typed function/statement/expression IR and never monolithic fragments.
+    std::vector<CppIrDeclaration> interface_declarations;
+    std::vector<CppIrDeclaration> header_declarations;
     std::vector<CppIrExpression> expressions;
     std::vector<CppIrStatement> statements;
     std::vector<CppIrFunction> functions;
