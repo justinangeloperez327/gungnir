@@ -152,7 +152,8 @@ public:
         const auto a = type(target), b = type(source);
         if (a.optional) return b.name == "null" || assignable(unoptional(target), b.optional ? unoptional(source) : source);
         if (b.optional) return false;
-        if ((a.name == "double" || a.name == "decimal") && numeric(source)) return true;
+        if (a.name == "double" && b.name == "int") return true;
+        if (a.name == "decimal" && (b.name == "int" || b.name == "uint64")) return true;
         if (a.name == "Decision" && b.name == "bool") return true;
         if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable") return true;
         if (a.name == "List" && b.name == "List" && a.arguments.size() == 1 && b.arguments.size() == 1) return a.arguments[0] == b.arguments[0];
@@ -180,13 +181,19 @@ public:
         }
 
         if (numeric(left) && numeric(right)) {
-            if (a.name == "double" || b.name == "double") return type_id("double");
-            if (a.name == "decimal" || b.name == "decimal") return type_id("decimal");
-            // Signed/unsigned mixing has no lossless implicit common type in the
-            // current numeric model. Require an explicit conversion instead of
-            // making the result depend on operand order.
-            if (a.name != b.name) return std::nullopt;
-            return left;
+            const bool int_double =
+                (a.name == "int" && b.name == "double") ||
+                (a.name == "double" && b.name == "int");
+            if (int_double) return type_id("double");
+
+            const bool integer_decimal =
+                ((a.name == "int" || a.name == "uint64") && b.name == "decimal") ||
+                ((b.name == "int" || b.name == "uint64") && a.name == "decimal");
+            if (integer_decimal) return type_id("decimal");
+
+            // Signed/unsigned, exact/approximate and uint64/double mixing have
+            // no implicit common type in the current language contract.
+            return std::nullopt;
         }
 
         if (assignable(left, right)) return left;
