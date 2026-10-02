@@ -334,6 +334,12 @@ ConnectionPool::acquire(
                 ) ==
             std::cv_status::timeout
         ) {
+            // Cancellation wins over timeout when both become observable
+            // at the acquisition deadline. This keeps cancellation
+            // deterministic and avoids counting it as pool exhaustion.
+            cancellation
+                .throw_if_cancelled();
+
             ++impl_->
                 acquire_timeouts;
 

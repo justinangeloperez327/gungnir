@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate · compiler and runtime correctness
+    name: Validate · compiler, runtime, database and ORM correctness
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -41,11 +41,16 @@ jobs:
           gungnir_http_streaming_test gungnir_websocket_test
           gungnir_runtime_supervisor_test gungnir_runtime_host_test
           gungnir_runtime_lifecycle_test
+          gungnir_database_correctness_test gungnir_orm_correctness_test
+          gungnir_sqlite_correctness_test gungnir_database_cancellation_test
+          gungnir_database_scope_safety_test gungnir_orm_transaction_test
+          gungnir_orm_relations_test gungnir_orm_soft_deletes_test
+          gungnir_orm_timestamps_test
           gungnir_cli_test gungnir-cli gungnirc
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle)$'
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja

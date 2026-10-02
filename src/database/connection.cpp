@@ -431,35 +431,114 @@ bool Connection::supports_savepoints() const noexcept {
     return driver_->supports_savepoints();
 }
 
-bool Connection::in_transaction() const { std::lock_guard lock{mutex_}; return transaction_depth_ != 0; }
-void Connection::after_commit(std::function<void()> callback) {
-    if (!callback) throw std::invalid_argument("Commit callback cannot be empty");
-    { std::lock_guard lock{mutex_};
-      if (transaction_depth_) { commit_callbacks_.back().push_back(std::move(callback)); return; } }
+bool Connection::in_transaction() const {
+    std::lock_guard lock{mutex_};
+    return transaction_depth_ != 0;
+}
+
+void Connection::after_commit(
+    std::function<void()> callback
+) {
+    if (!callback) {
+        throw std::invalid_argument(
+            "Commit callback cannot be empty"
+        );
+    }
+
+    {
+        std::lock_guard lock{mutex_};
+
+        if (transaction_depth_ != 0) {
+            commit_callbacks_.back().push_back(
+                std::move(callback)
+            );
+            return;
+        }
+    }
+
     callback();
 }
+
 void Connection::begin() {
     std::lock_guard lock{mutex_};
-    if (transaction_depth_) throw std::logic_error("Use transaction scopes for nested transactions");
+
+    if (transaction_depth_ != 0) {
+        throw std::logic_error(
+            "Use transaction scopes for nested transactions"
+        );
+    }
+
     static_cast<void>(begin_scope());
 }
-void Connection::commit() { commit_scope(TransactionToken{.root = true}); }
-void Connection::rollback() { rollback_scope(TransactionToken{.root = true}); }
+
+void Connection::commit() {
+    std::lock_guard lock{mutex_};
+
+    if (transaction_depth_ == 0) {
+        return;
+    }
+
+    if (transaction_depth_ != 1) {
+        throw std::logic_error(
+            "Cannot commit a root database transaction while a nested scope is active"
+        );
+    }
+
+    commit_scope(
+        TransactionToken{
+            .root = true,
+            .savepoint = {},
+            .depth = 1,
+            .scope_id =
+                transaction_scope_ids_.back()
+        }
+    );
+}
+
+void Connection::rollback() {
+    std::lock_guard lock{mutex_};
+
+    if (transaction_depth_ == 0) {
+        return;
+    }
+
+    if (transaction_depth_ != 1) {
+        throw std::logic_error(
+            "Cannot roll back a root database transaction while a nested scope is active"
+        );
+    }
+
+    rollback_scope(
+        TransactionToken{
+            .root = true,
+            .savepoint = {},
+            .depth = 1,
+            .scope_id =
+                transaction_scope_ids_.back()
+        }
+    );
+}
 
 TransactionToken
 Connection::begin_scope() {
-    std::lock_guard lock{
-        mutex_
-    };
+    std::lock_guard lock{mutex_};
 
     if (transaction_depth_ == 0) {
         driver_->begin();
         transaction_depth_ = 1;
         commit_callbacks_.emplace_back();
 
+        const auto scope_id =
+            ++transaction_scope_sequence_;
+        transaction_scope_ids_.push_back(
+            scope_id
+        );
+
         return {
             .root = true,
-            .savepoint = {}
+            .savepoint = {},
+            .depth = 1,
+            .scope_id = scope_id
         };
     }
 
@@ -498,34 +577,101 @@ Connection::begin_scope() {
     ++transaction_depth_;
     commit_callbacks_.emplace_back();
 
+    const auto scope_id =
+        ++transaction_scope_sequence_;
+    transaction_scope_ids_.push_back(
+        scope_id
+    );
+
     return {
         .root = false,
-        .savepoint =
-            std::move(savepoint)
+        .savepoint = std::move(savepoint),
+        .depth = transaction_depth_,
+        .scope_id = scope_id
     };
+}
+
+void Connection::validate_scope_token(
+    const TransactionToken& token
+) const {
+    if (
+        transaction_depth_ == 0 ||
+        transaction_scope_ids_.empty()
+    ) {
+        throw std::logic_error(
+            "Database transaction scope is no longer active"
+        );
+    }
+
+    if (
+        token.depth != transaction_depth_ ||
+        token.scope_id == 0 ||
+        token.scope_id !=
+            transaction_scope_ids_.back() ||
+        token.root !=
+            (transaction_depth_ == 1)
+    ) {
+        throw std::logic_error(
+            "Database transaction scopes must be completed in LIFO order"
+        );
+    }
+
+    if (
+        !token.root &&
+        token.savepoint.empty()
+    ) {
+        throw std::logic_error(
+            "Nested database transaction scope is missing its savepoint"
+        );
+    }
 }
 
 void Connection::commit_scope(
     const TransactionToken& token
 ) {
-    std::unique_lock lock{
-        mutex_
-    };
+    std::unique_lock lock{mutex_};
 
-    if (transaction_depth_ == 0) {
-        return;
-    }
+    validate_scope_token(token);
 
     if (token.root) {
         driver_->commit();
         transaction_depth_ = 0;
-        std::vector<std::function<void()>> callbacks;
-        for (auto& level : commit_callbacks_) for (auto& callback : level) callbacks.push_back(std::move(callback));
+        transaction_scope_ids_.clear();
+
+        std::vector<
+            std::function<void()>
+        > callbacks;
+
+        for (auto& level : commit_callbacks_) {
+            for (auto& callback : level) {
+                callbacks.push_back(
+                    std::move(callback)
+                );
+            }
+        }
+
         commit_callbacks_.clear();
         lock.unlock();
+
         std::exception_ptr failure;
-        for (auto& callback : callbacks) { try { callback(); } catch (...) { if (!failure) failure = std::current_exception(); } }
-        if (failure) std::rethrow_exception(failure);
+
+        for (auto& callback : callbacks) {
+            try {
+                callback();
+            } catch (...) {
+                if (!failure) {
+                    failure =
+                        std::current_exception();
+                }
+            }
+        }
+
+        if (failure) {
+            std::rethrow_exception(
+                failure
+            );
+        }
+
         return;
     }
 
@@ -533,7 +679,9 @@ void Connection::commit_scope(
         backend() ==
             Backend::postgresql ||
         backend() ==
-            Backend::mysql || backend() == Backend::sqlite
+            Backend::mysql ||
+        backend() ==
+            Backend::sqlite
     ) {
         driver_->execute(
             "RELEASE SAVEPOINT " +
@@ -541,26 +689,34 @@ void Connection::commit_scope(
         );
     }
 
-    auto callbacks = std::move(commit_callbacks_.back());
+    auto callbacks =
+        std::move(
+            commit_callbacks_.back()
+        );
     commit_callbacks_.pop_back();
-    for (auto& callback : callbacks) commit_callbacks_.back().push_back(std::move(callback));
+
+    for (auto& callback : callbacks) {
+        commit_callbacks_.back()
+            .push_back(
+                std::move(callback)
+            );
+    }
+
+    transaction_scope_ids_.pop_back();
     --transaction_depth_;
 }
 
 void Connection::rollback_scope(
     const TransactionToken& token
 ) {
-    std::lock_guard lock{
-        mutex_
-    };
+    std::lock_guard lock{mutex_};
 
-    if (transaction_depth_ == 0) {
-        return;
-    }
+    validate_scope_token(token);
 
     if (token.root) {
         driver_->rollback();
         transaction_depth_ = 0;
+        transaction_scope_ids_.clear();
         commit_callbacks_.clear();
         return;
     }
@@ -587,6 +743,7 @@ void Connection::rollback_scope(
     }
 
     commit_callbacks_.pop_back();
+    transaction_scope_ids_.pop_back();
     --transaction_depth_;
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -20,6 +21,8 @@ class AsyncTransaction;
 struct TransactionToken {
     bool root{false};
     String savepoint;
+    std::size_t depth{0};
+    std::uint64_t scope_id{0};
 };
 
 class Connection {
@@ -77,11 +80,17 @@ private:
     [[nodiscard]]
     String next_savepoint_name();
 
+    void validate_scope_token(
+        const TransactionToken& token
+    ) const;
+
     String name_;
     std::shared_ptr<Driver> driver_;
     mutable std::recursive_mutex mutex_;
     std::vector<std::vector<std::function<void()>>> commit_callbacks_;
     std::size_t transaction_depth_{0};
+    std::vector<std::uint64_t> transaction_scope_ids_;
+    std::uint64_t transaction_scope_sequence_{0};
     std::uint64_t savepoint_sequence_{0};
 };
 

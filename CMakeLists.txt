@@ -1679,6 +1679,46 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(NAME gungnir.database COMMAND gungnir_database_test)
 
     add_executable(
+        gungnir_database_correctness_test
+        tests/database_correctness.cpp
+    )
+    target_link_libraries(
+        gungnir_database_correctness_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_database_correctness_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.database_correctness
+        COMMAND gungnir_database_correctness_test
+    )
+
+    if(GUNGNIR_WITH_SQLITE)
+        add_executable(
+            gungnir_sqlite_correctness_test
+            tests/sqlite_correctness.cpp
+        )
+        target_link_libraries(
+            gungnir_sqlite_correctness_test
+            PRIVATE
+                gungnir::gungnir
+        )
+        target_compile_features(
+            gungnir_sqlite_correctness_test
+            PRIVATE
+                cxx_std_23
+        )
+        add_test(
+            NAME gungnir.sqlite_correctness
+            COMMAND gungnir_sqlite_correctness_test
+        )
+    endif()
+
+    add_executable(
         gungnir_database_cancellation_test
         tests/database_cancellation.cpp
     )
@@ -1730,6 +1770,25 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_orm_test PRIVATE gungnir::orm)
     target_compile_features(gungnir_orm_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.orm COMMAND gungnir_orm_test)
+
+    add_executable(
+        gungnir_orm_correctness_test
+        tests/orm_correctness.cpp
+    )
+    target_link_libraries(
+        gungnir_orm_correctness_test
+        PRIVATE
+            gungnir::orm
+    )
+    target_compile_features(
+        gungnir_orm_correctness_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.orm_correctness
+        COMMAND gungnir_orm_correctness_test
+    )
 
     add_executable(
         gungnir_database_bootstrap_test

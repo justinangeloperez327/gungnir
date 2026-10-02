@@ -42,6 +42,18 @@ Phase 11 promotes lifecycle behavior into the primary PR gate. The focused runti
 
 See [Runtime Correctness](runtime-correctness.md).
 
+## Database and ORM correctness tests
+
+Phase 12 adds focused behavioral gates:
+
+- `gungnir.database_correctness` verifies transaction ownership, nested savepoint ordering, after-commit behavior, pool cancellation/timeout accounting, reconnect behavior, error context and lease cleanup;
+- `gungnir.orm_correctness` verifies strict hydration, dirty-state preservation, insert/update transitions, batched eager loading and one-slot-pool lease cleanup;
+- `gungnir.sqlite_correctness` runs a live in-memory SQLite baseline for commit/rollback, nested savepoints, foreign keys, prepared bindings, nulls and exact decimal text.
+
+Existing database cancellation, scope-safety, transaction, relationship, soft-delete and timestamp tests run beside these focused invariants in the primary PR gate.
+
+See [Database and ORM Correctness](database-correctness.md).
+
 ## Limits and planned work
 
 A successful `gungnirc --check` is not a full native type check or a live transport/integration test. Router-only tests do not cover TLS, HTTP parsing, database connectivity or distributed leases. Run relevant integration tests for the selected adapter.
