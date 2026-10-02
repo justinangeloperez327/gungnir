@@ -17,6 +17,11 @@ option(GUNGNIR_WITH_PASSWORD "Build OpenSSL scrypt password hashing" OFF)
 
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
+option(
+    GUNGNIR_BUILD_FUZZERS
+    "Build Clang/libFuzzer compiler robustness targets"
+    OFF
+)
 option(GUNGNIR_WITH_POSTGRESQL "Build the libpq PostgreSQL adapter" OFF)
 option(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS
@@ -331,6 +336,50 @@ set_target_properties(gungnir-language PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME language
 )
+
+if(GUNGNIR_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(
+            FATAL_ERROR
+            "GUNGNIR_BUILD_FUZZERS requires Clang/libFuzzer"
+        )
+    endif()
+
+    target_compile_options(
+        gungnir-language
+        PRIVATE
+            -fsanitize=address,undefined,fuzzer-no-link
+            -fno-omit-frame-pointer
+    )
+
+    foreach(fuzzer IN ITEMS lexer compiler)
+        add_executable(
+            gungnir_${fuzzer}_fuzzer
+            tests/fuzz/${fuzzer}_fuzz.cpp
+        )
+        target_link_libraries(
+            gungnir_${fuzzer}_fuzzer
+            PRIVATE
+                gungnir::language
+        )
+        target_compile_features(
+            gungnir_${fuzzer}_fuzzer
+            PRIVATE
+                cxx_std_23
+        )
+        target_compile_options(
+            gungnir_${fuzzer}_fuzzer
+            PRIVATE
+                -fsanitize=address,undefined,fuzzer-no-link
+                -fno-omit-frame-pointer
+        )
+        target_link_options(
+            gungnir_${fuzzer}_fuzzer
+            PRIVATE
+                -fsanitize=fuzzer,address,undefined
+        )
+    endforeach()
+endif()
 
 add_library(
     gungnir-cli-support
@@ -981,6 +1030,12 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_compiler_correctness_test PRIVATE gungnir::language)
     target_compile_features(gungnir_compiler_correctness_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.compiler_correctness COMMAND gungnir_compiler_correctness_test)
+
+    add_executable(gungnir_compiler_robustness_test tests/compiler_robustness.cpp)
+    target_link_libraries(gungnir_compiler_robustness_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_compiler_robustness_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.compiler_robustness COMMAND gungnir_compiler_robustness_test)
+    set_tests_properties(gungnir.compiler_robustness PROPERTIES TIMEOUT 30)
 
     add_executable(gungnir_language_test tests/language.cpp)
     target_link_libraries(gungnir_language_test PRIVATE gungnir::language)
