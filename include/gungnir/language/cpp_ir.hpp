@@ -98,13 +98,18 @@ struct CppIrFunction {
     std::vector<CppIrId> body;
 };
 
-enum class CppIrSupportKind {
-    interface_,
-    header_interface
+enum class CppIrDeclarationKind {
+    preamble,
+    function_forward,
+    class_forward,
+    class_definition,
+    model_metadata
 };
 
-struct CppIrSupportBlock {
-    CppIrSupportKind kind{CppIrSupportKind::interface_};
+struct CppIrDeclaration {
+    CppIrDeclarationKind kind{CppIrDeclarationKind::preamble};
+    std::string module;
+    std::string name;
     std::string spelling;
 };
 
