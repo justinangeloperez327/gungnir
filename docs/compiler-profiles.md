@@ -1,19 +1,35 @@
 # Compiler profiles
 
-The experimental structured frontend is available through `language::Compiler`, `TranspileOptions::structured_frontend`, and `gungnirc --strict`.
+The structured compiler is the canonical Gungnir compiler. `gungnirc` now uses `language::Compiler` by default.
 
 ```sh
-gungnirc application.gnr --strict -o generated.cpp
+gungnirc application.gnr -o generated.cpp
+gungnirc application.gnr --check
 gungnirc modules --project -o modules.cpp
 gungnirc modules --project --check
 gungnirc application.gnr --dump-validated-ast
 ```
 
+`--strict` remains accepted as a backwards-compatible alias for the structured default. It no longer selects a different compiler.
+
+## Compatibility profile
+
+Legacy/native-C++-compatible source is available only through the explicit compatibility profile:
+
+```sh
+gungnirc legacy.gnr --compat -o generated.cpp
+gungnirc legacy.gnr --compat --check
+```
+
+The compatibility profile uses `language::CompatibilityTranspiler`, the legacy token/source-edit lowering pipeline. The old `language::Transpiler` name remains as a source-compatible alias, but new framework and language features must not be implemented there.
+
+`--compat` cannot be combined with `--project` or `--dump-validated-ast`.
+
 `--project` compiles every `.gnr` module below the root, excluding `.git`, `.gungnir`, `build` and `vendor`. Explicit module declarations match the relative dotted file path. Imported declarations are exported by default. Generated C++ includes the framework runtime support header.
 
-The default `Transpiler` and default `gungnirc` mode preserve native C++ compatibility for projects without `profile=structured`. New application projects use the structured compiler. They do not provide the structured validator's closed-world guarantees. Select a profile explicitly when adding new language features to existing projects.
+New application projects use `profile=structured`. Projects without that marker retain their legacy project-build behavior so existing applications are not silently reinterpreted.
 
-| Capability | Structured profile |
+| Capability | Structured compiler |
 | --- | --- |
 | Functions, literal defaults, named arguments | Implemented |
 | Imports, aliases, dependency checks | Implemented |
@@ -29,6 +45,6 @@ The default `Transpiler` and default `gungnirc` mode preserve native C++ compati
 | General classes/interfaces/enums | Unsupported |
 | Arbitrary C++, preprocessor, overload resolution | Compatibility profile only |
 | String interpolation, advanced null-flow analysis | Unsupported |
-| Incremental compilation/application bootstrap | New structured projects emit per-module C++; editable native bootstrap hooks register services |
+| Incremental compilation/application bootstrap | Structured projects emit per-module C++; editable native bootstrap hooks register services |
 
-All capabilities remain experimental. The feature flags in `spec.hpp` describe implemented syntax, not stable release guarantees. See [generated runtime tests](../tests/structured_generated.cpp) for the native integration contracts.
+All capabilities remain experimental. The feature flags in `spec.hpp` describe implemented syntax, not stable release guarantees. See [generated runtime tests](../tests/structured_generated.cpp) and [compiler correctness](compiler-correctness.md).
