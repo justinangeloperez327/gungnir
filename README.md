@@ -857,6 +857,8 @@ Key compiler specifications:
 - [Syntax AST](docs/ast.md)
 - [Semantics](docs/semantics.md)
 - [Validated AST](docs/validated-ast.md)
+- [Compiler Correctness](docs/compiler-correctness.md)
+- [Compiler Conformance](docs/compiler-conformance.md)
 - [Transpiler](docs/transpiler.md)
 
 ---
