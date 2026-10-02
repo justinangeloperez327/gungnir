@@ -308,6 +308,16 @@ int main() {
             std::atomic_size_t
         >(0);
 
+    std::atomic_bool
+        cancellable_stream_started{
+            false
+        };
+
+    std::atomic_bool
+        cancellable_stream_cancelled{
+            false
+        };
+
     router.get(
         "/stream",
         [produced] {
@@ -361,6 +371,60 @@ int main() {
     );
 
     router.get(
+        "/stream-cancel",
+        [&] {
+            auto stream =
+                http::BodyStream{
+                    http::BodyStream::
+                        CancellableProducer{
+                            [&](
+                                CancellationToken
+                                    cancellation
+                            )
+                                -> Task<
+                                    http::BodyStream::
+                                        Chunk
+                                > {
+                                cancellable_stream_started
+                                    .store(
+                                        true,
+                                        std::memory_order_release
+                                    );
+
+                                try {
+                                    co_await sleep_for(
+                                        5s,
+                                        cancellation
+                                    );
+                                } catch (
+                                    const OperationCancelled&
+                                ) {
+                                    cancellable_stream_cancelled
+                                        .store(
+                                            true,
+                                            std::memory_order_release
+                                        );
+
+                                    throw;
+                                }
+
+                                co_return
+                                    std::string{
+                                        "late"
+                                    };
+                            }
+                        }
+                };
+
+            return
+                http::Response::stream(
+                    std::move(stream),
+                    "text/plain; charset=utf-8"
+                );
+        }
+    );
+
+    router.get(
         "/ping",
         [] {
             return
@@ -372,7 +436,7 @@ int main() {
 
     http::RuntimeOptions options;
     options.max_stream_chunk_bytes = 8;
-    options.stream_chunk_timeout = 1s;
+    options.stream_chunk_timeout = 75ms;
     options.write_timeout = 1s;
     options.idle_timeout = 1s;
     options.shutdown_timeout = 1s;
@@ -481,6 +545,58 @@ int main() {
         assert(
             ping.ends_with(
                 "\r\n\r\npong"
+            )
+        );
+    }
+
+    {
+        SocketGuard client{
+            connect_local(port)
+        };
+
+        send_all(
+            client.get(),
+            "GET /stream-cancel HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 400 &&
+            !cancellable_stream_started.load(
+                std::memory_order_acquire
+            );
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            cancellable_stream_started.load(
+                std::memory_order_acquire
+            )
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 400 &&
+            !cancellable_stream_cancelled.load(
+                std::memory_order_acquire
+            );
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            cancellable_stream_cancelled.load(
+                std::memory_order_acquire
             )
         );
     }
