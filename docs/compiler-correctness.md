@@ -217,10 +217,13 @@ For user-caused errors:
 
 - `code` is stable enough for tests and tooling;
 - file, line and column refer to `.gnr` source;
+- diagnostics preserve a half-open source span when the responsible syntax is known;
+- compiler results enrich spans with deterministic end positions and source-line context;
+- diagnostic ordering is deterministic across identical multi-file inputs;
 - the message states the violated rule;
 - generated C++ locations are secondary implementation details.
 
-Ordinary invalid source must not surface as a C++ template error, access violation or unhandled exception.
+`gungnirc` must use the shared diagnostic renderer so CLI output and compiler tooling agree on code, source location and highlighting. Ordinary invalid source must not surface as a C++ template error, access violation or unhandled exception.
 
 ## Determinism contract
 
@@ -241,7 +244,7 @@ Generated C++ must be compiled in CI with supported native toolchains. Backend c
 - framework/runtime APIs match generated code;
 - no compiler-specific extension is accidentally required.
 
-Backend compilation is not a substitute for Gungnir semantic validation.
+Backend compilation is not a substitute for Gungnir semantic validation. When line directives are enabled, generated callable signatures and executable statements are mapped back to their originating `.gnr` lines so backend conformance failures remain actionable.
 
 ## Correctness gate
 
