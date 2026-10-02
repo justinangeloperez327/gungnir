@@ -146,7 +146,9 @@ int main(int argc, char** argv) {
 
         if (!compatibility) {
             gungnir::language::Compiler compiler;
-            gungnir::language::CompilerOptions options; options.emit_line_directives = emit_line_directives;
+            gungnir::language::CompilerOptions options;
+            options.emit_line_directives = emit_line_directives;
+            options.validate_only = check_only || dump_validated || dump_ir;
             const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
             for (const auto& diagnostic : result.diagnostics) std::cerr << diagnostic.location.file << ':' << diagnostic.location.line << ':' << diagnostic.location.column << ": " << diagnostic.code << ": " << diagnostic.message << '\n';
             if (!result.success()) return 1;
