@@ -1,0 +1,157 @@
+name: Compiler Conformance
+
+on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "include/gungnir/language/**"
+      - "src/language/**"
+      - "tools/gungnirc.cpp"
+      - "tests/compiler_*.cpp"
+      - "tests/compiler_*.cmake"
+      - "tests/structured_generated.cpp"
+      - "tests/fixtures/structured/**"
+      - ".github/workflows/compiler-conformance.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "CMakeLists.txt"
+      - "include/gungnir/language/**"
+      - "src/language/**"
+      - "tools/gungnirc.cpp"
+      - "tests/compiler_*.cpp"
+      - "tests/compiler_*.cmake"
+      - "tests/structured_generated.cpp"
+      - "tests/fixtures/structured/**"
+      - ".github/workflows/compiler-conformance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compiler-conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC
+            cxx: g++
+          - name: Clang
+            cxx: clang++
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build g++ clang
+
+      - name: Configure
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_BUILD_TESTS=ON
+          -DGUNGNIR_BUILD_TOOLS=ON
+
+      - name: Build conformance targets
+        run: >
+          cmake --build build --parallel 2 --target
+          gungnir_public_headers
+          gungnir_compiler_correctness_test
+          gungnir_compiler_robustness_test
+          gungnir_structured_generated_test
+          gungnirc
+
+      - name: Run compiler conformance tests
+        run: >
+          ctest --test-dir build --output-on-failure --no-tests=error
+          -R '^gungnir\.(compiler_correctness|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_conformance_snapshot)$'
+
+      - name: Produce deterministic compiler snapshot
+        run: >
+          cmake
+          -DGUNGNIRC=$PWD/build/gungnirc
+          -DGUNGNIR_SOURCE_DIR=$PWD
+          -DGUNGNIR_OUTPUT_DIR=$PWD/build/conformance
+          -P tests/compiler_conformance.cmake
+
+      - name: Upload conformance snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-${{ matrix.name }}
+          path: build/conformance/
+          if-no-files-found: error
+
+  msvc:
+    name: MSVC
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -A x64
+          -DGUNGNIR_BUILD_TESTS=ON
+          -DGUNGNIR_BUILD_TOOLS=ON
+
+      - name: Build conformance targets
+        run: >
+          cmake --build build --config Release --parallel 2 --target
+          gungnir_public_headers
+          gungnir_compiler_correctness_test
+          gungnir_compiler_robustness_test
+          gungnir_structured_generated_test
+          gungnirc
+
+      - name: Run compiler conformance tests
+        run: >
+          ctest --test-dir build --build-config Release
+          --output-on-failure --no-tests=error
+          -R "^gungnir\.(compiler_correctness|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_conformance_snapshot)$"
+
+      - name: Produce deterministic compiler snapshot
+        shell: pwsh
+        run: cmake "-DGUNGNIRC=$PWD/build/Release/gungnirc.exe" "-DGUNGNIR_SOURCE_DIR=$PWD" "-DGUNGNIR_OUTPUT_DIR=$PWD/build/conformance" -P tests/compiler_conformance.cmake
+
+      - name: Upload conformance snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-MSVC
+          path: build/conformance/
+          if-no-files-found: error
+
+  compare:
+    name: Compare compiler output
+    runs-on: ubuntu-24.04
+    needs:
+      - linux
+      - msvc
+    steps:
+      - name: Download conformance snapshots
+        uses: actions/download-artifact@v4
+        with:
+          pattern: conformance-*
+          path: snapshots
+
+      - name: Require byte-identical structured output
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for file in program.cpp program.validated program.ir modules.cpp manifest.txt; do
+            cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-Clang/$file"
+            cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-MSVC/$file"
+          done
+
+          cat snapshots/conformance-GCC/manifest.txt
