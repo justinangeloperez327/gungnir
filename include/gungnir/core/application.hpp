@@ -221,6 +221,8 @@ public:
     );
     void stop() noexcept;
     [[nodiscard]] bool is_running() const noexcept;
+    [[nodiscard]] bool is_accepting() const noexcept;
+    [[nodiscard]] std::size_t active_http_dispatches() const noexcept;
 
 private:
     class Impl;
