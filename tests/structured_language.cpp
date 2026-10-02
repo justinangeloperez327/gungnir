@@ -50,6 +50,24 @@ int main() {
     );
     assert(nullable_conditional.success());
 
+    const auto exhaustive_branch_flow = Compiler{}.compile(
+        "function int choose(bool flag) { "
+        "if (flag) { return 1; } else { return 2; } }"
+    );
+    assert(exhaustive_branch_flow.success());
+
+    const auto return_or_throw_flow = Compiler{}.compile(
+        "function int choose(bool flag) { "
+        "if (flag) { return 1; } else { throw 'failed'; } }"
+    );
+    assert(return_or_throw_flow.success());
+
+    reject(
+        "function int loopOnly(bool flag) { "
+        "while (flag) { return 1; } }",
+        "GNR2215"
+    );
+
     const auto terminating_null_guard = Compiler{}.compile(
         "function string require(string? value) { "
         "if (value == null) { return 'fallback'; } "
