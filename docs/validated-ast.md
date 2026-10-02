@@ -4,7 +4,7 @@
 
 ## Current behavior
 
-The structured `Compiler` resolves syntax into `ValidatedProject`. The validated object can only be created by `ProgramValidator`; its syntax, symbol IDs, type IDs, bound arguments, captures and module order are exposed through const accessors. `CppEmitter` accepts this object rather than unchecked syntax. Failed validation emits no C++.
+The structured `Compiler` resolves syntax into `ValidatedProject`. The validated object can only be created by `ProgramValidator`; its syntax, symbol IDs, type IDs, bound arguments, captures and module order are exposed through const accessors. Callable resolution also records whether structured control-flow analysis proves that the callable cannot fall through. `CppEmitter` accepts this object rather than unchecked syntax. Failed validation emits no C++.
 
 ## Limits and planned work
 
