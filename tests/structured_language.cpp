@@ -85,6 +85,14 @@ int main() {
     reject(
         "function int mixed(int left, uint64 right) { return left + right; }"
     );
+    reject(
+        "function double unsafe(uint64 value) { return value; }",
+        "GNR2214"
+    );
+    reject(
+        "function decimal unsafe(double value) { return value; }",
+        "GNR2214"
+    );
 
     const auto decimal_math = Compiler{}.compile(
         "function decimal total(decimal left, decimal right) { return left + right; }"
