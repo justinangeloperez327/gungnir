@@ -129,6 +129,391 @@ class CppIrLoweringRenderer {
         }
         return {};
     }
+
+    static CppIrExpressionKind ir_expression_kind(
+        SyntaxExpressionKind kind
+    ) {
+        switch (kind) {
+        case SyntaxExpressionKind::literal:
+            return CppIrExpressionKind::literal;
+        case SyntaxExpressionKind::name:
+            return CppIrExpressionKind::name;
+        case SyntaxExpressionKind::member:
+            return CppIrExpressionKind::member;
+        case SyntaxExpressionKind::call:
+            return CppIrExpressionKind::call;
+        case SyntaxExpressionKind::unary:
+            return CppIrExpressionKind::unary;
+        case SyntaxExpressionKind::binary:
+            return CppIrExpressionKind::binary;
+        case SyntaxExpressionKind::subscript:
+            return CppIrExpressionKind::subscript;
+        case SyntaxExpressionKind::list:
+            return CppIrExpressionKind::list;
+        case SyntaxExpressionKind::object:
+            return CppIrExpressionKind::object;
+        case SyntaxExpressionKind::lambda:
+            return CppIrExpressionKind::lambda;
+        case SyntaxExpressionKind::await_:
+            return CppIrExpressionKind::await_;
+        case SyntaxExpressionKind::conditional:
+            return CppIrExpressionKind::conditional;
+        }
+        throw std::logic_error("Unknown syntax expression kind");
+    }
+
+    static CppIrSource ir_source(const Origin& origin) {
+        return CppIrSource{
+            origin.file,
+            origin.line,
+            origin.column
+        };
+    }
+
+    CppIrId lower_expression(
+        CppIrProject& ir,
+        SyntaxId id,
+        bool raw = false
+    ) {
+        if (id == invalid_id) {
+            return invalid_cpp_ir_id;
+        }
+
+        const auto& syntax = s.expressions.at(id);
+        const auto& resolution = p.expressions().at(id);
+
+        CppIrExpression node;
+        node.kind = ir_expression_kind(syntax.kind);
+        node.type = CppIrType{type(resolution.type)};
+        node.spelling = expr(id, raw);
+
+        const auto result_id = ir.expressions.size();
+        ir.expressions.push_back(std::move(node));
+
+        for (auto operand : syntax.operands) {
+            ir.expressions[result_id].operands.push_back(
+                lower_expression(ir, operand)
+            );
+        }
+
+        if (syntax.kind == SyntaxExpressionKind::lambda) {
+            const auto saved_captured = captured;
+            const auto saved_async = async;
+            const auto saved_return = return_type;
+
+            for (auto capture : resolution.captures) {
+                captured.insert(capture);
+            }
+
+            async = false;
+            return_type =
+                p.types()[resolution.type].arguments.back();
+
+            for (auto statement : syntax.body) {
+                ir.expressions[result_id].body.push_back(
+                    lower_statement(ir, statement)
+                );
+            }
+
+            captured = saved_captured;
+            async = saved_async;
+            return_type = saved_return;
+        }
+
+        return result_id;
+    }
+
+    CppIrId lower_conversion(
+        CppIrProject& ir,
+        SyntaxId id,
+        TypeId target
+    ) {
+        if (id == invalid_id) {
+            return invalid_cpp_ir_id;
+        }
+
+        const auto source = p.expressions().at(id).type;
+        const auto value = lower_expression(ir, id);
+
+        if (target == invalid_id || target == source) {
+            return value;
+        }
+
+        CppIrExpression converted;
+        converted.kind = CppIrExpressionKind::conversion;
+        converted.type = CppIrType{type(target)};
+        converted.spelling = convert(
+            ir.expressions[value].spelling,
+            target,
+            source
+        );
+        converted.operands.push_back(value);
+
+        const auto converted_id = ir.expressions.size();
+        ir.expressions.push_back(std::move(converted));
+        return converted_id;
+    }
+
+    CppIrId lower_statement(
+        CppIrProject& ir,
+        SyntaxId id
+    ) {
+        const auto& syntax = s.statements.at(id);
+
+        CppIrStatement node;
+        node.source = ir_source(syntax.origin);
+
+        switch (syntax.kind) {
+        case SyntaxStatementKind::binding: {
+            const auto& binding = symbol(p.bindings().at(id));
+            node.kind = CppIrStatementKind::binding;
+            node.name = binding.cpp_name;
+            node.type = CppIrType{
+                p.types()[binding.type].name == "Function"
+                    ? "auto"
+                    : type(binding.type)
+            };
+            node.immutable = binding.immutable;
+            node.expression = lower_conversion(
+                ir,
+                syntax.expression,
+                binding.type
+            );
+            break;
+        }
+        case SyntaxStatementKind::expression:
+            node.kind = CppIrStatementKind::expression;
+            node.expression = lower_expression(
+                ir,
+                syntax.expression
+            );
+            break;
+        case SyntaxStatementKind::return_:
+            node.kind = async
+                ? CppIrStatementKind::co_return
+                : CppIrStatementKind::return_;
+            node.expression = return_type == invalid_id
+                ? lower_expression(ir, syntax.expression)
+                : lower_conversion(
+                    ir,
+                    syntax.expression,
+                    return_type
+                );
+            break;
+        case SyntaxStatementKind::throw_:
+            node.kind = CppIrStatementKind::throw_;
+            node.expression = lower_expression(
+                ir,
+                syntax.expression
+            );
+            break;
+        case SyntaxStatementKind::block:
+            node.kind = CppIrStatementKind::block;
+            for (auto child : syntax.body) {
+                node.body.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            break;
+        case SyntaxStatementKind::if_:
+            node.kind = CppIrStatementKind::if_;
+            node.expression = lower_expression(
+                ir,
+                syntax.expression
+            );
+            for (auto child : syntax.body) {
+                node.body.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            for (auto child : syntax.alternative) {
+                node.alternative.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            break;
+        case SyntaxStatementKind::while_:
+            node.kind = CppIrStatementKind::while_;
+            node.expression = lower_expression(
+                ir,
+                syntax.expression
+            );
+            for (auto child : syntax.body) {
+                node.body.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            break;
+        case SyntaxStatementKind::for_in:
+            node.kind = CppIrStatementKind::for_in;
+            node.name = syntax.name;
+            node.expression = lower_expression(
+                ir,
+                syntax.expression
+            );
+            for (auto child : syntax.body) {
+                node.body.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            break;
+        case SyntaxStatementKind::for_:
+            node.kind = CppIrStatementKind::for_;
+            node.expression = lower_expression(
+                ir,
+                syntax.expression
+            );
+            for (auto child : syntax.parts) {
+                node.parts.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            for (auto child : syntax.alternative) {
+                node.alternative.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            for (auto child : syntax.body) {
+                node.body.push_back(
+                    lower_statement(ir, child)
+                );
+            }
+            break;
+        case SyntaxStatementKind::break_:
+            node.kind = CppIrStatementKind::break_;
+            break;
+        case SyntaxStatementKind::continue_:
+            node.kind = CppIrStatementKind::continue_;
+            break;
+        }
+
+        const auto result_id = ir.statements.size();
+        ir.statements.push_back(std::move(node));
+        return result_id;
+    }
+
+    void lower_functions(CppIrProject& ir) {
+        std::vector<std::size_t> unit_for_module(
+            s.modules.size(),
+            invalid_id
+        );
+
+        for (auto module : p.module_order()) {
+            unit_for_module[module] = ir.units.size();
+            ir.units.push_back(CppIrUnit{
+                s.modules[module].name,
+                {}
+            });
+        }
+
+        for (
+            std::size_t declaration_id = 0;
+            declaration_id < s.declarations.size();
+            ++declaration_id
+        ) {
+            const auto& declaration =
+                s.declarations[declaration_id];
+            const auto& declaration_resolution =
+                p.declarations()[declaration_id];
+
+            for (
+                std::size_t method_id = 0;
+                method_id < declaration.methods.size();
+                ++method_id
+            ) {
+                const auto& method =
+                    declaration.methods[method_id];
+                const auto& method_resolution =
+                    declaration_resolution.methods[method_id];
+                const auto& callable =
+                    symbol(method_resolution.symbol);
+
+                CppIrFunction function;
+                function.module =
+                    s.modules[declaration.module].name;
+                function.owner =
+                    declaration.kind == DeclarationKind::function
+                        ? std::string{}
+                        : declaration.name;
+                function.name = method.name;
+                function.result = CppIrType{
+                    result(method, method_resolution)
+                };
+                function.coroutine = method.asynchronous;
+                function.source = ir_source(method.origin);
+
+                for (
+                    std::size_t parameter_id = 0;
+                    parameter_id < method.parameters.size();
+                    ++parameter_id
+                ) {
+                    const auto parameter_type =
+                        callable.parameters[parameter_id];
+                    function.parameters.push_back(
+                        CppIrParameter{
+                            CppIrType{type(parameter_type)},
+                            method.parameters[parameter_id].name,
+                            p.types()[parameter_type].name ==
+                                "Request",
+                            invalid_cpp_ir_id
+                        }
+                    );
+                }
+
+                const auto saved_async = async;
+                const auto saved_return = return_type;
+                const auto saved_captured = captured;
+
+                async = method.asynchronous;
+                return_type = callable.type;
+                captured.clear();
+
+                for (auto statement : method.body) {
+                    function.body.push_back(
+                        lower_statement(ir, statement)
+                    );
+                }
+
+                if (
+                    method.asynchronous &&
+                    type(callable.type) == "void"
+                ) {
+                    CppIrStatement terminal;
+                    terminal.kind =
+                        CppIrStatementKind::co_return;
+                    terminal.source =
+                        ir_source(method.origin);
+                    const auto terminal_id =
+                        ir.statements.size();
+                    ir.statements.push_back(
+                        std::move(terminal)
+                    );
+                    function.body.push_back(terminal_id);
+                }
+
+                async = saved_async;
+                return_type = saved_return;
+                captured = saved_captured;
+
+                const auto function_id =
+                    ir.functions.size();
+                ir.functions.push_back(
+                    std::move(function)
+                );
+
+                const auto unit =
+                    unit_for_module[
+                        declaration.module
+                    ];
+                if (unit != invalid_id) {
+                    ir.units[unit].functions.push_back(
+                        function_id
+                    );
+                }
+            }
+        }
+    }
+
     std::string result(const CallableSyntax& method, const CallableResolution& resolved) const { auto value = type(symbol(resolved.symbol).type); return method.asynchronous ? "gungnir::Task<" + value + ">" : value; }
     std::string params(const CallableSyntax& method,const CallableResolution& resolved,bool defaults = false) {
         std::string result; const auto& fn = symbol(resolved.symbol);
@@ -244,11 +629,6 @@ public:
         }
         return out.str();
     }
-    std::string definitions(std::size_t module = invalid_id) {
-        // Out-of-class definitions keep declaration resolution independent of source order.
-        for (std::size_t d = 0; d < s.declarations.size(); ++d) { const auto& decl = s.declarations[d]; if (module != invalid_id && decl.module != module) continue; open(decl.module); for (std::size_t m = 0; m < decl.methods.size(); ++m) { const auto& method = decl.methods[m]; const auto& resolved = p.declarations()[d].methods[m]; origin(method.origin); out << result(method,resolved) << ' ' << (decl.kind == DeclarationKind::function ? "" : decl.name + "::") << method.name << '(' << params(method,resolved) << ") {\n"; async = method.asynchronous; return_type = symbol(resolved.symbol).type; for (auto id : method.body) out << stmt(id); if (async && type(symbol(resolved.symbol).type) == "void") out << "co_return;\n"; out << "}\n"; } close(decl.module); }
-        return out.str();
-    }
 };
 }
 CppIrProject CppIrLowerer::lower(
@@ -257,53 +637,76 @@ CppIrProject CppIrLowerer::lower(
 ) const {
     CppIrProject result;
 
-    result.interface_fragments.push_back(CppIrFragment{
-        CppIrFragmentKind::interface_declaration,
-        CppIrLoweringRenderer{project,line_directives}.declarations()
+    result.support.push_back(CppIrSupportBlock{
+        CppIrSupportKind::interface_,
+        CppIrLoweringRenderer{
+            project,
+            line_directives
+        }.declarations()
     });
 
-    result.header_fragments.push_back(CppIrFragment{
-        CppIrFragmentKind::interface_declaration,
-        CppIrLoweringRenderer{project,false}.declarations()
+    result.support.push_back(CppIrSupportBlock{
+        CppIrSupportKind::header_interface,
+        CppIrLoweringRenderer{
+            project,
+            false
+        }.declarations()
     });
 
-    result.implementation_fragments.push_back(CppIrFragment{
-        CppIrFragmentKind::implementation_definition,
-        CppIrLoweringRenderer{project,line_directives}.definitions()
-    });
-
-    for (auto module : project.module_order()) {
-        CppIrUnit unit;
-        unit.module = project.syntax().modules[module].name;
-        unit.fragments.push_back(CppIrFragment{
-            CppIrFragmentKind::module_definition,
-            CppIrLoweringRenderer{project,line_directives}.definitions(module)
-        });
-        result.units.push_back(std::move(unit));
-    }
+    CppIrLoweringRenderer{
+        project,
+        line_directives
+    }.lower_functions(result);
 
     return result;
 }
 
 std::string dump_cpp_ir(const CppIrProject& project) {
     std::ostringstream out;
-    const auto dump = [&](std::string_view section, const auto& fragments) {
-        for (const auto& fragment : fragments) {
-            out << section << ' ' << static_cast<int>(fragment.kind)
-                << ' ' << fragment.code.size() << '\n'
-                << fragment.code << '\n';
-        }
-    };
 
-    dump("interface", project.interface_fragments);
-    dump("header", project.header_fragments);
-    dump("implementation", project.implementation_fragments);
+    out << "cpp-ir structural\n";
+
+    for (std::size_t i = 0; i < project.functions.size(); ++i) {
+        const auto& function = project.functions[i];
+        out << "function " << i << ' ';
+        if (!function.module.empty()) {
+            out << function.module << "::";
+        }
+        if (!function.owner.empty()) {
+            out << function.owner << "::";
+        }
+        out << function.name << " -> "
+            << function.result.spelling
+            << (function.coroutine ? " coroutine" : "")
+            << '\n';
+
+        for (auto statement : function.body) {
+            out << "  statement " << statement
+                << ' ' << static_cast<int>(
+                    project.statements.at(statement).kind
+                )
+                << '\n';
+        }
+    }
+
+    for (std::size_t i = 0; i < project.expressions.size(); ++i) {
+        const auto& expression = project.expressions[i];
+        out << "expression " << i
+            << ' ' << static_cast<int>(expression.kind)
+            << " : " << expression.type.spelling
+            << '\n';
+    }
 
     for (const auto& unit : project.units) {
-        out << "unit " << unit.module << '\n';
-        dump("unit-fragment", unit.fragments);
+        out << "unit " << unit.module
+            << " functions";
+        for (auto function : unit.functions) {
+            out << ' ' << function;
+        }
+        out << '\n';
     }
 
     return out.str();
 }
+
 }
