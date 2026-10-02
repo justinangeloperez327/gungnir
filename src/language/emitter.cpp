@@ -2,6 +2,7 @@
 #include <gungnir/language/compiler.hpp>
 
 #include <string_view>
+#include <utility>
 
 namespace gungnir::language {
 namespace {
