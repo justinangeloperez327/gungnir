@@ -311,7 +311,9 @@ Compatibility lowering must not become the specification for new language behavi
 
 For the current structured language profile, `gungnirc --check` is a validation-only semantic gate: it stops at `ValidatedProject` and does not use C++ IR emission or native compilation to decide source validity.
 
-The profile is authoritative only for constructs the structured compiler claims to support. Unsupported language/framework behavior must be rejected explicitly rather than accepted and deferred to generated C++ diagnostics. Native compilation remains a backend conformance test, not a semantic fallback.
+The profile is authoritative only for constructs the structured compiler claims to support. Unsupported language/framework behavior must be rejected explicitly rather than accepted and deferred to generated C++ diagnostics. Return-path validity is decided from structured control-flow outcomes before lowering; loops are conservative and do not prove callable completion merely because their body terminates. Native compilation remains a backend conformance test, not a semantic fallback.
+
+Phase 6 also requires semantic-gate parity: for the supported profile, validation-only checking and normal compilation must make the same accept/reject decision and produce the same semantic diagnostic codes. Backend IR verification may still detect internal compiler defects, but it must not be needed to diagnose ordinary source errors.
 
 See also:
 
