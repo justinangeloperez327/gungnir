@@ -50,12 +50,23 @@ void Transaction::commit() {
         return;
     }
 
-    connection_->
-        commit_scope(
-            token_
-        );
+    try {
+        connection_->
+            commit_scope(
+                token_
+            );
 
-    active_ = false;
+        active_ = false;
+    } catch (...) {
+        if (
+            !connection_->
+                in_transaction()
+        ) {
+            active_ = false;
+        }
+
+        throw;
+    }
 }
 
 void Transaction::rollback() {
@@ -141,12 +152,23 @@ void AsyncTransaction::commit() {
 
     ensure_not_expired();
 
-    connection_->
-        commit_scope(
-            token_
-        );
+    try {
+        connection_->
+            commit_scope(
+                token_
+            );
 
-    active_ = false;
+        active_ = false;
+    } catch (...) {
+        if (
+            !connection_->
+                in_transaction()
+        ) {
+            active_ = false;
+        }
+
+        throw;
+    }
 }
 
 void AsyncTransaction::rollback() {
