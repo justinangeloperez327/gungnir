@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
 
           if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must use SemVer, for example v0.9.0 or v0.1.0-rc.1."
+            echo "Release tag must use SemVer, for example v0.9.0 or v0.9.0-rc.1."
             exit 1
           fi
 
@@ -146,7 +146,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:RELEASE_TAG -notmatch '^v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
-              throw "Release tag must use SemVer, for example v0.9.0 or v0.1.0-rc.1."
+              throw "Release tag must use SemVer, for example v0.9.0 or v0.9.0-rc.1."
           }
 
           $tagVersion = $Matches[1]
@@ -322,6 +322,22 @@ jobs:
 
               if ($actualVersion -ne $expectedVersion) {
                   throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+              }
+
+              $compiler = Join-Path $installDir "bin\gungnirc.exe"
+              if (-not (Test-Path $compiler)) {
+                  throw "Installed gungnirc.exe was not found"
+              }
+
+              $compilerVersion = (& $compiler --version).Trim()
+              $expectedCompiler = "Gungnir compiler $tagCore (language 0.9)"
+              if ($compilerVersion -ne $expectedCompiler) {
+                  throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
+              }
+
+              $contract = (& $compiler --print-contract) -join "`n"
+              if ($contract -notmatch "structured_feature_freeze=true") {
+                  throw "Installed compiler does not report the 0.9 feature freeze."
               }
 
               Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
