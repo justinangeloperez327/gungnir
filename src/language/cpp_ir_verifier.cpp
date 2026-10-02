@@ -326,7 +326,7 @@ private:
             );
             break;
 
-        case CppIrStatementKind::co_return:
+        case CppIrStatementKind::co_return_:
             if (!coroutine) {
                 error(
                     "co_return appears in a non-coroutine C++ IR function"
