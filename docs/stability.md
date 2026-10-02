@@ -43,7 +43,7 @@ A change that intentionally alters accepted syntax, type rules, control-flow beh
 
 The feature freeze does **not** claim that every framework feature is complete or that Gungnir is 1.0-stable. The compiler-conformance matrix still identifies partial framework semantics. General classes/interfaces/enums, arbitrary native C++ syntax, and other unsupported structured-language features remain outside the frozen profile.
 
-Generated C++ is an implementation artifact. Applications should not depend on generated namespaces, helper names, class layout, or ABI. Rebuild generated code with the same Gungnir package version used by the runtime.
+Generated C++ is an implementation artifact. Applications should not depend on generated namespaces, helper names, class layout, or ABI. Rebuild generated code with the same Gungnir package version used by the runtime. Structured output embeds a compile-time compiler/runtime contract assertion so incompatible contract versions fail during native compilation rather than silently linking.
 
 ## Compatibility policy
 
