@@ -90,10 +90,20 @@ Example intent:
 
 ~~~text
 UserController
-  -> app/controllers/user_controller.gnr
+  -> app/controllers/UserController.gnr
+
+User
+  -> app/models/User.gnr
 ~~~
 
-Exact path conventions should follow the module contract.
+Migration source remains descriptive snake_case:
+
+~~~text
+CreateUsersTable
+  -> database/migrations/create_users_table.gnr
+~~~
+
+Declaration-based filenames should match their generated PascalCase type. Exact path conventions should follow the module contract.
 
 # Module generation
 

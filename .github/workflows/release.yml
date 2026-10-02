@@ -300,9 +300,9 @@ jobs:
 
               Push-Location $projectDir
               try {
-                  & $cli build --release
+                  & $cli build
                   if ($LASTEXITCODE -ne 0) {
-                      throw "Installed CLI failed to build a generated project without GUNGNIR_CMAKE_PREFIX"
+                      throw "Installed CLI failed to build a default generated project without GUNGNIR_CMAKE_PREFIX"
                   }
               }
               finally {

@@ -107,7 +107,11 @@ std::filesystem::path Project::make(std::string_view kind,String name,String dep
     if (kind == "request") content = "function Json validate" + type + "(Request request) {\n    return request.validate({ name: 'required|string' });\n}\n";
     // Parse before creating a file, so generator errors never leave broken sources.
     check(language::SyntaxParser{}.parse(content).diagnostics);
-    return create_source(directory->second,snake_case(type) + ".gnr",content);
+    const auto file_name =
+        kind == "migration"
+            ? snake_case(type) + ".gnr"
+            : type + ".gnr";
+    return create_source(directory->second,file_name,content);
 }
 
 std::filesystem::path Project::assemble_structured() const {
@@ -128,6 +132,9 @@ std::filesystem::path Project::assemble_structured() const {
     outputs[generated / "program.hpp"] = emitted.declarations;
     std::string cmake = R"cmake(cmake_minimum_required(VERSION 3.25)
 project(gungnir_app LANGUAGES CXX)
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+endif()
 find_package(Gungnir CONFIG REQUIRED)
 add_library(program STATIC generated/program.cpp
 )cmake";

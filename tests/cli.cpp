@@ -87,7 +87,7 @@ int main() {
         std::filesystem::exists(
             destination /
             "app/controllers/"
-            "home_controller.gnr"
+            "HomeController.gnr"
         )
     );
 
@@ -114,7 +114,7 @@ int main() {
 
     // Projects without a profile retain the compatibility compiler contract.
     std::ofstream{destination / ".gungnir-project"} << "name=sample-app\n";
-    std::ofstream{destination / "app/controllers/home_controller.gnr"}
+    std::ofstream{destination / "app/controllers/HomeController.gnr"}
         << "class HomeController : Controller { Response index() { return text(\"ok\"); } }\n";
 
     const auto model =
@@ -138,18 +138,18 @@ int main() {
 
     assert(
         model.filename() ==
-        "user.gnr"
+        "User.gnr"
     );
-    assert(post.filename() == "zpost.gnr");
+    assert(post.filename() == "Zpost.gnr");
 
     assert(
         controller.filename() ==
-        "user_controller.gnr"
+        "UserController.gnr"
     );
 
     assert(
         middleware.filename() ==
-        "auth_middleware.gnr"
+        "AuthMiddleware.gnr"
     );
 
     assert(
