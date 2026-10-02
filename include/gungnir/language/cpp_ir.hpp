@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -7,29 +8,117 @@ namespace gungnir::language {
 
 class ValidatedProject;
 
-enum class CppIrFragmentKind {
-    interface_declaration,
-    implementation_definition,
-    module_definition
+using CppIrId = std::size_t;
+inline constexpr CppIrId invalid_cpp_ir_id =
+    static_cast<CppIrId>(-1);
+
+struct CppIrType {
+    std::string spelling;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return !spelling.empty();
+    }
 };
 
-struct CppIrFragment {
-    CppIrFragmentKind kind{CppIrFragmentKind::implementation_definition};
-    std::string code;
+struct CppIrSource {
+    std::string file;
+    std::size_t line{1};
+    std::size_t column{1};
+};
+
+enum class CppIrExpressionKind {
+    literal,
+    name,
+    member,
+    call,
+    unary,
+    binary,
+    subscript,
+    list,
+    object,
+    lambda,
+    await_,
+    conditional,
+    conversion
+};
+
+struct CppIrExpression {
+    CppIrExpressionKind kind{CppIrExpressionKind::literal};
+    CppIrType type;
+    // Final target spelling is cached by lowering. It is never source text and
+    // never used to rediscover Gungnir semantics.
+    std::string spelling;
+    std::vector<CppIrId> operands;
+};
+
+enum class CppIrStatementKind {
+    binding,
+    expression,
+    return_,
+    co_return,
+    throw_,
+    block,
+    if_,
+    while_,
+    for_,
+    for_in,
+    break_,
+    continue_
+};
+
+struct CppIrStatement {
+    CppIrStatementKind kind{CppIrStatementKind::expression};
+    CppIrSource source;
+    std::string name;
+    CppIrType type;
+    bool immutable{false};
+    CppIrId expression{invalid_cpp_ir_id};
+    std::vector<CppIrId> body;
+    std::vector<CppIrId> alternative;
+    std::vector<CppIrId> parts;
+};
+
+struct CppIrParameter {
+    CppIrType type;
+    std::string name;
+    bool by_reference{false};
+    CppIrId default_value{invalid_cpp_ir_id};
+};
+
+struct CppIrFunction {
+    std::string module;
+    std::string owner;
+    std::string name;
+    CppIrType result;
+    bool coroutine{false};
+    CppIrSource source;
+    std::vector<CppIrParameter> parameters;
+    std::vector<CppIrId> body;
+};
+
+enum class CppIrSupportKind {
+    interface_,
+    header_interface
+};
+
+struct CppIrSupportBlock {
+    CppIrSupportKind kind{CppIrSupportKind::interface_};
+    std::string spelling;
 };
 
 struct CppIrUnit {
     std::string module;
-    std::vector<CppIrFragment> fragments;
+    std::vector<std::size_t> functions;
 };
 
 struct CppIrProject {
-    // The monolithic interface preserves line-directive behavior for single-file
-    // emission. The header interface intentionally omits line directives so
-    // generated program.hpp remains stable across source-location-only changes.
-    std::vector<CppIrFragment> interface_fragments;
-    std::vector<CppIrFragment> header_fragments;
-    std::vector<CppIrFragment> implementation_fragments;
+    // Framework-generated class declarations and metadata remain explicit
+    // support blocks. User-authored executable bodies are represented by typed
+    // function/statement/expression IR and never as monolithic text fragments.
+    std::vector<CppIrSupportBlock> support;
+    std::vector<CppIrExpression> expressions;
+    std::vector<CppIrStatement> statements;
+    std::vector<CppIrFunction> functions;
     std::vector<CppIrUnit> units;
 };
 
@@ -41,6 +130,23 @@ public:
     ) const;
 };
 
-[[nodiscard]] std::string dump_cpp_ir(const CppIrProject& project);
+struct CppIrVerification {
+    std::vector<std::string> errors;
+
+    [[nodiscard]] bool success() const noexcept {
+        return errors.empty();
+    }
+};
+
+class CppIrVerifier {
+public:
+    [[nodiscard]] CppIrVerification verify(
+        const CppIrProject& project
+    ) const;
+};
+
+[[nodiscard]] std::string dump_cpp_ir(
+    const CppIrProject& project
+);
 
 } // namespace gungnir::language
