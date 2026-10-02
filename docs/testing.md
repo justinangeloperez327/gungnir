@@ -19,7 +19,7 @@ Compiler testing is split by responsibility:
 - **robustness** cases feed malformed source and require controlled diagnostics rather than crashes;
 - **determinism** cases require identical validated dumps and emitted output for identical inputs, including reordered multi-file input.
 
-`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests.
+`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Phase 6 adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline.
 
 See [Compiler Correctness](compiler-correctness.md) and [Compiler Conformance](compiler-conformance.md).
 
