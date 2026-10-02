@@ -267,6 +267,7 @@ void graceful_drain_keeps_runtime_active() {
 
     routing::Router router;
     std::atomic_bool started{false};
+    std::atomic_bool release{false};
 
     router.get(
         "/drain",
@@ -277,10 +278,16 @@ void graceful_drain_keeps_runtime_active() {
                 std::memory_order_release
             );
 
-            co_await sleep_for(
-                150ms,
-                request.cancellation()
-            );
+            while (
+                !release.load(
+                    std::memory_order_acquire
+                )
+            ) {
+                co_await sleep_for(
+                    5ms,
+                    request.cancellation()
+                );
+            }
 
             co_return http::Response::text(
                 "drained"
@@ -359,6 +366,11 @@ void graceful_drain_keeps_runtime_active() {
     }
 
     assert(concurrent_listen_rejected);
+
+    release.store(
+        true,
+        std::memory_order_release
+    );
 
     const auto response =
         receive_all(client.get());
