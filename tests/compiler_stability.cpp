@@ -155,6 +155,11 @@ void frozen_check_and_compile_semantics_match() {
     assert(compiled.validated.has_value());
     assert(checked.code.empty());
     assert(!compiled.code.empty());
+    assert(
+        compiled.code.find(
+            "compiler_contract_version == \"0.9\""
+        ) != std::string::npos
+    );
     assert(checked.diagnostics.empty());
     assert(compiled.diagnostics.empty());
 
