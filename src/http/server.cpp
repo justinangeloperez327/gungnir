@@ -1439,6 +1439,12 @@ struct PendingDispatch {
         cancellation.cancel();
     }
 
+    [[nodiscard]]
+    CancellationToken token()
+        const noexcept {
+        return cancellation.token();
+    }
+
     Request request;
     CancellationSource cancellation;
     std::shared_ptr<view::Engine>
@@ -1645,6 +1651,19 @@ DetachedTask settle_dispatch(
 
             outcome = "ok";
         }
+    } catch (
+        const OperationCancelled&
+    ) {
+        response_status = 499;
+        outcome = "cancelled";
+
+        pending->span.attribute(
+            "http.request.cancelled",
+            "true"
+        );
+
+        pending->exception =
+            std::current_exception();
     } catch (
         const std::exception& error
     ) {
@@ -1936,15 +1955,32 @@ public:
         bool expected = false;
 
         if (
-            !running.compare_exchange_strong(
+            !active.compare_exchange_strong(
                 expected,
-                true
+                true,
+                std::memory_order_acq_rel
             )
         ) {
             throw std::logic_error(
-                "Gungnir HTTP server is already running"
+                "Gungnir HTTP server is already active"
             );
         }
+
+        struct ActiveReset {
+            std::atomic_bool& active;
+
+            ~ActiveReset() {
+                active.store(
+                    false,
+                    std::memory_order_release
+                );
+            }
+        } active_reset{active};
+
+        running.store(
+            true,
+            std::memory_order_release
+        );
 
         bound.store(0);
 
@@ -2033,9 +2069,9 @@ public:
     void configure(
         RuntimeOptions value
     ) {
-        if (running.load()) {
+        if (active.load(std::memory_order_acquire)) {
             throw std::logic_error(
-                "HTTP runtime options cannot change while the server is running"
+                "HTTP runtime options cannot change while the server is active"
             );
         }
 
@@ -2057,9 +2093,9 @@ public:
         std::shared_ptr<view::Engine>
             value
     ) {
-        if (running.load()) {
+        if (active.load(std::memory_order_acquire)) {
             throw std::logic_error(
-                "HTTP view engine cannot change while the server is running"
+                "HTTP view engine cannot change while the server is active"
             );
         }
 
@@ -3040,7 +3076,13 @@ public:
             auto task =
                 connection.websocket
                     ->receive(
-                        std::move(message)
+                        std::move(message),
+                        connection
+                            .websocket_request
+                            ? connection
+                                .websocket_request
+                                ->token()
+                            : CancellationToken{}
                     );
 
             connection.pending_websocket =
@@ -3850,7 +3892,11 @@ public:
                 Clock::now();
 
             auto task =
-                stream.stream->next();
+                stream.stream->next(
+                    stream.request
+                        ? stream.request->token()
+                        : CancellationToken{}
+                );
 
             settle_stream_chunk(
                 std::move(task),
@@ -5205,7 +5251,13 @@ public:
                 Clock::now();
 
             auto task =
-                connection.stream->next();
+                connection.stream->next(
+                    connection.stream_request
+                        ? connection
+                            .stream_request
+                            ->token()
+                        : CancellationToken{}
+                );
 
             settle_stream_chunk(
                 std::move(task),
@@ -6336,7 +6388,10 @@ public:
 
     std::shared_ptr<view::Engine>
         view_engine;
+    // running controls admission/draining; active covers the whole listen
+    // lifecycle until connections and cooperative dispatches have finished.
     std::atomic_bool running{false};
+    std::atomic_bool active{false};
     std::atomic<NativeSocket> listener{
         invalid_socket
     };
@@ -6403,7 +6458,21 @@ void Server::view_engine(
 
 bool Server::running()
     const noexcept {
-    return impl_->running.load();
+    return impl_->active.load(
+        std::memory_order_acquire
+    );
+}
+
+bool Server::accepting()
+    const noexcept {
+    return impl_->running.load(
+        std::memory_order_acquire
+    );
+}
+
+std::size_t Server::active_dispatches()
+    const noexcept {
+    return impl_->dispatches->active();
 }
 
 std::uint16_t Server::bound_port()
