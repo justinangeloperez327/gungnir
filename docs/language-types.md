@@ -6,7 +6,7 @@
 
 The structured validator interns resolved types and records a TypeId for every expression. Known calls, return paths, const writes, conditions, callback signatures, optionals and declared field access are checked. Integer literals are range-checked, decimal/hex/binary literals and separators are normalized, and single/double quotes both create strings. Unicode escapes must denote valid scalar values.
 
-Common-type selection is centralized for conditional expressions, inferred returns and arithmetic results. It is symmetric: operand/branch order does not change the semantic result. `null` combined with a concrete value infers an optional `T?`; matching decimal arithmetic retains the semantic `decimal` type; and signed/unsigned arithmetic with no lossless common type is rejected instead of silently selecting the left operand type.
+Common-type selection is centralized for conditional expressions, inferred returns and arithmetic results. It is symmetric: operand/branch order does not change the semantic result. `null` combined with a concrete value infers an optional `T?`; matching decimal arithmetic retains the semantic `decimal` type; and mixed numeric families are accepted only through the current widening table (`int -> double`, `int -> decimal`, `uint64 -> decimal`). Signed/unsigned mixing, `uint64 -> double`, and implicit `double <-> decimal` conversion are rejected.
 
 ## Limits and planned work
 
