@@ -25,9 +25,10 @@
 | Async/await validation | Complete for current structured profile | Invalid await/async calls are rejected before emission |
 | Return-path validation | Partial | Required return checks exist; loop termination is not proof of return |
 | Framework contract validation | Partial | Core declaration contracts are checked; coverage must expand with the supported surface |
-| Validated AST boundary | Complete for structured path | `ValidatedProject` can only be created by validation and `CppEmitter` consumes it |
+| Validated AST boundary | Complete for structured path | `ValidatedProject` can only be created by validation and is consumed by `CppIrLowerer` |
 | Deterministic multi-file compilation | Complete baseline | Source files are sorted before parsing/merging; dedicated correctness tests enforce output stability |
-| Dedicated C++ IR | Planned | Current emitter consumes `ValidatedProject`; a separate complete C++ IR layer is still a target |
+| Dedicated C++ IR boundary | Complete baseline | `Compiler` lowers `ValidatedProject -> CppIrProject`; `CppEmitter` serializes IR only |
+| Typed C++ expression/statement IR | Partial | Phase 3 IR is target-specific and fragment-based; finer typed C++ nodes remain future backend refinement |
 | Canonical compiler selection | Complete | `gungnirc` defaults to `Compiler`; `--compat` is explicit and profile behavior is CI-tested |
 | Structured project route emission | Complete baseline | Route URI/controller/action/middleware are structural legacy-route AST data, semantically checked, then emitted directly without SourceEdit |
 | Legacy source-edit elimination | Transitional | `CompatibilityTranspiler` and specialized source/token lowerers remain only for explicit `--compat` legacy/native compatibility |
