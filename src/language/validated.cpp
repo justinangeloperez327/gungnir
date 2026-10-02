@@ -378,8 +378,24 @@ public:
         if (e.text == "??") {
             std::function<bool(SyntaxId)> contains_await = [&](SyntaxId id) { const auto& node = v.syntax_.expressions[id]; if (node.kind == SyntaxExpressionKind::await_) return true; if (node.kind == SyntaxExpressionKind::lambda) return false; for (auto child : node.operands) if (contains_await(child)) return true; return false; };
             if (contains_await(e.operands[0]) || contains_await(e.operands[1])) report(e.origin,"await in null coalescing requires a separate binding"); if (!type(lhs).optional) report(e.origin, "Null coalescing requires an optional value"); const auto base = unoptional(lhs); if (!assignable(base, expression(e.operands[1], base))) report(e.origin, "Incompatible coalescing value"); return set(base); }
-        const auto rhs = expression(e.operands[1], lhs);
-        if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") { writable(e.operands[0]); if (e.text != "=" && !(numeric(lhs) && numeric(rhs)) && !(e.text == "+=" && lhs == type_id("string") && rhs == lhs)) report(e.origin,"Compound assignment requires compatible numeric or string operands"); if (!assignable(lhs, rhs)) report(e.origin, "Assignment type mismatch"); return set(lhs); }
+        TypeId assignment_target = lhs;
+        if (e.text == "=") {
+            const auto target_symbol = v.expressions_[e.operands[0]].symbol;
+            const auto& target_syntax = v.syntax_.expressions[e.operands[0]];
+            if (target_symbol != invalid_id &&
+                (target_syntax.kind == SyntaxExpressionKind::name ||
+                 target_syntax.kind == SyntaxExpressionKind::member)) {
+                assignment_target = v.symbols_[target_symbol].type;
+            }
+        }
+        const auto rhs = expression(e.operands[1], e.text == "=" ? assignment_target : lhs);
+        if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") {
+            writable(e.operands[0]);
+            if (e.text != "=" && !(numeric(lhs) && numeric(rhs)) && !(e.text == "+=" && lhs == type_id("string") && rhs == lhs))
+                report(e.origin,"Compound assignment requires compatible numeric or string operands");
+            if (!assignable(e.text == "=" ? assignment_target : lhs, rhs)) report(e.origin, "Assignment type mismatch");
+            return set(e.text == "=" ? assignment_target : lhs);
+        }
         if (e.text == "&&" || e.text == "||") { if (lhs != type_id("bool") || rhs != type_id("bool")) report(e.origin, "Logical operands must be bool"); return set(type_id("bool")); }
         if (e.text == "==" || e.text == "!=") { if (!(numeric(unoptional(lhs)) && numeric(unoptional(rhs))) && unoptional(lhs) != type_id("string") && unoptional(lhs) != type_id("bool") && type(lhs).name != "null" && type(rhs).name != "null") report(e.origin,"Equality is supported for scalar and optional scalar values"); if (!assignable(lhs, rhs) && !assignable(rhs, lhs)) report(e.origin, "Incompatible equality operands"); return set(type_id("bool")); }
         if (e.text == "<" || e.text == ">" || e.text == "<=" || e.text == ">=") { if (!(numeric(lhs) && numeric(rhs)) && !(lhs == type_id("string") && rhs == lhs)) report(e.origin, "Incompatible comparison operands"); return set(type_id("bool")); }
