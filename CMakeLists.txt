@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(gungnir VERSION 0.1.2 LANGUAGES CXX)
+project(gungnir VERSION 0.9.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -958,6 +958,11 @@ if(GUNGNIR_BUILD_TOOLS)
     add_executable(gungnirc tools/gungnirc.cpp)
     target_link_libraries(gungnirc PRIVATE gungnir::language)
     target_compile_features(gungnirc PRIVATE cxx_std_23)
+    target_compile_definitions(
+        gungnirc
+        PRIVATE
+            GUNGNIR_VERSION="${PROJECT_VERSION}"
+    )
 
     add_executable(gungnir-cli tools/gungnir.cpp)
     target_link_libraries(
