@@ -37,11 +37,12 @@ if(NOT ir_dump_result EQUAL 0)
     message(FATAL_ERROR "--dump-cpp-ir must succeed for structured source")
 endif()
 if(
-    NOT ir_dump MATCHES "interface" OR
-    NOT ir_dump MATCHES "implementation" OR
+    NOT ir_dump MATCHES "cpp-ir structural" OR
+    NOT ir_dump MATCHES "function" OR
+    NOT ir_dump MATCHES "expression" OR
     NOT ir_dump MATCHES "unit"
 )
-    message(FATAL_ERROR "--dump-cpp-ir output is missing expected IR sections")
+    message(FATAL_ERROR "--dump-cpp-ir output is missing expected structural IR sections")
 endif()
 
 execute_process(
