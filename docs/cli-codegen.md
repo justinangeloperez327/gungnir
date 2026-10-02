@@ -26,12 +26,12 @@ For example:
 
 ```sh
 gungnir make:event UserCreated
-gungnir make:listener RecordUser app.events.user_created::UserCreated
+gungnir make:listener RecordUser app.events.UserCreated::UserCreated
 gungnir make:model User
-gungnir make:policy User app.models.user::User
+gungnir make:policy User app.models.User::User
 ```
 
-Generators refuse to overwrite files. Generated `.gnr` uses documented framework declarations, typed functions, and arrow callbacks. Request helpers are validation functions, not a new request class syntax. Import the helper's module and call `validateStoreUserRequest(request)`.
+Generators refuse to overwrite files. Declaration-based generators preserve PascalCase filenames that match the generated type, such as `User.gnr`, `UserController.gnr`, and `AuthMiddleware.gnr`. Migrations keep snake_case filenames such as `create_users_table.gnr`. Generated `.gnr` uses documented framework declarations, typed functions, and arrow callbacks. Request helpers are validation functions, not a new request class syntax. Import the helper's module and call `validateStoreUserRequest(request)`.
 
 ## Project bootstrap
 
@@ -43,7 +43,7 @@ Generated bootstrap installs container factories for controllers, middleware, li
 
 All structured `.gnr` modules are compiled except `routes`, `.gungnir`, `.git`, `build`, `vendor`, and `storage`. Routes retain `Route::get("/", HomeController::index)` syntax and are checked against the declarations. Unique type names have native aliases for routes/bootstrap; ambiguous names must be qualified in native hooks. Application and migration executables share the same generated module library. Migration planning does not boot a database connection.
 
-`GUNGNIR_CMAKE_PREFIX` supplies an installed package prefix. CMake must be available on `PATH`. Builds retain unchanged generated files and native objects; see [modules](modules.md).
+`GUNGNIR_CMAKE_PREFIX` supplies an installed package prefix. CMake must be available on `PATH`. On MSVC, generated applications use the dynamic runtime expected by the installed Gungnir package in development builds, so `gungnir build`, `gungnir run`, and `gungnir dev` remain link-compatible with release-installed framework libraries. Builds retain unchanged generated files and native objects; see [modules](modules.md).
 
 ## Development watcher
 
