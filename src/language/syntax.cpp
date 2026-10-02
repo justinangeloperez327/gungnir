@@ -40,7 +40,18 @@ public:
     bool end() const { return peek().kind == TokenKind::end; }
     Origin origin() const { return {file, peek().line, peek().column, peek().offset, peek().offset + peek().lexeme.size()}; }
     void error(std::string message, std::string code = "GNR2001") {
-        result.diagnostics.push_back({DiagnosticLevel::error, {file, peek().line, peek().column}, std::move(message), std::move(code), {}});
+        Diagnostic diagnostic{
+            DiagnosticLevel::error,
+            {file, peek().line, peek().column},
+            std::move(message),
+            std::move(code),
+            {}
+        };
+        diagnostic.span.begin_offset = peek().offset;
+        diagnostic.span.end_offset =
+            peek().offset + std::max<std::size_t>(1, peek().lexeme.size());
+        diagnostic.span.valid = true;
+        result.diagnostics.push_back(std::move(diagnostic));
         throw ParseFailure{};
     }
     bool take(std::string_view word) { if (!is(word)) return false; ++at; return true; }
