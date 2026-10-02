@@ -80,6 +80,11 @@ public:
     ) const;
 
     [[nodiscard]]
+    PoolStats pool_stats(
+        std::string_view name = "default"
+    ) const;
+
+    [[nodiscard]]
     Transaction transaction(
         std::string_view name = "default"
     );
