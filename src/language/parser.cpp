@@ -1589,26 +1589,12 @@ void Parser::parse_route_declaration(
 
     const auto uri = next_significant(*open);
     const auto after_uri = uri ? next_significant(*uri) : std::nullopt;
-    if (
-        !uri ||
-        *uri >= *comma ||
-        tokens_[*uri].kind != TokenKind::string_literal ||
-        !after_uri ||
-        *after_uri != *comma
-    ) {
-        result_.diagnostics.push_back(Diagnostic{
-            DiagnosticLevel::error,
-            SourceLocation{
-                source_name_,
-                route.line,
-                route.column
-            },
-            "Route URI must be one string literal",
-            "GNR1302",
-            "Use Route::get(\"/path\", Controller::action)."
-        });
-        return;
-    }
+    const bool literal_uri =
+        uri &&
+        *uri < *comma &&
+        tokens_[*uri].kind == TokenKind::string_literal &&
+        after_uri &&
+        *after_uri == *comma;
 
     const auto controller = next_significant(*comma);
     const auto handler_colon_one =
@@ -1741,7 +1727,8 @@ void Parser::parse_route_declaration(
         tokens_[*action].lexeme,
         middleware_type,
         has_middleware,
-        unquote(tokens_[*uri].lexeme)
+        literal_uri ? unquote(tokens_[*uri].lexeme) : std::string{},
+        literal_uri
     });
 }
 
