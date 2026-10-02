@@ -12,7 +12,6 @@ struct SemanticIndex;
 
 struct TranspileOptions {
     bool emit_line_directives{true};
-    bool structured_frontend{false};
     const SemanticIndex* semantic_index{nullptr};
 };
 
@@ -23,7 +22,8 @@ struct TranspileResult {
     [[nodiscard]] bool success() const noexcept;
 };
 
-class Transpiler {
+// Compatibility-only source-edit frontend. New compiler work belongs in Compiler.
+class CompatibilityTranspiler {
 public:
     [[nodiscard]] TranspileResult transpile(
         std::string_view source,
@@ -31,6 +31,10 @@ public:
         TranspileOptions options = {}
     ) const;
 };
+
+// Source-compatible alias for pre-Phase-2 callers. New code should use
+// CompatibilityTranspiler explicitly when legacy/native syntax is required.
+using Transpiler = CompatibilityTranspiler;
 
 } // namespace gungnir::language
 
