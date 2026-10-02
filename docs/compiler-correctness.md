@@ -338,7 +338,7 @@ The structured compiler contract is versioned as 0.9 and is feature-frozen for t
 
 Compiler-facing changes must preserve the frozen acceptance/diagnostic corpus unless the change is an intentional correctness correction. The stability gate verifies representative accepted programs, stable diagnostic codes, `--check`/full-compilation semantic parity, and machine-readable compiler contract metadata. The same gate runs under GCC, Clang, and MSVC.
 
-Feature freeze does not stabilize generated C++ ABI, native runtime ABI, compatibility mode, or capabilities still documented as unsupported/partial.
+Feature freeze does not stabilize generated C++ ABI, native runtime ABI, compatibility mode, or capabilities still documented as unsupported/partial. Generated structured C++ embeds the compiler contract version and statically rejects a runtime/header set advertising a different contract.
 
 See also:
 
