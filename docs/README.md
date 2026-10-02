@@ -40,6 +40,7 @@ Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for t
 - [ORM Relationships](relationships.md)
 - [Migrations](migration.md)
 - [Database Runtime](database.md)
+- [Database and ORM Correctness](database-correctness.md)
 - [MySQL Adapter](mysql.md)
 - [PostgreSQL Adapter](postgresql.md)
 - [SQL Server Adapter](sqlserver.md)
