@@ -301,6 +301,7 @@ add_library(gungnir-language
     src/language/controller_lowering.cpp
     src/language/compiler.cpp
     src/language/cpp_ir.cpp
+    src/language/cpp_ir_verifier.cpp
     src/language/emitter.cpp
     src/language/syntax.cpp
     src/language/validated.cpp
