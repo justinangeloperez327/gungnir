@@ -34,18 +34,6 @@ std::string cpp_namespace(std::string_view module) {
     return result;
 }
 
-const CppIrSupportBlock* support(
-    const CppIrProject& project,
-    CppIrSupportKind kind
-) {
-    for (const auto& block : project.support) {
-        if (block.kind == kind) {
-            return &block;
-        }
-    }
-    return nullptr;
-}
-
 class StructuralEmitter {
 public:
     explicit StructuralEmitter(
@@ -237,11 +225,8 @@ std::string CppEmitter::emit(
 
     std::string output;
 
-    if (const auto* block = support(
-        project,
-        CppIrSupportKind::interface_
-    )) {
-        output += block->spelling;
+    for (const auto& declaration : project.interface_declarations) {
+        output += declaration.spelling;
     }
 
     StructuralEmitter emitter{project};
@@ -264,11 +249,8 @@ EmittedProject CppEmitter::emit_units(
     EmittedProject result;
     result.declarations = "#pragma once\n";
 
-    if (const auto* block = support(
-        project,
-        CppIrSupportKind::header_interface
-    )) {
-        result.declarations += block->spelling;
+    for (const auto& declaration : project.header_declarations) {
+        result.declarations += declaration.spelling;
     }
 
     StructuralEmitter emitter{project};
