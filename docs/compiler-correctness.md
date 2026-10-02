@@ -266,7 +266,7 @@ User mistakes must produce normal diagnostics. Assertions, invalid arena access,
 
 ## Relationship to compatibility mode
 
-The legacy `Transpiler`/source-edit path is transitional. New language semantics must be implemented in the structured pipeline first.
+`language::Compiler` is the canonical compiler and `gungnirc` selects it by default. The source-edit path is exposed only as `CompatibilityTranspiler` / `gungnirc --compat`. New language semantics must be implemented in the structured pipeline.
 
 The migration target is:
 
@@ -277,7 +277,7 @@ SyntaxProject
     -> structured lowering/emission
 ```
 
-Compatibility lowering must not become the specification for new language behavior.
+Compatibility lowering must not become the specification for new language behavior. Production code that still requires the compatibility pipeline must opt into it explicitly so remaining migration islands are visible.
 
 ## Release criterion
 
