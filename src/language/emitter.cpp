@@ -48,50 +48,70 @@ public:
         return project_.expressions.at(id).spelling;
     }
 
-    std::string statement(CppIrId id) const {
+    std::string source_directive(
+        const CppIrSource& source,
+        bool enabled
+    ) const {
+        if (!enabled || source.file.empty()) {
+            return {};
+        }
+        return "#line " + std::to_string(source.line) +
+            " " + quote(source.file) + "\n";
+    }
+
+    std::string statement(
+        CppIrId id,
+        bool line_directives
+    ) const {
         const auto& node = project_.statements.at(id);
+        const auto prefix =
+            source_directive(node.source, line_directives);
 
         switch (node.kind) {
         case CppIrStatementKind::binding:
-            return std::string{node.immutable ? "const " : ""} +
+            return prefix +
+                std::string{node.immutable ? "const " : ""} +
                 node.type.spelling + " " + node.name +
                 " = " + expression(node.expression) + ";\n";
         case CppIrStatementKind::expression:
-            return expression(node.expression) + ";\n";
+            return prefix + expression(node.expression) + ";\n";
         case CppIrStatementKind::return_:
-            return std::string{"return"} +
+            return prefix + std::string{"return"} +
                 (node.expression == invalid_cpp_ir_id
                     ? ""
                     : " " + expression(node.expression)) +
                 ";\n";
         case CppIrStatementKind::co_return_:
-            return std::string{"co_return"} +
+            return prefix + std::string{"co_return"} +
                 (node.expression == invalid_cpp_ir_id
                     ? ""
                     : " " + expression(node.expression)) +
                 ";\n";
         case CppIrStatementKind::throw_:
-            return "throw " + expression(node.expression) + ";\n";
+            return prefix + "throw " + expression(node.expression) + ";\n";
         case CppIrStatementKind::block:
-            return block(node.body);
+            return prefix + block(node.body, line_directives);
         case CppIrStatementKind::if_:
-            return "if (" + expression(node.expression) + ") " +
-                block(node.body) +
+            return prefix +
+                "if (" + expression(node.expression) + ") " +
+                block(node.body, line_directives) +
                 (node.alternative.empty()
                     ? ""
-                    : "else " + block(node.alternative));
+                    : "else " + block(node.alternative, line_directives));
         case CppIrStatementKind::while_:
-            return "while (" + expression(node.expression) + ") " +
-                block(node.body);
+            return prefix +
+                "while (" + expression(node.expression) + ") " +
+                block(node.body, line_directives);
         case CppIrStatementKind::for_in:
-            return "for (const auto& " + node.name + " : " +
+            return prefix +
+                "for (const auto& " + node.name + " : " +
                 expression(node.expression) + ") " +
-                block(node.body);
+                block(node.body, line_directives);
         case CppIrStatementKind::for_: {
-            std::string result{"{\n"};
+            std::string result{prefix + "{\n"};
 
             for (auto part : node.parts) {
-                result += statement(part);
+                result += statement(part, line_directives);
             }
 
             result += "for (;" + expression(node.expression) + ";";
@@ -115,13 +135,13 @@ public:
                 result += expression(step_node.expression);
             }
 
-            result += ") " + block(node.body) + "}\n";
+            result += ") " + block(node.body, line_directives) + "}\n";
             return result;
         }
         case CppIrStatementKind::break_:
-            return "break;\n";
+            return prefix + "break;\n";
         case CppIrStatementKind::continue_:
-            return "continue;\n";
+            return prefix + "continue;\n";
         }
 
         throw std::logic_error(
@@ -173,7 +193,7 @@ public:
 
         result += ") {\n";
         for (auto statement_id : value.body) {
-            result += statement(statement_id);
+            result += statement(statement_id, value.line_directive);
         }
         result += "}\n";
 
@@ -186,11 +206,12 @@ public:
 
 private:
     std::string block(
-        const std::vector<CppIrId>& statements
+        const std::vector<CppIrId>& statements,
+        bool line_directives
     ) const {
         std::string result{"{\n"};
         for (auto id : statements) {
-            result += statement(id);
+            result += statement(id, line_directives);
         }
         result += "}\n";
         return result;
