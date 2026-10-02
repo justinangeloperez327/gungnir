@@ -291,7 +291,7 @@ class CppIrLoweringRenderer {
             break;
         case SyntaxStatementKind::return_:
             node.kind = async
-                ? CppIrStatementKind::co_return
+                ? CppIrStatementKind::co_return_
                 : CppIrStatementKind::return_;
             node.expression = return_type == invalid_id
                 ? lower_expression(ir, syntax.expression)
@@ -482,7 +482,7 @@ class CppIrLoweringRenderer {
                 ) {
                     CppIrStatement terminal;
                     terminal.kind =
-                        CppIrStatementKind::co_return;
+                        CppIrStatementKind::co_return_;
                     terminal.source =
                         ir_source(method.origin);
                     const auto terminal_id =
@@ -526,7 +526,7 @@ class CppIrLoweringRenderer {
     void close(std::size_t module) { if (!ns(module).empty()) out << "}\n"; }
     void origin(const Origin& origin) { if (lines) out << "#line " << origin.line << ' ' << quote(origin.file) << '\n'; }
 public:
-    CppIrLoweringRenderer(const ValidatedProject& project,bool lines) : p(project),s(project.syntax()),lines(lines) { for (std::size_t d = 0; d < s.declarations.size(); ++d) if (s.declarations[d].kind == DeclarationKind::model) for (auto f : p.declarations()[d].fields) model_fields.insert(f); }
+    CppIrLoweringRenderer(const ValidatedProject& project,bool emit_lines) : p(project),s(project.syntax()),lines(emit_lines) { for (std::size_t d = 0; d < s.declarations.size(); ++d) if (s.declarations[d].kind == DeclarationKind::model) for (auto f : p.declarations()[d].fields) model_fields.insert(f); }
     void lower_structural_functions(CppIrProject& ir) {
         lower_functions(ir);
     }
