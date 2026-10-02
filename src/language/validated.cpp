@@ -450,7 +450,7 @@ public:
             }
             inferred = *common;
         }
-        if (inferred != type_id("void") && !all_returns(e.body)) report(e.origin, "Lambda may finish without returning a value");
+        if (inferred != type_id("void") && !block_flow(e.body).terminates_path()) report(e.origin, "Lambda may finish without returning a value");
         std::erase_if(captures,[&](auto id){ return id >= first_lambda_symbol; });
         info.captures.assign(captures.begin(), captures.end()); std::sort(info.captures.begin(), info.captures.end()); capture_sets.pop_back(); if (!capture_sets.empty()) capture_sets.back()->insert(captures.begin(),captures.end()); scopes.pop_back();
         std::vector<TypeId> signature; for (auto id : info.parameters) signature.push_back(v.symbols_[id].type); signature.push_back(inferred);
@@ -589,11 +589,70 @@ public:
         if (signature.type == type_id("inferred")) report(e.origin, "Callable result has not been resolved");
         (void)expected; return info.type;
     }
-    bool all_returns(const std::vector<SyntaxId>& body) const {
-        for (auto id : body) { const auto& statement = v.syntax_.statements[id]; if (statement.kind == SyntaxStatementKind::return_ || statement.kind == SyntaxStatementKind::throw_) return true;
-            if (statement.kind == SyntaxStatementKind::block && all_returns(statement.body)) return true;
-            if (statement.kind == SyntaxStatementKind::if_ && !statement.alternative.empty() && all_returns(statement.body) && all_returns(statement.alternative)) return true;
-        } return false;
+    struct FlowResult {
+        bool falls_through{true};
+        bool returns{false};
+        bool throws{false};
+        bool breaks{false};
+        bool continues{false};
+
+        [[nodiscard]] bool terminates_path() const noexcept {
+            return !falls_through;
+        }
+    };
+
+    FlowResult statement_flow(SyntaxId id) const {
+        const auto& statement = v.syntax_.statements[id];
+        switch (statement.kind) {
+        case SyntaxStatementKind::return_:
+            return {false, true, false, false, false};
+        case SyntaxStatementKind::throw_:
+            return {false, false, true, false, false};
+        case SyntaxStatementKind::break_:
+            return {false, false, false, true, false};
+        case SyntaxStatementKind::continue_:
+            return {false, false, false, false, true};
+        case SyntaxStatementKind::block:
+            return block_flow(statement.body);
+        case SyntaxStatementKind::if_: {
+            const auto body = block_flow(statement.body);
+            const auto alternative = statement.alternative.empty()
+                ? FlowResult{}
+                : block_flow(statement.alternative);
+            return {
+                body.falls_through || alternative.falls_through,
+                body.returns || alternative.returns,
+                body.throws || alternative.throws,
+                body.breaks || alternative.breaks,
+                body.continues || alternative.continues
+            };
+        }
+        case SyntaxStatementKind::while_:
+        case SyntaxStatementKind::for_:
+        case SyntaxStatementKind::for_in: {
+            // Loops are conservatively assumed to be able to finish. Return
+            // and throw paths remain visible to callers, while loop-local
+            // break/continue are consumed by the loop itself.
+            const auto body = block_flow(statement.body);
+            return {true, body.returns, body.throws, false, false};
+        }
+        default:
+            return {};
+        }
+    }
+
+    FlowResult block_flow(const std::vector<SyntaxId>& body) const {
+        FlowResult result;
+        for (const auto id : body) {
+            if (!result.falls_through) break;
+            const auto next = statement_flow(id);
+            result.returns = result.returns || next.returns;
+            result.throws = result.throws || next.throws;
+            result.breaks = result.breaks || next.breaks;
+            result.continues = result.continues || next.continues;
+            result.falls_through = next.falls_through;
+        }
+        return result;
     }
     void statements(const std::vector<SyntaxId>& body) {
         for (auto id : body) {
@@ -616,8 +675,8 @@ public:
                     const auto candidate = v.syntax_.expressions[a].literal_type == "null" ? b : v.syntax_.expressions[b].literal_type == "null" ? a : invalid_id;
                     if (candidate != invalid_id && v.syntax_.expressions[candidate].kind == SyntaxExpressionKind::name) { guarded = v.expressions_[candidate].symbol; nonnull = condition.text == "!="; }
                 }
-                const bool body_returns = s.kind == SyntaxStatementKind::if_ && all_returns(s.body);
-                const bool alternative_returns = s.kind == SyntaxStatementKind::if_ && !s.alternative.empty() && all_returns(s.alternative);
+                const bool body_returns = s.kind == SyntaxStatementKind::if_ && block_flow(s.body).terminates_path();
+                const bool alternative_returns = s.kind == SyntaxStatementKind::if_ && !s.alternative.empty() && block_flow(s.alternative).terminates_path();
                 if (guarded != invalid_id && nonnull) narrowed.insert(guarded);
                 scopes.emplace_back(); if (s.kind == SyntaxStatementKind::while_) ++loops; statements(s.body); if (s.kind == SyntaxStatementKind::while_) --loops; scopes.pop_back();
                 const bool body_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
@@ -717,7 +776,7 @@ public:
                 if (parameter.default_value != invalid_id) { const auto& expression_node = v.syntax_.expressions[parameter.default_value]; if (expression_node.kind != SyntaxExpressionKind::literal) report(parameter.origin,"Default arguments currently require literal constants"); if (!assignable(parameter_type,expression(parameter.default_value,parameter_type))) report(parameter.origin,"Default argument type mismatch"); }
                 const auto id = symbol({ResolvedSymbolKind::parameter,parameter.name,parameter.name,parameter_type,resolved.symbol,true}); resolved.parameters.push_back(id); bind(parameter.name,id,parameter.origin);
             }
-            statements(method.body); resolved.all_paths_return = all_returns(method.body);
+            statements(method.body); resolved.all_paths_return = block_flow(method.body).terminates_path();
             if (return_type == type_id("inferred")) {
                 auto inferred = returned.empty() ? type_id("void") : returned.front();
                 for (std::size_t i = 1; i < returned.size(); ++i) {
