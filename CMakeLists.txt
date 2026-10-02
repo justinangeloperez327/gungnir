@@ -975,6 +975,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_structured_language_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.structured_language COMMAND gungnir_structured_language_test)
 
+    add_executable(gungnir_compiler_correctness_test tests/compiler_correctness.cpp)
+    target_link_libraries(gungnir_compiler_correctness_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_compiler_correctness_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.compiler_correctness COMMAND gungnir_compiler_correctness_test)
+
     add_executable(gungnir_language_test tests/language.cpp)
     target_link_libraries(gungnir_language_test PRIVATE gungnir::language)
     target_compile_features(gungnir_language_test PRIVATE cxx_std_23)
