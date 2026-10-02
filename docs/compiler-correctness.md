@@ -160,7 +160,11 @@ Required properties:
 - lowering is deterministic;
 - module ordering is preserved;
 - semantic binding and conversion decisions are copied from validated state rather than recomputed;
-- the resulting `CppIrProject` contains everything required for final serialization.
+- the resulting `CppIrProject` contains everything required for final serialization;
+- executable functions, statements and expressions are structural target IR rather than monolithic implementation strings;
+- framework-generated declaration scaffolding is isolated from executable IR as explicit support blocks.
+
+`CppIrVerifier` must reject malformed target graphs, invalid coroutine/control-flow state, invalid target types/IDs and inconsistent module ownership before emission.
 
 See [C++ IR](cpp-ir.md).
 
@@ -260,6 +264,8 @@ Validated AST
 
 C++ IR
   [ ] deterministic lowering
+  [ ] typed executable function/statement/expression graph
+  [ ] verifier succeeds
   [ ] validated module order preserved
   [ ] emitter requires no semantic lookup
 
