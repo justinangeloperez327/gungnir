@@ -39,6 +39,74 @@ int main() {
     reject("controller C { int f() { return 1; } } function int f() { return C::f(); }");
     const auto valid = Compiler{}.compile("function int f() { const x = 2; const fn = (int item) => { const local = item + x; return local; }; return fn(3); }"); assert(valid.success());
     for (const auto& expression : valid.validated->expressions()) assert(expression.type != invalid_id);
+
+    const auto conditional_widening = Compiler{}.compile(
+        "function double choose(bool flag) { return flag ? 1 : 2.5; }"
+    );
+    assert(conditional_widening.success());
+
+    const auto nullable_conditional = Compiler{}.compile(
+        "function string? choose(bool flag) { return flag ? null : 'value'; }"
+    );
+    assert(nullable_conditional.success());
+
+    const auto terminating_null_guard = Compiler{}.compile(
+        "function string require(string? value) { "
+        "if (value == null) { return 'fallback'; } "
+        "return value; }"
+    );
+    assert(terminating_null_guard.success());
+
+    const auto terminating_else_guard = Compiler{}.compile(
+        "function string require(string? value) { "
+        "if (value != null) { const copy = value; } "
+        "else { return 'fallback'; } "
+        "return value; }"
+    );
+    assert(terminating_else_guard.success());
+
+    reject(
+        "function string invalid(string? input) { "
+        "let value = input; "
+        "if (value != null) { value = null; return value; } "
+        "return 'fallback'; }",
+        "GNR2214"
+    );
+
+    reject(
+        "function string invalidContinuation(string? input) { "
+        "let value = input; "
+        "if (value != null) { value = null; } "
+        "else { return 'fallback'; } "
+        "return value; }",
+        "GNR2214"
+    );
+
+    reject(
+        "function int mixed(int left, uint64 right) { return left + right; }"
+    );
+    reject(
+        "function double unsafe(uint64 value) { return value; }",
+        "GNR2214"
+    );
+    reject(
+        "function decimal unsafe(double value) { return value; }",
+        "GNR2214"
+    );
+
+    const auto decimal_math = Compiler{}.compile(
+        "function decimal total(decimal left, decimal right) { return left + right; }"
+    );
+    assert(decimal_math.success());
+    bool saw_decimal_add = false;
+    for (std::size_t i = 0; i < decimal_math.validated->syntax().expressions.size(); ++i) {
+        const auto& syntax = decimal_math.validated->syntax().expressions[i];
+        if (syntax.kind == SyntaxExpressionKind::binary && syntax.text == "+") {
+            assert(decimal_math.validated->types()[decimal_math.validated->expressions()[i].type].name == "decimal");
+            saw_decimal_add = true;
+        }
+    }
+    assert(saw_decimal_add);
     const auto root = std::filesystem::temp_directory_path()/"gungnir-structured-modules"; std::filesystem::remove_all(root); std::filesystem::create_directories(root);
     auto write = [&](const char* path,const char* source) { std::ofstream{root/path} << source; };
     write("math.gnr","module math; export function int add(int a,int b) { return a+b; }");

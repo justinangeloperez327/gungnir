@@ -112,12 +112,15 @@ Semantic analysis owns:
 - symbol resolution;
 - scope and visibility;
 - type checking;
+- common-type selection and safe implicit conversions;
 - call and argument binding;
 - mutability;
-- optional/nullability rules;
+- optional/nullability and flow narrowing rules;
 - async/await rules;
 - return-path analysis;
 - framework declaration contracts.
+
+Type inference and operator result types must be deterministic and independent of operand/branch order. Narrowing facts must be invalidated by writes that can break the proof.
 
 A syntactically valid but semantically invalid program must stop here.
 
@@ -306,9 +309,9 @@ Compatibility lowering must not become the specification for new language behavi
 
 ## Release criterion
 
-`gungnirc --check` becomes authoritative only when every supported construct can be validated without relying on native compilation to discover ordinary Gungnir type/interface errors.
+For the current structured language profile, `gungnirc --check` is a validation-only semantic gate: it stops at `ValidatedProject` and does not use C++ IR emission or native compilation to decide source validity.
 
-Until that point, documentation must continue to distinguish structured validation from backend/native verification.
+The profile is authoritative only for constructs the structured compiler claims to support. Unsupported language/framework behavior must be rejected explicitly rather than accepted and deferred to generated C++ diagnostics. Native compilation remains a backend conformance test, not a semantic fallback.
 
 See also:
 

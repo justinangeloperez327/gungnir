@@ -92,6 +92,9 @@ struct CompilerOptions {
     std::vector<NativeType> native_types;
     std::vector<NativeCallable> native_callables;
     std::vector<NativeField> native_fields;
+    // Validation-only mode stops at ValidatedProject. It is used by
+    // authoritative semantic checks and compiler inspection tooling.
+    bool validate_only{false};
 };
 struct ResolvedType { std::string name, cpp_name; std::vector<TypeId> arguments; bool optional{false}; };
 enum class ResolvedSymbolKind { declaration, callable, parameter, local, field, injection, builtin };

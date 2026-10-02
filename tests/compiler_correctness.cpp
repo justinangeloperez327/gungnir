@@ -172,6 +172,24 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     assert(!CppIrVerifier{}.verify(invalid_type).success());
 }
 
+void validation_only_stops_at_semantic_firewall() {
+    auto options = deterministic_options();
+    options.validate_only = true;
+
+    const auto result = Compiler{}.compile(
+        "function int answer() { return 42; }",
+        "check-only.gnr",
+        options
+    );
+
+    assert(result.success());
+    assert(result.validated.has_value());
+    assert(result.code.empty());
+
+    const auto ir = CppIrLowerer{}.lower(*result.validated, false);
+    assert(CppIrVerifier{}.verify(ir).success());
+}
+
 void invalid_program_never_reaches_codegen() {
     const auto result = Compiler{}.compile(
         "function int broken() { return \"not an int\"; }",
@@ -255,6 +273,7 @@ void framework_contracts_fail_before_codegen() {
 int main() {
     parser_and_validated_ast_invariants();
     cpp_ir_is_an_explicit_deterministic_boundary();
+    validation_only_stops_at_semantic_firewall();
     invalid_program_never_reaches_codegen();
     compilation_is_deterministic();
     multi_file_order_is_deterministic();

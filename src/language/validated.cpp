@@ -152,11 +152,53 @@ public:
         const auto a = type(target), b = type(source);
         if (a.optional) return b.name == "null" || assignable(unoptional(target), b.optional ? unoptional(source) : source);
         if (b.optional) return false;
-        if ((a.name == "double" || a.name == "decimal") && numeric(source)) return true;
+        if (a.name == "double" && b.name == "int") return true;
+        if (a.name == "decimal" && (b.name == "int" || b.name == "uint64")) return true;
         if (a.name == "Decision" && b.name == "bool") return true;
         if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable") return true;
         if (a.name == "List" && b.name == "List" && a.arguments.size() == 1 && b.arguments.size() == 1) return a.arguments[0] == b.arguments[0];
         return false;
+    }
+    std::optional<TypeId> common_type(TypeId left, TypeId right) {
+        if (left == right) return left;
+        const auto a = type(left), b = type(right);
+
+        if (a.name == "null") {
+            if (b.name == "null") return left;
+            if (b.name == "void" || b.name == "Callable") return std::nullopt;
+            return b.optional ? right : optional(right);
+        }
+        if (b.name == "null") {
+            if (a.name == "void" || a.name == "Callable") return std::nullopt;
+            return a.optional ? left : optional(left);
+        }
+
+        if (a.optional || b.optional) {
+            const auto left_base = a.optional ? unoptional(left) : left;
+            const auto right_base = b.optional ? unoptional(right) : right;
+            const auto base = common_type(left_base, right_base);
+            return base ? std::optional<TypeId>{optional(*base)} : std::nullopt;
+        }
+
+        if (numeric(left) && numeric(right)) {
+            const bool int_double =
+                (a.name == "int" && b.name == "double") ||
+                (a.name == "double" && b.name == "int");
+            if (int_double) return type_id("double");
+
+            const bool integer_decimal =
+                ((a.name == "int" || a.name == "uint64") && b.name == "decimal") ||
+                ((b.name == "int" || b.name == "uint64") && a.name == "decimal");
+            if (integer_decimal) return type_id("decimal");
+
+            // Signed/unsigned, exact/approximate and uint64/double mixing have
+            // no implicit common type in the current language contract.
+            return std::nullopt;
+        }
+
+        if (assignable(left, right)) return left;
+        if (assignable(right, left)) return right;
+        return std::nullopt;
     }
     void bind(std::string name, SymbolId id, const Origin& origin) {
         if (!valid_identifier(name)) report(origin,"Binding name conflicts with a reserved native identifier");
@@ -332,26 +374,56 @@ public:
         if (e.kind == SyntaxExpressionKind::conditional) {
             if (expression(e.operands[0]) != type_id("bool")) report(e.origin, "Conditional expression requires bool");
             const auto yes = expression(e.operands[1], expected), no = expression(e.operands[2], expected);
-            if (!assignable(yes, no)) report(e.origin, "Conditional branches have incompatible types"); return set(yes);
+            const auto common = common_type(yes, no);
+            if (!common) {
+                report(e.origin, "Conditional branches have incompatible types");
+                return set(type_id("Value"));
+            }
+            return set(*common);
         }
         const auto lhs = expression(e.operands[0]);
         if (e.text == "??") {
             std::function<bool(SyntaxId)> contains_await = [&](SyntaxId id) { const auto& node = v.syntax_.expressions[id]; if (node.kind == SyntaxExpressionKind::await_) return true; if (node.kind == SyntaxExpressionKind::lambda) return false; for (auto child : node.operands) if (contains_await(child)) return true; return false; };
             if (contains_await(e.operands[0]) || contains_await(e.operands[1])) report(e.origin,"await in null coalescing requires a separate binding"); if (!type(lhs).optional) report(e.origin, "Null coalescing requires an optional value"); const auto base = unoptional(lhs); if (!assignable(base, expression(e.operands[1], base))) report(e.origin, "Incompatible coalescing value"); return set(base); }
-        const auto rhs = expression(e.operands[1], lhs);
-        if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") { writable(e.operands[0]); if (e.text != "=" && !(numeric(lhs) && numeric(rhs)) && !(e.text == "+=" && lhs == type_id("string") && rhs == lhs)) report(e.origin,"Compound assignment requires compatible numeric or string operands"); if (!assignable(lhs, rhs)) report(e.origin, "Assignment type mismatch"); return set(lhs); }
+        TypeId assignment_target = lhs;
+        if (e.text == "=") {
+            const auto target_symbol = v.expressions_[e.operands[0]].symbol;
+            const auto& target_syntax = v.syntax_.expressions[e.operands[0]];
+            if (target_symbol != invalid_id &&
+                (target_syntax.kind == SyntaxExpressionKind::name ||
+                 target_syntax.kind == SyntaxExpressionKind::member)) {
+                assignment_target = v.symbols_[target_symbol].type;
+            }
+        }
+        const auto rhs = expression(e.operands[1], e.text == "=" ? assignment_target : lhs);
+        if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") {
+            writable(e.operands[0]);
+            if (e.text != "=" && !(numeric(lhs) && numeric(rhs)) && !(e.text == "+=" && lhs == type_id("string") && rhs == lhs))
+                report(e.origin,"Compound assignment requires compatible numeric or string operands");
+            if (!assignable(e.text == "=" ? assignment_target : lhs, rhs)) report(e.origin, "Assignment type mismatch");
+            return set(e.text == "=" ? assignment_target : lhs);
+        }
         if (e.text == "&&" || e.text == "||") { if (lhs != type_id("bool") || rhs != type_id("bool")) report(e.origin, "Logical operands must be bool"); return set(type_id("bool")); }
         if (e.text == "==" || e.text == "!=") { if (!(numeric(unoptional(lhs)) && numeric(unoptional(rhs))) && unoptional(lhs) != type_id("string") && unoptional(lhs) != type_id("bool") && type(lhs).name != "null" && type(rhs).name != "null") report(e.origin,"Equality is supported for scalar and optional scalar values"); if (!assignable(lhs, rhs) && !assignable(rhs, lhs)) report(e.origin, "Incompatible equality operands"); return set(type_id("bool")); }
         if (e.text == "<" || e.text == ">" || e.text == "<=" || e.text == ">=") { if (!(numeric(lhs) && numeric(rhs)) && !(lhs == type_id("string") && rhs == lhs)) report(e.origin, "Incompatible comparison operands"); return set(type_id("bool")); }
         if (e.text == "+" && lhs == type_id("string") && rhs == lhs) return set(lhs);
-        if (!numeric(lhs) || !numeric(rhs)) report(e.origin, "Arithmetic operands must be numbers");
+        if (!numeric(lhs) || !numeric(rhs)) {
+            report(e.origin, "Arithmetic operands must be numbers");
+            return set(type_id("Value"));
+        }
         if (e.text == "%" && (lhs != type_id("int") || rhs != lhs)) report(e.origin, "Remainder operands must be integers");
-        return set(lhs == type_id("double") || rhs == type_id("double") || lhs == type_id("decimal") || rhs == type_id("decimal") ? type_id("double") : lhs);
+        const auto common = common_type(lhs, rhs);
+        if (!common || !numeric(*common)) {
+            report(e.origin, "Mixed numeric operands require an explicit conversion");
+            return set(type_id("Value"));
+        }
+        return set(*common);
     }
     void writable(SyntaxId id) {
         const auto& expression = v.syntax_.expressions[id]; const auto symbol = v.expressions_[id].symbol;
         if (expression.kind != SyntaxExpressionKind::name && expression.kind != SyntaxExpressionKind::member && expression.kind != SyntaxExpressionKind::subscript) report(expression.origin, "Assignment requires a writable target");
         if (symbol != invalid_id && v.symbols_[symbol].immutable) report(expression.origin, "Cannot modify an immutable binding", "GNR2208");
+        if (expression.kind == SyntaxExpressionKind::name && symbol != invalid_id) narrowed.erase(symbol);
         if (expression.kind == SyntaxExpressionKind::subscript) writable(expression.operands[0]);
     }
     TypeId lambda(SyntaxId id, std::optional<TypeId> expected) {
@@ -368,8 +440,16 @@ public:
             const auto symbol_id = symbol({ResolvedSymbolKind::parameter, parameter.name, parameter.name, type_id, invalid_id, true}); info.parameters.push_back(symbol_id); bind(parameter.name, symbol_id, parameter.origin);
         }
         statements(e.body);
-        const auto inferred = returned.empty() ? type_id("void") : returned.front();
-        for (auto type : returned) if (!assignable(inferred, type)) report(e.origin, "Lambda returns incompatible types");
+        auto inferred = returned.empty() ? type_id("void") : returned.front();
+        for (std::size_t i = 1; i < returned.size(); ++i) {
+            const auto common = common_type(inferred, returned[i]);
+            if (!common) {
+                report(e.origin, "Lambda returns incompatible types");
+                inferred = type_id("Value");
+                break;
+            }
+            inferred = *common;
+        }
         if (inferred != type_id("void") && !all_returns(e.body)) report(e.origin, "Lambda may finish without returning a value");
         std::erase_if(captures,[&](auto id){ return id >= first_lambda_symbol; });
         info.captures.assign(captures.begin(), captures.end()); std::sort(info.captures.begin(), info.captures.end()); capture_sets.pop_back(); if (!capture_sets.empty()) capture_sets.back()->insert(captures.begin(),captures.end()); scopes.pop_back();
@@ -536,10 +616,19 @@ public:
                     const auto candidate = v.syntax_.expressions[a].literal_type == "null" ? b : v.syntax_.expressions[b].literal_type == "null" ? a : invalid_id;
                     if (candidate != invalid_id && v.syntax_.expressions[candidate].kind == SyntaxExpressionKind::name) { guarded = v.expressions_[candidate].symbol; nonnull = condition.text == "!="; }
                 }
+                const bool body_returns = s.kind == SyntaxStatementKind::if_ && all_returns(s.body);
+                const bool alternative_returns = s.kind == SyntaxStatementKind::if_ && !s.alternative.empty() && all_returns(s.alternative);
                 if (guarded != invalid_id && nonnull) narrowed.insert(guarded);
                 scopes.emplace_back(); if (s.kind == SyntaxStatementKind::while_) ++loops; statements(s.body); if (s.kind == SyntaxStatementKind::while_) --loops; scopes.pop_back();
+                const bool body_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
                 narrowed = previous; if (guarded != invalid_id && !nonnull) narrowed.insert(guarded);
-                scopes.emplace_back(); statements(s.alternative); scopes.pop_back(); narrowed = previous;
+                scopes.emplace_back(); statements(s.alternative); scopes.pop_back();
+                const bool alternative_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
+                narrowed = previous;
+                if (s.kind == SyntaxStatementKind::if_ && guarded != invalid_id && body_returns != alternative_returns) {
+                    const bool continuation_keeps_nonnull = alternative_returns ? body_keeps_nonnull : alternative_keeps_nonnull;
+                    if (continuation_keeps_nonnull) narrowed.insert(guarded);
+                }
             } else if (s.kind == SyntaxStatementKind::for_) {
                 scopes.emplace_back(); statements(s.parts); if (s.expression != invalid_id && expression(s.expression) != type_id("bool")) report(s.origin,"Loop condition must be bool"); ++loops; scopes.emplace_back(); statements(s.body); scopes.pop_back(); statements(s.alternative); --loops; scopes.pop_back();
             } else if (s.kind == SyntaxStatementKind::for_in) {
@@ -630,7 +719,18 @@ public:
             }
             statements(method.body); resolved.all_paths_return = all_returns(method.body);
             if (return_type == type_id("inferred")) {
-                const auto inferred = returned.empty() ? type_id("void") : returned.front(); for (auto type : returned) if (!assignable(inferred,type)) report(method.origin,"Inferred returns have incompatible types"); v.symbols_[resolved.symbol].type = inferred; return_type = inferred;
+                auto inferred = returned.empty() ? type_id("void") : returned.front();
+                for (std::size_t i = 1; i < returned.size(); ++i) {
+                    const auto common = common_type(inferred, returned[i]);
+                    if (!common) {
+                        report(method.origin,"Inferred returns have incompatible types");
+                        inferred = type_id("Value");
+                        break;
+                    }
+                    inferred = *common;
+                }
+                v.symbols_[resolved.symbol].type = inferred;
+                return_type = inferred;
             }
             if (return_type != type_id("void") && !resolved.all_paths_return) report(method.origin,"Callable may finish without returning a value", "GNR2215");
         }
