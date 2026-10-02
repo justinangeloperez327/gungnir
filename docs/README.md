@@ -84,6 +84,7 @@ Gungnir is experimental. Start with the current usage guides below. The full pro
 - [Validated AST](validated-ast.md)
 - [C++ Intermediate Representation](cpp-ir.md)
 - [Compiler Correctness](compiler-correctness.md)
+- [Compiler Fuzzing](fuzzing.md)
 - [Compiler Conformance](compiler-conformance.md)
 - [Transpiler](transpiler.md)
 - [Compiler profiles and feature status](compiler-profiles.md)
