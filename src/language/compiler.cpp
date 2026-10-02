@@ -5,16 +5,158 @@
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace gungnir::language {
 bool CompilationResult::success() const noexcept { return validated.has_value() && diagnostics.empty(); }
 namespace {
-CompilationResult finish(SyntaxProject syntax, std::vector<Diagnostic> diagnostics, const CompilerOptions& options) {
+using SourceCatalog = std::unordered_map<std::string, std::string>;
+
+SourceLocation source_location_at(
+    std::string_view source,
+    std::string_view file,
+    std::size_t offset
+) {
+    SourceLocation location{std::string{file}, 1, 1};
+    offset = std::min(offset, source.size());
+    for (std::size_t i = 0; i < offset; ++i) {
+        if (source[i] == '\n') {
+            ++location.line;
+            location.column = 1;
+        } else {
+            ++location.column;
+        }
+    }
+    return location;
+}
+
+std::size_t offset_at_location(
+    std::string_view source,
+    std::size_t target_line,
+    std::size_t target_column
+) {
+    if (target_line == 0 || target_column == 0) return 0;
+    std::size_t line = 1;
+    std::size_t offset = 0;
+    while (line < target_line && offset < source.size()) {
+        if (source[offset++] == '\n') ++line;
+    }
+    return std::min(
+        source.size(),
+        offset + target_column - 1
+    );
+}
+
+std::string source_line_at(
+    std::string_view source,
+    std::size_t target_line
+) {
+    if (target_line == 0) return {};
+    std::size_t line = 1;
+    std::size_t start = 0;
+    while (line < target_line && start < source.size()) {
+        const auto next = source.find('\n', start);
+        if (next == std::string_view::npos) return {};
+        start = next + 1;
+        ++line;
+    }
+    if (line != target_line || start > source.size()) return {};
+    const auto end = source.find('\n', start);
+    auto text = source.substr(
+        start,
+        end == std::string_view::npos
+            ? source.size() - start
+            : end - start
+    );
+    if (!text.empty() && text.back() == '\r') text.remove_suffix(1);
+    return std::string{text};
+}
+
+void normalize_diagnostics(
+    std::vector<Diagnostic>& diagnostics,
+    const SourceCatalog& sources
+) {
+    for (auto& diagnostic : diagnostics) {
+        const auto found = sources.find(diagnostic.location.file);
+        if (found == sources.end()) continue;
+
+        const auto& source = found->second;
+        if (!diagnostic.span.valid) {
+            diagnostic.span.begin_offset = offset_at_location(
+                source,
+                diagnostic.location.line,
+                diagnostic.location.column
+            );
+            diagnostic.span.end_offset = std::min(
+                source.size(),
+                diagnostic.span.begin_offset + 1
+            );
+            diagnostic.span.valid = true;
+        }
+
+        diagnostic.span.begin_offset =
+            std::min(diagnostic.span.begin_offset, source.size());
+        diagnostic.span.end_offset =
+            std::min(
+                std::max(
+                    diagnostic.span.end_offset,
+                    diagnostic.span.begin_offset
+                ),
+                source.size()
+            );
+
+        if (
+            diagnostic.span.end_offset == diagnostic.span.begin_offset &&
+            diagnostic.span.begin_offset < source.size()
+        ) {
+            ++diagnostic.span.end_offset;
+        }
+
+        const auto end = source_location_at(
+            source,
+            diagnostic.location.file,
+            diagnostic.span.end_offset
+        );
+        diagnostic.span.end_line = end.line;
+        diagnostic.span.end_column = end.column;
+        diagnostic.source_line = source_line_at(
+            source,
+            diagnostic.location.line
+        );
+    }
+
+    std::stable_sort(
+        diagnostics.begin(),
+        diagnostics.end(),
+        [](const Diagnostic& left, const Diagnostic& right) {
+            if (left.location.file != right.location.file)
+                return left.location.file < right.location.file;
+            if (left.location.line != right.location.line)
+                return left.location.line < right.location.line;
+            if (left.location.column != right.location.column)
+                return left.location.column < right.location.column;
+            if (left.code != right.code)
+                return left.code < right.code;
+            return left.message < right.message;
+        }
+    );
+}
+
+CompilationResult finish(
+    SyntaxProject syntax,
+    std::vector<Diagnostic> diagnostics,
+    const CompilerOptions& options,
+    const SourceCatalog& sources
+) {
     CompilationResult result; result.diagnostics = std::move(diagnostics);
-    if (!result.diagnostics.empty()) return result;
+    if (!result.diagnostics.empty()) {
+        normalize_diagnostics(result.diagnostics, sources);
+        return result;
+    }
     auto validation = ProgramValidator{}.validate(std::move(syntax), options);
     result.diagnostics = std::move(validation.diagnostics); result.validated = std::move(validation.project);
+    normalize_diagnostics(result.diagnostics, sources);
     if (result.validated && !options.validate_only) {
         const auto ir = CppIrLowerer{}.lower(
             *result.validated,
@@ -56,16 +198,20 @@ void append(SyntaxProject& target, SyntaxProject source) {
 }
 CompilationResult Compiler::compile_sources(std::vector<SourceFile> files, const CompilerOptions& options) const {
     std::sort(files.begin(),files.end(),[](const auto& a,const auto& b){ return a.file < b.file; });
-    SyntaxProject project; std::vector<Diagnostic> diagnostics;
+    SyntaxProject project; std::vector<Diagnostic> diagnostics; SourceCatalog sources;
     for (const auto& file : files) {
+        sources[file.file] = file.source;
         auto parsed = SyntaxParser{}.parse(file.source,file.file,file.module);
         diagnostics.insert(diagnostics.end(),parsed.diagnostics.begin(),parsed.diagnostics.end());
         append(project,std::move(parsed.project));
     }
-    return finish(std::move(project),std::move(diagnostics),options);
+    return finish(std::move(project),std::move(diagnostics),options,sources);
 }
 CompilationResult Compiler::compile(std::string_view source, std::string file, const CompilerOptions& options) const {
-    auto parsed = SyntaxParser{}.parse(source,std::move(file)); return finish(std::move(parsed.project),std::move(parsed.diagnostics),options);
+    const std::string owned_source{source};
+    SourceCatalog sources{{file, owned_source}};
+    auto parsed = SyntaxParser{}.parse(owned_source,file);
+    return finish(std::move(parsed.project),std::move(parsed.diagnostics),options,sources);
 }
 CompilationResult Compiler::compile_project(const std::filesystem::path& root, const CompilerOptions& options) const {
     std::vector<std::filesystem::path> files;
@@ -78,7 +224,7 @@ CompilationResult Compiler::compile_project(const std::filesystem::path& root, c
 }
 CompilationResult Compiler::compile_files(const std::filesystem::path& root, std::vector<std::filesystem::path> files, const CompilerOptions& options) const {
     std::sort(files.begin(),files.end()); files.erase(std::unique(files.begin(),files.end()),files.end());
-    SyntaxProject project; std::vector<Diagnostic> diagnostics;
+    SyntaxProject project; std::vector<Diagnostic> diagnostics; SourceCatalog sources;
     for (auto path : files) {
         if (path.is_relative()) path = root / path;
         auto relative = std::filesystem::absolute(path).lexically_relative(std::filesystem::absolute(root)); relative.replace_extension();
@@ -86,10 +232,12 @@ CompilationResult Compiler::compile_files(const std::filesystem::path& root, std
         std::ifstream input(path,std::ios::binary);
         if (!input) { diagnostics.push_back({DiagnosticLevel::error,{path.string()},"Unable to read module","GNR2100",{}}); continue; }
         const std::string source{std::istreambuf_iterator<char>{input},{}};
-        auto parsed = SyntaxParser{}.parse(source,path.generic_string(),module);
+        const auto source_name = path.generic_string();
+        sources[source_name] = source;
+        auto parsed = SyntaxParser{}.parse(source,source_name,module);
         diagnostics.insert(diagnostics.end(),parsed.diagnostics.begin(),parsed.diagnostics.end()); append(project,std::move(parsed.project));
     }
-    return finish(std::move(project),std::move(diagnostics),options);
+    return finish(std::move(project),std::move(diagnostics),options,sources);
 }
 std::string dump_validated(const ValidatedProject& project) {
     std::ostringstream out;

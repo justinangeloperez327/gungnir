@@ -150,7 +150,11 @@ int main(int argc, char** argv) {
             options.emit_line_directives = emit_line_directives;
             options.validate_only = check_only || dump_validated || dump_ir;
             const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
-            for (const auto& diagnostic : result.diagnostics) std::cerr << diagnostic.location.file << ':' << diagnostic.location.line << ':' << diagnostic.location.column << ": " << diagnostic.code << ": " << diagnostic.message << '\n';
+            for (const auto& diagnostic : result.diagnostics) {
+                std::cerr
+                    << gungnir::language::DiagnosticRenderer::render(diagnostic)
+                    << '\n';
+            }
             if (!result.success()) return 1;
             if (!check_only || dump_validated || dump_ir) {
                 std::string content;
@@ -187,7 +191,10 @@ int main(int argc, char** argv) {
 
         for (const auto& diagnostic : result.diagnostics) {
             std::cerr
-                << gungnir::language::DiagnosticRenderer::render(diagnostic)
+                << gungnir::language::DiagnosticRenderer::render(
+                    diagnostic,
+                    source
+                )
                 << '\n';
         }
 

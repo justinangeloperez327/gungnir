@@ -41,6 +41,9 @@ endif()
 if(NOT invalid_semantic_error MATCHES "GNR2215")
     message(FATAL_ERROR "--check must report the semantic diagnostic from the structured validator")
 endif()
+if(NOT invalid_semantic_error MATCHES "\\^")
+    message(FATAL_ERROR "--check diagnostics must render source context and a caret")
+endif()
 
 execute_process(
     COMMAND "${GUNGNIRC}" "${structured}" --strict --check

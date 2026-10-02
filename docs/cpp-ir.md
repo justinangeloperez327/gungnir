@@ -221,3 +221,7 @@ Native generated-program tests continue to verify that structural IR serializati
 - [src/language/emitter.cpp](../src/language/emitter.cpp)
 - [Compiler Correctness](compiler-correctness.md)
 - [Compiler Conformance](compiler-conformance.md)
+
+## Source mapping
+
+When source mapping is enabled, structural statements retain their `CppIrSource` origin and the emitter writes `#line` directives at callable and statement boundaries. This keeps native compiler diagnostics anchored to the closest originating `.gnr` line without using generated source text for semantic decisions.
