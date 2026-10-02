@@ -52,11 +52,26 @@ std::vector<Token> Lexer::tokenize(
     std::size_t line = 1;
     std::size_t column = 1;
 
-    const auto report = [&](std::size_t line, std::size_t column,
-                            std::string message, std::string code) {
-        if (diagnostics) diagnostics->push_back(Diagnostic{
-            DiagnosticLevel::error, {std::string{source_name}, line, column},
-            std::move(message), std::move(code), {}});
+    const auto report = [&](
+        std::size_t line,
+        std::size_t column,
+        std::size_t begin,
+        std::size_t end,
+        std::string message,
+        std::string code
+    ) {
+        if (!diagnostics) return;
+        Diagnostic diagnostic{
+            DiagnosticLevel::error,
+            {std::string{source_name}, line, column},
+            std::move(message),
+            std::move(code),
+            {}
+        };
+        diagnostic.span.begin_offset = begin;
+        diagnostic.span.end_offset = std::max(begin + 1, end);
+        diagnostic.span.valid = true;
+        diagnostics->push_back(std::move(diagnostic));
     };
     auto advance = [&]() {
         const char current = source_[index++];
@@ -161,7 +176,7 @@ std::vector<Token> Lexer::tokenize(
                 advance();
             }
 
-            if (!closed) report(start_line, start_column,
+            if (!closed) report(start_line, start_column, start, index,
                                 "Unterminated block comment", "GNR0901");
             emit(TokenKind::comment, start, start_line, start_column);
             continue;
@@ -186,7 +201,7 @@ std::vector<Token> Lexer::tokenize(
                     source_.substr(delimiter_start, index - delimiter_start)
                 };
                 if (delimiter.size() > 16 || delimiter.find_first_of(" \\)\t\r\n") != std::string::npos)
-                    report(start_line, start_column, "Invalid raw string delimiter", "GNR0902");
+                    report(start_line, start_column, start, index, "Invalid raw string delimiter", "GNR0902");
                 advance();
 
                 const std::string closing = ")" + delimiter + "\"";
@@ -205,7 +220,7 @@ std::vector<Token> Lexer::tokenize(
                 }
             }
 
-            if (!raw_closed) report(start_line, start_column,
+            if (!raw_closed) report(start_line, start_column, start, index,
                                     "Unterminated raw string literal", "GNR0902");
             emit(TokenKind::string_literal, start, start_line, start_column);
             continue;
@@ -232,7 +247,7 @@ std::vector<Token> Lexer::tokenize(
                 }
 
                 if (value == '\n' || value == '\r') {
-                    report(start_line, start_column, "Newline in quoted literal", "GNR0902");
+                    report(start_line, start_column, start, index, "Newline in quoted literal", "GNR0902");
                     break;
                 }
                 if (value == quote) {
@@ -241,7 +256,7 @@ std::vector<Token> Lexer::tokenize(
                 }
             }
 
-            if (!closed) report(start_line, start_column,
+            if (!closed) report(start_line, start_column, start, index,
                                 "Unterminated quoted literal", "GNR0902");
             if (closed && quote == '\'' && !single_quoted_strings) {
                 static const std::regex character{R"('([^'\\\r\n]|\\([abfnrtv\\'"?]|[0-7]{1,3}|x[0-9a-fA-F]+|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))')"};
@@ -321,7 +336,7 @@ std::vector<Token> Lexer::tokenize(
                 std::erase(literal, '_');
             }
             if (!separators_valid || !std::regex_match(literal, number))
-                report(start_line, start_column, "Malformed numeric literal '" + literal + "'", "GNR0903");
+                report(start_line, start_column, start, index, "Malformed numeric literal '" + literal + "'", "GNR0903");
             emit(TokenKind::number, start, start_line, start_column);
             continue;
         }
