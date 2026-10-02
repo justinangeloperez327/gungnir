@@ -86,7 +86,13 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     const auto first = CppIrLowerer{}.lower(*validation.project, false);
     const auto second = CppIrLowerer{}.lower(*validation.project, false);
 
-    assert(first.support.size() == 2);
+    assert(!first.interface_declarations.empty());
+    assert(
+        first.interface_declarations.size() ==
+        first.header_declarations.size());
+    assert(
+        first.interface_declarations.front().kind ==
+        CppIrDeclarationKind::preamble);
     assert(!first.expressions.empty());
     assert(!first.statements.empty());
     assert(first.functions.size() == 2);
@@ -145,6 +151,10 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     assert(emitted_units.declarations.starts_with("#pragma once\n"));
     assert(emitted_units.units.front().code.starts_with(
         "#include \"program.hpp\"\n"));
+
+    auto invalid_declaration = first;
+    invalid_declaration.interface_declarations.front().spelling.clear();
+    assert(!CppIrVerifier{}.verify(invalid_declaration).success());
 
     auto invalid_unit = first;
     invalid_unit.units.front().functions.push_back(999999);
