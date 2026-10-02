@@ -13,7 +13,8 @@ namespace {
 void usage() {
     std::cerr
         << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] "
-           "[--no-line-directives] [--strict] [--project] [--dump-validated-ast] [--format]\n";
+           "[--no-line-directives] [--project] [--dump-validated-ast] [--format] "
+           "[--compat] [--strict]\n";
 }
 
 std::string read_file(const std::filesystem::path& path) {
@@ -63,7 +64,7 @@ int main(int argc, char** argv) {
     bool check_only = false;
     bool emit_line_directives = true;
     bool format_only = false;
-    bool strict = false, project = false, dump = false;
+    bool compatibility = false, project = false, dump = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -78,9 +79,10 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        if (argument == "--strict") { strict = true; continue; }
-        if (argument == "--project") { strict = true; project = true; continue; }
-        if (argument == "--dump-validated-ast") { strict = true; dump = true; continue; }
+        if (argument == "--strict") { compatibility = false; continue; }
+        if (argument == "--compat") { compatibility = true; continue; }
+        if (argument == "--project") { compatibility = false; project = true; continue; }
+        if (argument == "--dump-validated-ast") { compatibility = false; dump = true; continue; }
         if (argument == "--check") {
             check_only = true;
             continue;
@@ -118,7 +120,7 @@ int main(int argc, char** argv) {
         if (format_only) {
             if (project || dump) throw std::invalid_argument("--format requires a single source file and cannot dump an AST");
             const auto source = read_file(input_path);
-            if (strict) {
+            if (!compatibility) {
                 auto syntax = gungnir::language::SyntaxParser{}.parse(source,input_path.generic_string());
                 if (!syntax.diagnostics.empty()) throw std::invalid_argument(syntax.diagnostics.front().message);
             }
@@ -130,7 +132,7 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        if (strict) {
+        if (!compatibility) {
             gungnir::language::Compiler compiler;
             gungnir::language::CompilerOptions options; options.emit_line_directives = emit_line_directives;
             const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
@@ -142,7 +144,8 @@ int main(int argc, char** argv) {
         const auto source = read_file(input_path);
 
 
-        gungnir::language::Transpiler transpiler;
+        if (project || dump) throw std::invalid_argument("--compat does not support --project or --dump-validated-ast");
+        gungnir::language::CompatibilityTranspiler transpiler;
         const auto result = transpiler.transpile(
             source,
             input_path.generic_string(),
