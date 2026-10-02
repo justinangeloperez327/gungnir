@@ -36,12 +36,13 @@ Executable code is represented by typed nodes:
 - `CppIrStatement` — binding, expression, return/co_return, throw, block, if, loops and loop control;
 - `CppIrParameter` — target parameter type/name/reference contract;
 - `CppIrFunction` — module, owner, result type, coroutine flag, parameters, source mapping and body;
+- `CppIrDeclaration` — ordered target declaration record for the preamble, function/class forwards, class definitions and generated model metadata;
 - `CppIrUnit` — deterministic module-to-function ownership;
 - `CppIrProject` — complete target program IR.
 
-The old monolithic `CppIrFragment` implementation representation is removed.
+The old monolithic `CppIrFragment` and generic support-block representations are removed.
 
-Framework-generated class declarations, metadata helpers and registration scaffolding remain isolated in explicit `CppIrSupportBlock` nodes. They are declaration-side target support, not user-authored executable implementation bodies. Refining those support blocks into typed class/member declaration nodes is the remaining declaration-side backend cleanup.
+Interface output is now ordered declaration IR. Class definitions still carry finalized target spelling for their generated framework members, but their declaration kind, module, identity and deterministic ordering are explicit and independently verifiable.
 
 ## Expression contract
 
@@ -114,7 +115,8 @@ It validates:
 - function names/result/parameters;
 - module-unit ownership;
 - exactly-once unit membership for every generated function;
-- required interface support blocks.
+- declaration spelling, identity and ordering;
+- matching interface/header declaration shapes and exactly one preamble.
 
 A verifier failure is an internal compiler error. It is not a user program diagnostic.
 
@@ -190,7 +192,7 @@ Phase 4 completes the structural executable-body boundary.
 
 Remaining backend refinement is intentionally narrower:
 
-1. replace declaration-side `CppIrSupportBlock` content with typed class/field/member declaration IR;
+1. refine class-definition target spelling into field/member-level nodes only where it improves verification or tooling;
 2. progressively replace cached expression target spelling with finer target-expression fields where that materially improves optimization or verification;
 3. remove the pre-1.0 `CppEmitter(ValidatedProject)` convenience overload once internal callers use IR directly.
 
