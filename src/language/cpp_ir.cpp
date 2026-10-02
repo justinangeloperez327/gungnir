@@ -1549,21 +1549,17 @@ CppIrProject CppIrLowerer::lower(
 ) const {
     CppIrProject result;
 
-    result.support.push_back(CppIrSupportBlock{
-        CppIrSupportKind::interface_,
+    result.interface_declarations =
         CppIrLoweringRenderer{
             project,
             line_directives
-        }.declarations()
-    });
+        }.declarations();
 
-    result.support.push_back(CppIrSupportBlock{
-        CppIrSupportKind::header_interface,
+    result.header_declarations =
         CppIrLoweringRenderer{
             project,
             false
-        }.declarations()
-    });
+        }.declarations();
 
     CppIrLoweringRenderer{
         project,
@@ -1577,6 +1573,19 @@ std::string dump_cpp_ir(const CppIrProject& project) {
     std::ostringstream out;
 
     out << "cpp-ir structural\n";
+
+    for (std::size_t i = 0; i < project.interface_declarations.size(); ++i) {
+        const auto& declaration = project.interface_declarations[i];
+        out << "declaration " << i
+            << ' ' << static_cast<int>(declaration.kind);
+        if (!declaration.module.empty()) {
+            out << " module=" << declaration.module;
+        }
+        if (!declaration.name.empty()) {
+            out << " name=" << declaration.name;
+        }
+        out << '\n';
+    }
 
     for (std::size_t i = 0; i < project.functions.size(); ++i) {
         const auto& function = project.functions[i];
