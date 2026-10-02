@@ -103,6 +103,6 @@ Each toolchain produces the same conformance snapshot from the canonical structu
 - generated C++ for the multi-module fixture;
 - SHA-256 manifest.
 
-The comparison job requires these artifacts to be byte-identical across GCC, Clang and MSVC. A toolchain-specific semantic decision, declaration order, type spelling or emitted source difference therefore fails Phase 9 even if all three native compilers happen to accept the output.
+The comparison job requires the generated C++, validated dump, C++ IR dump and multi-module output to be byte-identical across GCC, Clang and MSVC. The SHA-256 manifest is compared after normalizing platform line endings. A toolchain-specific semantic decision, declaration order, type spelling or emitted source difference therefore fails Phase 9 even if all three native compilers happen to accept the output.
 
 Compiler-specific warnings or backend implementation defects are fixed in the originating compiler/runtime layer; they must not be papered over with toolchain-specific generated semantics.
