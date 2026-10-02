@@ -16,10 +16,11 @@ Compiler testing is split by responsibility:
 - **compile-fail** cases prove that invalid programs stop before code generation and retain Gungnir source diagnostics;
 - **run-pass/generated** cases compile emitted C++ against the real runtime and verify observable behavior;
 - **regression** cases permanently cover fixed compiler defects;
-- **robustness** cases feed malformed source and require controlled diagnostics rather than crashes;
+- **robustness** cases feed malformed and adversarial source and require controlled diagnostics rather than crashes;
+- **fuzzing** targets continuously mutate lexer and structured-compiler inputs under AddressSanitizer and UndefinedBehaviorSanitizer;
 - **determinism** cases require identical validated dumps and emitted output for identical inputs, including reordered multi-file input.
 
-`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Phase 6 adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline.
+`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Phase 6 adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline. Phase 8 adds `gungnir.compiler_robustness`, deterministic mutation coverage, bounded parser nesting, and Clang/libFuzzer targets for the lexer and authoritative structured compiler. See [Compiler Fuzzing](fuzzing.md).
 
 See [Compiler Correctness](compiler-correctness.md) and [Compiler Conformance](compiler-conformance.md).
 
