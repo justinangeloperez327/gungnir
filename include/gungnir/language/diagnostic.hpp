@@ -16,7 +16,7 @@ struct SourceLocation {
     std::size_t column{1};
 };
 
-struct SourceSpan {
+struct DiagnosticSpan {
     // Half-open byte offsets in the original .gnr source.
     std::size_t begin_offset{0};
     std::size_t end_offset{0};
@@ -37,7 +37,7 @@ struct Diagnostic {
 
     // Phase 7 metadata used by CLI/LSP/tooling. These fields are intentionally
     // trailing so existing aggregate initialization remains source compatible.
-    SourceSpan span;
+    DiagnosticSpan span;
     std::string source_line;
 };
 
