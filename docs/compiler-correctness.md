@@ -162,7 +162,7 @@ Required properties:
 - semantic binding and conversion decisions are copied from validated state rather than recomputed;
 - the resulting `CppIrProject` contains everything required for final serialization;
 - executable functions, statements and expressions are structural target IR rather than monolithic implementation strings;
-- framework-generated declaration scaffolding is isolated from executable IR as explicit support blocks.
+- interface output is ordered structural declaration IR with explicit kind, module and identity; generated member spelling remains target-side data, not a semantic lookup surface.
 
 `CppIrVerifier` must reject malformed target graphs, invalid coroutine/control-flow state, invalid target types/IDs and inconsistent module ownership before emission.
 
