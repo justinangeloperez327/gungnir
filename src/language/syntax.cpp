@@ -43,8 +43,10 @@ public:
     std::vector<Token> tokens;
     std::size_t at = 0;
     std::size_t nesting_depth = 0;
+    std::size_t source_size = 0;
     std::string file;
-    Reader(std::string_view source, std::string file, std::string module) : file(std::move(file)) {
+    Reader(std::string_view source, std::string file, std::string module)
+        : source_size(source.size()), file(std::move(file)) {
         auto input = Lexer{source}.tokenize(&result.diagnostics, this->file, true);
         static const std::unordered_set<std::string> pairs{
             "::", "=>", "??", "?.", "==", "!=", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/="};
@@ -72,8 +74,10 @@ public:
             {}
         };
         diagnostic.span.begin_offset = peek().offset;
-        diagnostic.span.end_offset =
-            peek().offset + std::max<std::size_t>(1, peek().lexeme.size());
+        diagnostic.span.end_offset = std::min(
+            source_size,
+            peek().offset + std::max<std::size_t>(1, peek().lexeme.size())
+        );
         diagnostic.span.valid = true;
         result.diagnostics.push_back(std::move(diagnostic));
         throw ParseFailure{};
