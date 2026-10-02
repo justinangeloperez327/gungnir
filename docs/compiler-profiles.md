@@ -8,6 +8,7 @@ gungnirc application.gnr --check
 gungnirc modules --project -o modules.cpp
 gungnirc modules --project --check
 gungnirc application.gnr --dump-validated-ast
+gungnirc application.gnr --dump-cpp-ir
 ```
 
 `--strict` remains accepted as a backwards-compatible alias for the structured default. It no longer selects a different compiler.
