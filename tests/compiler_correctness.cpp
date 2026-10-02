@@ -190,6 +190,107 @@ void validation_only_stops_at_semantic_firewall() {
     assert(CppIrVerifier{}.verify(ir).success());
 }
 
+void authoritative_check_closes_control_flow() {
+    auto options = deterministic_options();
+    options.validate_only = true;
+
+    const std::vector<std::string_view> valid{
+        "function int choose(bool flag) { if (flag) { return 1; } else { return 2; } }",
+        "function int choose(bool flag) { if (flag) { return 1; } else { throw 'failed'; } }",
+        "function int nested(bool first, bool second) { "
+            "if (first) { if (second) { return 1; } else { return 2; } } "
+            "else { return 3; } }",
+        "function string require(string? value) { "
+            "if (value == null) { throw 'missing'; } "
+            "return value; }"
+    };
+
+    for (std::size_t i = 0; i < valid.size(); ++i) {
+        const auto file = "flow-valid-" + std::to_string(i) + ".gnr";
+        const auto result = Compiler{}.compile(valid[i], file, options);
+        assert(result.success());
+        assert(result.validated.has_value());
+        assert(result.code.empty());
+    }
+
+    struct InvalidCase {
+        std::string_view source;
+        std::string_view code;
+    };
+    const std::vector<InvalidCase> invalid{
+        {
+            "function int missing(bool flag) { if (flag) { return 1; } }",
+            "GNR2215"
+        },
+        {
+            "function int loop(bool flag) { while (flag) { return 1; } }",
+            "GNR2215"
+        },
+        {
+            "function int broken() { break; }",
+            "GNR2201"
+        },
+        {
+            "function int broken() { continue; }",
+            "GNR2201"
+        }
+    };
+
+    for (std::size_t i = 0; i < invalid.size(); ++i) {
+        const auto file = "flow-invalid-" + std::to_string(i) + ".gnr";
+        const auto result = Compiler{}.compile(invalid[i].source, file, options);
+        assert(!result.success());
+        assert(!result.validated.has_value());
+        assert(result.code.empty());
+        assert_diagnostic_location(result, file);
+        assert(std::any_of(
+            result.diagnostics.begin(),
+            result.diagnostics.end(),
+            [&](const auto& diagnostic) {
+                return diagnostic.code == invalid[i].code;
+            }
+        ));
+    }
+}
+
+void authoritative_check_matches_full_semantic_gate() {
+    const std::vector<std::string_view> corpus{
+        "function int answer() { return 42; }",
+        "function int broken() { return 'wrong'; }",
+        "function int missing(bool flag) { if (flag) { return 1; } }",
+        "function string require(string? value) { "
+            "if (value == null) { return 'fallback'; } return value; }",
+        "async function int load() { return 1; } function int use() { return load(); }",
+        "event BrokenEvent { int id; public handle() {} }"
+    };
+
+    for (std::size_t i = 0; i < corpus.size(); ++i) {
+        auto check_options = deterministic_options();
+        check_options.validate_only = true;
+        const auto file = "semantic-parity-" + std::to_string(i) + ".gnr";
+        const auto checked = Compiler{}.compile(corpus[i], file, check_options);
+        const auto compiled = Compiler{}.compile(
+            corpus[i],
+            file,
+            deterministic_options()
+        );
+
+        assert(checked.success() == compiled.success());
+        assert(checked.validated.has_value() == compiled.validated.has_value());
+        assert(checked.code.empty());
+
+        std::vector<std::string> checked_codes;
+        std::vector<std::string> compiled_codes;
+        for (const auto& diagnostic : checked.diagnostics) {
+            checked_codes.push_back(diagnostic.code);
+        }
+        for (const auto& diagnostic : compiled.diagnostics) {
+            compiled_codes.push_back(diagnostic.code);
+        }
+        assert(checked_codes == compiled_codes);
+    }
+}
+
 void invalid_program_never_reaches_codegen() {
     const auto result = Compiler{}.compile(
         "function int broken() { return \"not an int\"; }",
@@ -274,6 +375,8 @@ int main() {
     parser_and_validated_ast_invariants();
     cpp_ir_is_an_explicit_deterministic_boundary();
     validation_only_stops_at_semantic_firewall();
+    authoritative_check_closes_control_flow();
+    authoritative_check_matches_full_semantic_gate();
     invalid_program_never_reaches_codegen();
     compilation_is_deterministic();
     multi_file_order_is_deterministic();
