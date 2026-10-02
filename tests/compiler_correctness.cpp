@@ -164,7 +164,7 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     const auto first_statement =
         invalid_coroutine.functions.front().body.front();
     invalid_coroutine.statements[first_statement].kind =
-        CppIrStatementKind::co_return;
+        CppIrStatementKind::co_return_;
     assert(!CppIrVerifier{}.verify(invalid_coroutine).success());
 
     auto invalid_type = first;
