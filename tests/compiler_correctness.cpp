@@ -1,4 +1,5 @@
 #include <gungnir/language/compiler.hpp>
+#include <gungnir/language/cpp_ir.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -69,6 +70,44 @@ void parser_and_validated_ast_invariants() {
 
     const auto code = CppEmitter{}.emit(*validated.project, false);
     assert(!code.empty());
+}
+
+void cpp_ir_is_an_explicit_deterministic_boundary() {
+    constexpr std::string_view source =
+        "function int add(int a, int b) { return a + b; } "
+        "function int answer() { return add(20, 22); }";
+
+    auto parsed = SyntaxParser{}.parse(source, "ir.gnr", "app");
+    assert(parsed.diagnostics.empty());
+    auto validation = ProgramValidator{}.validate(std::move(parsed.project));
+    assert(validation.project.has_value());
+    assert(validation.diagnostics.empty());
+
+    const auto first = CppIrLowerer{}.lower(*validation.project, false);
+    const auto second = CppIrLowerer{}.lower(*validation.project, false);
+
+    assert(!first.interface_fragments.empty());
+    assert(!first.header_fragments.empty());
+    assert(!first.implementation_fragments.empty());
+    assert(first.units.size() == validation.project->module_order().size());
+    assert(first.units.size() == 1);
+    assert(first.units.front().module == "app");
+    assert(!first.units.front().fragments.empty());
+
+    const auto ir_dump = dump_cpp_ir(first);
+    assert(!ir_dump.empty());
+    assert(ir_dump == dump_cpp_ir(second));
+
+    const auto direct = CppEmitter{}.emit(first);
+    const auto compatibility_wrapper =
+        CppEmitter{}.emit(*validation.project, false);
+    assert(direct == compatibility_wrapper);
+
+    const auto emitted_units = CppEmitter{}.emit_units(first);
+    assert(emitted_units.units.size() == first.units.size());
+    assert(emitted_units.declarations.starts_with("#pragma once\n"));
+    assert(emitted_units.units.front().code.starts_with(
+        "#include \"program.hpp\"\n"));
 }
 
 void invalid_program_never_reaches_codegen() {
@@ -153,6 +192,7 @@ void framework_contracts_fail_before_codegen() {
 
 int main() {
     parser_and_validated_ast_invariants();
+    cpp_ir_is_an_explicit_deterministic_boundary();
     invalid_program_never_reaches_codegen();
     compilation_is_deterministic();
     multi_file_order_is_deterministic();
