@@ -49,6 +49,7 @@ struct CppIrExpression {
     // never used to rediscover Gungnir semantics.
     std::string spelling;
     std::vector<CppIrId> operands;
+    std::vector<CppIrId> body;
 };
 
 enum class CppIrStatementKind {
