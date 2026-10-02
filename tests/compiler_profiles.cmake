@@ -8,16 +8,38 @@ file(MAKE_DIRECTORY "${root}")
 
 set(structured "${root}/structured.gnr")
 set(compatibility "${root}/compatibility.gnr")
+set(invalid_semantic "${root}/invalid-semantic.gnr")
 
 file(WRITE "${structured}" "function int answer() { return 42; }\n")
 file(WRITE "${compatibility}" "class LegacyController : Controller { Response index() { return text(\"ok\"); } }\n")
+file(WRITE "${invalid_semantic}" "function int missing(bool flag) { if (flag) { return 1; } }\n")
 
 execute_process(
     COMMAND "${GUNGNIRC}" "${structured}" --check
     RESULT_VARIABLE structured_default
+    OUTPUT_VARIABLE structured_check_output
 )
 if(NOT structured_default EQUAL 0)
     message(FATAL_ERROR "default gungnirc profile must accept structured source")
+endif()
+if(NOT structured_check_output STREQUAL "")
+    message(FATAL_ERROR "--check must validate without emitting generated C++")
+endif()
+
+execute_process(
+    COMMAND "${GUNGNIRC}" "${invalid_semantic}" --check
+    RESULT_VARIABLE invalid_semantic_result
+    OUTPUT_VARIABLE invalid_semantic_output
+    ERROR_VARIABLE invalid_semantic_error
+)
+if(invalid_semantic_result EQUAL 0)
+    message(FATAL_ERROR "--check must reject semantic fallthrough in a non-void callable")
+endif()
+if(NOT invalid_semantic_output STREQUAL "")
+    message(FATAL_ERROR "failed --check must not emit generated C++")
+endif()
+if(NOT invalid_semantic_error MATCHES "GNR2215")
+    message(FATAL_ERROR "--check must report the semantic diagnostic from the structured validator")
 endif()
 
 execute_process(
