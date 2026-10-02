@@ -8,13 +8,51 @@
 #include <gungnir/language/language.hpp>
 #include <gungnir/language/diagnostic_renderer.hpp>
 
+#ifndef GUNGNIR_VERSION
+#define GUNGNIR_VERSION "development"
+#endif
+
 namespace {
+
+const char* compatibility_name(
+    gungnir::language::Compatibility compatibility
+) {
+    using gungnir::language::Compatibility;
+
+    switch (compatibility) {
+    case Compatibility::stable:
+        return "stable";
+    case Compatibility::deprecated:
+        return "deprecated";
+    case Compatibility::experimental:
+        return "experimental";
+    }
+
+    return "unknown";
+}
+
+void print_contract() {
+    using namespace gungnir::language;
+
+    std::cout
+        << "package_version=" << GUNGNIR_VERSION << '\n'
+        << "language_version=" << language_version << '\n'
+        << "compiler_contract=" << compiler_contract_version << '\n'
+        << "diagnostic_contract=" << diagnostic_contract_version << '\n'
+        << "structured_feature_freeze="
+        << (structured_profile_feature_frozen ? "true" : "false")
+        << '\n'
+        << "compatibility=" << compatibility_name(compiler_compatibility)
+        << '\n';
+}
 
 void usage() {
     std::cerr
         << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] "
            "[--no-line-directives] [--project] [--dump-validated-ast] "
-           "[--dump-cpp-ir] [--format] [--compat] [--strict]\n";
+           "[--dump-cpp-ir] [--format] [--compat] [--strict]\n"
+           "       gungnirc --version\n"
+           "       gungnirc --print-contract\n";
 }
 
 std::string read_file(const std::filesystem::path& path) {
@@ -57,6 +95,20 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         usage();
         return 2;
+    }
+
+    if (argc == 2 && std::string_view{argv[1]} == "--version") {
+        std::cout
+            << "Gungnir compiler " << GUNGNIR_VERSION
+            << " (language "
+            << gungnir::language::language_version
+            << ")\n";
+        return 0;
+    }
+
+    if (argc == 2 && std::string_view{argv[1]} == "--print-contract") {
+        print_contract();
+        return 0;
     }
 
     std::filesystem::path input_path;
