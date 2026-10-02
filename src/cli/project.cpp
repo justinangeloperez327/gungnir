@@ -379,7 +379,7 @@ Project Project::create(
         destination /
         "app" /
         "controllers" /
-        "home_controller.gnr",
+        "HomeController.gnr",
         "controller HomeController\n"
         "{\n"
         "    Response index()\n"
@@ -709,7 +709,7 @@ Project::make_model(
 
     return create_source(
         "app/models",
-        snake_case(class_name) + ".gnr",
+        class_name + ".gnr",
         "class " + class_name +
         " : Model\n"
         "{\n"
@@ -736,7 +736,7 @@ Project::make_controller(
 
     return create_source(
         "app/controllers",
-        snake_case(class_name) +
+        class_name +
             ".gnr",
         "class " + class_name +
         " : Controller\n"
@@ -767,7 +767,7 @@ Project::make_middleware(
 
     return create_source(
         "app/middleware",
-        snake_case(class_name) +
+        class_name +
             ".gnr",
         "class " + class_name +
         " : Middleware\n"
@@ -1202,6 +1202,10 @@ Project::assemble() const {
         "CMakeLists.txt",
         "cmake_minimum_required(VERSION 3.25)\n"
         "project(gungnir_app LANGUAGES CXX)\n"
+        "\n"
+        "if(MSVC)\n"
+        "    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)\n"
+        "endif()\n"
         "\n"
         "find_package(Gungnir CONFIG REQUIRED)\n"
         "\n"
