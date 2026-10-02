@@ -509,11 +509,14 @@ ServerFrame receive_server_frame(
 }
 
 void websocket_handshake(
-    NativeSocket socket
+    NativeSocket socket,
+    std::string_view target = "/ws"
 ) {
     send_all(
         socket,
-        "GET /ws HTTP/1.1\r\n"
+        "GET " +
+        std::string{target} +
+        " HTTP/1.1\r\n"
         "Host: localhost\r\n"
         "Upgrade: websocket\r\n"
         "Connection: keep-alive, Upgrade\r\n"
@@ -560,6 +563,16 @@ int main() {
     SocketRuntime socket_runtime;
 
     routing::Router router;
+
+    std::atomic_bool
+        cancellable_websocket_started{
+            false
+        };
+
+    std::atomic_bool
+        cancellable_websocket_cancelled{
+            false
+        };
 
     router.get(
         "/ws",
@@ -614,11 +627,68 @@ int main() {
         }
     );
 
+    router.get(
+        "/ws-cancel",
+        [&] {
+            return
+                http::Response::websocket(
+                    http::WebSocketSession{
+                        http::WebSocketSession::
+                            CancellableHandler{
+                                [&](
+                                    http::
+                                        WebSocketMessage
+                                            message,
+                                    CancellationToken
+                                        cancellation
+                                )
+                                    -> Task<
+                                        http::
+                                            WebSocketSession::
+                                                Reply
+                                    > {
+                                    static_cast<void>(
+                                        message
+                                    );
+
+                                    cancellable_websocket_started
+                                        .store(
+                                            true,
+                                            std::memory_order_release
+                                        );
+
+                                    try {
+                                        co_await sleep_for(
+                                            5s,
+                                            cancellation
+                                        );
+                                    } catch (
+                                        const OperationCancelled&
+                                    ) {
+                                        cancellable_websocket_cancelled
+                                            .store(
+                                                true,
+                                                std::memory_order_release
+                                            );
+
+                                        throw;
+                                    }
+
+                                    co_return
+                                        std::nullopt;
+                                }
+                            }
+                    },
+                    "chat"
+                );
+        }
+    );
+
     http::RuntimeOptions options;
     options.max_websocket_message_bytes =
         1024;
     options.websocket_message_timeout =
-        1s;
+        75ms;
     options.write_timeout = 1s;
     options.idle_timeout = 2s;
     options.shutdown_timeout = 1s;
@@ -806,6 +876,64 @@ int main() {
             );
 
         assert(code == 1002);
+    }
+
+    {
+        SocketGuard client{
+            connect_local(port)
+        };
+
+        websocket_handshake(
+            client.get(),
+            "/ws-cancel"
+        );
+
+        send_all(
+            client.get(),
+            masked_frame(
+                http::
+                    WebSocketOpcode::text,
+                "cancel"
+            )
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 400 &&
+            !cancellable_websocket_started.load(
+                std::memory_order_acquire
+            );
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            cancellable_websocket_started.load(
+                std::memory_order_acquire
+            )
+        );
+
+        for (
+            int attempt = 0;
+            attempt < 400 &&
+            !cancellable_websocket_cancelled.load(
+                std::memory_order_acquire
+            );
+            ++attempt
+        ) {
+            std::this_thread::sleep_for(
+                5ms
+            );
+        }
+
+        assert(
+            cancellable_websocket_cancelled.load(
+                std::memory_order_acquire
+            )
+        );
     }
 
     server.stop();

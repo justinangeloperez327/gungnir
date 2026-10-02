@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate · compiler and generated application
+    name: Validate · compiler and runtime correctness
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -36,11 +36,16 @@ jobs:
           gungnir_compiler_correctness_test gungnir_compiler_stability_test
           gungnir_compiler_robustness_test gungnir_structured_generated_test
           gungnir_language_test
+          gungnir_runtime_safety_test gungnir_timer_runtime_test
+          gungnir_http_reactor_test gungnir_http_server_test
+          gungnir_http_streaming_test gungnir_websocket_test
+          gungnir_runtime_supervisor_test gungnir_runtime_host_test
+          gungnir_runtime_lifecycle_test
           gungnir_cli_test gungnir-cli gungnirc
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle)$'
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja

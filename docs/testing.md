@@ -25,6 +25,23 @@ Compiler testing is split by responsibility:
 
 See [Compiler Correctness](compiler-correctness.md) and [Compiler Conformance](compiler-conformance.md).
 
+## Runtime correctness tests
+
+Phase 11 promotes lifecycle behavior into the primary PR gate. The focused runtime set covers:
+
+- request cancellation on disconnect and request deadline;
+- graceful in-flight request drain after admission closes;
+- rejection of a second listen lifecycle while the first is draining;
+- bounded shutdown-deadline cancellation for cooperative handlers;
+- cancellation propagation into response-stream producers;
+- cancellation propagation into WebSocket message handlers;
+- timer/coroutine ownership safety;
+- supervisor and RuntimeHost shutdown behavior.
+
+`tests/runtime_lifecycle.cpp` is the lifecycle invariant gate. HTTP reactor, streaming, WebSocket, runtime safety, timer, supervisor and RuntimeHost tests run beside it in primary CI.
+
+See [Runtime Correctness](runtime-correctness.md).
+
 ## Limits and planned work
 
 A successful `gungnirc --check` is not a full native type check or a live transport/integration test. Router-only tests do not cover TLS, HTTP parsing, database connectivity or distributed leases. Run relevant integration tests for the selected adapter.

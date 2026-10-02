@@ -9,6 +9,7 @@
 #include <string_view>
 #include <utility>
 
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/core/task.hpp>
 #include <gungnir/http/request.hpp>
 
@@ -65,6 +66,14 @@ public:
             )
         >;
 
+    using CancellableHandler =
+        std::function<
+            Task<Reply>(
+                WebSocketMessage,
+                CancellationToken
+            )
+        >;
+
     using SyncHandler =
         std::function<
             Reply(
@@ -72,10 +81,40 @@ public:
             )
         >;
 
+    using CancellableSyncHandler =
+        std::function<
+            Reply(
+                WebSocketMessage,
+                CancellationToken
+            )
+        >;
+
     WebSocketSession() = default;
 
     explicit WebSocketSession(
         Handler handler
+    )
+        : handler_(
+            [
+                handler =
+                    std::move(handler)
+            ](
+                WebSocketMessage message,
+                CancellationToken
+            ) mutable
+                -> Task<Reply> {
+                if (!handler) {
+                    co_return std::nullopt;
+                }
+
+                co_return co_await handler(
+                    std::move(message)
+                );
+            }
+          ) {}
+
+    explicit WebSocketSession(
+        CancellableHandler handler
     )
         : handler_(
             std::move(handler)
@@ -89,7 +128,8 @@ public:
                 handler =
                     std::move(handler)
             ](
-                WebSocketMessage message
+                WebSocketMessage message,
+                CancellationToken
             ) mutable
                 -> Task<Reply> {
                 if (!handler) {
@@ -98,6 +138,32 @@ public:
 
                 co_return handler(
                     std::move(message)
+                );
+            }
+          ) {}
+
+    explicit WebSocketSession(
+        CancellableSyncHandler handler
+    )
+        : handler_(
+            [
+                handler =
+                    std::move(handler)
+            ](
+                WebSocketMessage message,
+                CancellationToken cancellation
+            ) mutable
+                -> Task<Reply> {
+                cancellation
+                    .throw_if_cancelled();
+
+                if (!handler) {
+                    co_return std::nullopt;
+                }
+
+                co_return handler(
+                    std::move(message),
+                    std::move(cancellation)
                 );
             }
           ) {}
@@ -113,19 +179,24 @@ public:
 
     [[nodiscard]]
     Task<Reply> receive(
-        WebSocketMessage message
+        WebSocketMessage message,
+        CancellationToken cancellation = {}
     ) {
+        cancellation
+            .throw_if_cancelled();
+
         if (!handler_) {
             co_return std::nullopt;
         }
 
         co_return co_await handler_(
-            std::move(message)
+            std::move(message),
+            std::move(cancellation)
         );
     }
 
 private:
-    Handler handler_;
+    CancellableHandler handler_;
 };
 
 struct WebSocketHandshake {

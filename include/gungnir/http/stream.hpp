@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include <gungnir/core/cancellation.hpp>
 #include <gungnir/core/task.hpp>
 
 namespace gungnir::http {
@@ -14,18 +15,54 @@ public:
     using Chunk =
         std::optional<std::string>;
 
+    // Kept for source compatibility with existing producers.
     using Producer =
         std::function<
             Task<Chunk>()
         >;
 
+    using CancellableProducer =
+        std::function<
+            Task<Chunk>(
+                CancellationToken
+            )
+        >;
+
     using SyncProducer =
         std::function<Chunk()>;
+
+    using CancellableSyncProducer =
+        std::function<
+            Chunk(
+                CancellationToken
+            )
+        >;
 
     BodyStream() = default;
 
     explicit BodyStream(
         Producer producer
+    )
+        : producer_(
+            [
+                producer =
+                    std::move(producer)
+            ](
+                CancellationToken
+            ) mutable
+                -> Task<Chunk> {
+                if (!producer) {
+                    co_return
+                        std::nullopt;
+                }
+
+                co_return
+                    co_await producer();
+            }
+          ) {}
+
+    explicit BodyStream(
+        CancellableProducer producer
     )
         : producer_(
             std::move(producer)
@@ -38,7 +75,9 @@ public:
             [
                 producer =
                     std::move(producer)
-            ]() mutable
+            ](
+                CancellationToken
+            ) mutable
                 -> Task<Chunk> {
                 if (!producer) {
                     co_return
@@ -46,6 +85,33 @@ public:
                 }
 
                 co_return producer();
+            }
+          ) {}
+
+    explicit BodyStream(
+        CancellableSyncProducer producer
+    )
+        : producer_(
+            [
+                producer =
+                    std::move(producer)
+            ](
+                CancellationToken cancellation
+            ) mutable
+                -> Task<Chunk> {
+                cancellation
+                    .throw_if_cancelled();
+
+                if (!producer) {
+                    co_return
+                        std::nullopt;
+                }
+
+                co_return producer(
+                    std::move(
+                        cancellation
+                    )
+                );
             }
           ) {}
 
@@ -59,18 +125,27 @@ public:
     }
 
     [[nodiscard]]
-    Task<Chunk> next() {
+    Task<Chunk> next(
+        CancellationToken cancellation = {}
+    ) {
+        cancellation
+            .throw_if_cancelled();
+
         if (!producer_) {
             co_return
                 std::nullopt;
         }
 
         co_return
-            co_await producer_();
+            co_await producer_(
+                std::move(
+                    cancellation
+                )
+            );
     }
 
 private:
-    Producer producer_;
+    CancellableProducer producer_;
 };
 
 } // namespace gungnir::http

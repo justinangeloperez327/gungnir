@@ -63,6 +63,7 @@ Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for t
 - [Dependency Injection](dependency-injection.md)
 - [Async Runtime](async-runtime.md)
 - [HTTP Runtime](http-runtime.md)
+- [Runtime Correctness](runtime-correctness.md)
 - [Errors](errors.md)
 - [Packages and Extensions](extensions.md)
 - [Logging and Observability](logging-observability.md)
