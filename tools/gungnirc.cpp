@@ -64,7 +64,8 @@ int main(int argc, char** argv) {
     bool check_only = false;
     bool emit_line_directives = true;
     bool format_only = false;
-    bool compatibility = false, project = false, dump = false;
+    bool compatibility = false, compatibility_requested = false;
+    bool project = false, dump = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -80,9 +81,9 @@ int main(int argc, char** argv) {
         }
 
         if (argument == "--strict") { compatibility = false; continue; }
-        if (argument == "--compat") { compatibility = true; continue; }
-        if (argument == "--project") { compatibility = false; project = true; continue; }
-        if (argument == "--dump-validated-ast") { compatibility = false; dump = true; continue; }
+        if (argument == "--compat") { compatibility = true; compatibility_requested = true; continue; }
+        if (argument == "--project") { project = true; continue; }
+        if (argument == "--dump-validated-ast") { dump = true; continue; }
         if (argument == "--check") {
             check_only = true;
             continue;
@@ -113,6 +114,11 @@ int main(int argc, char** argv) {
 
     if (input_path.empty()) {
         usage();
+        return 2;
+    }
+
+    if (compatibility_requested && (project || dump)) {
+        std::cerr << "gungnirc: error: --compat cannot be combined with --project or --dump-validated-ast\n";
         return 2;
     }
 
