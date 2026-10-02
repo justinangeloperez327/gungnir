@@ -8,6 +8,8 @@ The repository/CLI version is 0.1.0 and public APIs are experimental. Pin the ex
 
 Current usage guides live at this directory level; proposed contracts live under `design/`. Design requirements are not release guarantees.
 
+The structured compiler is the canonical `gungnirc` profile. Legacy/native-compatible source requires explicit `--compat`; existing projects without `profile=structured` retain their legacy project build path during the pre-1.0 migration window.
+
 ## Limits and planned work
 
 The compiler now reports `language_version = "0.1"` and experimental compatibility. Feature flags in spec.hpp describe implemented structured syntax rather than a complete stable grammar. Feature acceptance must be established by parsing, semantic checks and native compilation.
