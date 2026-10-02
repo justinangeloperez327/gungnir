@@ -2,7 +2,8 @@
 #include <gungnir/language/compiler.hpp>
 #include <gungnir/language/semantic.hpp>
 #include <gungnir/language/module.hpp>
-#include <gungnir/language/transpiler.hpp>
+#include <gungnir/language/lexer.hpp>
+#include <gungnir/language/parser.hpp>
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
@@ -36,6 +37,58 @@ void check(const std::vector<language::Diagnostic>& diagnostics) {
     for (const auto& d : diagnostics) if (d.level == language::DiagnosticLevel::error)
         message += d.location.file + ":" + std::to_string(d.location.line) + ":" + std::to_string(d.location.column) + " [" + d.code + "]: " + d.message + "\n";
     if (!message.empty()) throw std::runtime_error(message);
+}
+std::string route_method_name(language::RouteMethodKind method) {
+    using Method = language::RouteMethodKind;
+    switch (method) {
+    case Method::get: return "get";
+    case Method::post: return "post";
+    case Method::put: return "put";
+    case Method::patch: return "patch";
+    case Method::remove: return "remove";
+    case Method::options: return "options";
+    case Method::head: return "head";
+    }
+    throw std::logic_error("Unknown route method");
+}
+std::string compile_routes(
+    const std::filesystem::path& path,
+    const language::SemanticIndex& index
+) {
+    const auto source = read(path);
+    std::vector<language::Diagnostic> diagnostics;
+    const auto tokens = language::Lexer{source}.tokenize(
+        &diagnostics,
+        path.generic_string()
+    );
+    language::Parser parser{tokens,path.generic_string()};
+    auto parsed = parser.parse();
+    diagnostics.insert(
+        diagnostics.end(),
+        parsed.diagnostics.begin(),
+        parsed.diagnostics.end()
+    );
+    const auto semantic = language::SemanticAnalyzer{}.analyze(
+        parsed.program,
+        path.generic_string(),
+        &index
+    );
+    diagnostics.insert(diagnostics.end(),semantic.begin(),semantic.end());
+    check(diagnostics);
+
+    std::string output;
+    for (const auto& node : parsed.program.nodes) {
+        const auto* route = std::get_if<language::RouteDeclaration>(&node);
+        if (!route) continue;
+        output += "gungnir::Route::" + route_method_name(route->method) +
+            "<" + route->controller_name + ">(" +
+            quote(route->uri) + ",&" + route->controller_name + "::" +
+            route->action_name + ")";
+        if (route->has_middleware)
+            output += ".middleware<" + route->middleware_type + ">()";
+        output += ";\n";
+    }
+    return output;
 }
 }
 std::string bootstrap_template() {
@@ -234,10 +287,8 @@ inline void configure(gungnir::Application& app) {
 )cpp" + factories + middleware + "app.on_boot([](gungnir::Application& app) {\n" + registrations + "bootstrap::boot(app);\n});\n}\n}\n";
     outputs[generated / "bootstrap.hpp"] = bootstrap;
     std::string app = "#include \"bootstrap.hpp\"\n#include <iostream>\nint main() { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";
-    for (const auto& path : files(root_ / "routes")) {
-        const auto routes = language::Transpiler{}.transpile(read(path),path.generic_string(),{.semantic_index = &index});
-        check(routes.diagnostics); app += routes.code + "\n";
-    }
+    for (const auto& path : files(root_ / "routes"))
+        app += compile_routes(path,index) + "\n";
     app += "app.run();\nreturn 0;\n} catch (const std::exception& e) { std::cerr << e.what() << '\\n'; return 1; } }\n";
     outputs[generated / "app.cpp"] = app;
     std::string migration = "#include \"bootstrap.hpp\"\n#include <gungnir/migration/runner.hpp>\n#include <iostream>\nint main(int argc,char** argv) { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";
