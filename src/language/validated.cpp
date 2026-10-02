@@ -613,12 +613,14 @@ public:
                 const bool alternative_returns = s.kind == SyntaxStatementKind::if_ && !s.alternative.empty() && all_returns(s.alternative);
                 if (guarded != invalid_id && nonnull) narrowed.insert(guarded);
                 scopes.emplace_back(); if (s.kind == SyntaxStatementKind::while_) ++loops; statements(s.body); if (s.kind == SyntaxStatementKind::while_) --loops; scopes.pop_back();
+                const bool body_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
                 narrowed = previous; if (guarded != invalid_id && !nonnull) narrowed.insert(guarded);
-                scopes.emplace_back(); statements(s.alternative); scopes.pop_back(); narrowed = previous;
+                scopes.emplace_back(); statements(s.alternative); scopes.pop_back();
+                const bool alternative_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
+                narrowed = previous;
                 if (s.kind == SyntaxStatementKind::if_ && guarded != invalid_id && body_returns != alternative_returns) {
-                    const bool continuation_is_true_branch = alternative_returns;
-                    const bool continuation_is_nonnull = continuation_is_true_branch ? nonnull : !nonnull;
-                    if (continuation_is_nonnull) narrowed.insert(guarded);
+                    const bool continuation_keeps_nonnull = alternative_returns ? body_keeps_nonnull : alternative_keeps_nonnull;
+                    if (continuation_keeps_nonnull) narrowed.insert(guarded);
                 }
             } else if (s.kind == SyntaxStatementKind::for_) {
                 scopes.emplace_back(); statements(s.parts); if (s.expression != invalid_id && expression(s.expression) != type_id("bool")) report(s.origin,"Loop condition must be bool"); ++loops; scopes.emplace_back(); statements(s.body); scopes.pop_back(); statements(s.alternative); --loops; scopes.pop_back();
