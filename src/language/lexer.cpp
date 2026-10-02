@@ -262,7 +262,7 @@ std::vector<Token> Lexer::tokenize(
                 static const std::regex character{R"('([^'\\\r\n]|\\([abfnrtv\\'"?]|[0-7]{1,3}|x[0-9a-fA-F]+|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))')"};
                 const std::string literal{source_.substr(start, index - start)};
                 if (!std::regex_match(literal, character))
-                    report(start_line, start_column,
+                    report(start_line, start_column, start, index,
                            "Single quotes require one character; use double quotes for strings", "GNR0904");
             }
             emit(
