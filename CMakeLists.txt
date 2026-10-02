@@ -1221,6 +1221,16 @@ if(GUNGNIR_BUILD_TESTS)
                 -P
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/compiler_profiles.cmake
         )
+        add_test(
+            NAME gungnir.compiler_conformance_snapshot
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DGUNGNIRC=$<TARGET_FILE:gungnirc>
+                -DGUNGNIR_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DGUNGNIR_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/compiler-conformance
+                -P
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/compiler_conformance.cmake
+        )
     endif()
 
     add_executable(gungnir_bootstrap_test tests/bootstrap.cpp)

@@ -40,7 +40,7 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli)$'
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_conformance_snapshot)$'
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja

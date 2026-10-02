@@ -37,6 +37,7 @@
 | Authoritative `--check` | Complete for current structured profile | Phase 6 enforces validation-only/full-pipeline semantic parity before C++ IR |
 | Diagnostic/source mapping | Complete baseline | Phase 7 preserves source spans, deterministic diagnostic order, rich CLI rendering and statement-level `#line` mapping |
 | Fuzzing and compiler robustness | Complete baseline | Phase 8 adds bounded parser nesting, deterministic adversarial mutations and ASan/UBSan-backed libFuzzer targets for lexer and structured compiler |
+| GCC/Clang/MSVC conformance | Complete baseline | Phase 9 builds and runs compiler correctness, robustness and generated structured application tests under all three supported compiler families, then requires byte-identical structured compiler snapshots |
 
 ## Feature completion rule
 
@@ -80,3 +81,28 @@ A row may move to **Complete** only when:
 Any compiler PR that changes a row in this table must update the status/evidence in the same pull request. New framework syntax must not be marked complete at parser-only stage.
 
 See [Compiler Correctness](compiler-correctness.md) for the normative invariants.
+
+
+## Cross-compiler conformance
+
+Phase 9 treats compiler portability as a language contract rather than a packaging check. The targeted conformance matrix covers the three supported C++ compiler families:
+
+| Toolchain | CI platform | Required evidence |
+| --- | --- | --- |
+| GCC | Ubuntu | compiler correctness, robustness, public headers, generated structured application, deterministic snapshot |
+| Clang | Ubuntu | compiler correctness, robustness, public headers, generated structured application, deterministic snapshot |
+| MSVC | Windows | compiler correctness, robustness, public headers, generated structured application, deterministic snapshot |
+
+The matrix intentionally does not rebuild every framework integration test on every compiler. Its job is to prove that the language/compiler boundary and emitted C++23 are portable without restoring a slow full-platform test matrix.
+
+Each toolchain produces the same conformance snapshot from the canonical structured fixtures:
+
+- generated C++ for the single-file structured program;
+- `ValidatedProject` dump;
+- structural C++ IR dump;
+- generated C++ for the multi-module fixture;
+- SHA-256 manifest.
+
+The comparison job requires the generated C++, validated dump, C++ IR dump and multi-module output to be byte-identical across GCC, Clang and MSVC. The SHA-256 manifest is compared after normalizing platform line endings. A toolchain-specific semantic decision, declaration order, type spelling or emitted source difference therefore fails Phase 9 even if all three native compilers happen to accept the output.
+
+Compiler-specific warnings or backend implementation defects are fixed in the originating compiler/runtime layer; they must not be papered over with toolchain-specific generated semantics.

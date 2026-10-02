@@ -248,6 +248,15 @@ Generated C++ must be compiled in CI with supported native toolchains. Backend c
 
 Backend compilation is not a substitute for Gungnir semantic validation. When line directives are enabled, generated callable signatures and executable statements are mapped back to their originating `.gnr` lines so backend conformance failures remain actionable.
 
+### Cross-compiler contract
+
+For the supported structured profile, GCC, Clang and MSVC must agree at two boundaries:
+
+1. the same compiler correctness and robustness corpus must pass;
+2. the canonical fixtures must produce byte-identical validated dumps, C++ IR dumps and generated C++ when line directives are disabled.
+
+Generated semantics must not depend on preprocessor checks for a specific compiler family. Toolchain-specific runtime or build plumbing is allowed only where the native platform requires it and must not change Gungnir language behavior.
+
 ## Correctness gate
 
 Compiler-facing pull requests should satisfy the following before merge:

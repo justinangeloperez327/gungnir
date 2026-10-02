@@ -157,18 +157,21 @@ public:
                 if (!can_retry) {
                     throw;
                 }
+            }
 
-                if (
-                    retry.backoff.count() >
-                    0
-                ) {
-                    co_await sleep_for(
-                        retry.backoff *
-                        static_cast<int>(
-                            attempt
-                        )
-                    );
-                }
+            // C++ forbids await-expressions inside exception handlers.
+            // Reaching this point means the caught failure was approved
+            // for retry, so perform asynchronous backoff after the handler.
+            if (
+                retry.backoff.count() >
+                0
+            ) {
+                co_await sleep_for(
+                    retry.backoff *
+                    static_cast<int>(
+                        attempt
+                    )
+                );
             }
         }
 

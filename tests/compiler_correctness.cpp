@@ -173,6 +173,38 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     assert(!CppIrVerifier{}.verify(invalid_type).success());
 }
 
+void cpp_ir_recursive_lowering_survives_arena_growth() {
+    std::string source{"function int stress() { return "};
+    for (int i = 0; i < 96; ++i) {
+        source += "(";
+    }
+    source += "1";
+    for (int i = 0; i < 96; ++i) {
+        source += " + 1)";
+    }
+    source += "; }";
+
+    auto parsed = SyntaxParser{}.parse(
+        source,
+        "ir-arena-growth.gnr",
+        "app"
+    );
+    assert(parsed.diagnostics.empty());
+
+    auto validation =
+        ProgramValidator{}.validate(std::move(parsed.project));
+    assert(validation.project.has_value());
+    assert(validation.diagnostics.empty());
+
+    const auto ir =
+        CppIrLowerer{}.lower(*validation.project, false);
+    const auto verification = CppIrVerifier{}.verify(ir);
+
+    assert(verification.success());
+    assert(ir.expressions.size() > 96);
+    assert(!dump_cpp_ir(ir).empty());
+}
+
 void validation_only_stops_at_semantic_firewall() {
     auto options = deterministic_options();
     options.validate_only = true;
@@ -485,6 +517,7 @@ void framework_contracts_fail_before_codegen() {
 int main() {
     parser_and_validated_ast_invariants();
     cpp_ir_is_an_explicit_deterministic_boundary();
+    cpp_ir_recursive_lowering_survives_arena_growth();
     validation_only_stops_at_semantic_firewall();
     authoritative_check_closes_control_flow();
     authoritative_check_matches_full_semantic_gate();

@@ -192,8 +192,13 @@ class CppIrLoweringRenderer {
         ir.expressions.push_back(std::move(node));
 
         for (auto operand : syntax.operands) {
+            // Recursive lowering may grow ir.expressions and reallocate its
+            // storage. Compute the child first, then reacquire the parent by
+            // ID instead of holding a subobject reference across recursion.
+            const auto lowered_operand =
+                lower_expression(ir, operand);
             ir.expressions[result_id].operands.push_back(
-                lower_expression(ir, operand)
+                lowered_operand
             );
         }
 
@@ -211,8 +216,10 @@ class CppIrLoweringRenderer {
                 p.types()[resolution.type].arguments.back();
 
             for (auto statement : syntax.body) {
+                const auto lowered_statement =
+                    lower_statement(ir, statement);
                 ir.expressions[result_id].body.push_back(
-                    lower_statement(ir, statement)
+                    lowered_statement
                 );
             }
 

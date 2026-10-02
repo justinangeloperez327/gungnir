@@ -18,9 +18,10 @@ Compiler testing is split by responsibility:
 - **regression** cases permanently cover fixed compiler defects;
 - **robustness** cases feed malformed and adversarial source and require controlled diagnostics rather than crashes;
 - **fuzzing** targets continuously mutate lexer and structured-compiler inputs under AddressSanitizer and UndefinedBehaviorSanitizer;
-- **determinism** cases require identical validated dumps and emitted output for identical inputs, including reordered multi-file input.
+- **determinism** cases require identical validated dumps and emitted output for identical inputs, including reordered multi-file input;
+- **cross-compiler conformance** requires the same structured fixtures to build, execute and emit byte-identical compiler snapshots under GCC, Clang and MSVC.
 
-`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Phase 6 adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline. Phase 8 adds `gungnir.compiler_robustness`, deterministic mutation coverage, bounded parser nesting, and Clang/libFuzzer targets for the lexer and authoritative structured compiler. See [Compiler Fuzzing](fuzzing.md).
+`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Phase 6 adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline. Phase 8 adds `gungnir.compiler_robustness`, deterministic mutation coverage, bounded parser nesting, and Clang/libFuzzer targets for the lexer and authoritative structured compiler. Phase 9 adds `gungnir.compiler_conformance_snapshot` plus a targeted GCC/Clang/MSVC CI matrix that compiles and executes generated structured code and compares compiler outputs byte-for-byte. See [Compiler Fuzzing](fuzzing.md) and [Compiler Conformance](compiler-conformance.md).
 
 See [Compiler Correctness](compiler-correctness.md) and [Compiler Conformance](compiler-conformance.md).
 
