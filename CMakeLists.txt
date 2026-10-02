@@ -1474,6 +1474,37 @@ if(GUNGNIR_BUILD_TESTS)
     )
 
     add_executable(
+        gungnir_runtime_lifecycle_test
+        tests/runtime_lifecycle.cpp
+    )
+    target_link_libraries(
+        gungnir_runtime_lifecycle_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_runtime_lifecycle_test
+        PRIVATE
+            cxx_std_23
+    )
+    if(WIN32)
+        target_link_libraries(
+            gungnir_runtime_lifecycle_test
+            PRIVATE
+                ws2_32
+        )
+    endif()
+    add_test(
+        NAME gungnir.runtime_lifecycle
+        COMMAND gungnir_runtime_lifecycle_test
+    )
+    set_tests_properties(
+        gungnir.runtime_lifecycle
+        PROPERTIES
+            TIMEOUT 15
+    )
+
+    add_executable(
         gungnir_runtime_signals_test
         tests/runtime_signals.cpp
     )
