@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace gungnir::language {
@@ -16,6 +17,7 @@ public:
 
     CppIrVerification run() {
         verify_support();
+        verify_arena_shapes();
         verify_functions();
         verify_units();
 
@@ -438,6 +440,115 @@ private:
                 active_expressions,
                 active_statements
             );
+        }
+    }
+
+    void verify_arena_shapes() {
+        for (
+            std::size_t id = 0;
+            id < project_.expressions.size();
+            ++id
+        ) {
+            const auto& expression =
+                project_.expressions[id];
+
+            if (!expression.type.valid()) {
+                error(
+                    "C++ IR expression has no target type"
+                );
+            }
+
+            if (expression.spelling.empty()) {
+                error(
+                    "C++ IR expression has no target spelling"
+                );
+            }
+
+            for (auto operand : expression.operands) {
+                if (
+                    operand == invalid_cpp_ir_id ||
+                    operand >= project_.expressions.size()
+                ) {
+                    error(
+                        "C++ IR expression has an invalid operand"
+                    );
+                }
+            }
+
+            if (
+                expression.kind ==
+                    CppIrExpressionKind::conversion &&
+                expression.operands.size() != 1
+            ) {
+                error(
+                    "C++ IR conversion must have one operand"
+                );
+            }
+
+            if (
+                expression.kind ==
+                    CppIrExpressionKind::await_ &&
+                expression.operands.size() != 1
+            ) {
+                error(
+                    "C++ IR await must have one operand"
+                );
+            }
+
+            for (auto statement : expression.body) {
+                if (
+                    statement == invalid_cpp_ir_id ||
+                    statement >= project_.statements.size()
+                ) {
+                    error(
+                        "C++ IR expression has an invalid body statement"
+                    );
+                }
+            }
+
+            if (
+                expression.kind !=
+                    CppIrExpressionKind::lambda &&
+                !expression.body.empty()
+            ) {
+                error(
+                    "only lambda C++ IR expressions may own statements"
+                );
+            }
+        }
+
+        for (const auto& statement : project_.statements) {
+            const auto check_expression =
+                [&](CppIrId expression) {
+                    if (
+                        expression != invalid_cpp_ir_id &&
+                        expression >= project_.expressions.size()
+                    ) {
+                        error(
+                            "C++ IR statement has an invalid expression"
+                        );
+                    }
+                };
+
+            check_expression(statement.expression);
+
+            const auto check_statements =
+                [&](const auto& statements) {
+                    for (auto child : statements) {
+                        if (
+                            child == invalid_cpp_ir_id ||
+                            child >= project_.statements.size()
+                        ) {
+                            error(
+                                "C++ IR statement has an invalid child statement"
+                            );
+                        }
+                    }
+                };
+
+            check_statements(statement.body);
+            check_statements(statement.alternative);
+            check_statements(statement.parts);
         }
     }
 
