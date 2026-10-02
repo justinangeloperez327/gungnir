@@ -24,7 +24,11 @@ function(run_gungnirc output)
     if(NOT result EQUAL 0)
         message(
             FATAL_ERROR
-            "gungnirc conformance command failed for ${output}:\n${stderr}"
+            "gungnirc conformance command failed for ${output} "
+            "(result=${result})\n"
+            "executable: ${GUNGNIRC}\n"
+            "stdout:\n${stdout}\n"
+            "stderr:\n${stderr}"
         )
     endif()
 
