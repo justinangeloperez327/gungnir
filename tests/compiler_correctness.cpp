@@ -1,5 +1,6 @@
 #include <gungnir/language/compiler.hpp>
 #include <gungnir/language/cpp_ir.hpp>
+#include <gungnir/language/diagnostic_renderer.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -291,6 +292,116 @@ void authoritative_check_matches_full_semantic_gate() {
     }
 }
 
+void diagnostics_preserve_precise_source_spans() {
+    auto options = deterministic_options();
+    options.validate_only = true;
+
+    const std::string source =
+        "function int broken() {\n"
+        "    return absent;\n"
+        "}\n";
+    const auto result = Compiler{}.compile(
+        source,
+        "diagnostic-span.gnr",
+        options
+    );
+
+    assert(!result.success());
+    const auto found = std::find_if(
+        result.diagnostics.begin(),
+        result.diagnostics.end(),
+        [](const auto& diagnostic) {
+            return diagnostic.code == "GNR2202";
+        }
+    );
+    assert(found != result.diagnostics.end());
+    assert(found->location.line == 2);
+    assert(found->location.column >= 1);
+    assert(found->span.valid);
+    assert(found->span.end_line == 2);
+    assert(found->span.end_column > found->location.column);
+    assert(found->span.end_offset > found->span.begin_offset);
+    assert(found->source_line == "    return absent;");
+
+    const auto rendered = DiagnosticRenderer::render(*found);
+    assert(rendered.find("error[GNR2202]") != std::string::npos);
+    assert(rendered.find("2 |     return absent;") != std::string::npos);
+    assert(rendered.find("^~~~~~") != std::string::npos);
+}
+
+void diagnostic_order_is_deterministic() {
+    const SourceFile z{
+        "z.gnr",
+        "z",
+        "function int zed() { return missing_z; }"
+    };
+    const SourceFile a{
+        "a.gnr",
+        "a",
+        "function int alpha() { return missing_a; }"
+    };
+
+    auto options = deterministic_options();
+    options.validate_only = true;
+    const auto first = Compiler{}.compile_sources({z, a}, options);
+    const auto second = Compiler{}.compile_sources({a, z}, options);
+
+    assert(!first.success());
+    assert(!second.success());
+    assert(first.diagnostics.size() == second.diagnostics.size());
+    assert(first.diagnostics.size() >= 2);
+
+    for (std::size_t i = 0; i < first.diagnostics.size(); ++i) {
+        assert(first.diagnostics[i].location.file ==
+               second.diagnostics[i].location.file);
+        assert(first.diagnostics[i].location.line ==
+               second.diagnostics[i].location.line);
+        assert(first.diagnostics[i].location.column ==
+               second.diagnostics[i].location.column);
+        assert(first.diagnostics[i].code ==
+               second.diagnostics[i].code);
+        assert(first.diagnostics[i].message ==
+               second.diagnostics[i].message);
+    }
+    assert(first.diagnostics.front().location.file == "a.gnr");
+}
+
+void generated_cpp_has_statement_source_mapping() {
+    CompilerOptions options;
+    options.emit_line_directives = true;
+    const auto result = Compiler{}.compile(
+        "function int answer() {\n"
+        "    const value = 42;\n"
+        "    return value;\n"
+        "}\n",
+        "source-map.gnr",
+        options
+    );
+
+    assert(result.success());
+    assert(
+        result.code.find("#line 1 \"source-map.gnr\"") !=
+        std::string::npos
+    );
+    assert(
+        result.code.find("#line 2 \"source-map.gnr\"") !=
+        std::string::npos
+    );
+    assert(
+        result.code.find("#line 3 \"source-map.gnr\"") !=
+        std::string::npos
+    );
+
+    options.emit_line_directives = false;
+    const auto without_lines = Compiler{}.compile(
+        "function int answer() { return 42; }",
+        "no-lines.gnr",
+        options
+    );
+    assert(without_lines.success());
+    assert(without_lines.code.find("#line ") == std::string::npos);
+}
+
 void invalid_program_never_reaches_codegen() {
     const auto result = Compiler{}.compile(
         "function int broken() { return \"not an int\"; }",
@@ -377,6 +488,9 @@ int main() {
     validation_only_stops_at_semantic_firewall();
     authoritative_check_closes_control_flow();
     authoritative_check_matches_full_semantic_gate();
+    diagnostics_preserve_precise_source_spans();
+    diagnostic_order_is_deterministic();
+    generated_cpp_has_statement_source_mapping();
     invalid_program_never_reaches_codegen();
     compilation_is_deterministic();
     multi_file_order_is_deterministic();
