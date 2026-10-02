@@ -28,7 +28,8 @@
 | Validated AST boundary | Complete for structured path | `ValidatedProject` can only be created by validation and `CppEmitter` consumes it |
 | Deterministic multi-file compilation | Complete baseline | Source files are sorted before parsing/merging; dedicated correctness tests enforce output stability |
 | Dedicated C++ IR | Planned | Current emitter consumes `ValidatedProject`; a separate complete C++ IR layer is still a target |
-| Legacy source-edit elimination | Transitional | Compatibility `Transpiler` and specialized source/token lowerers still exist |
+| Canonical compiler selection | Complete | `gungnirc` defaults to `Compiler`; `--compat` is explicit and profile behavior is CI-tested |
+| Legacy source-edit elimination | Transitional | `CompatibilityTranspiler` and specialized source/token lowerers remain only for explicit legacy/native compatibility and remaining migration islands |
 | Authoritative `--check` | Partial | Structured validation catches many source errors; native compilation can still expose remaining interface/type failures |
 
 ## Feature completion rule
