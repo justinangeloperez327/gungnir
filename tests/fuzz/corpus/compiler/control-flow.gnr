@@ -1,0 +1,1 @@
+function string require(string? value) { if (value == null) { return "fallback"; } return value; }
