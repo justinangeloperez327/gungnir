@@ -56,7 +56,7 @@ enum class CppIrStatementKind {
     binding,
     expression,
     return_,
-    co_return,
+    co_return_,
     throw_,
     block,
     if_,
