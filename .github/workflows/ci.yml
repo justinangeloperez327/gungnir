@@ -33,14 +33,14 @@ jobs:
           cmake --build build --parallel 2 --target
           gungnir_public_headers gungnir_project_tooling_test
           gungnir_frontend_diagnostics_test gungnir_structured_language_test
-          gungnir_compiler_correctness_test gungnir_compiler_robustness_test
-          gungnir_structured_generated_test
+          gungnir_compiler_correctness_test gungnir_compiler_stability_test
+          gungnir_compiler_robustness_test gungnir_structured_generated_test
           gungnir_language_test
           gungnir_cli_test gungnir-cli gungnirc
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_conformance_snapshot)$'
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja
