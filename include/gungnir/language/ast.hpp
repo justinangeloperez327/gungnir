@@ -200,6 +200,7 @@ struct RouteDeclaration {
     std::string middleware_type;
     bool has_middleware{false};
     std::string uri;
+    bool literal_uri{false};
 };
 
 using Node = std::variant<
