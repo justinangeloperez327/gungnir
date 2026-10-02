@@ -16,11 +16,37 @@ namespace {
 struct ParseFailure {};
 class Reader {
 public:
+    static constexpr std::size_t max_nesting_depth = 256;
+
+    struct NestingGuard {
+        Reader& reader;
+
+        explicit NestingGuard(Reader& value) : reader(value) {
+            if (reader.nesting_depth >= max_nesting_depth) {
+                reader.error(
+                    "Maximum syntax nesting depth exceeded",
+                    "GNR2004"
+                );
+            }
+            ++reader.nesting_depth;
+        }
+
+        ~NestingGuard() {
+            --reader.nesting_depth;
+        }
+
+        NestingGuard(const NestingGuard&) = delete;
+        NestingGuard& operator=(const NestingGuard&) = delete;
+    };
+
     SyntaxResult result;
     std::vector<Token> tokens;
     std::size_t at = 0;
+    std::size_t nesting_depth = 0;
+    std::size_t source_size = 0;
     std::string file;
-    Reader(std::string_view source, std::string file, std::string module) : file(std::move(file)) {
+    Reader(std::string_view source, std::string file, std::string module)
+        : source_size(source.size()), file(std::move(file)) {
         auto input = Lexer{source}.tokenize(&result.diagnostics, this->file, true);
         static const std::unordered_set<std::string> pairs{
             "::", "=>", "??", "?.", "==", "!=", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/="};
@@ -48,8 +74,10 @@ public:
             {}
         };
         diagnostic.span.begin_offset = peek().offset;
-        diagnostic.span.end_offset =
-            peek().offset + std::max<std::size_t>(1, peek().lexeme.size());
+        diagnostic.span.end_offset = std::min(
+            source_size,
+            peek().offset + std::max<std::size_t>(1, peek().lexeme.size())
+        );
         diagnostic.span.valid = true;
         result.diagnostics.push_back(std::move(diagnostic));
         throw ParseFailure{};
@@ -69,6 +97,7 @@ public:
         return value;
     }
     TypeSyntax type() {
+        NestingGuard guard{*this};
         TypeSyntax value; value.origin = origin(); value.name = name();
         while (take("::")) value.name += "::" + name();
         if (take("<")) {
@@ -219,6 +248,7 @@ public:
         return add(std::move(node));
     }
     SyntaxId expression(int minimum = 1) {
+        NestingGuard guard{*this};
         auto left = primary();
         while (!end()) {
             const auto where = origin();
@@ -256,6 +286,7 @@ public:
         node.name = name(); if (take(":")) node.declared_type = type(); need("="); node.expression = expression(); if (semicolon) need(";"); return add(std::move(node));
     }
     SyntaxId statement() {
+        NestingGuard guard{*this};
         if (is("const") || is("let")) return binding(true);
         SyntaxStatement node; node.origin = origin();
         if (is("{")) { node.kind = SyntaxStatementKind::block; node.body = block(); return add(std::move(node)); }

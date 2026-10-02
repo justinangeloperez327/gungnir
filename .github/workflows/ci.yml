@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libsqlite3-dev
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libsqlite3-dev
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
@@ -33,13 +33,38 @@ jobs:
           cmake --build build --parallel 2 --target
           gungnir_public_headers gungnir_project_tooling_test
           gungnir_frontend_diagnostics_test gungnir_structured_language_test
-          gungnir_compiler_correctness_test gungnir_structured_generated_test
+          gungnir_compiler_correctness_test gungnir_compiler_robustness_test
+          gungnir_structured_generated_test
           gungnir_language_test
           gungnir_cli_test gungnir-cli gungnirc
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli)$'
+          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|compiler_correctness|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli)$'
+      - name: Configure sanitizer fuzz build
+        run: >
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_BUILD_FUZZERS=ON
+      - name: Build fuzz targets
+        run: >
+          cmake --build build-fuzz --parallel 2 --target
+          gungnir_lexer_fuzzer gungnir_compiler_fuzzer
+      - name: Run sanitizer fuzz smoke campaign
+        env:
+          ASAN_OPTIONS: "detect_leaks=1:halt_on_error=1"
+          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
+        run: |
+          ./build-fuzz/gungnir_lexer_fuzzer \
+            tests/fuzz/corpus/lexer \
+            -max_total_time=10 -timeout=2 -max_len=65536 -rss_limit_mb=2048
+          ./build-fuzz/gungnir_compiler_fuzzer \
+            tests/fuzz/corpus/compiler \
+            -max_total_time=10 -timeout=2 -max_len=65536 -rss_limit_mb=2048
+
 
   postgresql:
     name: Integration · PostgreSQL

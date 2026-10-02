@@ -1,0 +1,1 @@
+controller UserController { Response index() { return text("ok"); } }

@@ -209,6 +209,8 @@ Every compiler defect should receive a minimal permanent regression test when pr
 
 Malformed and adversarial inputs must result in diagnostics or controlled internal errors, never memory corruption, assertion leakage, hangs or unhandled exceptions.
 
+The structured parser enforces a bounded syntax nesting depth and reports `GNR2004` when the limit is exceeded. Compiler robustness is exercised through both a deterministic mutation corpus in the normal test gate and libFuzzer campaigns instrumented with AddressSanitizer and UndefinedBehaviorSanitizer. Any discovered crash input must become a permanent regression seed or focused test before the fix is considered complete.
+
 ## Diagnostic contract
 
 Diagnostics are part of the compiler interface.
@@ -284,7 +286,10 @@ Execution
 
 Robustness
   [ ] malformed input does not crash
-  [ ] regression test added for fixed compiler bug
+  [ ] parser nesting/resource guards remain enforced
+  [ ] deterministic robustness corpus passes
+  [ ] sanitizer-backed fuzz targets build and run
+  [ ] regression test/seed added for fixed compiler bug
 ```
 
 The fast PR gate may run a focused subset. Cross-toolchain and expensive integration suites may run separately, but release candidates must pass the complete correctness matrix.
