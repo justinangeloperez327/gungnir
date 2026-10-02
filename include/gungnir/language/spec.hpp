@@ -4,7 +4,10 @@
 namespace gungnir::language {
 
 inline constexpr std::string_view language_name = "Gungnir";
-inline constexpr std::string_view language_version = "0.1";
+inline constexpr std::string_view language_version = "0.9";
+inline constexpr std::string_view compiler_contract_version = "0.9";
+inline constexpr std::string_view diagnostic_contract_version = "0.9";
+inline constexpr bool structured_profile_feature_frozen = true;
 inline constexpr std::string_view source_extension = ".gnr";
 
 enum class Compatibility {
