@@ -669,7 +669,9 @@ ValidatedProject
     ↓
 Framework Lowering
     ↓
-C++ IR
+Structural C++ IR
+    ↓
+C++ IR Verifier
     ↓
 C++ Emitter
 ~~~

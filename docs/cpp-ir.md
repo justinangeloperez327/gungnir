@@ -1,6 +1,6 @@
 # C++ Intermediate Representation
 
-> **Status: implemented backend boundary, pre-1.0.** The Phase 3 C++ IR separates semantic lowering from final C++ text serialization.
+> **Status: structural backend IR, pre-1.0.** Phase 4 replaces monolithic implementation fragments with typed target IR for executable functions, statements, expressions and module ownership.
 
 ## Pipeline
 
@@ -15,53 +15,151 @@ CppIrLowerer
     ↓
 CppIrProject
     ↓
+CppIrVerifier
+    ↓
 CppEmitter
     ↓
 C++23
 ```
 
-The important boundary is between `CppIrLowerer` and `CppEmitter`.
+The backend has two strict boundaries:
 
-`CppIrLowerer` may inspect validated syntax, resolved types, symbols, bound arguments, captures, framework metadata and module order. `CppEmitter` must not perform those semantic operations. It serializes an already-lowered `CppIrProject`.
+- `CppIrLowerer` translates validated Gungnir semantics into target-specific IR.
+- `CppEmitter` serializes verified IR and must not inspect `SyntaxProject`, `ValidatedProject`, symbols, overloads or framework semantic contracts.
 
-## Current IR model
+## Structural IR model
 
-The Phase 3 IR is target-specific and intentionally small:
+Executable code is represented by typed nodes:
 
-- `CppIrProject` owns interface, header, implementation and per-module units;
-- `CppIrUnit` identifies one generated module translation unit;
-- `CppIrFragment` contains a lowered C++ fragment and a fragment kind;
-- `CppIrFragmentKind` distinguishes interface declarations, monolithic implementation definitions and module definitions.
+- `CppIrType` — resolved target type spelling;
+- `CppIrExpression` — typed expression kind, operands, lambda body links and finalized target spelling;
+- `CppIrStatement` — binding, expression, return/co_return, throw, block, if, loops and loop control;
+- `CppIrParameter` — target parameter type/name/reference contract;
+- `CppIrFunction` — module, owner, result type, coroutine flag, parameters, source mapping and body;
+- `CppIrDeclaration` — ordered target declaration record for the preamble, function/class forwards, class definitions and generated model metadata;
+- `CppIrUnit` — deterministic module-to-function ownership;
+- `CppIrProject` — complete target program IR.
 
-This is a real compiler stage because all Gungnir semantic/code-generation decisions occur before the emitter. The current fragments contain lowered C++ text; they are not yet a fully typed C++ expression/statement tree.
+The old monolithic `CppIrFragment` and generic support-block representations are removed.
 
-That distinction is intentional. Phase 3 establishes the architectural firewall first. Future backend refinement may replace fragment bodies with finer-grained typed C++ IR nodes without changing the `ValidatedProject -> CppIrProject -> CppEmitter` contract.
+Interface output is now ordered declaration IR. Class definitions still carry finalized target spelling for their generated framework members, but their declaration kind, module, identity and deterministic ordering are explicit and independently verifiable.
 
-## Invariants
+## Expression contract
 
-A valid `CppIrProject` must satisfy:
+Every lowered expression records:
 
-1. it is created only from a valid `ValidatedProject`;
-2. lowering is deterministic for identical validated input and options;
-3. module unit order follows validated module order;
-4. no unresolved Gungnir symbol, overload, type conversion or framework contract remains for `CppEmitter`;
-5. emitter output is a deterministic serialization of IR fragments;
-6. generated per-module units preserve the same observable program behavior as monolithic output;
-7. the emitter does not parse or inspect original `.gnr` source.
+- an explicit `CppIrExpressionKind`;
+- a resolved target `CppIrType`;
+- structural operand IDs;
+- structural lambda-body statement IDs where applicable;
+- finalized target spelling.
 
-The emitter may add fixed target scaffolding such as `#pragma once` or the generated `program.hpp` include. It may not decide language semantics.
+The spelling is a backend cache produced by lowering. It is not raw `.gnr` source and may not be inspected to rediscover Gungnir semantics.
+
+Current expression kinds cover:
+
+```text
+literal
+name
+member
+call
+unary
+binary
+subscript
+list
+object
+lambda
+await
+conditional
+conversion
+```
+
+Conversions are explicit IR nodes when assignment/binding/return lowering requires a target conversion.
+
+## Statement contract
+
+Executable control flow is no longer stored as a text fragment. `CppEmitter` reconstructs it from:
+
+```text
+binding
+expression
+return
+co_return
+throw
+block
+if
+while
+for
+for_in
+break
+continue
+```
+
+This allows the backend verifier to reason about coroutine and control-flow legality before serialization.
+
+## CppIrVerifier
+
+`CppIrVerifier` is the backend invariant gate.
+
+It validates:
+
+- expression and statement IDs;
+- target types and expression target spelling;
+- expression graph cycles;
+- conversion and await operand counts;
+- await legality relative to coroutine context;
+- return versus co_return legality;
+- binding types and initializers;
+- loop conditions and loop-control placement;
+- for-loop step expression shape;
+- function names/result/parameters;
+- module-unit ownership;
+- exactly-once unit membership for every generated function;
+- declaration spelling, identity and ordering;
+- matching interface/header declaration shapes and exactly one preamble.
+
+A verifier failure is an internal compiler error. It is not a user program diagnostic.
+
+## Emission
+
+`CppEmitter` walks verified target IR.
+
+For executable code it serializes:
+
+```text
+CppIrFunction
+    ↓
+CppIrStatement
+    ↓
+CppIrExpression
+    ↓
+C++23
+```
+
+It no longer receives or concatenates monolithic implementation fragments.
+
+The emitter may add fixed target scaffolding such as `#pragma once`, `program.hpp` includes, namespaces and line directives. It may not perform Gungnir name resolution, type checking, overload resolution, optional-flow analysis or framework validation.
 
 ## Public API
 
 ```cpp
 auto validation = ProgramValidator{}.validate(std::move(syntax));
-auto ir = CppIrLowerer{}.lower(*validation.project, false);
+
+auto ir = CppIrLowerer{}.lower(
+    *validation.project,
+    false
+);
+
+auto verification = CppIrVerifier{}.verify(ir);
+if (!verification.success()) {
+    // internal compiler error
+}
 
 auto cpp = CppEmitter{}.emit(ir);
 auto units = CppEmitter{}.emit_units(ir);
 ```
 
-For pre-1.0 source compatibility, `CppEmitter` still accepts `ValidatedProject` directly. Those overloads are wrappers and immediately call `CppIrLowerer`; they do not bypass IR.
+The pre-1.0 `CppEmitter(ValidatedProject)` overload remains a convenience wrapper. It lowers through structural IR and does not bypass the backend boundary.
 
 ## Inspecting IR
 
@@ -73,53 +171,53 @@ gungnirc app.gnr --dump-cpp-ir --no-line-directives
 gungnirc app --project --dump-cpp-ir
 ```
 
-The dump is intended for compiler debugging, deterministic regression tests and backend development. It is not a stable application-facing format.
+The dump now identifies structural functions, statement IDs, expression kinds/types and module-unit membership instead of reproducing generated C++ fragments.
 
-`--dump-cpp-ir` belongs to the structured compiler and cannot be combined with `--compat`.
+The dump is an experimental compiler-debug format, not a stable application ABI.
 
-## Monolithic and project emission
+## Determinism
 
-The IR carries both:
+For identical validated input and compiler options:
 
-- a monolithic interface/implementation representation used by single-file compiler output;
-- a header-safe interface plus per-module units used by structured project builds.
+- function order is deterministic;
+- statement/expression graph construction is deterministic;
+- module units follow validated module order;
+- every function belongs to exactly one unit;
+- `dump_cpp_ir()` is deterministic;
+- final generated C++ is deterministic.
 
-The generated header intentionally omits source line directives so source-location-only edits do not unnecessarily invalidate the shared interface. Module implementations may preserve line directives for native compiler diagnostics.
+## Remaining backend refinement
+
+Phase 4 completes the structural executable-body boundary.
+
+Remaining backend refinement is intentionally narrower:
+
+1. refine class-definition target spelling into field/member-level nodes only where it improves verification or tooling;
+2. progressively replace cached expression target spelling with finer target-expression fields where that materially improves optimization or verification;
+3. remove the pre-1.0 `CppEmitter(ValidatedProject)` convenience overload once internal callers use IR directly.
+
+Do not introduce an LLVM-like optimizer unless concrete Gungnir requirements justify it. After declaration-side cleanup, compiler effort should return to semantic/type completeness and authoritative `--check`.
 
 ## Correctness testing
 
 `tests/compiler_correctness.cpp` verifies:
 
-- an IR object is produced after validation;
-- lowering is deterministic;
-- module units match validated module order;
-- IR-first emission matches compatibility-wrapper emission;
-- generated header and module scaffolding remain stable.
+- typed function/statement/expression IR exists;
+- IR lowering and dumps are deterministic;
+- valid IR passes `CppIrVerifier`;
+- malformed module/function/type/coroutine IR is rejected;
+- IR-first emission equals the compatibility wrapper;
+- per-module generated units remain valid.
 
-`tests/compiler_profiles.cmake` verifies the `--dump-cpp-ir` CLI contract.
+`tests/compiler_profiles.cmake` verifies the structural `--dump-cpp-ir` CLI contract.
 
-Native generated-program tests continue to verify that serialized IR compiles and executes correctly.
-
-## Remaining backend refinement
-
-The current IR removes semantic responsibilities from `CppEmitter`, but the fragment bodies are still textual C++.
-
-Later refinement can introduce typed IR nodes for:
-
-- types and declarations;
-- expressions;
-- statements and control flow;
-- calls and conversions;
-- coroutine operations;
-- framework-generated helpers;
-- source mapping.
-
-Those changes should refine `CppIrProject`, not move semantic logic back into the emitter.
+Native generated-program tests continue to verify that structural IR serialization compiles and executes against the framework runtime.
 
 ## Implementation references
 
 - [include/gungnir/language/cpp_ir.hpp](../include/gungnir/language/cpp_ir.hpp)
 - [src/language/cpp_ir.cpp](../src/language/cpp_ir.cpp)
+- [src/language/cpp_ir_verifier.cpp](../src/language/cpp_ir_verifier.cpp)
 - [src/language/emitter.cpp](../src/language/emitter.cpp)
 - [Compiler Correctness](compiler-correctness.md)
 - [Compiler Conformance](compiler-conformance.md)

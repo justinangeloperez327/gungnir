@@ -86,16 +86,59 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     const auto first = CppIrLowerer{}.lower(*validation.project, false);
     const auto second = CppIrLowerer{}.lower(*validation.project, false);
 
-    assert(!first.interface_fragments.empty());
-    assert(!first.header_fragments.empty());
-    assert(!first.implementation_fragments.empty());
+    assert(!first.interface_declarations.empty());
+    assert(
+        first.interface_declarations.size() ==
+        first.header_declarations.size());
+    assert(
+        first.interface_declarations.front().kind ==
+        CppIrDeclarationKind::preamble);
+    assert(!first.expressions.empty());
+    assert(!first.statements.empty());
+    assert(first.functions.size() == 2);
     assert(first.units.size() == validation.project->module_order().size());
     assert(first.units.size() == 1);
     assert(first.units.front().module == "app");
-    assert(!first.units.front().fragments.empty());
+    assert(first.units.front().functions.size() == first.functions.size());
+
+    const auto verification = CppIrVerifier{}.verify(first);
+    assert(verification.success());
+    assert(verification.errors.empty());
+
+    bool saw_call = false;
+    bool saw_binary = false;
+    bool saw_return = false;
+
+    for (const auto& expression : first.expressions) {
+        assert(expression.type.valid());
+        assert(!expression.spelling.empty());
+        saw_call = saw_call ||
+            expression.kind == CppIrExpressionKind::call;
+        saw_binary = saw_binary ||
+            expression.kind == CppIrExpressionKind::binary;
+    }
+
+    for (const auto& statement : first.statements) {
+        saw_return = saw_return ||
+            statement.kind == CppIrStatementKind::return_;
+    }
+
+    assert(saw_call);
+    assert(saw_binary);
+    assert(saw_return);
+
+    for (const auto& function : first.functions) {
+        assert(!function.name.empty());
+        assert(function.result.valid());
+        assert(!function.body.empty());
+        assert(!function.coroutine);
+    }
 
     const auto ir_dump = dump_cpp_ir(first);
-    assert(!ir_dump.empty());
+    assert(ir_dump.starts_with("cpp-ir structural\n"));
+    assert(ir_dump.find("function") != std::string::npos);
+    assert(ir_dump.find("expression") != std::string::npos);
+    assert(ir_dump.find("unit app") != std::string::npos);
     assert(ir_dump == dump_cpp_ir(second));
 
     const auto direct = CppEmitter{}.emit(first);
@@ -108,6 +151,25 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
     assert(emitted_units.declarations.starts_with("#pragma once\n"));
     assert(emitted_units.units.front().code.starts_with(
         "#include \"program.hpp\"\n"));
+
+    auto invalid_declaration = first;
+    invalid_declaration.interface_declarations.front().spelling.clear();
+    assert(!CppIrVerifier{}.verify(invalid_declaration).success());
+
+    auto invalid_unit = first;
+    invalid_unit.units.front().functions.push_back(999999);
+    assert(!CppIrVerifier{}.verify(invalid_unit).success());
+
+    auto invalid_coroutine = first;
+    const auto first_statement =
+        invalid_coroutine.functions.front().body.front();
+    invalid_coroutine.statements[first_statement].kind =
+        CppIrStatementKind::co_return_;
+    assert(!CppIrVerifier{}.verify(invalid_coroutine).success());
+
+    auto invalid_type = first;
+    invalid_type.expressions.front().type.spelling.clear();
+    assert(!CppIrVerifier{}.verify(invalid_type).success());
 }
 
 void invalid_program_never_reaches_codegen() {

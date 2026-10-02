@@ -28,7 +28,9 @@
 | Validated AST boundary | Complete for structured path | `ValidatedProject` can only be created by validation and is consumed by `CppIrLowerer` |
 | Deterministic multi-file compilation | Complete baseline | Source files are sorted before parsing/merging; dedicated correctness tests enforce output stability |
 | Dedicated C++ IR boundary | Complete baseline | `Compiler` lowers `ValidatedProject -> CppIrProject`; `CppEmitter` serializes IR only |
-| Typed C++ expression/statement IR | Partial | Phase 3 IR is target-specific and fragment-based; finer typed C++ nodes remain future backend refinement |
+| Typed C++ function/statement/expression IR | Complete baseline | Executable implementation bodies use typed target IR; CppEmitter walks structural functions/statements and CppIrVerifier enforces backend invariants |
+| Typed C++ declaration IR | Complete baseline | Interface/header output is ordered CppIrDeclaration records for preamble, forwards, class definitions and model metadata; identity/order are verifier-checked |
+| Fine-grained C++ class/member IR | Partial | Generated class members retain finalized target spelling inside typed class-definition records; deeper member nodes are optional future refinement |
 | Canonical compiler selection | Complete | `gungnirc` defaults to `Compiler`; `--compat` is explicit and profile behavior is CI-tested |
 | Structured project route emission | Complete baseline | Route URI/controller/action/middleware are structural legacy-route AST data, semantically checked, then emitted directly without SourceEdit |
 | Legacy source-edit elimination | Transitional | `CompatibilityTranspiler` and specialized source/token lowerers remain only for explicit `--compat` legacy/native compatibility |

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iterator>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace gungnir::language {
@@ -19,6 +20,17 @@ CompilationResult finish(SyntaxProject syntax, std::vector<Diagnostic> diagnosti
             *result.validated,
             options.emit_line_directives
         );
+        const auto verification =
+            CppIrVerifier{}.verify(ir);
+        if (!verification.success()) {
+            std::string message{
+                "Gungnir internal compiler error: invalid C++ IR"
+            };
+            for (const auto& error : verification.errors) {
+                message += "\n - " + error;
+            }
+            throw std::logic_error(message);
+        }
         result.code = CppEmitter{}.emit(ir);
     }
     return result;
