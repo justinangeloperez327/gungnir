@@ -4,6 +4,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include <gungnir/language/language.hpp>
 #include <gungnir/language/diagnostic_renderer.hpp>
