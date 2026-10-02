@@ -9,6 +9,8 @@ The canonical path is `language::Compiler` and is used by `gungnirc` by default:
   -> SyntaxParser
   -> ProgramValidator
   -> ValidatedProject
+  -> CppIrLowerer
+  -> CppIrProject
   -> CppEmitter
 ```
 
@@ -35,7 +37,7 @@ Do not add new Gungnir language behavior to:
 - `ViewLowerer`;
 - generic `SourceEdit` rewriting.
 
-New syntax and framework semantics belong in the structured parser, semantic validator, validated compiler structures and emitter.
+New syntax and framework semantics belong in the structured parser, semantic validator, validated compiler structures and C++ IR lowering. The final emitter must remain semantic-free.
 
 Compatibility fixes are limited to regressions required to keep explicitly opted-in legacy applications working during the pre-1.0 migration window.
 

@@ -13,8 +13,8 @@ namespace {
 void usage() {
     std::cerr
         << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] "
-           "[--no-line-directives] [--project] [--dump-validated-ast] [--format] "
-           "[--compat] [--strict]\n";
+           "[--no-line-directives] [--project] [--dump-validated-ast] "
+           "[--dump-cpp-ir] [--format] [--compat] [--strict]\n";
 }
 
 std::string read_file(const std::filesystem::path& path) {
@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
     bool emit_line_directives = true;
     bool format_only = false;
     bool compatibility = false, compatibility_requested = false;
-    bool project = false, dump = false;
+    bool project = false, dump_validated = false, dump_ir = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -83,7 +83,8 @@ int main(int argc, char** argv) {
         if (argument == "--strict") { compatibility = false; continue; }
         if (argument == "--compat") { compatibility = true; compatibility_requested = true; continue; }
         if (argument == "--project") { project = true; continue; }
-        if (argument == "--dump-validated-ast") { dump = true; continue; }
+        if (argument == "--dump-validated-ast") { dump_validated = true; continue; }
+        if (argument == "--dump-cpp-ir") { dump_ir = true; continue; }
         if (argument == "--check") {
             check_only = true;
             continue;
@@ -117,14 +118,19 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    if (compatibility_requested && (project || dump)) {
-        std::cerr << "gungnirc: error: --compat cannot be combined with --project or --dump-validated-ast\n";
+    if (dump_validated && dump_ir) {
+        std::cerr << "gungnirc: error: choose one compiler dump mode\n";
+        return 2;
+    }
+
+    if (compatibility_requested && (project || dump_validated || dump_ir)) {
+        std::cerr << "gungnirc: error: --compat cannot be combined with project or structured compiler dumps\n";
         return 2;
     }
 
     try {
         if (format_only) {
-            if (project || dump) throw std::invalid_argument("--format requires a single source file and cannot dump an AST");
+            if (project || dump_validated || dump_ir) throw std::invalid_argument("--format requires a single source file and cannot dump compiler IR");
             const auto source = read_file(input_path);
             if (!compatibility) {
                 auto syntax = gungnir::language::SyntaxParser{}.parse(source,input_path.generic_string());
@@ -144,13 +150,30 @@ int main(int argc, char** argv) {
             const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
             for (const auto& diagnostic : result.diagnostics) std::cerr << diagnostic.location.file << ':' << diagnostic.location.line << ':' << diagnostic.location.column << ": " << diagnostic.code << ": " << diagnostic.message << '\n';
             if (!result.success()) return 1;
-            if (!check_only || dump) { const auto content = dump ? gungnir::language::dump_validated(*result.validated) : result.code; if (output_path.empty()) std::cout << content; else write_file(output_path,content); }
+            if (!check_only || dump_validated || dump_ir) {
+                std::string content;
+                if (dump_validated) {
+                    content = gungnir::language::dump_validated(*result.validated);
+                } else if (dump_ir) {
+                    content = gungnir::language::dump_cpp_ir(
+                        gungnir::language::CppIrLowerer{}.lower(
+                            *result.validated,
+                            emit_line_directives
+                        )
+                    );
+                } else {
+                    content = result.code;
+                }
+
+                if (output_path.empty()) std::cout << content;
+                else write_file(output_path,content);
+            }
             return 0;
         }
         const auto source = read_file(input_path);
 
 
-        if (project || dump) throw std::invalid_argument("--compat does not support --project or --dump-validated-ast");
+        if (project || dump_validated || dump_ir) throw std::invalid_argument("--compat does not support structured compiler modes");
         gungnir::language::CompatibilityTranspiler transpiler;
         const auto result = transpiler.transpile(
             source,

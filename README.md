@@ -678,7 +678,7 @@ Generated code may use C++23 coroutines, RAII, templates, optional/native contai
 
 Those are not application-facing Gungnir syntax.
 
-See [docs/transpiler.md](docs/transpiler.md).
+See [C++ Intermediate Representation](docs/cpp-ir.md) and [docs/transpiler.md](docs/transpiler.md).
 
 ---
 
@@ -859,6 +859,7 @@ Key compiler specifications:
 - [Syntax AST](docs/ast.md)
 - [Semantics](docs/semantics.md)
 - [Validated AST](docs/validated-ast.md)
+- [C++ Intermediate Representation](docs/cpp-ir.md)
 - [Compiler Correctness](docs/compiler-correctness.md)
 - [Compiler Conformance](docs/compiler-conformance.md)
 - [Transpiler](docs/transpiler.md)

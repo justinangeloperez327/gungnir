@@ -1,4 +1,5 @@
 #include <gungnir/language/compiler.hpp>
+#include <gungnir/language/cpp_ir.hpp>
 #include <algorithm>
 #include <fstream>
 #include <iterator>
@@ -13,7 +14,13 @@ CompilationResult finish(SyntaxProject syntax, std::vector<Diagnostic> diagnosti
     if (!result.diagnostics.empty()) return result;
     auto validation = ProgramValidator{}.validate(std::move(syntax), options);
     result.diagnostics = std::move(validation.diagnostics); result.validated = std::move(validation.project);
-    if (result.validated) result.code = CppEmitter{}.emit(*result.validated, options.emit_line_directives);
+    if (result.validated) {
+        const auto ir = CppIrLowerer{}.lower(
+            *result.validated,
+            options.emit_line_directives
+        );
+        result.code = CppEmitter{}.emit(ir);
+    }
     return result;
 }
 void append(SyntaxProject& target, SyntaxProject source) {

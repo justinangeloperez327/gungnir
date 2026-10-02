@@ -148,10 +148,16 @@ class ProgramValidator {
 public:
     [[nodiscard]] ValidationResult validate(SyntaxProject project, const CompilerOptions& options = {}) const;
 };
+struct CppIrProject;
 struct EmittedUnit { std::string module, code; };
 struct EmittedProject { std::string declarations; std::vector<EmittedUnit> units; };
 class CppEmitter {
 public:
+    // Canonical backend API: serialize already-lowered C++ IR.
+    [[nodiscard]] std::string emit(const CppIrProject& project) const;
+    [[nodiscard]] EmittedProject emit_units(const CppIrProject& project) const;
+
+    // Pre-1.0 convenience wrappers. These lower through CppIrLowerer first.
     [[nodiscard]] std::string emit(const ValidatedProject& project, bool line_directives = true) const;
     [[nodiscard]] EmittedProject emit_units(const ValidatedProject& project, bool line_directives = true) const;
 };
