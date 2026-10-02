@@ -74,6 +74,15 @@ int main() {
     );
 
     reject(
+        "function string invalidContinuation(string? input) { "
+        "let value = input; "
+        "if (value != null) { value = null; } "
+        "else { return 'fallback'; } "
+        "return value; }",
+        "GNR2214"
+    );
+
+    reject(
         "function int mixed(int left, uint64 right) { return left + right; }"
     );
 
