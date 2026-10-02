@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -138,14 +139,14 @@ void malformed_input_is_controlled() {
 
 void framework_contracts_fail_before_codegen() {
     const auto result = Compiler{}.compile(
-        "middleware BrokenMiddleware { public foo() { return 1; } }",
-        "middleware.gnr",
+        "event BrokenEvent { int id; public handle() {} }",
+        "event.gnr",
         deterministic_options());
 
     assert(!result.success());
     assert(!result.validated.has_value());
     assert(result.code.empty());
-    assert_diagnostic_location(result, "middleware.gnr");
+    assert_diagnostic_location(result, "event.gnr");
 }
 
 } // namespace
