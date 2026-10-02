@@ -149,9 +149,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          for file in program.cpp program.validated program.ir modules.cpp manifest.txt; do
+          for file in program.cpp program.validated program.ir modules.cpp; do
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-Clang/$file"
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-MSVC/$file"
           done
 
-          cat snapshots/conformance-GCC/manifest.txt
+          tr -d '\r' < snapshots/conformance-GCC/manifest.txt > gcc.manifest
+          tr -d '\r' < snapshots/conformance-Clang/manifest.txt > clang.manifest
+          tr -d '\r' < snapshots/conformance-MSVC/manifest.txt > msvc.manifest
+          cmp gcc.manifest clang.manifest
+          cmp gcc.manifest msvc.manifest
+          cat gcc.manifest
