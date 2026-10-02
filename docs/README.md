@@ -82,6 +82,7 @@ Gungnir is experimental. Start with the current usage guides below. The full pro
 - [Abstract Syntax Tree](ast.md)
 - [Semantic Analysis](semantics.md)
 - [Validated AST](validated-ast.md)
+- [C++ Intermediate Representation](cpp-ir.md)
 - [Compiler Correctness](compiler-correctness.md)
 - [Compiler Conformance](compiler-conformance.md)
 - [Transpiler](transpiler.md)
