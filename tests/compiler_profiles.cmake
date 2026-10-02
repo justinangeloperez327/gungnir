@@ -29,6 +29,22 @@ if(NOT strict_alias EQUAL 0)
 endif()
 
 execute_process(
+    COMMAND "${GUNGNIRC}" "${structured}" --dump-cpp-ir --no-line-directives
+    RESULT_VARIABLE ir_dump_result
+    OUTPUT_VARIABLE ir_dump
+)
+if(NOT ir_dump_result EQUAL 0)
+    message(FATAL_ERROR "--dump-cpp-ir must succeed for structured source")
+endif()
+if(
+    NOT ir_dump MATCHES "interface" OR
+    NOT ir_dump MATCHES "implementation" OR
+    NOT ir_dump MATCHES "unit"
+)
+    message(FATAL_ERROR "--dump-cpp-ir output is missing expected IR sections")
+endif()
+
+execute_process(
     COMMAND "${GUNGNIRC}" "${compatibility}" --check
     RESULT_VARIABLE legacy_default
     OUTPUT_QUIET
@@ -54,4 +70,14 @@ execute_process(
 )
 if(invalid_mix EQUAL 0)
     message(FATAL_ERROR "--compat and --project must not be combined")
+endif()
+
+execute_process(
+    COMMAND "${GUNGNIRC}" "${compatibility}" --compat --dump-cpp-ir
+    RESULT_VARIABLE invalid_ir_mix
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if(invalid_ir_mix EQUAL 0)
+    message(FATAL_ERROR "--compat and --dump-cpp-ir must not be combined")
 endif()
