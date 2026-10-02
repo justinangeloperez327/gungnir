@@ -64,7 +64,7 @@ public:
                     ? ""
                     : " " + expression(node.expression)) +
                 ";\n";
-        case CppIrStatementKind::co_return:
+        case CppIrStatementKind::co_return_:
             return std::string{"co_return"} +
                 (node.expression == invalid_cpp_ir_id
                     ? ""
