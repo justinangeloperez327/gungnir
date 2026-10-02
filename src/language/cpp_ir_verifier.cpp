@@ -16,7 +16,7 @@ public:
     ) : project_(project) {}
 
     CppIrVerification run() {
-        verify_support();
+        verify_declarations();
         verify_arena_shapes();
         verify_functions();
         verify_units();
@@ -55,38 +55,100 @@ private:
         return true;
     }
 
-    void verify_support() {
-        std::size_t interface_count = 0;
-        std::size_t header_count = 0;
+    void verify_declaration_set(
+        const std::vector<CppIrDeclaration>& declarations,
+        std::string_view label
+    ) {
+        if (declarations.empty()) {
+            error(
+                std::string{label} +
+                " C++ IR declaration set is empty"
+            );
+            return;
+        }
 
-        for (const auto& block : project_.support) {
-            if (block.spelling.empty()) {
-                error("empty C++ IR support block");
+        std::size_t preambles = 0;
+
+        for (
+            std::size_t id = 0;
+            id < declarations.size();
+            ++id
+        ) {
+            const auto& declaration = declarations[id];
+
+            if (declaration.spelling.empty()) {
+                error(
+                    std::string{label} +
+                    " C++ IR declaration has no target spelling"
+                );
             }
 
             if (
-                block.kind ==
-                CppIrSupportKind::interface_
+                declaration.kind ==
+                CppIrDeclarationKind::preamble
             ) {
-                ++interface_count;
-            } else if (
-                block.kind ==
-                CppIrSupportKind::header_interface
-            ) {
-                ++header_count;
+                ++preambles;
+                if (id != 0) {
+                    error(
+                        std::string{label} +
+                        " C++ IR preamble must be first"
+                    );
+                }
+            } else if (declaration.name.empty()) {
+                error(
+                    std::string{label} +
+                    " C++ IR declaration has no name"
+                );
             }
         }
 
-        if (interface_count != 1) {
+        if (preambles != 1) {
             error(
-                "C++ IR must contain exactly one interface support block"
+                std::string{label} +
+                " C++ IR must contain exactly one preamble"
             );
         }
+    }
 
-        if (header_count != 1) {
+    void verify_declarations() {
+        verify_declaration_set(
+            project_.interface_declarations,
+            "interface"
+        );
+        verify_declaration_set(
+            project_.header_declarations,
+            "header"
+        );
+
+        if (
+            project_.interface_declarations.size() !=
+            project_.header_declarations.size()
+        ) {
             error(
-                "C++ IR must contain exactly one header support block"
+                "C++ IR interface/header declaration shape differs"
             );
+            return;
+        }
+
+        for (
+            std::size_t id = 0;
+            id < project_.interface_declarations.size();
+            ++id
+        ) {
+            const auto& interface =
+                project_.interface_declarations[id];
+            const auto& header =
+                project_.header_declarations[id];
+
+            if (
+                interface.kind != header.kind ||
+                interface.module != header.module ||
+                interface.name != header.name
+            ) {
+                error(
+                    "C++ IR interface/header declaration identity differs"
+                );
+            }
         }
     }
 
