@@ -89,6 +89,9 @@ struct NativeField { std::string owner, name, type; };
 struct NativeType { std::string name, cpp_name; };
 struct CompilerOptions {
     bool emit_line_directives{true};
+    // Validation-only mode stops at ValidatedProject. It is used by
+    // authoritative semantic checks and compiler inspection tooling.
+    bool validate_only{false};
     std::vector<NativeType> native_types;
     std::vector<NativeCallable> native_callables;
     std::vector<NativeField> native_fields;
