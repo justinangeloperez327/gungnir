@@ -299,6 +299,28 @@ Backend Manager::backend(
             ->backend();
 }
 
+PoolStats Manager::pool_stats(
+    std::string_view name
+) const {
+    std::shared_ptr<
+        ConnectionPool
+    > pool;
+
+    {
+        std::lock_guard lock{
+            impl_->mutex
+        };
+
+        pool =
+            find_primary(
+                *impl_,
+                name
+            );
+    }
+
+    return pool->stats();
+}
+
 Transaction Manager::transaction(
     std::string_view name
 ) {
