@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status: experimental.** Use a C++23 compiler, CMake 3.25 or newer, and a pinned Gungnir revision. The first example uses supported typed controller syntax and no database.
+> **Status: Gungnir 0.9 preview.** The structured compiler profile is feature-frozen for the 0.9 line. Use a C++23 compiler and CMake 3.25 or newer.
 
 ## Install
 
@@ -18,6 +18,8 @@ After installation, close existing terminal windows and open a new PowerShell or
 
 ```powershell
 gungnir --version
+gungnirc --version
+gungnirc --print-contract
 ```
 
 The CLI discovers the installed framework automatically. You do not need to set `GUNGNIR_CMAKE_PREFIX` for a normal installer or portable-package layout.
@@ -78,7 +80,7 @@ gungnir run
 
 The generated environment uses `APP_HOST=127.0.0.1` and `APP_PORT=8000`. Open `http://127.0.0.1:8000/`; the expected response is `Hello from Gungnir`.
 
-`--check` runs the structured parser, semantic/type validation, framework validation, and validated emission checks for one file. `gungnir build` also compiles generated native code against the installed framework. Both checks matter. `gungnir dev` watches sources, configuration, bootstrap, and views, rebuilds after changes, and restarts the application on a successful build. See [CLI details](cli-codegen.md).
+`--check` runs the structured parser, semantic/type validation, control-flow analysis, and framework validation, then stops at `ValidatedProject`. It does not lower to C++ IR or compile native C++. `gungnir build` performs the backend/native compilation step. Both checks matter. `gungnir dev` watches sources, configuration, bootstrap, and views, rebuilds after changes, and restarts the application on a successful build. See [CLI details](cli-codegen.md).
 
 ## Inspect generated C++
 
