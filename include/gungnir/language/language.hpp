@@ -4,6 +4,7 @@
 #include <gungnir/language/async_lowering.hpp>
 #include <gungnir/language/bootstrap_lowering.hpp>
 #include <gungnir/language/controller_lowering.hpp>
+#include <gungnir/language/cpp_ir.hpp>
 #include <gungnir/language/diagnostic.hpp>
 #include <gungnir/language/diagnostic_renderer.hpp>
 #include <gungnir/language/dependency_graph.hpp>
