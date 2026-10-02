@@ -38,6 +38,7 @@
 | Diagnostic/source mapping | Complete baseline | Phase 7 preserves source spans, deterministic diagnostic order, rich CLI rendering and statement-level `#line` mapping |
 | Fuzzing and compiler robustness | Complete baseline | Phase 8 adds bounded parser nesting, deterministic adversarial mutations and ASan/UBSan-backed libFuzzer targets for lexer and structured compiler |
 | GCC/Clang/MSVC conformance | Complete baseline | Phase 9 builds and runs compiler correctness, robustness and generated structured application tests under all three supported compiler families, then requires byte-identical structured compiler snapshots |
+| 0.9 stability contract | Feature-frozen | Phase 10 versions the language/compiler/diagnostic contract, locks representative acceptance and diagnostic behavior, and runs the stability gate under GCC, Clang and MSVC |
 
 ## Feature completion rule
 
@@ -106,3 +107,27 @@ Each toolchain produces the same conformance snapshot from the canonical structu
 The comparison job requires the generated C++, validated dump, C++ IR dump and multi-module output to be byte-identical across GCC, Clang and MSVC. The SHA-256 manifest is compared after normalizing platform line endings. A toolchain-specific semantic decision, declaration order, type spelling or emitted source difference therefore fails Phase 9 even if all three native compilers happen to accept the output.
 
 Compiler-specific warnings or backend implementation defects are fixed in the originating compiler/runtime layer; they must not be papered over with toolchain-specific generated semantics.
+
+
+## 0.9 stabilization contract
+
+Phase 10 freezes the current structured compiler profile for the 0.9 line. The freeze is intentionally narrower than a 1.0 stability promise.
+
+The protected surface includes:
+
+- structured-profile acceptance and rejection behavior represented by the stability corpus;
+- validation-only `--check` semantics;
+- diagnostic code identity for frozen regression cases;
+- deterministic validated/compiler IR boundaries;
+- package/language/compiler/diagnostic version metadata;
+- GCC, Clang, and MSVC agreement.
+
+The following remain outside the 0.9 compatibility guarantee:
+
+- generated C++ ABI and helper spelling;
+- native runtime C++ ABI/API;
+- explicit `--compat` source-edit behavior;
+- unsupported syntax;
+- framework semantics still marked Partial in this document.
+
+New structured-language features are deferred until after the 0.9 stabilization line unless the contract version is intentionally advanced.

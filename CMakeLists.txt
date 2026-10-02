@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(gungnir VERSION 0.1.2 LANGUAGES CXX)
+project(gungnir VERSION 0.9.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -958,6 +958,11 @@ if(GUNGNIR_BUILD_TOOLS)
     add_executable(gungnirc tools/gungnirc.cpp)
     target_link_libraries(gungnirc PRIVATE gungnir::language)
     target_compile_features(gungnirc PRIVATE cxx_std_23)
+    target_compile_definitions(
+        gungnirc
+        PRIVATE
+            GUNGNIR_VERSION="${PROJECT_VERSION}"
+    )
 
     add_executable(gungnir-cli tools/gungnir.cpp)
     target_link_libraries(
@@ -1030,6 +1035,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_compiler_correctness_test PRIVATE gungnir::language)
     target_compile_features(gungnir_compiler_correctness_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.compiler_correctness COMMAND gungnir_compiler_correctness_test)
+
+    add_executable(gungnir_compiler_stability_test tests/compiler_stability.cpp)
+    target_link_libraries(gungnir_compiler_stability_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_compiler_stability_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.compiler_stability COMMAND gungnir_compiler_stability_test)
 
     add_executable(gungnir_compiler_robustness_test tests/compiler_robustness.cpp)
     target_link_libraries(gungnir_compiler_robustness_test PRIVATE gungnir::language)
@@ -1220,6 +1230,15 @@ if(GUNGNIR_BUILD_TESTS)
                 -DGUNGNIRC=$<TARGET_FILE:gungnirc>
                 -P
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/compiler_profiles.cmake
+        )
+        add_test(
+            NAME gungnir.compiler_release_contract
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DGUNGNIRC=$<TARGET_FILE:gungnirc>
+                -DGUNGNIR_VERSION=${PROJECT_VERSION}
+                -P
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/compiler_release_contract.cmake
         )
         add_test(
             NAME gungnir.compiler_conformance_snapshot

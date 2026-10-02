@@ -1,5 +1,6 @@
 #pragma once
 #include <gungnir/gungnir.hpp>
+#include <gungnir/language/spec.hpp>
 #include <gungnir/core/services.hpp>
 #include <gungnir/queue/job.hpp>
 #include <gungnir/queue/worker.hpp>

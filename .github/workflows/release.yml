@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to package, for example v0.1.0
+        description: Existing release tag to package, for example v0.9.0
         required: true
         type: string
 
@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
 
           if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must use SemVer, for example v0.1.0 or v0.1.0-rc.1."
+            echo "Release tag must use SemVer, for example v0.9.0 or v0.9.0-rc.1."
             exit 1
           fi
 
@@ -101,6 +101,20 @@ jobs:
             exit 1
           fi
 
+          compiler_version="$("$GUNGNIR_PREFIX/bin/gungnirc" --version)"
+          expected_compiler="Gungnir compiler $tag_core (language 0.9)"
+          if [[ "$compiler_version" != "$expected_compiler" ]]; then
+            echo "Installed compiler reports '$compiler_version'; expected '$expected_compiler'."
+            exit 1
+          fi
+
+          contract="$("$GUNGNIR_PREFIX/bin/gungnirc" --print-contract)"
+          grep -qx "package_version=$tag_core" <<< "$contract"
+          grep -qx "language_version=0.9" <<< "$contract"
+          grep -qx "compiler_contract=0.9" <<< "$contract"
+          grep -qx "diagnostic_contract=0.9" <<< "$contract"
+          grep -qx "structured_feature_freeze=true" <<< "$contract"
+
       - name: Create archive
         shell: bash
         run: |
@@ -132,7 +146,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:RELEASE_TAG -notmatch '^v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
-              throw "Release tag must use SemVer, for example v0.1.0 or v0.1.0-rc.1."
+              throw "Release tag must use SemVer, for example v0.9.0 or v0.9.0-rc.1."
           }
 
           $tagVersion = $Matches[1]
@@ -183,6 +197,25 @@ jobs:
 
           if ($actualVersion -ne $expectedVersion) {
               throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+          }
+
+          $compilerVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnirc.exe" --version).Trim()
+          $expectedCompiler = "Gungnir compiler $tagCore (language 0.9)"
+          if ($compilerVersion -ne $expectedCompiler) {
+              throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
+          }
+
+          $contract = (& "$env:GUNGNIR_PREFIX\bin\gungnirc.exe" --print-contract) -join "`n"
+          foreach ($required in @(
+              "package_version=$tagCore",
+              "language_version=0.9",
+              "compiler_contract=0.9",
+              "diagnostic_contract=0.9",
+              "structured_feature_freeze=true"
+          )) {
+              if ($contract -notmatch [regex]::Escape($required)) {
+                  throw "Installed compiler contract is missing '$required'."
+              }
           }
 
       - name: Create archive
@@ -289,6 +322,22 @@ jobs:
 
               if ($actualVersion -ne $expectedVersion) {
                   throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+              }
+
+              $compiler = Join-Path $installDir "bin\gungnirc.exe"
+              if (-not (Test-Path $compiler)) {
+                  throw "Installed gungnirc.exe was not found"
+              }
+
+              $compilerVersion = (& $compiler --version).Trim()
+              $expectedCompiler = "Gungnir compiler $tagCore (language 0.9)"
+              if ($compilerVersion -ne $expectedCompiler) {
+                  throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
+              }
+
+              $contract = (& $compiler --print-contract) -join "`n"
+              if ($contract -notmatch "structured_feature_freeze=true") {
+                  throw "Installed compiler does not report the 0.9 feature freeze."
               }
 
               Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue

@@ -1,8 +1,8 @@
 # Gungnir Documentation
 
-Implementation baseline: source commit `83c29209a83e2696f40d7db22e3eba618cb77cb4`, reviewed on 2 October 2026.
+Implementation baseline: Gungnir 0.9 structured-compiler stabilization contract, reviewed on 2 October 2026.
 
-Gungnir is experimental. Start with the current usage guides below. The full proposed language and architecture contracts are preserved under [design/](design/README.md).
+Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for the 0.9 line; native/runtime compatibility remains experimental. Start with the current usage guides below. The full proposed language and architecture contracts are preserved under [design/](design/README.md).
 
 | Documentation | Meaning |
 | --- | --- |
@@ -11,7 +11,7 @@ Gungnir is experimental. Start with the current usage guides below. The full pro
 | `cpp` examples | Native interoperability; do not substitute their names into `.gnr` blindly |
 | Design specifications | Intended contracts; examples may require future compiler/runtime work |
 
-`gungnirc --check` is not a complete native type check. The walkthrough explains how to verify generated source. Pin a revision for application development.
+`gungnirc --check` is the authoritative structured semantic gate and intentionally stops before C++ IR/native compilation. Use `gungnir build` for backend verification. See [Stability](stability.md) for the 0.9 compatibility boundary.
 
 ## Start here
 

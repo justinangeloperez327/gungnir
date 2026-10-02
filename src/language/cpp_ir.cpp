@@ -1,5 +1,6 @@
 #include <gungnir/language/cpp_ir.hpp>
 #include <gungnir/language/compiler.hpp>
+#include <gungnir/language/spec.hpp>
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -1496,15 +1497,25 @@ public:
     std::vector<CppIrDeclaration> declarations() {
         std::vector<CppIrDeclaration> result;
 
+        std::string preamble =
+            "// Generated from a validated Gungnir program.\n"
+            "#include <gungnir/language/runtime.hpp>\n"
+            "#include <optional>\n"
+            "#include <tuple>\n"
+            "static_assert("
+            "gungnir::language::compiler_contract_version == \"";
+        preamble += compiler_contract_version;
+        preamble +=
+            "\", \"Generated Gungnir source requires compiler/runtime "
+            "contract ";
+        preamble += compiler_contract_version;
+        preamble += "\");\n";
+
         result.push_back(CppIrDeclaration{
             CppIrDeclarationKind::preamble,
             {},
             {},
-            "// Generated from a validated Gungnir "
-            "program.\n"
-            "#include <gungnir/language/runtime.hpp>\n"
-            "#include <optional>\n"
-            "#include <tuple>\n"
+            std::move(preamble)
         });
 
         for (

@@ -8,6 +8,8 @@ on:
       - "include/gungnir/**"
       - "src/cli/**"
       - "tools/gungnir.cpp"
+      - "tools/gungnirc.cpp"
+      - "tests/compiler_release_contract.cmake"
       - "tests/cli_integration.cmake"
       - "tests/generated_project.py"
       - ".github/workflows/release.yml"
@@ -130,6 +132,30 @@ jobs:
 
               if ($actualVersion -ne $expectedVersion) {
                   throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
+              }
+
+              $compiler = Join-Path $installDir "bin\gungnirc.exe"
+              if (-not (Test-Path $compiler)) {
+                  throw "Installed compiler was not found"
+              }
+
+              $compilerVersion = (& $compiler --version).Trim()
+              $expectedCompiler = "Gungnir compiler $($Matches[1]) (language 0.9)"
+              if ($compilerVersion -ne $expectedCompiler) {
+                  throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
+              }
+
+              $contract = (& $compiler --print-contract) -join "`n"
+              foreach ($required in @(
+                  "package_version=$($Matches[1])",
+                  "language_version=0.9",
+                  "compiler_contract=0.9",
+                  "diagnostic_contract=0.9",
+                  "structured_feature_freeze=true"
+              )) {
+                  if ($contract -notmatch [regex]::Escape($required)) {
+                      throw "Installed compiler contract is missing '$required'."
+                  }
               }
 
               Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue

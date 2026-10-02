@@ -67,6 +67,7 @@ jobs:
           cmake --build build --parallel 2 --target
           gungnir_public_headers
           gungnir_compiler_correctness_test
+          gungnir_compiler_stability_test
           gungnir_compiler_robustness_test
           gungnir_structured_generated_test
           gungnirc
@@ -74,7 +75,7 @@ jobs:
       - name: Run compiler conformance tests
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(compiler_correctness|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_conformance_snapshot)$'
+          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
 
       - name: Produce deterministic compiler snapshot
         run: >
@@ -110,6 +111,7 @@ jobs:
           cmake --build build --config Release --parallel 2 --target
           gungnir_public_headers
           gungnir_compiler_correctness_test
+          gungnir_compiler_stability_test
           gungnir_compiler_robustness_test
           gungnir_structured_generated_test
           gungnirc
@@ -118,7 +120,7 @@ jobs:
         run: >
           ctest --test-dir build --build-config Release
           --output-on-failure --no-tests=error
-          -R "^gungnir\.(compiler_correctness|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_conformance_snapshot)$"
+          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$"
 
       - name: Produce deterministic compiler snapshot
         shell: pwsh

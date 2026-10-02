@@ -48,4 +48,6 @@ New application projects use `profile=structured`. Projects without that marker 
 | String interpolation, advanced null-flow analysis | Unsupported |
 | Incremental compilation/application bootstrap | Structured projects emit per-module C++; editable native bootstrap hooks register services |
 
-All capabilities remain experimental. The feature flags in `spec.hpp` describe implemented syntax, not stable release guarantees. See [generated runtime tests](../tests/structured_generated.cpp) and [compiler correctness](compiler-correctness.md).
+The structured profile is feature-frozen for the 0.9 line. This freezes the currently supported source-language behavior; it does not promote partial framework rows to complete and does not stabilize generated C++ or native runtime ABI. `compiler_compatibility` remains experimental until 1.0-level compatibility is declared.
+
+Use `gungnirc --print-contract` to inspect the package, language, compiler, diagnostic, and freeze metadata. See [Stability](stability.md), [generated runtime tests](../tests/structured_generated.cpp), and [compiler correctness](compiler-correctness.md).
