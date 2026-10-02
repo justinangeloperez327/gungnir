@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_set>
 #include <utility>
 
@@ -440,6 +441,7 @@ class CppIrLoweringRenderer {
                     result(method, method_resolution)
                 };
                 function.coroutine = method.asynchronous;
+                function.line_directive = lines;
                 function.source = ir_source(method.origin);
 
                 for (
