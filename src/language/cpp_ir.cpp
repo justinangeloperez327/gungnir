@@ -527,6 +527,9 @@ class CppIrLoweringRenderer {
     void origin(const Origin& origin) { if (lines) out << "#line " << origin.line << ' ' << quote(origin.file) << '\n'; }
 public:
     CppIrLoweringRenderer(const ValidatedProject& project,bool lines) : p(project),s(project.syntax()),lines(lines) { for (std::size_t d = 0; d < s.declarations.size(); ++d) if (s.declarations[d].kind == DeclarationKind::model) for (auto f : p.declarations()[d].fields) model_fields.insert(f); }
+    void lower_structural_functions(CppIrProject& ir) {
+        lower_functions(ir);
+    }
     std::string declarations() {
         out << "// Generated from a validated Gungnir program.\n#include <gungnir/language/runtime.hpp>\n#include <optional>\n#include <tuple>\n";
         for (std::size_t d = 0; d < s.declarations.size(); ++d) { const auto& decl = s.declarations[d]; open(decl.module); if (decl.kind == DeclarationKind::function) out << result(decl.methods[0],p.declarations()[d].methods[0]) << ' ' << decl.name << '(' << params(decl.methods[0],p.declarations()[d].methods[0],true) << ");\n"; else out << "class " << decl.name << ";\n"; close(decl.module); }
@@ -658,7 +661,7 @@ CppIrProject CppIrLowerer::lower(
     CppIrLoweringRenderer{
         project,
         line_directives
-    }.lower_functions(result);
+    }.lower_structural_functions(result);
 
     return result;
 }
