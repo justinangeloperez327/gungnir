@@ -149,6 +149,34 @@ std::vector<std::string> corpus() {
     return cases;
 }
 
+void nesting_limit_is_controlled() {
+    std::string source{"function int deep() { return "};
+    source.append(320, '(');
+    source += "1";
+    source.append(320, ')');
+    source += "; }";
+
+    CompilerOptions options;
+    options.emit_line_directives = false;
+    options.validate_only = true;
+    const auto result = Compiler{}.compile(
+        source,
+        "deep-nesting.gnr",
+        options
+    );
+
+    assert(!result.success());
+    assert(!result.validated.has_value());
+    assert(result.code.empty());
+    assert(std::any_of(
+        result.diagnostics.begin(),
+        result.diagnostics.end(),
+        [](const auto& diagnostic) {
+            return diagnostic.code == "GNR2004";
+        }
+    ));
+}
+
 void deterministic_mutation_sweep(
     const std::vector<std::string>& seeds
 ) {
@@ -197,6 +225,7 @@ void deterministic_mutation_sweep(
 } // namespace
 
 int main() {
+    nesting_limit_is_controlled();
     const auto seeds = corpus();
     deterministic_mutation_sweep(seeds);
 }
