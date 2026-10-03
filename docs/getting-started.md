@@ -28,7 +28,7 @@ Uninstalling Gungnir removes its own user-PATH entry without rewriting unrelated
 
 ### Portable packages
 
-Windows ZIP and Linux tarball packages remain available. Extract the package and add its `bin` directory to `PATH`.
+Windows ZIP and Linux tarball packages remain available. The current Linux asset is `gungnir-v0.9.0-linux-x86_64.tar.gz`. Extract the package and add its `bin` directory to `PATH`.
 
 For custom layouts, `GUNGNIR_CMAKE_PREFIX` can explicitly point the CLI at the Gungnir installation prefix.
 
@@ -89,6 +89,10 @@ gungnirc app/controllers/HomeController.gnr -o .gungnir/home_controller.cpp
 ```
 
 Structured output includes the runtime headers and can be compiled with the installed Gungnir include directory and `-std=c++23` (or the equivalent compiler option). Use `gungnir build` to link the framework and supply the project bootstrap. Imported modules must be checked together through the project build or `gungnirc ROOT --project`.
+
+## Canonical example
+
+The copyable minimal application used by the documentation contract lives under [examples/hello](../examples/hello/README.md). Its controller is validated by the current structured compiler in documentation CI.
 
 ## Next steps
 
