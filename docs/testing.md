@@ -25,6 +25,12 @@ Compiler testing is split by responsibility:
 
 See [Compiler Correctness](compiler-correctness.md) and [Compiler Conformance](compiler-conformance.md).
 
+## Framework semantic tests
+
+Phase 13 adds `gungnir.framework_semantics` to the primary PR gate. It verifies positive and negative contracts for middleware, migrations, listeners, jobs, policies, events, notifications, mail, and model lifecycle metadata. The generated structured-program test also compiles and executes async middleware forwarding and verifies timestamp/soft-delete model attributes.
+
+See [Framework Semantic Contracts](framework-semantics.md).
+
 ## Runtime correctness tests
 
 Phase 11 promotes lifecycle behavior into the primary PR gate. The focused runtime set covers:
