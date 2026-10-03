@@ -176,7 +176,7 @@ def main() -> int:
         "release-candidate guide does not name the current RC",
     )
 
-    for path in sorted((ROOT / "docs").glob("*.md")):
+    for path in sorted((ROOT / "docs").rglob("*.md")):
         text = path.read_text(encoding="utf-8")
         if "pre-1.0" in text:
             errors.append(
