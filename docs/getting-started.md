@@ -1,49 +1,21 @@
 # Getting Started
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir is an expressive C++23 web framework with a dedicated `.gnr` application language and a native runtime.
+
+## Requirements
+
+A Gungnir development environment requires a supported C++23 compiler, CMake, and the Gungnir CLI. Optional database, Redis, SMTP, TLS, HTTP/2, and storage adapters may require their native dependencies.
 
 ## Install
 
-### Windows
+Install a packaged Gungnir distribution for your platform or build and install the framework from source.
 
-Download the Windows setup executable from GitHub Releases:
-
-```text
-gungnir-v<version>-windows-x86_64-setup.exe
-```
-
-Run the installer normally. The current 1.0 RC installer adds `<install directory>\bin` to the **current user's PATH** automatically. It does not modify the system PATH, so an already-long machine PATH does not block Gungnir from being registered.
-
-After installation, close existing terminal windows and open a new PowerShell or Command Prompt:
-
-```powershell
-gungnir --version
-gungnirc --version
-gungnirc --print-contract
-```
-
-The CLI discovers the installed framework automatically. You do not need to set `GUNGNIR_CMAKE_PREFIX` for a normal installer or portable-package layout.
-
-Uninstalling Gungnir removes its own user-PATH entry without rewriting unrelated PATH entries.
-
-### Portable packages
-
-Windows ZIP and Linux tarball packages remain available. The current development build is produced from source; historical packaged releases remain available on GitHub Releases. Extract the package and add its `bin` directory to `PATH`.
-
-For custom layouts, `GUNGNIR_CMAKE_PREFIX` can explicitly point the CLI at the Gungnir installation prefix.
-
-### Build from source
-
-From the Gungnir repository:
+After installation, verify the tools:
 
 ```sh
-cmake -S . -B build -DGUNGNIR_BUILD_TOOLS=ON -DGUNGNIR_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/install"
-cmake --build build --config Release
-cmake --install build --config Release
-export PATH="$PWD/install/bin:$PATH"
+gungnir --version
+gungnirc --version
 ```
-
-Optional database and transport adapters require their corresponding CMake options and native dependencies.
 
 ## Create an application
 
@@ -52,55 +24,64 @@ gungnir new hello
 cd hello
 ```
 
-The generator creates a structured project, environment configuration, application and route directories, a welcome view, and an editable `bootstrap/app.hpp`.
+A project contains application declarations, routes, views, configuration, bootstrap code, tests, and build metadata.
 
-Replace `app/controllers/HomeController.gnr` with:
+## Create a controller
 
 ```gnr
 controller HomeController {
-    Response index() {
+    index() {
         return text("Hello from Gungnir");
     }
 }
 ```
 
-Keep `routes/web.gnr` as:
+## Register a route
 
 ```gnr
 Route::get("/", HomeController::index);
 ```
 
-## Validate and run
+## Build and run
 
 ```sh
-gungnirc app/controllers/HomeController.gnr --check
 gungnir build
 gungnir run
 ```
 
-The generated environment uses `APP_HOST=127.0.0.1` and `APP_PORT=8000`. Open `http://127.0.0.1:8000/`; the expected response is `Hello from Gungnir`.
-
-`--check` runs the structured parser, semantic/type validation, control-flow analysis, and framework validation, then stops at `ValidatedProject`. It does not lower to C++ IR or compile native C++. `gungnir build` performs the backend/native compilation step. Both checks matter. `gungnir dev` watches sources, configuration, bootstrap, and views, rebuilds after changes, and restarts the application on a successful build. See [CLI details](cli-codegen.md).
-
-## Inspect generated C++
+The development server can rebuild and restart the application while source files change:
 
 ```sh
-gungnirc app/controllers/HomeController.gnr -o .gungnir/home_controller.cpp
+gungnir dev
 ```
 
-Structured output includes the runtime headers and can be compiled with the installed Gungnir include directory and `-std=c++23` (or the equivalent compiler option). Use `gungnir build` to link the framework and supply the project bootstrap. Imported modules must be checked together through the project build or `gungnirc ROOT --project`.
+## Validate source
 
-## Canonical example
+```sh
+gungnirc app/controllers/HomeController.gnr --check
+```
 
-The copyable minimal application used by the documentation contract lives under [examples/hello](../examples/hello/README.md). Its controller is validated by the current structured compiler in documentation CI.
+The check command performs Gungnir parsing and semantic/framework validation without producing a native executable.
+
+## Generate application files
+
+Use the CLI to generate framework declarations:
+
+```sh
+gungnir make:model User
+gungnir make:controller UserController
+gungnir make:migration CreateUsers
+gungnir make:middleware Authenticate
+gungnir make:policy UserPolicy
+gungnir make:event UserRegistered
+gungnir make:listener SendWelcomeEmail
+gungnir make:notification WelcomeNotification
+gungnir make:mail WelcomeMail
+gungnir make:job ProcessImport
+```
+
+Generated declarations follow Gungnir naming and project-layout conventions.
 
 ## Next steps
 
-- [Controllers](controller.md) and [routing](routing.md) describe the current HTTP contract.
-- [Requests](request.md) and [validation](validation.md) describe string-based input and supported rules.
-- [Models](model.md) and [migrations](migration.md) explain current field-based model generation and schema planning.
-- [Design specifications](design/README.md) preserve the intended simpler language. Implement their compiler/runtime support before copying target-only syntax into an application.
-
-## Verification scope
-
-The project integration test installs the framework, generates and compiles an application, checks HTTP startup, and exercises incremental rebuilds and development restarts. It does not replace external-service or production load tests.
+Continue with [The Gungnir Language](language.md), [Routing](routing.md), [Controllers](controller.md), [Models](model.md), [ORM](orm.md), [Migrations](migration.md), and [Testing](testing.md).
