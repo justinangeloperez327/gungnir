@@ -629,6 +629,65 @@ int main() {
 
         send_all(
             client.get(),
+            "POST /ping HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Content-Length: 1\r\n"
+            "Content-Length: 1\r\n"
+            "\r\n"
+            "x"
+        );
+
+        const auto response =
+            receive_response(
+                client.get()
+            );
+
+        assert(
+            response.find(
+                "HTTP/1.1 400 Bad Request\r\n"
+            ) == 0
+        );
+
+        assert(
+            response.find(
+                "connection: close\r\n"
+            ) !=
+            std::string::npos
+        );
+    }
+
+    {
+        SocketGuard client{
+            connect_local(port)
+        };
+
+        send_all(
+            client.get(),
+            "POST /ping HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Transfer-Encoding: identity\r\n"
+            "\r\n"
+        );
+
+        const auto response =
+            receive_response(
+                client.get()
+            );
+
+        assert(
+            response.find(
+                "HTTP/1.1 400 Bad Request\r\n"
+            ) == 0
+        );
+    }
+
+    {
+        SocketGuard client{
+            connect_local(port)
+        };
+
+        send_all(
+            client.get(),
             "GET /slow HTTP/1.1\r\n"
             "Host: localhost\r\n"
             "Connection: keep-alive\r\n"
