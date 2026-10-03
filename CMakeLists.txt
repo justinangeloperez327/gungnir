@@ -1117,6 +1117,27 @@ endif()
 if(GUNGNIR_BUILD_TESTS)
     enable_testing()
 
+    add_executable(
+        gungnir_public_api_contract_test
+        tests/public_api_contract.cpp
+    )
+    target_link_libraries(
+        gungnir_public_api_contract_test
+        PRIVATE
+            gungnir::gungnir
+            gungnir::orm
+            gungnir::language
+    )
+    target_compile_features(
+        gungnir_public_api_contract_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.public_api_contract
+        COMMAND gungnir_public_api_contract_test
+    )
+
     add_executable(gungnir_project_tooling_test tests/project_tooling.cpp)
     target_link_libraries(gungnir_project_tooling_test PRIVATE gungnir-cli-support)
     add_test(NAME gungnir.project_tooling COMMAND gungnir_project_tooling_test)
