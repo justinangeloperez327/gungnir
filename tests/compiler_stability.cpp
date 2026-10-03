@@ -40,15 +40,15 @@ CompilationResult check(
     );
 }
 
-void frozen_metadata_is_consistent() {
+void development_metadata_is_consistent() {
     static_assert(language_name == "Gungnir");
-    static_assert(language_version == "1.0");
-    static_assert(compiler_contract_version == "1.0");
-    static_assert(diagnostic_contract_version == "1.0");
-    static_assert(structured_profile_feature_frozen);
+    static_assert(language_version == "development");
+    static_assert(compiler_contract_version == "development");
+    static_assert(diagnostic_contract_version == "development");
+    static_assert(!structured_profile_feature_frozen);
     static_assert(
         compiler_compatibility ==
-        Compatibility::stable
+        Compatibility::experimental
     );
 
     const CompilerOptions defaults;
@@ -56,7 +56,7 @@ void frozen_metadata_is_consistent() {
     assert(!defaults.validate_only);
 }
 
-void frozen_acceptance_contract() {
+void current_acceptance_contract() {
     const std::vector<std::string_view> accepted{
         "function int answer() { return 42; }",
         "function string require(string? value) { "
@@ -80,7 +80,7 @@ void frozen_acceptance_contract() {
     }
 }
 
-void frozen_diagnostic_codes() {
+void current_diagnostic_codes() {
     struct Case {
         std::string_view source;
         std::string_view code;
@@ -125,7 +125,7 @@ void frozen_diagnostic_codes() {
     }
 }
 
-void frozen_check_and_compile_semantics_match() {
+void current_check_and_compile_semantics_match() {
     constexpr std::string_view source =
         "function string require(string? value) { "
         "if (value == null) { throw \"missing\"; } "
@@ -157,7 +157,7 @@ void frozen_check_and_compile_semantics_match() {
     assert(!compiled.code.empty());
     assert(
         compiled.code.find(
-            "compiler_contract_version == \"1.0\""
+            "compiler_contract_version == \"development\""
         ) != std::string::npos
     );
     assert(checked.diagnostics.empty());
@@ -172,8 +172,8 @@ void frozen_check_and_compile_semantics_match() {
 } // namespace
 
 int main() {
-    frozen_metadata_is_consistent();
-    frozen_acceptance_contract();
-    frozen_diagnostic_codes();
-    frozen_check_and_compile_semantics_match();
+    development_metadata_is_consistent();
+    current_acceptance_contract();
+    current_diagnostic_codes();
+    current_check_and_compile_semantics_match();
 }
