@@ -23,6 +23,28 @@ RuntimeHost::RuntimeHost(
         application,
         "http"
     );
+
+    health_
+        .liveness(
+            "runtime-host",
+            [this] {
+                return
+                    failure() ==
+                    nullptr;
+            }
+        )
+        .readiness(
+            "runtime-host",
+            [this] {
+                return
+                    started() &&
+                    !stopping() &&
+                    failure() ==
+                        nullptr &&
+                    application_
+                        ->is_booted();
+            }
+        );
 }
 
 RuntimeHost::~RuntimeHost() {
@@ -190,6 +212,16 @@ bool RuntimeHost::stopping()
 CancellationToken RuntimeHost::token()
     const noexcept {
     return supervisor_.token();
+}
+
+Health& RuntimeHost::health()
+    noexcept {
+    return health_;
+}
+
+const Health& RuntimeHost::health()
+    const noexcept {
+    return health_;
 }
 
 Supervisor& RuntimeHost::supervisor()
