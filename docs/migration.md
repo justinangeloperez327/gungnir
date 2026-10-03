@@ -1,36 +1,54 @@
 # Migrations
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Migrations version an application's database structure.
 
-The structured profile (`gungnirc --strict`) supports typed functions and framework actions, structured callbacks, and validated C++ emission. See [compiler profiles](compiler-profiles.md) for usage and current limits. The compatibility profile retains the native syntax described below.
+## Creating a migration
 
-## Current behavior
-
-The migration runtime builds table operations and executes them through a migration runner and selected backend. Native `Table` supports `create`, `alter`, `rename`, `drop`, and `drop_if_exists`. Column builders include scalar types, indexes, foreign keys, timestamps and soft-delete columns.
-
-Use `gungnir make:migration <name>` to inspect the current generated declaration. Apply migrations with `gungnir migrate`; use `migrate:plan` and `migrate:status` to inspect them.
-
-## Example
-
-Native operation fragment (inside migration planning):
-
-```cpp
-gungnir::migration::Table::create("users", [](gungnir::migration::Column& table) {
-    table.id();
-    table.string("name");
-    table.timestamps();
-});
+```sh
+gungnir make:migration CreateUsers
 ```
 
-## Limits and planned work
+## Migration declaration
 
-The native callback receives `Column&`. The structured profile supports `(table) => { ... }` callbacks and validated schema calls. Compatibility mode requires native callbacks. Backend DDL and transaction capabilities differ.
+```gnr
+migration CreateUsers {
+    up() {
+        Table::create("users", (table) => {
+            table.id();
+            table.string("name");
+            table.string("email").unique();
+            table.timestamps();
+        });
+    }
 
-## Implementation references
+    down() {
+        Table::dropIfExists("users");
+    }
+}
+```
 
-- [include/gungnir/migration/table.hpp](../include/gungnir/migration/table.hpp)
-- [include/gungnir/migration/column.hpp](../include/gungnir/migration/column.hpp)
-- [include/gungnir/migration/runner.hpp](../include/gungnir/migration/runner.hpp)
-- [src/language/migration_lowering.cpp](../src/language/migration_lowering.cpp)
+`up` applies the migration and `down` reverses it.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/migration.md).
+## Columns
+
+The migration API provides common column types including strings, text, integer families, booleans, decimals, floating-point values, JSON, UUIDs, dates/times, timestamps, binary data, foreign IDs, and soft-delete timestamps.
+
+## Modifiers
+
+Columns can be configured with modifiers such as nullable values, defaults, uniqueness, indexes, primary keys, unsigned numeric behavior, and foreign-key references.
+
+## Indexes and foreign keys
+
+Migrations can create, remove, and rename indexes and define foreign-key constraints with delete/update behavior.
+
+## Altering tables
+
+Use `Table::alter` to change an existing table.
+
+## Running migrations
+
+The Gungnir CLI applies pending migrations in order and records completed migrations. Rollback operations execute the corresponding `down` methods.
+
+## Portability
+
+The migration layer translates supported operations to the selected database backend. Database-specific features should be isolated when an application must remain portable across engines.
