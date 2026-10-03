@@ -43,6 +43,10 @@ Existing non-cancellable `BodyStream::Producer` and `WebSocketSession::Handler` 
 
 `shutdown_timeout` is a **drain deadline**, not a mechanism for forcibly destroying arbitrary C++ code.
 
+## Performance baseline
+
+Phase 16 adds in-process Release-mode benchmarks for HTTP/1 parsing, response serialization, and populated static/parameterized route matching. These measurements are intentionally separate from network throughput claims. See [Performance Baseline](performance.md).
+
 ## Limits
 
 Cancellation is cooperative. A request handler, stream producer or WebSocket handler that performs blocking work or ignores its cancellation token can delay final dispatch cleanup after the network drain deadline. Gungnir does not destroy a running coroutine from another thread because doing so would be unsafe.
