@@ -1,35 +1,52 @@
 # Mail
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir provides structured mail declarations and native transports for composing and sending application email.
 
-## Current behavior
+## Defining mail
 
-Native Message supports sender, recipients, cc, bcc, subject, plain text, HTML, reply-to and in-memory attachments. Mailer wraps a Transport and sends synchronously, recording tracing and metrics. MemoryTransport is available for tests; optional SMTP transport provides network delivery.
+```gnr
+mail WelcomeMail {
+    string name;
+    string email;
 
-Enable the SMTP adapter with `-DGUNGNIR_WITH_SMTP=ON` and link `gungnir::smtp`. Configure the concrete transport before constructing the Mailer.
+    subject() {
+        return "Welcome";
+    }
 
-## Example
+    text() {
+        return "Welcome, " + name + ".";
+    }
 
-```cpp
-gungnir::mail::Message message;
-message.from({"sender@example.com", "Gungnir"})
-       .to({"recipient@example.com", "Recipient"})
-       .subject("Welcome")
-       .text("Your account is ready.");
-// Send through a Mailer configured with a Transport.
+    html() {
+        return "<h1>Welcome, " + name + "</h1>";
+    }
+}
 ```
 
-Structured `mail` declarations generate typed data constructors and `message()` composition from synchronous parameterless `subject`, `text`, and `html` methods. A `content() -> Response` method is also supported and its response body becomes the HTML body. `html()` and `content()` cannot both define the HTML source.
+Mail declarations can carry typed data used during message composition.
 
-## Limits and planned work
+## Recipients
 
-Target `mail` action declarations, additional template composition, custom headers and fluent static sending are not all fields/methods of the current Message class. Sending does not automatically enqueue work. Framework composition violations are rejected by `gungnirc --check` with `GNR2307`.
+Messages support sender, recipients, CC, BCC, and reply-to addresses.
 
-## Implementation references
+## HTML and text
 
-- [include/gungnir/mail/message.hpp](../include/gungnir/mail/message.hpp)
-- [include/gungnir/mail/transport.hpp](../include/gungnir/mail/transport.hpp)
-- [include/gungnir/mail/memory_transport.hpp](../include/gungnir/mail/memory_transport.hpp)
-- [include/gungnir/mail/smtp_transport.hpp](../include/gungnir/mail/smtp_transport.hpp)
+A message can contain plain-text and HTML bodies. HTML can be produced directly or from a rendered application view.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/mail.md).
+## Attachments
+
+Messages support file or in-memory attachments with appropriate filenames and content metadata.
+
+## Sending
+
+Mail is sent through the application's configured mailer and transport.
+
+SMTP is provided for network delivery, while an in-memory transport is suitable for tests.
+
+## Queueing
+
+Mail can be dispatched through the queue system when delivery should happen outside the current request.
+
+## Testing mail
+
+Use the in-memory transport to assert recipients, subject, body, headers, and attachments without sending external email.
