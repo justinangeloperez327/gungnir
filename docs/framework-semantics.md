@@ -1,6 +1,6 @@
 # Framework Semantic Contracts
 
-> **Status: experimental, pre-1.0.** Phase 13 makes framework declarations authoritative semantic contracts. A structured program is rejected before C++ IR lowering when a framework artifact cannot satisfy the runtime surface Gungnir will generate for it.
+> **Status: stable 1.0 semantic contract.** Phase 13 makes framework declarations authoritative semantic contracts. A structured program is rejected before C++ IR lowering when a framework artifact cannot satisfy the runtime surface Gungnir will generate for it.
 
 ## Why this exists
 
