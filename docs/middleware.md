@@ -1,23 +1,51 @@
 # Middleware
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Middleware runs around route and controller execution. It is used for authentication, authorization, sessions, CSRF protection, CORS, logging, rate limiting, and other request-level concerns.
 
-The structured profile (`gungnirc --strict`) supports typed functions and framework actions, structured callbacks, and validated C++ emission. See [compiler profiles](compiler-profiles.md) for usage and current limits. The compatibility profile retains the native syntax described below.
+## Defining middleware
 
-## Current behavior
+```gnr
+middleware EnsureActiveUser {
+    async handle(Request request, Next next) {
+        if (!request.authenticated()) {
+            return redirect("/login");
+        }
 
-Native middleware handles `Request&` and `Next`, returning `Response` or `Task<Response>`. In the structured profile, middleware requires a public `handle(Request request, Next next)` method with logical result `Response`; `async handle(...)` lowers to `Task<Response>`. `Next` is a callable continuation returning `Task<Response>`.
+        return await next(request);
+    }
+}
+```
 
-Application registration supports middleware types, aliases, groups and priority. Middleware resolution uses request services when available. Use the generated `make:middleware` file as the current language starting point.
+Middleware receives the request and a `Next` continuation. Calling `next` passes the request to the remainder of the middleware pipeline.
 
-## Limits and planned work
+## Before and after behavior
 
-The implicit-result middleware contract is implemented. Because `Next` is asynchronous, middleware that forwards the continuation normally uses `async handle(...)` and `await next(request)`. Invalid middleware signatures are rejected by `gungnirc --check` with `GNR2301`.
+Code before `next` runs before downstream middleware and the route handler. Code after the awaited continuation can inspect or modify the response.
 
-## Implementation references
+## Registration
 
-- [include/gungnir/http/middleware.hpp](../include/gungnir/http/middleware.hpp)
-- [include/gungnir/http/middleware_registry.hpp](../include/gungnir/http/middleware_registry.hpp)
-- [src/language/middleware_lowering.cpp](../src/language/middleware_lowering.cpp)
+Middleware can be registered as:
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/middleware.md).
+- application/global middleware;
+- named aliases;
+- middleware groups;
+- route-specific middleware.
+
+## Route middleware
+
+```gnr
+Route::get("/dashboard", DashboardController::index)
+    .middleware("auth");
+```
+
+## Dependency injection
+
+Middleware can receive services from the application container through dependency injection.
+
+## Async middleware
+
+The continuation is asynchronous. Middleware that forwards to downstream handlers normally uses `async handle` and `await next(request)`.
+
+## Ordering
+
+Application middleware registration supports deterministic ordering and priority so security and request-context middleware run in the intended sequence.
