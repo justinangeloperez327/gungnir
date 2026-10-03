@@ -1,4 +1,4 @@
-name: Release Candidate
+name: Development Contract
 
 on:
   pull_request:
@@ -50,12 +50,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: rc-${{ github.workflow }}-${{ github.ref }}
+  group: development-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   candidate:
-    name: 1.0 RC package contract
+    name: Pre-1.0 development package contract
     runs-on: ubuntu-24.04
     timeout-minutes: 25
 
@@ -63,7 +63,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Validate RC metadata
+      - name: Validate development metadata
         run: python3 tools/check_release_candidate.py
 
       - name: Install build dependencies
@@ -71,7 +71,7 @@ jobs:
 
       - name: Configure Release package
         run: >
-          cmake -S . -B build-rc -G Ninja
+          cmake -S . -B build-development -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DGUNGNIR_BUILD_TESTS=OFF
           -DGUNGNIR_BUILD_TOOLS=ON
@@ -79,7 +79,7 @@ jobs:
 
       - name: Build package and benchmark smoke targets
         run: >
-          cmake --build build-rc
+          cmake --build build-development
           --target gungnir gungnir-orm gungnir-language gungnir-cli gungnirc gungnir_benchmarks
           --parallel 2
 
@@ -87,30 +87,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          prefix="$RUNNER_TEMP/gungnir-rc"
-          cmake --install build-rc --prefix "$prefix"
-          echo "GUNGNIR_RC_PREFIX=$prefix" >> "$GITHUB_ENV"
+          prefix="$RUNNER_TEMP/gungnir-development"
+          cmake --install build-development --prefix "$prefix"
+          echo "GUNGNIR_DEVELOPMENT_PREFIX=$prefix" >> "$GITHUB_ENV"
 
       - name: Verify installed CLI contracts
         shell: bash
         run: |
           set -euo pipefail
-          test "$("$GUNGNIR_RC_PREFIX/bin/gungnir" --version)" = "Gungnir 1.0.0-rc.1"
-          test "$("$GUNGNIR_RC_PREFIX/bin/gungnirc" --version)" = "Gungnir compiler 1.0.0-rc.1 (language 1.0)"
+          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnir" --version)" = "Gungnir 0.0.0-dev"
+          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --version)" = "Gungnir compiler 0.0.0-dev (language development)"
 
-          contract="$("$GUNGNIR_RC_PREFIX/bin/gungnirc" --print-contract)"
-          grep -qx "package_version=1.0.0-rc.1" <<< "$contract"
-          grep -qx "language_version=1.0" <<< "$contract"
-          grep -qx "compiler_contract=1.0" <<< "$contract"
-          grep -qx "diagnostic_contract=1.0" <<< "$contract"
-          grep -qx "structured_feature_freeze=true" <<< "$contract"
-          grep -qx "compatibility=stable" <<< "$contract"
+          contract="$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --print-contract)"
+          grep -qx "package_version=0.0.0-dev" <<< "$contract"
+          grep -qx "language_version=development" <<< "$contract"
+          grep -qx "compiler_contract=development" <<< "$contract"
+          grep -qx "diagnostic_contract=development" <<< "$contract"
+          grep -qx "structured_feature_freeze=false" <<< "$contract"
+          grep -qx "compatibility=experimental" <<< "$contract"
 
       - name: Configure installed-package consumer
         run: >
           cmake -S tests/install_smoke -B rc-consumer -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$GUNGNIR_RC_PREFIX"
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_DEVELOPMENT_PREFIX"
 
       - name: Link and run installed-package consumer
         shell: bash
@@ -122,14 +122,14 @@ jobs:
       - name: Run benchmark contract smoke
         run: >
           python3 benchmarks/run.py
-          --build-dir build-rc
+          --build-dir build-development
           --smoke
-          --output rc-benchmark-smoke.json
+          --output development-benchmark-smoke.json
 
-      - name: Upload RC smoke evidence
+      - name: Upload development smoke evidence
         uses: actions/upload-artifact@v4
         with:
-          name: gungnir-1.0-rc-smoke
-          path: rc-benchmark-smoke.json
+          name: gungnir-development-smoke
+          path: development-benchmark-smoke.json
           if-no-files-found: error
           retention-days: 30
