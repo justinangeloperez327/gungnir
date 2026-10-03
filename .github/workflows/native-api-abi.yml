@@ -1,0 +1,145 @@
+name: Native API ABI
+
+on:
+  pull_request:
+    paths:
+      - "include/gungnir/**"
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "tests/install_smoke/**"
+      - "tests/public_api_contract.cpp"
+      - ".github/workflows/native-api-abi.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "include/gungnir/**"
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "tests/install_smoke/**"
+      - "tests/public_api_contract.cpp"
+      - ".github/workflows/native-api-abi.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-api-abi
+  cancel-in-progress: true
+
+jobs:
+  shared-linux:
+    name: Shared package · Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure shared libraries
+        run: >
+          cmake -S . -B build-shared -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_SHARED_LIBS=ON
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=OFF
+
+      - name: Build shared package
+        run: cmake --build build-shared --parallel 2
+
+      - name: Install shared package
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/gungnir-shared"
+          cmake --install build-shared --prefix "$prefix"
+          echo "GUNGNIR_SHARED_PREFIX=$prefix" >> "$GITHUB_ENV"
+
+      - name: Configure external installed-package consumer
+        run: >
+          cmake -S tests/install_smoke -B shared-consumer -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_SHARED_PREFIX"
+
+      - name: Link external consumer
+        run: cmake --build shared-consumer --parallel 2
+
+      - name: Run external consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$GUNGNIR_SHARED_PREFIX/lib"
+          ./shared-consumer/gungnir_install_smoke
+
+      - name: Capture exported ABI symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > native-abi-symbols.txt
+
+          for library in             "$GUNGNIR_SHARED_PREFIX"/lib/libgungnir.so.*             "$GUNGNIR_SHARED_PREFIX"/lib/libgungnir-orm.so.*             "$GUNGNIR_SHARED_PREFIX"/lib/libgungnir-language.so.*
+          do
+            if [[ -f "$library" && ! -L "$library" ]]; then
+              echo "## $(basename "$library")" >> native-abi-symbols.txt
+              nm -D --defined-only "$library"                 | c++filt                 | sed -E 's/^[0-9a-fA-F]+[[:space:]]+[A-Za-z][[:space:]]+//'                 | LC_ALL=C sort -u                 >> native-abi-symbols.txt
+              echo >> native-abi-symbols.txt
+            fi
+          done
+
+          test -s native-abi-symbols.txt
+
+      - name: Upload ABI symbol manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: gungnir-native-abi
+          path: native-abi-symbols.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  shared-windows:
+    name: Shared package · Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure shared libraries
+        run: >
+          cmake -S . -B build-shared -A x64
+          -DBUILD_SHARED_LIBS=ON
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=OFF
+
+      - name: Build shared package
+        run: cmake --build build-shared --config Release --parallel 2
+
+      - name: Install shared package
+        shell: pwsh
+        run: |
+          $prefix = Join-Path $env:RUNNER_TEMP "gungnir-shared"
+          cmake --install build-shared --config Release --prefix "$prefix"
+          "GUNGNIR_SHARED_PREFIX=$prefix" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Configure external installed-package consumer
+        shell: pwsh
+        run: |
+          cmake -S tests/install_smoke -B shared-consumer -A x64 `
+            "-DCMAKE_PREFIX_PATH=$env:GUNGNIR_SHARED_PREFIX"
+
+      - name: Link external consumer
+        run: cmake --build shared-consumer --config Release --parallel 2
+
+      - name: Run external consumer
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:GUNGNIR_SHARED_PREFIX\bin;$env:PATH"
+          & ".\shared-consumer\Release\gungnir_install_smoke.exe"
+          if ($LASTEXITCODE -ne 0) {
+              throw "Installed shared-library consumer failed with exit code $LASTEXITCODE"
+          }
