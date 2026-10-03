@@ -1,6 +1,6 @@
 # Runtime Correctness
 
-> **Status: Gungnir 1.0 runtime-correctness contract.** This contract describes ownership, cancellation and graceful-shutdown behavior that the runtime test suite must preserve.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Core invariants
 
