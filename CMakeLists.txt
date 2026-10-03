@@ -2630,7 +2630,7 @@ if(WIN32)
     set(CPACK_GENERATOR "NSIS")
     set(
         CPACK_PACKAGE_FILE_NAME
-        "gungnir-v${PROJECT_VERSION}-windows-x86_64-setup"
+        "gungnir-v${GUNGNIR_VERSION_FULL}-windows-x86_64-setup"
     )
     set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
     set(CPACK_NSIS_DISPLAY_NAME "Gungnir")
