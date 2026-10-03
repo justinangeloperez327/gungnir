@@ -1,6 +1,6 @@
 # Async Runtime
 
-> **Status: Gungnir 1.0 current contract.** Phase 11 defines the current ownership and cooperative-cancellation baseline. Native async APIs are not yet 1.0-stable.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Current behavior
 
