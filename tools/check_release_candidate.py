@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the source tree as a coherent Gungnir 1.0 release candidate."""
+"""Validate the source tree as coherent pre-1.0 development."""
 
 from __future__ import annotations
 
@@ -49,16 +49,16 @@ def main() -> int:
 
     release = core + (f"-{prerelease}" if prerelease else "")
 
-    require(errors, core == "1.0.0", f"RC core version must be 1.0.0, got {core}")
+    require(errors, core == "0.0.0", f"Development core version must be 0.0.0, got {core}")
     require(
         errors,
-        re.fullmatch(r"rc\.\d+", prerelease) is not None,
-        f"RC prerelease marker must be rc.N, got {prerelease!r}",
+        prerelease == "dev",
+        f"Development prerelease marker must be dev, got {prerelease!r}",
     )
     require(
         errors,
-        "SameMajorVersion" in cmake,
-        "1.x installed CMake package must use SameMajorVersion compatibility",
+        "SameMajorVersion" not in cmake,
+        "Development package must not promise SameMajorVersion compatibility",
     )
     require(
         errors,
@@ -72,39 +72,39 @@ def main() -> int:
     )
 
     spec = read("include/gungnir/language/spec.hpp")
-    require(errors, 'language_version = "1.0"' in spec, "language contract is not 1.0")
+    require(errors, 'language_version = "development"' in spec, "language contract is not development")
     require(
         errors,
-        'compiler_contract_version = "1.0"' in spec,
-        "compiler contract is not 1.0",
+        'compiler_contract_version = "development"' in spec,
+        "compiler contract is not development",
     )
     require(
         errors,
-        'diagnostic_contract_version = "1.0"' in spec,
-        "diagnostic contract is not 1.0",
+        'diagnostic_contract_version = "development"' in spec,
+        "diagnostic contract is not development",
     )
     require(
         errors,
-        "structured_profile_feature_frozen = true" in spec,
-        "structured 1.0 profile must remain feature-frozen during RC",
+        "structured_profile_feature_frozen = false" in spec,
+        "structured profile must remain open during feature completion",
     )
     require(
         errors,
-        "compiler_compatibility = Compatibility::stable" in spec,
-        "1.0 RC compiler compatibility must be stable",
+        "compiler_compatibility = Compatibility::experimental" in spec,
+        "pre-1.0 compiler compatibility must remain experimental",
     )
 
     native = read("cmake/version.hpp.in")
     require(
         errors,
-        "GUNGNIR_NATIVE_API_CONTRACT_MAJOR 1" in native
+        "GUNGNIR_NATIVE_API_CONTRACT_MAJOR 0" in native
         and "GUNGNIR_NATIVE_API_CONTRACT_MINOR 0" in native,
-        "native API contract is not 1.0",
+        "native API contract major is not 0",
     )
     require(
         errors,
-        "GUNGNIR_NATIVE_ABI_EPOCH 1" in native,
-        "native ABI epoch is not 1",
+        "GUNGNIR_NATIVE_ABI_EPOCH 0" in native,
+        "native ABI epoch is not 0",
     )
     require(
         errors,
@@ -120,13 +120,13 @@ def main() -> int:
     )
     require(
         errors,
-        'Gungnir_NATIVE_API_CONTRACT "1.0"' in package,
-        "installed CMake package native API contract is not 1.0",
+        'Gungnir_NATIVE_API_CONTRACT "development"' in package,
+        "installed CMake package native API contract is not development",
     )
     require(
         errors,
-        'Gungnir_NATIVE_ABI_EPOCH "1"' in package,
-        "installed CMake package ABI epoch is not 1",
+        'Gungnir_NATIVE_ABI_EPOCH "0"' in package,
+        "installed CMake package ABI epoch is not 0",
     )
 
     release_workflow = read(".github/workflows/release.yml")
@@ -137,43 +137,43 @@ def main() -> int:
     )
     require(
         errors,
-        "language_version=1.0" in release_workflow
-        and "compiler_contract=1.0" in release_workflow
-        and "diagnostic_contract=1.0" in release_workflow,
-        "release workflow does not verify 1.0 compiler contracts",
+        "language_version=development" in release_workflow
+        and "compiler_contract=development" in release_workflow
+        and "diagnostic_contract=development" in release_workflow,
+        "release workflow does not verify development compiler contracts",
     )
     require(
         errors,
-        "compatibility=stable" in release_workflow,
-        "release workflow does not verify stable compiler compatibility",
+        "compatibility=experimental" in release_workflow,
+        "release workflow does not verify development compiler compatibility",
     )
 
     readme = read("README.md")
     require(
         errors,
-        f"Current release candidate: **v{release}**" in readme,
-        f"README does not identify v{release} as the current release candidate",
+        "pre-1.0 development" in readme,
+        "README does not identify the tree as pre-1.0 development",
     )
 
     changelog = read("CHANGELOG.md")
     require(
         errors,
-        f"## [{release}]" in changelog,
-        f"CHANGELOG is missing {release}",
+        "## Unreleased" in changelog,
+        "CHANGELOG is missing Unreleased",
     )
 
     stability = read("docs/stability.md")
     require(
         errors,
-        "Gungnir 1.0 release candidate" in stability,
-        "stability guide is not marked as the 1.0 release candidate contract",
+        "pre-1.0" in stability,
+        "stability guide is not marked pre-1.0",
     )
 
     rc_doc = read("docs/release-candidate.md")
     require(
         errors,
-        release in rc_doc,
-        "release-candidate guide does not name the current RC",
+        "not a release candidate" in rc_doc,
+        "release-candidate guide does not explain development status",
     )
 
     for path in sorted((ROOT / "docs").rglob("*.md")):
@@ -184,14 +184,14 @@ def main() -> int:
             )
 
     if errors:
-        print("Release-candidate contract failed:", file=sys.stderr)
+        print("Development contract failed:", file=sys.stderr)
 
         for error in errors:
             print(f" - {error}", file=sys.stderr)
 
         return 1
 
-    print(f"Gungnir {release} release-candidate contract passed.")
+    print(f"Gungnir {release} development contract passed.")
     return 0
 
 
