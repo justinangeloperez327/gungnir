@@ -2529,7 +2529,7 @@ write_basic_package_version_file(
     VERSION
         ${PROJECT_VERSION}
     COMPATIBILITY
-        SameMajorVersion
+        ExactVersion
 )
 
 install(
