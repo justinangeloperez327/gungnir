@@ -166,7 +166,7 @@ int main(
         "Content-Type: application/json\r\n"
         "User-Agent: gungnir-benchmark\r\n"
         "X-Request-ID: perf-baseline\r\n"
-        "Content-Length: 30\r\n"
+        "Content-Length: 28\r\n"
         "\r\n"
         "{\"name\":\"Ada\",\"active\":true}";
 
