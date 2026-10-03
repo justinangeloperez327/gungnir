@@ -1,20 +1,36 @@
 # Cache
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir's cache service stores reusable values outside the primary database path.
 
-## Current behavior
+## Basic operations
 
-Native Repository wraps a Store. `get` returns an optional string; `put` accepts a string with optional TTL; `has`, `forget`, `flush` and `remember` provide convenience operations. MemoryStore is process-local; RedisStore uses the optional Redis adapter.
+The cache API supports retrieving, storing, checking, forgetting, and flushing cached values.
 
-## Limits and planned work
+```gnr
+cache.put("dashboard:summary", summary, 300);
+const summary = cache.get("dashboard:summary");
+```
 
-Values are strings, not arbitrary typed objects. `remember` is a get/factory/put sequence and does not provide a distributed lock or single-flight guarantee. Application code owns serialization. Enable `GUNGNIR_WITH_REDIS` and link `gungnir::redis` for Redis integration.
+## Remember
 
-## Implementation references
+Use `remember` to compute a value only when the cache entry is absent:
 
-- [include/gungnir/cache/repository.hpp](../include/gungnir/cache/repository.hpp)
-- [include/gungnir/cache/store.hpp](../include/gungnir/cache/store.hpp)
-- [include/gungnir/cache/memory_store.hpp](../include/gungnir/cache/memory_store.hpp)
-- [include/gungnir/cache/redis_store.hpp](../include/gungnir/cache/redis_store.hpp)
+```gnr
+const summary = cache.remember("dashboard:summary", 300, () => {
+    return reports.summary();
+});
+```
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/cache.md).
+## Stores
+
+Gungnir provides an in-memory store for local development/tests and Redis-backed caching for shared deployments.
+
+## Expiration
+
+Cache entries can use explicit lifetimes. Applications should choose cache keys and lifetimes based on the consistency requirements of the underlying data.
+
+## Locks
+
+Distributed cache stores can provide locks for operations that must be coordinated across application instances.
+
+Cache is an optimization and coordination service; application correctness should not depend on stale cached data being impossible.
