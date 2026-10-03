@@ -4,7 +4,7 @@
 
 Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-> Current release candidate: **v1.0.0-rc.1**. The 1.0 language/compiler/native API contracts are frozen; Phase 20 is the final promotion to stable 1.0.0.
+> Project status: **Development**. Gungnir has no 1.0 release candidate. 1.0 will be assigned only after the completeness gate is satisfied.
 
 ## What Gungnir looks like
 
@@ -29,7 +29,32 @@ Route::get('/users', UserController::index)
     .name('users.index');
 ```
 
-Structured `.gnr` source is parsed, semantically validated, lowered through structural C++ IR, and emitted as C++23.
+Structured `.gnr` source is parsed, semantically validated, lowered through typed structural C++ IR, and emitted as C++23.
+
+## Development identity
+
+Development builds intentionally do not claim a public release version.
+
+```text
+package_version=development
+language_version=development
+compiler_contract=development
+diagnostic_contract=development
+structured_feature_freeze=false
+compatibility=experimental
+```
+
+CMake uses internal numeric version `0.0.0` only because its package machinery requires a numeric value. It is not a public Gungnir version.
+
+Native development metadata uses:
+
+```text
+native API contract = development
+native ABI epoch    = 0
+release channel     = development
+```
+
+See [Development Status](docs/development-status.md).
 
 ## Installation
 
@@ -38,37 +63,19 @@ Requirements:
 - C++23-compatible compiler;
 - CMake 3.25 or newer.
 
-Download release packages from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
+The latest source is the authoritative development build. Historical preview packages remain available from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases), but they do not represent the current development contract.
 
-### Windows
+### Build from source
 
-Use the setup executable:
+```sh
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGUNGNIR_BUILD_TOOLS=ON \
+  -DGUNGNIR_BUILD_TESTS=OFF
 
-```text
-gungnir-v1.0.0-rc.1-windows-x86_64-setup.exe
+cmake --build build --parallel 2
+cmake --install build
 ```
-
-The installer adds Gungnir's `bin` directory to the **current user's PATH** without replacing the rest of the user's PATH.
-
-Open a new terminal after installation:
-
-```powershell
-gungnir --version
-gungnirc --version
-gungnirc --print-contract
-```
-
-A portable Windows ZIP is also published.
-
-### Linux
-
-Use the portable archive:
-
-```text
-gungnir-v1.0.0-rc.1-linux-x86_64.tar.gz
-```
-
-Extract it, add its `bin` directory to `PATH`, and use the installation prefix as `GUNGNIR_CMAKE_PREFIX` when your layout is not automatically discoverable.
 
 Verify:
 
@@ -78,23 +85,18 @@ gungnirc --version
 gungnirc --print-contract
 ```
 
-## Quick start
+Development builds report `Gungnir development`.
 
-Create a project:
+## Quick start
 
 ```sh
 gungnir new hello
 cd hello
-```
-
-Build and run:
-
-```sh
 gungnir build
 gungnir run
 ```
 
-Development mode rebuilds and restarts after successful changes:
+Development mode:
 
 ```sh
 gungnir dev
@@ -108,12 +110,14 @@ http://127.0.0.1:8000
 
 See [Getting Started](docs/getting-started.md) and the canonical [Hello Gungnir example](examples/hello/README.md).
 
-## Core workflow
+## Canonical compiler architecture
 
 ```text
 .gnr source
     ↓
-Lexer / Parser
+Lexer
+    ↓
+Parser
     ↓
 Syntax AST
     ↓
@@ -121,7 +125,7 @@ Semantic + type analysis
     ↓
 Validated AST
     ↓
-Structural C++ IR
+Typed structural C++ IR
     ↓
 C++23 emitter
     ↓
@@ -134,9 +138,9 @@ Application
 
 ## Framework surface
 
-The 1.0 release-candidate line includes framework contracts for:
+The framework already contains substantial implementation across:
 
-- models and Eloquent-style ORM querying;
+- models and ORM;
 - migrations;
 - controllers and routing;
 - middleware;
@@ -144,50 +148,40 @@ The 1.0 release-candidate line includes framework contracts for:
 - authentication and authorization;
 - sessions and CSRF;
 - events and listeners;
-- jobs/queues;
+- jobs/queues and scheduler;
 - notifications and mail;
-- views;
-- SQLite, PostgreSQL, MySQL/MariaDB, SQL Server, and MongoDB adapters/capabilities;
+- views, storage and cache;
+- SQLite, PostgreSQL, MySQL/MariaDB, SQL Server and MongoDB adapters;
 - async runtime and cancellation;
 - HTTP serving and WebSockets;
 - health/readiness and graceful shutdown;
 - logging/observability;
 - production resilience and overload admission.
 
-Backend-specific capabilities and dependencies remain explicit. Review the current documentation before assuming parity across every adapter.
+A subsystem is not considered **complete** merely because its type, parser node, interface, or basic implementation exists. Gungnir 1.0 requires end-to-end behavior, tests, consistent DX, backend coverage where applicable, and current documentation.
 
-## Stability
+## 1.0 release rule
 
-Gungnir 1.0 RC freezes the compatibility contracts intended for stable 1.x:
+Gungnir will become `1.0.0` only after:
 
-| Contract | Version / status |
-| --- | --- |
-| Package | 1.0.0-rc.1 |
-| Structured language | 1.0 feature-frozen |
-| Compiler semantic contract | 1.0 |
-| Diagnostic contract | 1.0 |
-| Native C++ source API contract | 1.0 |
-| Native ABI epoch | 1 |
-| Generated C++ ABI/spelling | rebuild with matching package |
+1. all intended framework features are complete;
+2. compiler architecture is consistent;
+3. framework APIs are consistent;
+4. database/backend behavior is verified;
+5. security and production readiness are verified;
+6. integration/stress/fuzz/performance tests are satisfactory;
+7. installers/packages are verified;
+8. documentation matches implementation;
+9. the final completeness audit is fully green.
 
-Native binary compatibility is scoped to compatible platform/compiler/standard-library ABIs. See [Stability](docs/stability.md) and [Native API and ABI Stability](docs/native-api-abi.md).
-
-## Performance
-
-Phase 16 provides reproducible Release-mode benchmarks for:
-
-- compiler parsing/check/full compilation;
-- HTTP parsing and response serialization;
-- static and parameterized routing;
-- ORM query compilation.
-
-Benchmark values are observational and should only be compared on like-for-like environments. See [Performance Baseline](docs/performance.md).
+There is no phase-number-based version promotion.
 
 ## Documentation
 
 Start with:
 
 - [Documentation Index](docs/README.md)
+- [Development Status](docs/development-status.md)
 - [Getting Started](docs/getting-started.md)
 - [CLI and Code Generation](docs/cli-codegen.md)
 - [Language Frontend](docs/language.md)
@@ -196,24 +190,8 @@ Start with:
 - [Production](docs/production.md)
 - [Security](docs/security-hardening.md)
 - [Stability](docs/stability.md)
-- [Upgrading](docs/upgrading.md)
-- [1.0 Release Candidate](docs/release-candidate.md)
 
-The `docs/design/` directory preserves intended architecture and future-facing design contracts. Do not treat design-only examples as implemented current syntax unless the current guides say so.
-
-## Build from source
-
-```sh
-cmake -S . -B build \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DGUNGNIR_BUILD_TOOLS=ON \
-  -DGUNGNIR_BUILD_TESTS=OFF
-
-cmake --build build --parallel 2
-cmake --install build
-```
-
-Optional adapters require their corresponding CMake options and native dependencies.
+The `docs/design/` directory contains intended architecture and future-facing design. Current implementation guides and executable tests remain authoritative.
 
 ## Project ecosystem
 
@@ -223,4 +201,4 @@ Optional adapters require their corresponding CMake options and native dependenc
 - [Security Policy](SECURITY.md)
 - [License](LICENSE)
 
-Documentation integrity and the canonical example are verified in CI so release/version drift and broken public links do not silently accumulate.
+Documentation integrity, development metadata, package consumers, compiler conformance, runtime correctness and the canonical example are continuously validated in CI.
