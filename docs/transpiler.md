@@ -1,6 +1,6 @@
 # Compatibility Transpiler
 
-> **Status: transitional, 1.0 RC.** The source-edit transpiler exists only for legacy/native-compatible Gungnir applications. It is not the canonical language compiler.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 The canonical path is `language::Compiler` and is used by `gungnirc` by default:
 
