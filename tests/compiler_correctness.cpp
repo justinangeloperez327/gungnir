@@ -500,6 +500,65 @@ void malformed_input_is_controlled() {
     }
 }
 
+void structured_model_metadata_is_canonical() {
+    constexpr std::string_view source =
+        "model User { "
+        "table = 'app_users'; "
+        "connection = 'reporting'; "
+        "primaryKey = 'uuid'; "
+        "incrementing = false; "
+        "fillable = ['name', 'email']; "
+        "hidden = ['password']; "
+        "visible = ['uuid', 'name', 'email']; "
+        "casts = {'uuid': 'string', 'active': 'bool', 'settings': 'json'}; "
+        "timestamps = true; "
+        "softDeletes = true; "
+        "}";
+
+    const auto result = Compiler{}.compile(
+        source,
+        "model-metadata.gnr",
+        deterministic_options()
+    );
+
+    assert(result.success());
+    assert(result.validated.has_value());
+    assert(result.code.find("gungnir::Table table{\"app_users\"}") !=
+           std::string::npos);
+    assert(result.code.find("gungnir::Connection connection{\"reporting\"}") !=
+           std::string::npos);
+    assert(result.code.find("gungnir::Fillable{\"name\",\"email\"}") !=
+           std::string::npos);
+    assert(result.code.find("std::string_view primaryKey = \"uuid\"") !=
+           std::string::npos);
+    assert(result.code.find("gungnir::PrimaryKey<gungnir::String> uuid") !=
+           std::string::npos);
+    assert(result.code.find("gungnir::SoftDeletes soft_deletes{}") !=
+           std::string::npos);
+    assert(result.code.find("gungnir::Field<bool> active") !=
+           std::string::npos);
+    assert(result.code.find("gungnir::Field<gungnir::Json> settings") !=
+           std::string::npos);
+
+    const auto invalid = Compiler{}.compile(
+        "model User { primaryKey = 'uuid'; incrementing = true; "
+        "casts = {'uuid': 'string'}; }",
+        "model-metadata-invalid.gnr",
+        deterministic_options()
+    );
+
+    assert(!invalid.success());
+    assert(!invalid.validated.has_value());
+    assert(invalid.code.empty());
+    assert(std::any_of(
+        invalid.diagnostics.begin(),
+        invalid.diagnostics.end(),
+        [](const auto& diagnostic) {
+            return diagnostic.code == "GNR2308";
+        }
+    ));
+}
+
 void framework_contracts_fail_before_codegen() {
     const auto result = Compiler{}.compile(
         "event BrokenEvent { int id; public handle() {} }",
@@ -528,5 +587,6 @@ int main() {
     compilation_is_deterministic();
     multi_file_order_is_deterministic();
     malformed_input_is_controlled();
+    structured_model_metadata_is_canonical();
     framework_contracts_fail_before_codegen();
 }
