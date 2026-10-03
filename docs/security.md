@@ -6,7 +6,9 @@
 
 Native security building blocks include HTTP security middleware, trusted proxy configuration, session/CSRF integration, random identifiers and authorization decisions. Views escape ordinary interpolation and database APIs support parameter bindings.
 
-Configure the trusted proxy boundary, host validation, CORS, rate limits, session cookies and body/header limits for the actual application. Enforce authorization at the operation boundary.
+Phase 14 hardens the HTTP trust boundary: ambiguous HTTP/1 request framing is rejected, request/response headers are validated, Host values are canonicalized, trusted-proxy chains are resolved from the socket peer inward, request IDs are bounded before reflection, CORS preflight is policy-driven, process-local rate-limit state is bounded, and secure cookie prefixes are enforced. Secure requests also receive HSTS from the default security-header middleware.
+
+Configure the trusted proxy boundary, host validation, CORS, rate limits, session cookies and body/header limits for the actual application. Enforce authorization at the operation boundary. See [Security Hardening](security-hardening.md) for the tested Phase 14 contract.
 
 ## Limits and planned work
 
