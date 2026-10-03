@@ -11,7 +11,7 @@ static_assert(
 
 static_assert(
     gungnir::native_api_contract_version ==
-        "0.9"
+        "1.0"
 );
 
 static_assert(
