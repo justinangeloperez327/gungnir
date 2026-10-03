@@ -31,7 +31,8 @@ jobs:
       - name: Build validation targets
         run: >
           cmake --build build --parallel 2 --target
-          gungnir_public_headers gungnir_project_tooling_test
+          gungnir_public_headers gungnir_public_api_contract_test
+          gungnir_project_tooling_test
           gungnir_frontend_diagnostics_test gungnir_structured_language_test
           gungnir_framework_semantics_test
           gungnir_compiler_correctness_test gungnir_compiler_stability_test
@@ -55,7 +56,7 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(project_tooling|frontend_diagnostics|structured_language|framework_semantics|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
+          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|language|cli|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja
