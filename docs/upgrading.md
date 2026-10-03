@@ -1,23 +1,29 @@
 # Upgrading Gungnir
 
-> **Current line: 0.9.x.** Gungnir remains pre-1.0. Pin an exact release in production and review this page plus [Stability](stability.md) before upgrading.
+> **Current line: 1.0.0-rc.1.** The 1.0 language/compiler/native API contracts are frozen. Pin the exact RC in production evaluation environments and review [Stability](stability.md) plus [Release Candidate](release-candidate.md) before upgrading.
 
-## 0.9 patch upgrades
+## From 0.9.0 to 1.0.0-rc.1
 
-The 0.9 line treats these as stabilized contracts:
+The accepted structured language profile is promoted from the stabilized 0.9 behavior into the 1.0 contract. Phase 19 does not intentionally add new syntax.
 
-- structured language version 0.9;
-- compiler semantic contract 0.9;
-- diagnostic contract 0.9;
-- representative native C++ API contract 0.9;
-- native ABI epoch 0, within a compatible platform/toolchain/standard-library ABI.
+Contract identifiers change:
 
-A patch upgrade should not require source changes for the stabilized native API set or accepted 0.9 structured-language programs except for documented correctness/security corrections.
+| Contract | 0.9.0 | 1.0.0-rc.1 |
+| --- | ---: | ---: |
+| Structured language | 0.9 | 1.0 |
+| Compiler semantics | 0.9 | 1.0 |
+| Diagnostics | 0.9 | 1.0 |
+| Native C++ API | 0.9 | 1.0 |
+| Native ABI epoch | 0 | 1 |
+
+Because compiler/runtime contract identifiers change, regenerate and rebuild all generated C++ with the RC package.
+
+Native applications should also be rebuilt for ABI epoch 1.
 
 ## Recommended upgrade procedure
 
 1. Read [CHANGELOG.md](../CHANGELOG.md).
-2. Update the installed Gungnir package.
+2. Install the exact Gungnir RC package.
 3. Verify:
 
    ```sh
@@ -26,27 +32,33 @@ A patch upgrade should not require source changes for the stabilized native API 
    gungnirc --print-contract
    ```
 
+   RC1 should report `1.0.0-rc.1`, language/compiler/diagnostic contract `1.0`, feature freeze `true`, and compatibility `stable`.
+
 4. Run semantic validation:
 
    ```sh
    gungnirc <entry>.gnr --check
    ```
 
-5. Rebuild all generated C++ with the upgraded package.
-6. Run the application's native build and test suite.
-7. Run database migration planning before applying migrations.
-8. Re-run workload-specific performance/security tests for production deployments.
+5. Regenerate/rebuild all generated C++.
+6. Run the application's native build and full test suite.
+7. Run migration planning before applying database migrations.
+8. Re-run workload-specific security, integration, and performance tests for production deployments.
 
-Generated C++ is not a stable cross-version artifact. Always regenerate/rebuild it with the matching framework/compiler package.
+## RC to stable 1.0.0
 
-## 0.9 to a future 0.10 line
+The intended RC-to-stable transition changes release identity only:
 
-Do not assume a future 0.10 package is source-compatible merely because the major version remains zero.
+```text
+1.0.0-rc.1 -> 1.0.0
+```
 
-The CMake package intentionally uses same-minor compatibility for the pre-1.0 line. Review release notes and migration guidance before moving to a new minor contract.
+The language, compiler, diagnostic, native API, and ABI epoch contracts should remain at 1.0 / epoch 1.
+
+If a release-blocking fix requires a contract change, it must be documented before stable promotion.
 
 ## Native binary compatibility
 
-ABI epoch equality is necessary but not sufficient. Rebuild native applications when changing compiler family, standard library ABI, runtime model, architecture, or incompatible build options.
+ABI epoch equality is necessary but not sufficient. Rebuild native applications when changing compiler family, standard library ABI, runtime model, architecture, linked dependency ABI, or incompatible build options.
 
 See [Native API and ABI Stability](native-api-abi.md).
