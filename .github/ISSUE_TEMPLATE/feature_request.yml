@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Gungnir's structured language is feature-frozen for the 1.0 release line. New syntax or semantics may be deferred for a later contract/version line.
+        Gungnir is completing its full 1.0 feature surface. Compatible feature proposals may be implemented before the 1.0 contracts are frozen.
 
   - type: textarea
     id: problem
@@ -44,4 +44,4 @@ body:
     id: compatibility
     attributes:
       label: Compatibility impact
-      description: Note whether this changes the 0.9 language, native API, generated code, packaging, or other public contracts.
+      description: Note whether this changes the developing language, native API, generated code, packaging, or other public contracts.
