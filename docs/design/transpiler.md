@@ -4,7 +4,7 @@
 
 ## Development alignment
 
-The 1.0 compiler no longer treats raw-source rewriting as the canonical structured compilation path. The normal compiler boundary is:
+The development compiler no longer treats raw-source rewriting as the canonical structured compilation path. The normal compiler boundary is:
 
 ```text
 .gnr source
@@ -237,7 +237,7 @@ Such paths must remain visibly separate from ordinary structured lowering so the
 
 A compatibility transpiler may remain for explicitly selected legacy/native-compatible source.
 
-It is not the source of truth for the structured 1.0 language.
+It is not the source of truth for the structured development language.
 
 New stable structured features should be implemented through:
 
@@ -338,7 +338,7 @@ Inspectability does not make generated spelling a stable API.
 
 ## 1.x evolution rule
 
-During the 1.x line:
+During development and future stable evolution:
 
 - preserve structured-language behavior;
 - keep new lowering structural;
