@@ -1,5 +1,12 @@
 @PACKAGE_INIT@
 
+set(Gungnir_VERSION "@PROJECT_VERSION@")
+set(Gungnir_VERSION_MAJOR "@PROJECT_VERSION_MAJOR@")
+set(Gungnir_VERSION_MINOR "@PROJECT_VERSION_MINOR@")
+set(Gungnir_VERSION_PATCH "@PROJECT_VERSION_PATCH@")
+set(Gungnir_NATIVE_API_CONTRACT "0.9")
+set(Gungnir_NATIVE_ABI_EPOCH "0")
+
 include(CMakeFindDependencyMacro)
 if("@GUNGNIR_WITH_S3@" STREQUAL "ON")
     find_dependency(CURL 7.75)
