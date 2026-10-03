@@ -1,8 +1,8 @@
 # Gungnir Documentation
 
-Implementation baseline: Gungnir 0.9 structured-compiler stabilization contract, reviewed on 2 October 2026.
+Implementation baseline: Gungnir 0.9 structured-compiler stabilization contract, reviewed on 3 October 2026.
 
-Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for the 0.9 line; native/runtime compatibility remains experimental. Start with the current usage guides below. The full proposed language and architecture contracts are preserved under [design/](design/README.md).
+Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for the 0.9 line; representative native C++ source APIs are stabilized under the 0.9 contract while generated C++ and cross-toolchain binary ABI remain constrained. Start with the current usage guides below. The full proposed language and architecture contracts are preserved under [design/](design/README.md).
 
 | Documentation | Meaning |
 | --- | --- |
@@ -19,6 +19,7 @@ Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for t
 - [Language Frontend](language.md)
 - [CLI and Code Generation](cli-codegen.md)
 - [Stability](stability.md)
+- [Upgrading](upgrading.md)
 
 ## HTTP application
 
