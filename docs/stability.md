@@ -1,75 +1,96 @@
 # Stability
 
-> **Status: Gungnir 0.9 preview.** The structured compiler profile is feature-frozen for the 0.9 line. Representative native C++ source APIs are stabilized for 0.9 patch releases; generated C++ and cross-toolchain binary ABI remain outside that guarantee.
+> **Status: Gungnir 1.0 release candidate.** The structured language, compiler semantic contract, diagnostic contract, and representative native C++ source API are frozen for the 1.x line. Generated C++ remains a rebuild artifact, and native binary compatibility remains scoped by the C++ ABI environment.
 
 ## Versioned contracts
 
-Gungnir 0.9 separates package, source-language, compiler, and diagnostic compatibility:
-
-| Contract | Version | 0.9 policy |
+| Contract | RC value | 1.x policy |
 | --- | --- | --- |
-| Package / CLI | 0.9.0 | SemVer package version |
-| Structured language | 0.9 | Feature-frozen for the 0.9 line |
-| Compiler semantic contract | 0.9 | Changes must preserve accepted/rejected behavior for the frozen profile unless explicitly documented as a correction |
-| Diagnostic code contract | 0.9 | Existing diagnostic codes used by tooling/tests must not be casually renumbered |
-| Generated C++ ABI/spelling | Unstable | Rebuild generated application code with the matching compiler/runtime |
-| Native runtime C++ API | 0.9 | Stabilized representative public source signatures are compile-time gated across the 0.9 patch line |
-| Native runtime ABI epoch | 0 | Shared-library identity is versioned, but binary compatibility still requires a compatible platform/compiler/standard-library ABI |
-| Compatibility transpiler | Transitional | Explicit `--compat` only; not part of the 0.9 structured-language guarantee |
+| Package / CLI | 1.0.0-rc.1 | SemVer; stable release promotion removes only the prerelease marker |
+| Structured language | 1.0 | Feature-frozen for the 1.0 RC/stable boundary |
+| Compiler semantic contract | 1.0 | Accepted/rejected behavior changes require an explicit compatibility decision |
+| Diagnostic code contract | 1.0 | Existing documented/tooling diagnostic codes are stable within 1.x |
+| Native runtime C++ API | 1.0 | Stabilized public source signatures follow 1.x compatibility |
+| Native runtime ABI epoch | 1 | Binary compatibility also requires compatible platform/toolchain/stdlib/runtime ABI |
+| Generated C++ ABI/spelling | Rebuild artifact | Regenerate/rebuild with the matching Gungnir package |
+| Compatibility transpiler | Transitional | Explicit `--compat`; not part of the structured 1.0 language guarantee |
 
-The compiler exposes source-language/compiler metadata through:
+The compiler exposes:
 
 ```sh
 gungnirc --version
 gungnirc --print-contract
 ```
 
-Native C++ consumers use `<gungnir/version.hpp>` and the installed CMake package metadata for package version, native API contract, and native ABI epoch. The compiler contract output remains source-language focused and is not expanded merely to carry native package metadata.
+The RC reports:
 
-The contract outputs are machine-readable and verified in CI and release packaging. See [Native API and ABI Stability](native-api-abi.md).
+```text
+package_version=1.0.0-rc.1
+language_version=1.0
+compiler_contract=1.0
+diagnostic_contract=1.0
+structured_feature_freeze=true
+compatibility=stable
+```
 
-## What “feature-frozen” means
+Native consumers use `<gungnir/version.hpp>` and installed CMake metadata for release version, native API contract, and ABI epoch.
 
-The 0.9 structured profile does not accept new syntax or new semantic behavior merely because it can be implemented. During the 0.9 stabilization line, compiler changes should be limited to:
+## What feature-frozen means
 
-- correctness fixes;
-- diagnostic/source-location fixes that preserve diagnostic identity where practical;
+During the RC and stable 1.0 boundary, changes should be limited to:
+
+- correctness and security fixes;
+- diagnostic/source-location corrections that preserve diagnostic identity where practical;
 - crash, memory-safety, and resource-limit fixes;
-- backend portability fixes;
-- performance work that does not change source semantics;
+- backend/toolchain portability fixes;
+- packaging and installation fixes;
+- performance fixes that preserve public semantics;
 - documentation corrections;
-- implementation of already-documented behavior that is explicitly classified as part of the frozen profile.
+- release automation/test fixes.
 
-A change that intentionally alters accepted syntax, type rules, control-flow behavior, or framework semantics requires an explicit contract-version decision rather than silently changing 0.9.
+New syntax, framework declarations, semantic expansion, and public API redesign should wait for a later contract/version line.
 
-## What is not frozen
-
-The feature freeze does **not** claim that every design proposal is implemented or that Gungnir is 1.0-stable. General classes/interfaces/enums, arbitrary native C++ syntax, and other unsupported structured-language features remain outside the frozen profile.
-
-Generated C++ is an implementation artifact. Applications should not depend on generated namespaces, helper names, class layout, or ABI. Rebuild generated code with the same Gungnir package version used by the runtime. Structured output embeds a compile-time compiler/runtime contract assertion so incompatible contract versions fail during native compilation rather than silently linking.
-
-## Compatibility policy
+## Source compatibility
 
 The structured compiler is the canonical `gungnirc` profile. `--strict` remains a compatibility alias for that default. Legacy/native-compatible source requires explicit `--compat`.
 
-Within the 0.9 line:
+The 1.x contract is protected by:
 
-- representative stabilized native C++ signatures are guarded by the public API contract test;
-- installed-package consumers request the 0.9 minor compatibility line and validate native API/ABI metadata;
-- Linux and Windows shared-library package consumers are exercised in dedicated ABI CI;
-- validated source behavior and diagnostic codes are guarded by dedicated stability tests;
-- `--check` remains a validation-only semantic gate and stops at `ValidatedProject`;
-- GCC, Clang, and MSVC must pass the same compiler stability/correctness corpus;
-- canonical structured outputs must remain deterministic across supported toolchains.
+- compile-pass/fail semantic stability tests;
+- frozen diagnostic-code assertions;
+- authoritative `--check` parity;
+- GCC, Clang, and MSVC conformance;
+- byte-identical compiler snapshots;
+- public native API signature assertions;
+- installed-package consumer tests;
+- Linux/Windows shared-library consumer tests.
 
-Before 1.0, a severe correctness or safety defect may require a breaking correction. Such a correction must be documented rather than hidden behind backend-specific behavior.
+A severe correctness or security issue may require a behavior correction. Such a correction must be documented rather than hidden.
+
+## Native ABI scope
+
+ABI epoch 1 does not make unrelated C++ ABI environments interchangeable. Compatibility still depends on operating system, architecture, compiler ABI, standard library ABI, runtime model, dependency ABI, and relevant feature/build options.
+
+See [Native API and ABI Stability](native-api-abi.md).
+
+## Generated C++
+
+Generated C++ is intentionally inspectable but is not a stable source or binary API. Applications should not depend on generated namespaces, helper names, class layout, or emitted spelling.
+
+Always regenerate and rebuild application code with the matching framework/compiler package. Generated structured output embeds a compiler/runtime contract assertion so mismatches fail during native compilation.
+
+## Release-candidate policy
+
+Phase 19 freezes the intended 1.0 contracts. [Release Candidate](release-candidate.md) defines the release-blocking gates and allowed RC changes.
+
+Phase 20 should only remove the prerelease marker, update release-facing text, verify all gates, and tag/publish `v1.0.0`.
 
 ## Implementation references
 
 - [Compiler Correctness](compiler-correctness.md)
 - [Compiler Conformance](compiler-conformance.md)
 - [Compiler Profiles](compiler-profiles.md)
+- [Native API and ABI Stability](native-api-abi.md)
+- [1.0 Release Candidate](release-candidate.md)
 - [Upgrading](upgrading.md)
-- [Design Stability Contract](design/stability.md)
 - [include/gungnir/language/spec.hpp](../include/gungnir/language/spec.hpp)
-
