@@ -1,0 +1,79 @@
+name: Performance Baseline
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "include/**"
+      - "src/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/benchmark.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "benchmarks/**"
+      - "include/**"
+      - "src/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/benchmark.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Release benchmark baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Release benchmark build
+        run: >
+          cmake -S . -B build-bench -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_BUILD_BENCHMARKS=ON
+
+      - name: Build benchmarks
+        run: >
+          cmake --build build-bench
+          --target gungnir_benchmarks
+          --parallel 2
+
+      - name: Smoke benchmark contract
+        run: >
+          python3 benchmarks/run.py
+          --build-dir build-bench
+          --smoke
+          --output benchmark-smoke.json
+
+      - name: Measure baseline
+        run: >
+          python3 benchmarks/run.py
+          --build-dir build-bench
+          --output benchmark-results.json
+          --summary benchmark-summary.md
+
+      - name: Publish job summary
+        shell: bash
+        run: cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark result
+        uses: actions/upload-artifact@v4
+        with:
+          name: gungnir-performance-${{ github.sha }}
+          path: |
+            benchmark-results.json
+            benchmark-summary.md
+          if-no-files-found: error
+          retention-days: 30
