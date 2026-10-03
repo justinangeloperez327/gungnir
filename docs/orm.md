@@ -4,7 +4,7 @@
 
 ## Performance baseline
 
-Phase 16 benchmarks complex ORM query-plan compilation for PostgreSQL, MySQL/MariaDB, SQL Server, and MongoDB. Database execution latency is intentionally excluded from this microbenchmark surface. See [Performance Baseline](performance.md).
+The performance benchmark suite measures complex ORM query-plan compilation for PostgreSQL, MySQL/MariaDB, SQL Server, and MongoDB. Database execution latency is intentionally excluded from this microbenchmark surface. See [Performance Baseline](performance.md).
 
 ## Current behavior
 

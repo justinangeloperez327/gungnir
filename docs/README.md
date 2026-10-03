@@ -21,6 +21,7 @@ Gungnir is under active feature-completion development. Language/compiler/diagno
 - [Stability](stability.md)
 - [Upgrading](upgrading.md)
 - [Development Status](development-status.md)
+- [Framework Completeness Audit](framework-completeness-audit.md)
 
 ## HTTP application
 
