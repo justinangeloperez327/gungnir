@@ -1,0 +1,5 @@
+controller HomeController {
+    Response index() {
+        return text("Hello from Gungnir");
+    }
+}

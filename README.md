@@ -1,893 +1,225 @@
 # Gungnir
 
-**Gungnir is an expressive web framework built in C++23.**
+**Gungnir is an expressive C++23 web framework with a structured application language.**
 
-Gungnir is designed to provide a Laravel/Adonis-style application-development experience while retaining the performance, deployment model, and interoperability of native C++.
+Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-Application code is written in Gungnir's .gnr language:
+> Current public preview: **v0.9.0**. Gungnir remains pre-1.0. The structured language/compiler contract is feature-frozen at 0.9 while runtime, packaging, documentation, and release readiness continue toward 1.0.
 
-~~~gnr
+## What Gungnir looks like
+
+```gnr
 model User {
     table = 'users';
-
-    fillable = [
-        'name',
-        'email'
-    ];
-
-    posts() {
-        return hasMany('posts');
-    }
+    fillable = ['name', 'email'];
+    timestamps = true;
 }
-~~~
+```
 
-~~~gnr
+```gnr
 controller UserController {
-    inject UserService users;
-
-    public async show(int id) {
-        const user = await users.find(id);
-
-        if (user == null) {
-            return response(null, 404);
-        }
-
-        return json(user);
+    public index() {
+        return json(User::orderBy('name').get());
     }
 }
-~~~
+```
 
-~~~gnr
-Route::get('/users/{user}', UserController::show)
-    .middleware(AuthMiddleware)
-    .name('users.show');
-~~~
+```gnr
+Route::get('/users', UserController::index)
+    .name('users.index');
+```
 
-Gungnir compiles application source into ordinary, inspectable C++23.
-
----
+Structured `.gnr` source is parsed, semantically validated, lowered through structural C++ IR, and emitted as C++23.
 
 ## Installation
-
-Gungnir is available as a public preview for Windows x86_64 and Linux x86_64.
-
-Requirements:
-
-- a C++23-compatible compiler;
-- CMake 3.25 or newer.
-
-Download the current preview from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
-
-### Windows
-
-Download the Windows setup executable from GitHub Releases:
-
-~~~text
-gungnir-v<version>-windows-x86_64-setup.exe
-~~~
-
-Run the installer normally. Beginning with v0.1.2, the installer automatically adds its `bin` directory to the **current user's PATH** instead of modifying the machine-wide PATH. This avoids the NSIS long-PATH limitation that can prevent PATH updates on development machines with large environment configurations.
-
-After installation, open a new PowerShell or Command Prompt and verify:
-
-~~~powershell
-gungnir --version
-~~~
-
-The installer also registers an uninstaller. Uninstalling Gungnir removes only Gungnir's own user-PATH entry and preserves the rest of the user's PATH.
-
-The portable ZIP remains available for users who prefer a manual installation. The installed `gungnir` CLI automatically locates the framework's CMake package from its installation directory. `GUNGNIR_CMAKE_PREFIX` remains available as an explicit override for custom installations.
-
-### Linux
-
-Download:
-
-~~~text
-gungnir-v0.9.0-linux-x86_64.tar.gz
-~~~
-
-Extract the archive:
-
-~~~sh
-tar -xzf gungnir-v0.9.0-linux-x86_64.tar.gz
-~~~
-
-Add the extracted `bin` directory to `PATH`, and set `GUNGNIR_CMAKE_PREFIX` to the extracted Gungnir directory.
-
-Verify:
-
-~~~sh
-gungnir --version
-~~~
-
-The prebuilt v0.1.0 packages contain the core framework, compiler, ORM, headers, CMake package files, and CLI tools. Optional database, transport, and infrastructure adapters may require a source build with the corresponding CMake options and native dependencies.
-
-See [Getting Started](docs/getting-started.md) for the complete setup path.
-
----
-
-## Quick Start
-
-Create a new application:
-
-~~~sh
-gungnir new hello
-cd hello
-~~~
-
-Build and run it:
-
-~~~sh
-gungnir build
-gungnir run
-~~~
-
-For development with rebuild/restart behavior:
-
-~~~sh
-gungnir dev
-~~~
-
-A generated project includes application source directories, routes, environment configuration, a welcome view, and `bootstrap/app.hpp`.
-
-The default generated environment binds to `127.0.0.1:8000`.
-
-See [Getting Started](docs/getting-started.md) for a complete first application.
-
----
-
-## Releases
-
-Current public preview: **v0.1.1**
-
-Published release assets include:
-
-- Linux x86_64 portable archive
-- Windows x86_64 portable ZIP
-- Windows x86_64 setup executable
-- SHA-256 checksums
-
-The next installer revision, v0.1.2, replaces CPack's machine-PATH modification with long-PATH-safe current-user PATH handling.
-
-All 0.x releases should be treated as pre-1.0 previews. Pin the exact version used by an application.
-
-See [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
-
----
-
-## Goals
-
-Gungnir is built around a small set of principles:
-
-- expressive application syntax;
-- convention over boilerplate;
-- strongly typed application code;
-- first-class models, controllers, middleware, migrations, policies, events, listeners, notifications, and mail;
-- Eloquent-style ORM behavior;
-- explicit async/await without exposing C++ coroutine plumbing;
-- native performance and C++ interoperability;
-- generated C++ that remains understandable;
-- clear compiler phase boundaries;
-- backend/runtime capabilities that do not leak into normal application code.
-
-Gungnir is not intended to reproduce the entire C++ language inside .gnr.
-
-The language is deliberately smaller and focused on web and application development.
-
----
-
-## Status
-
-**Gungnir v0.1.0 is the first public preview release.**
-
-Gungnir remains under active development and is **pre-1.0**. The source language, runtime APIs, generated-code ABI, and framework behavior may change between preview releases.
-
-The canonical documentation defines both implemented behavior and the framework's evolving contracts. Do not assume every documented target-language feature is already fully implemented by the current compiler.
-
-Pin the exact release used by an application and review [docs/stability.md](docs/stability.md) before upgrading.
-
----
-
-
-## Language
-
-Gungnir application code uses application-oriented types and control flow without exposing native pointer, reference, allocator, template, or coroutine syntax.
-
-### Types
-
-~~~gnr
-const string name = 'Gungnir';
-const int limit = 25;
-const bool active = true;
-
-const User? user = User::find(id);
-const List<string> roles = ['admin', 'editor'];
-~~~
-
-Both single-quoted and double-quoted literals are Gungnir strings.
-
-Optional types use:
-
-~~~text
-T?
-~~~
-
-Examples:
-
-~~~text
-User?
-string?
-int?
-~~~
-
-See [docs/language-types.md](docs/language-types.md).
-
-### Functions
-
-~~~gnr
-function string fullName(
-    string first,
-    string last
-) {
-    return first + ' ' + last;
-}
-~~~
-
-Async functions expose the logical return type rather than native coroutine wrappers:
-
-~~~gnr
-async function User loadUser(int id) {
-    return await users.find(id);
-}
-~~~
-
-Generated C++ may use coroutine-backed runtime types such as Task<User>, but those are compiler/runtime implementation details.
-
-See:
-
-- [Functions](docs/functions.md)
-- [Async and Await](docs/async.md)
-- [Expressions](docs/expressions.md)
-- [Statements](docs/statements.md)
-
----
-
-## Framework Declarations
-
-Gungnir treats common application concepts as first-class language declarations.
-
-### Model
-
-~~~gnr
-model User {
-    table = 'users';
-    primaryKey = 'id';
-
-    fillable = [
-        'name',
-        'email'
-    ];
-
-    timestamps = true;
-
-    posts() {
-        return hasMany('posts');
-    }
-}
-~~~
-
-Models define persistence metadata and relationships.
-
-Database schema belongs to migrations.
-
-See [docs/model.md](docs/model.md).
-
-### Migration
-
-~~~gnr
-migration CreateUsersTable {
-    up() {
-        Table::create('users', (table) => {
-            table.id();
-            table.string('name');
-            table.string('email').unique();
-            table.timestamps();
-        });
-    }
-
-    down() {
-        Table::dropIfExists('users');
-    }
-}
-~~~
-
-See [docs/migration.md](docs/migration.md).
-
-### Controller
-
-~~~gnr
-controller UserController {
-    inject UserService users;
-
-    public index() {
-        return view('users/index', {
-            'users': User::orderBy('name').get()
-        });
-    }
-
-    public async show(int id) {
-        const user = await users.find(id);
-
-        if (user == null) {
-            return response(null, 404);
-        }
-
-        return json(user);
-    }
-}
-~~~
-
-Controller actions have an implicit Response contract.
-
-See [docs/controller.md](docs/controller.md).
-
-### Middleware
-
-~~~gnr
-middleware AuthMiddleware {
-    inject AuthService auth;
-
-    public async handle(Request request, Next next) {
-        const user = await auth.resolve(request);
-
-        if (user == null) {
-            return response(null, 401);
-        }
-
-        return await next(request);
-    }
-}
-~~~
-
-See [docs/middleware.md](docs/middleware.md).
-
-### Policy
-
-~~~gnr
-policy PostPolicy {
-    public update(User user, Post post) {
-        return user.id == post.user_id;
-    }
-}
-~~~
-
-See [docs/policy.md](docs/policy.md).
-
-### Events and listeners
-
-~~~gnr
-event UserRegistered {
-    User user;
-}
-~~~
-
-~~~gnr
-listener SendWelcomeNotification {
-    public handle(UserRegistered event) {
-        Notification::send(
-            event.user,
-            WelcomeNotification()
-        );
-    }
-}
-~~~
-
-See:
-
-- [Events](docs/event.md)
-- [Listeners](docs/listener.md)
-
-### Notifications and mail
-
-~~~gnr
-notification WelcomeNotification {
-    public via(User user) {
-        return ['mail'];
-    }
-
-    public mail(User user) {
-        return WelcomeMail(
-            user: user
-        );
-    }
-}
-~~~
-
-~~~gnr
-mail WelcomeMail {
-    User user;
-
-    public subject() {
-        return 'Welcome to Gungnir';
-    }
-
-    public content() {
-        return view('mail/welcome', {
-            'user': user
-        });
-    }
-}
-~~~
-
-See:
-
-- [Notifications](docs/notification.md)
-- [Mail](docs/mail.md)
-
----
-
-## Routing
-
-Routes use explicit HTTP methods and controller actions:
-
-~~~gnr
-Route::get('/users', UserController::index);
-
-Route::get(
-    '/users/{user}',
-    UserController::show
-)
-    .middleware(AuthMiddleware)
-    .name('users.show');
-~~~
-
-The routing contract includes route parameters, named routes, middleware, constraints, groups, resources, model binding, and scoped bindings.
-
-See [docs/routing.md](docs/routing.md).
-
----
-
-## ORM
-
-Gungnir's ORM is model-centric:
-
-~~~gnr
-const users = User::where('active', true)
-    .with('profile')
-    .orderBy('name')
-    .paginate(25);
-~~~
-
-A query and a materialized collection are semantically different:
-
-~~~text
-Query<User>
-    ↓ get()
-Collection<User>
-~~~
-
-The ORM contract covers querying, aggregates, pagination, CRUD, soft deletes, eager loading, relationships, many-to-many operations, transactions, locks, serialization, model hydration, and lifecycle behavior.
-
-See:
-
-- [ORM](docs/orm.md)
-- [Collections](docs/collection.md)
-- [Relationships](docs/relationships.md)
-
----
-
-## Request, Response, and Validation
-
-### Request
-
-~~~gnr
-const page = request.integer('page');
-const token = request.bearerToken();
-~~~
-
-See [docs/request.md](docs/request.md).
-
-### Response
-
-~~~gnr
-return json(user);
-
-return view('users/show', {
-    'user': user
-});
-
-return response(null, 204);
-~~~
-
-See [docs/response.md](docs/response.md).
-
-### Validation
-
-~~~gnr
-const data = request.validate({
-    'name': 'required|string',
-    'email': 'required|email'
-});
-~~~
-
-Validation rules are intended to be normalized into structured compiler/runtime metadata rather than reparsed during lowering.
-
-See [docs/validation.md](docs/validation.md).
-
----
-
-## Views
-
-Server-rendered views use HTML templates under the configured view root.
-
-~~~html
-<h1>{{ title }}</h1>
-
-{{#each users}}
-    <p>{{ name }}</p>
-{{/each}}
-~~~
-
-Double braces escape output by default:
-
-~~~html
-{{ value }}
-~~~
-
-Raw output is explicit:
-
-~~~html
-{{{ trustedHtml }}}
-~~~
-
-See [docs/view.md](docs/view.md).
-
----
-
-## Authentication and Authorization
-
-Authentication resolves request identity:
-
-~~~gnr
-Auth::check();
-Auth::user();
-Auth::attempt(credentials);
-Auth::logout();
-~~~
-
-Authorization is policy-driven:
-
-~~~gnr
-authorize('update', post);
-~~~
-
-See:
-
-- [Authentication](docs/authentication.md)
-- [Policies](docs/policy.md)
-- [Sessions](docs/session.md)
-- [Security](docs/security.md)
-
----
-
-## Database Backends
-
-The database runtime is separated from ORM/application language semantics.
-
-Backend adapters include or target:
-
-- SQLite
-- PostgreSQL
-- MySQL / MariaDB-compatible clients
-- SQL Server
-- MongoDB
-
-Backend capability differences remain explicit. MongoDB, for example, remains document-native rather than pretending to provide relational semantics.
-
-See:
-
-- [Database Runtime](docs/database.md)
-- [PostgreSQL](docs/postgresql.md)
-- [MySQL](docs/mysql.md)
-- [SQL Server](docs/sqlserver.md)
-- [MongoDB](docs/mongodb.md)
-
----
-
-## Runtime
-
-Gungnir includes runtime foundations for:
-
-- HTTP serving;
-- async execution;
-- request cancellation;
-- dependency injection;
-- sessions;
-- cache;
-- queues;
-- scheduling;
-- storage;
-- logging;
-- tracing and metrics;
-- application lifecycle;
-- graceful shutdown;
-- health and readiness.
-
-See:
-
-- [Application Lifecycle](docs/application-lifecycle.md)
-- [Async Runtime](docs/async-runtime.md)
-- [Dependency Injection](docs/dependency-injection.md)
-- [HTTP Runtime](docs/http-runtime.md)
-- [Cache](docs/cache.md)
-- [Queues and Jobs](docs/queues.md)
-- [Scheduler](docs/scheduler.md)
-- [Storage](docs/storage.md)
-- [Logging and Observability](docs/logging-observability.md)
-- [Errors](docs/errors.md)
-- [Production and Deployment](docs/production.md)
-
----
-
-## Modules
-
-Gungnir modules are static source-language modules.
-
-File:
-
-~~~text
-app/models/user.gnr
-~~~
-
-maps conventionally to:
-
-~~~text
-app.models.user
-~~~
-
-Imports are explicit:
-
-~~~gnr
-import app.models.user;
-import app.services.billing as Billing;
-~~~
-
-Modules are not C++ headers, C++20 modules, or runtime package loaders.
-
-See [docs/modules.md](docs/modules.md).
-
----
-
-## Generated C++
-
-Generated C++23 is a build artifact, but it is intentionally inspectable.
-
-The target transpiler architecture is:
-
-~~~text
-ValidatedProject
-    ↓
-Framework Lowering
-    ↓
-Structural C++ IR
-    ↓
-C++ IR Verifier
-    ↓
-C++ Emitter
-~~~
-
-Generated code may use C++23 coroutines, RAII, templates, optional/native containers, generated namespaces, and framework runtime types.
-
-Those are not application-facing Gungnir syntax.
-
-See [C++ Intermediate Representation](docs/cpp-ir.md) and [docs/transpiler.md](docs/transpiler.md).
-
----
-
-## CLI
-
-The CLI is project-aware and should generate only canonical Gungnir source.
-
-Core workflow:
-
-~~~text
-gungnir new <name>
-gungnir build
-gungnir run
-gungnir dev
-~~~
-
-Compiler tooling should expose checking, formatting, AST/semantic inspection, Validated AST inspection, and generated-C++ inspection as implementation matures.
-
-Generators should only be enabled for constructs supported by the language and compiler.
-
-See [docs/cli-codegen.md](docs/cli-codegen.md).
-
----
-
-## Testing
-
-Gungnir testing should exercise the real framework path.
-
-The strategy includes:
-
-- HTTP/router tests;
-- dependency overrides;
-- database isolation;
-- queue, mail, and storage test adapters;
-- lexer/parser tests;
-- Syntax AST tests;
-- semantic tests;
-- Validated AST tests;
-- generated C++ compile tests;
-- backend integration tests.
-
-See [docs/testing.md](docs/testing.md).
-
----
-
-## Build from Source
-
-Build Gungnir itself from source when developing the framework or when you need optional adapters that are not included in the default prebuilt packages.
 
 Requirements:
 
 - C++23-compatible compiler;
 - CMake 3.25 or newer.
 
-Typical native build:
+Download release packages from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
 
-~~~sh
-cmake -S . -B build \
-    -DGUNGNIR_BUILD_TOOLS=ON \
-    -DGUNGNIR_BUILD_TESTS=OFF
-cmake --build build --config Release
-cmake --install build --config Release
-~~~
+### Windows
 
-Optional adapters and repository build flags depend on the selected runtime features and their native dependencies.
+Use the setup executable:
 
-See [Getting Started](docs/getting-started.md) and the relevant adapter documentation for installation details.
+```text
+gungnir-v0.9.0-windows-x86_64-setup.exe
+```
 
----
+The installer adds Gungnir's `bin` directory to the **current user's PATH** without replacing the rest of the user's PATH.
 
-## Documentation
+Open a new terminal after installation:
 
-Start with [Getting Started](docs/getting-started.md) for installation, project creation, validation, build, and run instructions.
+```powershell
+gungnir --version
+gungnirc --version
+gungnirc --print-contract
+```
 
-Documentation is organized into three layers.
+A portable Windows ZIP is also published.
 
-### Language and Compiler
+### Linux
 
-- [Language Types](docs/language-types.md)
-- [Expressions](docs/expressions.md)
-- [Statements](docs/statements.md)
-- [Functions](docs/functions.md)
-- [Async](docs/async.md)
-- [Modules](docs/modules.md)
-- [Grammar](docs/grammar.md)
-- [Syntax AST](docs/ast.md)
-- [Semantics](docs/semantics.md)
-- [Validated AST](docs/validated-ast.md)
-- [Transpiler](docs/transpiler.md)
+Use the portable archive:
 
-### Framework
+```text
+gungnir-v0.9.0-linux-x86_64.tar.gz
+```
 
-- [Models](docs/model.md)
-- [ORM](docs/orm.md)
-- [Collections](docs/collection.md)
-- [Migrations](docs/migration.md)
-- [Controllers](docs/controller.md)
-- [Routing](docs/routing.md)
-- [Middleware](docs/middleware.md)
-- [Request](docs/request.md)
-- [Response](docs/response.md)
-- [Validation](docs/validation.md)
-- [Authentication](docs/authentication.md)
-- [Policies](docs/policy.md)
-- [Events](docs/event.md)
-- [Listeners](docs/listener.md)
-- [Notifications](docs/notification.md)
-- [Mail](docs/mail.md)
-- [Views](docs/view.md)
+Extract it, add its `bin` directory to `PATH`, and use the installation prefix as `GUNGNIR_CMAKE_PREFIX` when your layout is not automatically discoverable.
 
-### Runtime and Infrastructure
+Verify:
 
-- [Application Lifecycle](docs/application-lifecycle.md)
-- [Async Runtime](docs/async-runtime.md)
-- [Dependency Injection](docs/dependency-injection.md)
-- [Database](docs/database.md)
-- [HTTP Runtime](docs/http-runtime.md)
-- [Sessions](docs/session.md)
-- [Cache](docs/cache.md)
-- [Queues](docs/queues.md)
-- [Scheduler](docs/scheduler.md)
-- [Storage](docs/storage.md)
-- [Logging and Observability](docs/logging-observability.md)
-- [Security](docs/security.md)
-- [Errors](docs/errors.md)
-- [Extensions](docs/extensions.md)
-- [Production](docs/production.md)
-- [Testing](docs/testing.md)
-- [Stability](docs/stability.md)
+```sh
+gungnir --version
+gungnirc --version
+gungnirc --print-contract
+```
 
----
+## Quick start
 
-## Compiler Architecture
+Create a project:
 
-The target compiler architecture is:
+```sh
+gungnir new hello
+cd hello
+```
 
-~~~text
+Build and run:
+
+```sh
+gungnir build
+gungnir run
+```
+
+Development mode rebuilds and restarts after successful changes:
+
+```sh
+gungnir dev
+```
+
+The generated project defaults to:
+
+```text
+http://127.0.0.1:8000
+```
+
+See [Getting Started](docs/getting-started.md) and the canonical [Hello Gungnir example](examples/hello/README.md).
+
+## Core workflow
+
+```text
 .gnr source
     ↓
-Lexer
-    ↓
-Tokens
-    ↓
-Parser
+Lexer / Parser
     ↓
 Syntax AST
     ↓
-Module / Symbol Resolution
-    ↓
-Semantic + Type Analysis
-    ↓
-Control-Flow / Framework Validation
+Semantic + type analysis
     ↓
 Validated AST
     ↓
-Framework Lowering
+Structural C++ IR
     ↓
-C++23 IR
+C++23 emitter
     ↓
-C++23 Emitter
-    ↓
-Native C++ Compiler
+Native compiler
     ↓
 Application
-~~~
+```
 
-The compiler follows one important rule:
+`gungnirc --check` is the authoritative structured semantic gate. `gungnir build` additionally performs C++ generation and native compilation.
 
-> **Parse once, resolve once, validate once, then lower deterministic compiler structures.**
+## Framework surface
 
-Supported Gungnir syntax should not be rediscovered later through raw-source scanning or string matching.
+The 0.9 line includes framework contracts for:
 
-The structured compiler is the default `gungnirc` path. Legacy native-compatible source must opt into `gungnirc --compat`; the source-edit transpiler is no longer a default compiler path.
+- models and Eloquent-style ORM querying;
+- migrations;
+- controllers and routing;
+- middleware;
+- validation;
+- authentication and authorization;
+- sessions and CSRF;
+- events and listeners;
+- jobs/queues;
+- notifications and mail;
+- views;
+- SQLite, PostgreSQL, MySQL/MariaDB, SQL Server, and MongoDB adapters/capabilities;
+- async runtime and cancellation;
+- HTTP serving and WebSockets;
+- health/readiness and graceful shutdown;
+- logging/observability;
+- production resilience and overload admission.
 
-Key compiler specifications:
-
-- [Grammar](docs/grammar.md)
-- [Syntax AST](docs/ast.md)
-- [Semantics](docs/semantics.md)
-- [Validated AST](docs/validated-ast.md)
-- [C++ Intermediate Representation](docs/cpp-ir.md)
-- [Compiler Correctness](docs/compiler-correctness.md)
-- [Compiler Conformance](docs/compiler-conformance.md)
-- [Transpiler](docs/transpiler.md)
-
----
-
-## Project Direction
-
-The structured compiler has reached its 0.9 stabilization phase. Its current source-language behavior is feature-frozen while correctness, diagnostics, robustness, portability, and release packaging are hardened.
-
-The canonical compiler pipeline is now structural from parsing through validated semantics and C++ IR. New structured-language features are deferred during the 0.9 stabilization line unless the compiler contract version is intentionally advanced.
-
-The remaining work toward 1.0 is primarily closing framework semantics still marked partial, retiring compatibility-only paths where practical, and stabilizing the public runtime/application API.
-
----
+Backend-specific capabilities and dependencies remain explicit. Review the current documentation before assuming parity across every adapter.
 
 ## Stability
 
-Gungnir 0.9 remains pre-1.0. The structured compiler profile is feature-frozen for the 0.9 line, but generated C++ ABI, native runtime APIs, compatibility mode, and partial framework semantics are not yet 1.0-stable.
+Gungnir 0.9 separates several compatibility contracts:
 
-Inspect the active compiler contract with:
+| Contract | Version / status |
+| --- | --- |
+| Package | 0.9.0 |
+| Structured language | 0.9 feature-frozen |
+| Compiler semantic contract | 0.9 |
+| Diagnostic contract | 0.9 |
+| Native C++ source API contract | 0.9 |
+| Native ABI epoch | 0 |
+| Generated C++ ABI/spelling | rebuild with matching package |
 
-~~~sh
-gungnirc --version
-gungnirc --print-contract
-~~~
+Native binary compatibility is scoped to compatible platform/compiler/standard-library ABIs. See [Stability](docs/stability.md) and [Native API and ABI Stability](docs/native-api-abi.md).
 
-See [docs/stability.md](docs/stability.md).
+## Performance
 
+Phase 16 provides reproducible Release-mode benchmarks for:
+
+- compiler parsing/check/full compilation;
+- HTTP parsing and response serialization;
+- static and parameterized routing;
+- ORM query compilation.
+
+Benchmark values are observational and should only be compared on like-for-like environments. See [Performance Baseline](docs/performance.md).
+
+## Documentation
+
+Start with:
+
+- [Documentation Index](docs/README.md)
+- [Getting Started](docs/getting-started.md)
+- [CLI and Code Generation](docs/cli-codegen.md)
+- [Language Frontend](docs/language.md)
+- [ORM](docs/orm.md)
+- [HTTP Runtime](docs/http-runtime.md)
+- [Production](docs/production.md)
+- [Security](docs/security-hardening.md)
+- [Stability](docs/stability.md)
+- [Upgrading](docs/upgrading.md)
+
+The `docs/design/` directory preserves intended architecture and future-facing design contracts. Do not treat design-only examples as implemented current syntax unless the current guides say so.
+
+## Build from source
+
+```sh
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGUNGNIR_BUILD_TOOLS=ON \
+  -DGUNGNIR_BUILD_TESTS=OFF
+
+cmake --build build --parallel 2
+cmake --install build
+```
+
+Optional adapters require their corresponding CMake options and native dependencies.
+
+## Project ecosystem
+
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Support](SUPPORT.md)
+- [Security Policy](SECURITY.md)
+- [License](LICENSE)
+
+Documentation integrity and the canonical example are verified in CI so release/version drift and broken public links do not silently accumulate.

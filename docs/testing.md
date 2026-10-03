@@ -60,6 +60,20 @@ Existing database cancellation, scope-safety, transaction, relationship, soft-de
 
 See [Database and ORM Correctness](database-correctness.md).
 
+## Documentation and ecosystem tests
+
+Phase 18 adds a documentation contract gate. It verifies:
+
+- required project ecosystem files are present;
+- the root README release version matches `CMakeLists.txt`;
+- stale 0.1-era release references do not reappear in current entry-point docs;
+- relative links in current public guides resolve;
+- every current top-level guide is indexed by `docs/README.md`;
+- the canonical hello example files exist;
+- the canonical hello controller passes `gungnirc --check` and full structured compilation.
+
+This keeps public onboarding coupled to the same compiler contract users install.
+
 ## Limits and planned work
 
 A successful `gungnirc --check` is not a full native type check or a live transport/integration test. Router-only tests do not cover TLS, HTTP parsing, database connectivity or distributed leases. Run relevant integration tests for the selected adapter.

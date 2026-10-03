@@ -1,6 +1,6 @@
 # Stability
 
-> **Status: Gungnir 0.9 preview.** The structured compiler profile is feature-frozen for the 0.9 line. Gungnir remains pre-1.0, and native/runtime compatibility is still experimental.
+> **Status: Gungnir 0.9 preview.** The structured compiler profile is feature-frozen for the 0.9 line. Representative native C++ source APIs are stabilized for 0.9 patch releases; generated C++ and cross-toolchain binary ABI remain outside that guarantee.
 
 ## Versioned contracts
 
@@ -44,7 +44,7 @@ A change that intentionally alters accepted syntax, type rules, control-flow beh
 
 ## What is not frozen
 
-The feature freeze does **not** claim that every framework feature is complete or that Gungnir is 1.0-stable. The compiler-conformance matrix still identifies partial framework semantics. General classes/interfaces/enums, arbitrary native C++ syntax, and other unsupported structured-language features remain outside the frozen profile.
+The feature freeze does **not** claim that every design proposal is implemented or that Gungnir is 1.0-stable. General classes/interfaces/enums, arbitrary native C++ syntax, and other unsupported structured-language features remain outside the frozen profile.
 
 Generated C++ is an implementation artifact. Applications should not depend on generated namespaces, helper names, class layout, or ABI. Rebuild generated code with the same Gungnir package version used by the runtime. Structured output embeds a compile-time compiler/runtime contract assertion so incompatible contract versions fail during native compilation rather than silently linking.
 
@@ -69,6 +69,7 @@ Before 1.0, a severe correctness or safety defect may require a breaking correct
 - [Compiler Correctness](compiler-correctness.md)
 - [Compiler Conformance](compiler-conformance.md)
 - [Compiler Profiles](compiler-profiles.md)
+- [Upgrading](upgrading.md)
 - [Design Stability Contract](design/stability.md)
 - [include/gungnir/language/spec.hpp](../include/gungnir/language/spec.hpp)
 
