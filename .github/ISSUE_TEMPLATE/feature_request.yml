@@ -44,4 +44,4 @@ body:
     id: compatibility
     attributes:
       label: Compatibility impact
-      description: Note whether this changes the 0.9 language, native API, generated code, packaging, or other public contracts.
+      description: Note whether this changes the developing language contract, native API, generated code, packaging, or other public contracts.
