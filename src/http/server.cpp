@@ -913,7 +913,23 @@ std::string lowercase(
 std::size_t request_content_length(
     std::string_view headers
 ) {
-    std::size_t cursor = 0;
+    std::optional<std::size_t>
+        content_length;
+
+    const auto request_line_end =
+        headers.find("\r\n");
+
+    if (
+        request_line_end ==
+        std::string_view::npos
+    ) {
+        throw std::invalid_argument(
+            "Invalid HTTP request line"
+        );
+    }
+
+    std::size_t cursor =
+        request_line_end + 2;
 
     while (cursor < headers.size()) {
         const auto line_end =
@@ -938,54 +954,79 @@ std::size_t request_content_length(
             line.find(':');
 
         if (
-            colon !=
+            colon ==
             std::string_view::npos
         ) {
-            const auto name =
-                lowercase(
-                    trim(
-                        line.substr(
-                            0,
-                            colon
-                        )
-                    )
-                );
+            throw std::invalid_argument(
+                "Invalid HTTP header"
+            );
+        }
 
-            const auto value =
-                trim(
-                    line.substr(
-                        colon + 1
-                    )
+        const auto raw_name =
+            line.substr(0, colon);
+
+        const auto normalized =
+            trim(raw_name);
+
+        if (raw_name != normalized) {
+            throw std::invalid_argument(
+                "Invalid HTTP header name"
+            );
+        }
+
+        const auto name =
+            lowercase(normalized);
+
+        const auto value =
+            trim(
+                line.substr(
+                    colon + 1
+                )
+            );
+
+        if (
+            name ==
+            "content-length"
+        ) {
+            if (content_length) {
+                throw std::invalid_argument(
+                    "Duplicate Content-Length is not allowed"
+                );
+            }
+
+            std::size_t parsed = 0;
+
+            const auto result =
+                std::from_chars(
+                    value.data(),
+                    value.data() +
+                        value.size(),
+                    parsed
                 );
 
             if (
-                name ==
-                "content-length"
+                result.ec !=
+                    std::errc{} ||
+                result.ptr !=
+                    value.data() +
+                        value.size()
             ) {
-                std::size_t parsed = 0;
-
-                const auto result =
-                    std::from_chars(
-                        value.data(),
-                        value.data() +
-                            value.size(),
-                        parsed
-                    );
-
-                if (
-                    result.ec !=
-                        std::errc{} ||
-                    result.ptr !=
-                        value.data() +
-                            value.size()
-                ) {
-                    throw std::invalid_argument(
-                        "Invalid Content-Length"
-                    );
-                }
-
-                return parsed;
+                throw std::invalid_argument(
+                    "Invalid Content-Length"
+                );
             }
+
+            content_length =
+                parsed;
+        }
+
+        if (
+            name ==
+            "transfer-encoding"
+        ) {
+            throw std::invalid_argument(
+                "Transfer-Encoding is not supported by this HTTP backend"
+            );
         }
 
         if (
@@ -998,7 +1039,7 @@ std::size_t request_content_length(
         cursor = line_end + 2;
     }
 
-    return 0;
+    return content_length.value_or(0);
 }
 
 std::optional<std::size_t>
