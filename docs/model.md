@@ -1,79 +1,123 @@
 # Models
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Models represent application data and provide the entry point to Gungnir's ORM.
 
-## Current behavior
+A model automatically participates in querying, hydration, persistence, dirty tracking, serialization, relationships, eager loading, and model collections.
 
-The authoritative structured compiler supports model metadata directly in the canonical syntax/validated-AST/C++ IR pipeline. Current metadata includes:
-
-- `table` and `connection`;
-- `primaryKey` and `incrementing`;
-- `fillable`, `hidden`, and `visible`;
-- `casts`;
-- `timestamps`;
-- `softDeletes`.
-
-Metadata is semantically validated before C++ generation. Duplicate or unknown metadata is rejected. Attribute lists require constant strings, casts require supported constant cast names, boolean metadata requires boolean constants, and primary-key/incrementing combinations are checked before code generation.
-
-Metadata-only models synthesize the attributes needed by their declared persistence contract. `fillable`, `hidden`, `visible`, and `casts` contribute attributes; the primary key is always present; timestamps synthesize nullable `created_at` and `updated_at`; soft deletes synthesize nullable `deleted_at`. Generated model fields and native metadata therefore come from the validated model contract rather than a later raw-source scan.
-
-Use migrations for database schema changes. Model metadata describes persistence and serialization behavior; it does not create database columns.
-
-## Example
+## Defining a model
 
 ```gnr
 model User {
-    table = 'users';
-    primaryKey = 'id';
+    table = "users";
 
     fillable = [
-        'name',
-        'email'
+        "name",
+        "email"
     ];
 
     hidden = [
-        'password'
+        "password"
     ];
 
     casts = {
-        'active': 'bool',
-        'settings': 'json'
+        "active": "bool",
+        "settings": "json"
     };
 
+    timestamps = true;
+}
+```
+
+Gungnir uses model metadata to define persistence and serialization behavior. Database tables and columns are created with [migrations](migration.md), not by model declarations.
+
+## Table and connection
+
+By convention, Gungnir derives a plural snake-case table name from the model name. Override it when necessary:
+
+```gnr
+model AuditEntry {
+    table = "audit_log";
+    connection = "reporting";
+}
+```
+
+## Primary keys
+
+Models use `id` as their conventional primary key. A different key can be declared explicitly:
+
+```gnr
+model User {
+    primaryKey = "uuid";
+    incrementing = false;
+
+    casts = {
+        "uuid": "string"
+    };
+}
+```
+
+Incrementing keys use integer-compatible primary-key types.
+
+## Mass assignment
+
+`fillable` defines attributes that may be assigned through mass-assignment operations:
+
+```gnr
+model Project {
+    fillable = [
+        "name",
+        "status"
+    ];
+}
+```
+
+## Serialization
+
+Use `hidden` to exclude sensitive attributes and `visible` when a model should expose an explicit allow-list. Hidden attributes take precedence.
+
+```gnr
+model User {
+    hidden = [
+        "password",
+        "remember_token"
+    ];
+}
+```
+
+## Casts
+
+Casts define the application type of persisted attributes:
+
+```gnr
+model Project {
+    casts = {
+        "active": "bool",
+        "budget": "decimal",
+        "settings": "json",
+        "starts_at": "datetime"
+    };
+}
+```
+
+## Timestamps and soft deletes
+
+```gnr
+model Project {
     timestamps = true;
     softDeletes = true;
 }
 ```
 
-The generated model inherits the ORM behavior. JSON/view serialization honors generated `hidden` and `visible` metadata, with hidden fields taking precedence. Persistence and dirty tracking continue to use the full generated attribute metadata.
+Timestamp-enabled models expose `created_at` and `updated_at`. Soft-delete models expose `deleted_at` and use soft-delete-aware ORM operations.
 
-Hydrated models synchronize original values and begin clean. Runtime conversion rejects incompatible field values. Successful persistence synchronizes dirty state; a zero-row update does not falsely clean the model. Eager loading batches parent keys and releases ordinary query leases before related queries are loaded, allowing deterministic behavior even with a one-connection pool.
+## Persistence and dirty tracking
+
+Hydrated models retain their original persisted values. Attribute changes make the model dirty until a successful persistence operation synchronizes its original state.
 
 ## Relationships
 
-The native ORM already implements HasOne, HasMany, BelongsTo, BelongsToMany, HasOneThrough, and HasManyThrough, including generated relation metadata and eager-loading support.
+Models declare relationships to other models and can eager-load them to avoid N+1 query patterns. See [Relationships](relationships.md).
 
-The older compatibility parser/model lowerer also recognizes typed relationship declarations such as `hasMany<Post>()`. That compatibility support is not the canonical structured compiler contract. Group 1 must not treat it as proof that the canonical `SyntaxParser -> ProgramValidator -> C++ IR` relationship surface is complete.
+## Querying
 
-See [ORM Relationships](relationships.md) for the current relationship boundary.
-
-## Limits and planned work
-
-The remaining Group 1 work is primarily the canonical structured relationship/query surface, not the basic model metadata contract.
-
-In particular, do not yet assume that the design-only string-resource relationship syntax, polymorphic relationships, one-of-many modifiers, constrained eager-loading callbacks, or every documented ORM callback/query form is implemented in the authoritative structured compiler.
-
-The legacy field-based model lowering path remains compatibility code. New Group 1 work should converge on the authoritative structured compiler rather than adding new framework behavior only to the compatibility parser.
-
-See [Database and ORM Correctness](database-correctness.md) for persistence, hydration, eager-loading, transaction, and pool invariants.
-
-## Implementation references
-
-- [src/language/syntax.cpp](../src/language/syntax.cpp)
-- [src/language/validated.cpp](../src/language/validated.cpp)
-- [src/language/cpp_ir.cpp](../src/language/cpp_ir.cpp)
-- [src/language/model_lowering.cpp](../src/language/model_lowering.cpp)
-- [include/gungnir/model/model.hpp](../include/gungnir/model/model.hpp)
-- [include/gungnir/model/metadata.hpp](../include/gungnir/model/metadata.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/model.md).
+Models provide the ORM query entry point for retrieval, filtering, ordering, pagination, creation, updates, deletion, and eager loading. See [ORM](orm.md).
