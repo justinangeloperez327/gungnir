@@ -45,7 +45,7 @@ A contribution should:
 6. avoid presenting design-only behavior as already implemented;
 7. keep platform-specific behavior explicit.
 
-Performance changes should include a benchmark comparison when the affected path is covered by [Phase 16 benchmarks](docs/performance.md).
+Performance changes should include a benchmark comparison when the affected path is covered by [performance benchmark suite](docs/performance.md).
 
 Security changes should include a focused regression test and update the relevant [security documentation](docs/security-hardening.md) when the external contract changes.
 
