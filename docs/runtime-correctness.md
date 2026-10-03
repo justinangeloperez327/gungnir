@@ -1,6 +1,6 @@
 # Runtime Correctness
 
-> **Status: Phase 11 runtime-lifecycle baseline.** This contract describes ownership, cancellation and graceful-shutdown behavior that the current runtime test suite is expected to preserve.
+> **Status: Gungnir 1.0 runtime-correctness contract.** This contract describes ownership, cancellation and graceful-shutdown behavior that the runtime test suite must preserve.
 
 ## Core invariants
 
