@@ -1,7 +1,5 @@
 # CLI and Code Generation
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
 | Command | Purpose |
 | --- | --- |
 | `gungnir new <name> [path]` | Create a structured project, routes, view, environment files, and editable bootstrap |
