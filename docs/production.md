@@ -1,6 +1,6 @@
 # Production and Deployment
 
-> **Status: Gungnir 1.0 production-runtime contract.** Phases 11 and 15 define lifecycle, shutdown, health, retry, and overload behavior, but this is not a blanket production-certification claim.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Current behavior
 
