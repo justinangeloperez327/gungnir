@@ -6,13 +6,13 @@ The structured profile (`gungnirc --strict`) supports typed functions and framew
 
 ## Current behavior
 
-Native middleware handles `Request&` and `Next`, returning `Response` or `Task<Response>`. `Next` is a callable continuation returning `Task<Response>`.
+Native middleware handles `Request&` and `Next`, returning `Response` or `Task<Response>`. In the structured profile, middleware requires a public `handle(Request request, Next next)` method with logical result `Response`; `async handle(...)` lowers to `Task<Response>`. `Next` is a callable continuation returning `Task<Response>`.
 
 Application registration supports middleware types, aliases, groups and priority. Middleware resolution uses request services when available. Use the generated `make:middleware` file as the current language starting point.
 
 ## Limits and planned work
 
-The implicit-return `public async handle(...)` syntax is planned. A continuation is asynchronous even when other work in middleware is synchronous; forward its result according to the typed async contract.
+The implicit-result middleware contract is implemented. Because `Next` is asynchronous, middleware that forwards the continuation normally uses `async handle(...)` and `await next(request)`. Invalid middleware signatures are rejected by `gungnirc --check` with `GNR2301`.
 
 ## Implementation references
 
