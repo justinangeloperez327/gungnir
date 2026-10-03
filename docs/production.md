@@ -1,6 +1,6 @@
 # Production and Deployment
 
-> **Status: experimental, pre-1.0.** Phase 11 hardens process/runtime shutdown semantics, but this is not a blanket production-certification claim.
+> **Status: experimental, pre-1.0.** Phases 11 and 15 harden lifecycle, shutdown, health, retry, and overload behavior, but this is not a blanket production-certification claim.
 
 ## Current behavior
 
