@@ -301,7 +301,7 @@ Robustness
   [ ] regression test/seed added for fixed compiler bug
 ```
 
-The fast PR gate may run a focused subset. Cross-toolchain and expensive integration suites may run separately, but release candidates must pass the complete correctness matrix.
+The fast PR gate may run a focused subset. Cross-toolchain and expensive integration suites may run separately, but the eventual 1.0 release must pass the complete correctness matrix.
 
 ## Internal compiler errors
 
@@ -332,20 +332,11 @@ The profile is authoritative only for constructs the structured compiler claims 
 
 Phase 6 also requires semantic-gate parity: for the supported profile, validation-only checking and normal compilation must make the same accept/reject decision and produce the same semantic diagnostic codes. Backend IR verification may still detect internal compiler defects, but it must not be needed to diagnose ordinary source errors.
 
-## 1.0 feature-freeze gate
+## Development compatibility gate
 
-The structured compiler contract is versioned as 1.0 and is feature-frozen for the 1.0 RC/stable line.
+The structured compiler contract remains under development and the feature set is not frozen.
 
-Compiler-facing changes must preserve the frozen acceptance/diagnostic corpus unless the change is an intentional correctness correction. The stability gate verifies representative accepted programs, stable diagnostic codes, `--check`/full-compilation semantic parity, and machine-readable compiler contract metadata. The same gate runs under GCC, Clang, and MSVC.
+Compiler changes must preserve established correctness invariants and regression coverage while allowing coherent implementation work required to complete the framework. The compatibility gate verifies representative accepted programs, diagnostic codes, `--check`/full-compilation semantic parity, and machine-readable development metadata under GCC, Clang, and MSVC.
 
-Feature freeze does not stabilize generated C++ ABI, native runtime ABI, compatibility mode, or capabilities still documented as unsupported/partial. Generated structured C++ embeds the compiler contract version and statically rejects a runtime/header set advertising a different contract.
+Generated C++ remains a rebuild artifact. Native API/ABI stability, compatibility mode, and incomplete capabilities are governed separately.
 
-See also:
-
-- [Grammar](grammar.md)
-- [Abstract Syntax Tree](ast.md)
-- [Semantic Analysis](semantics.md)
-- [Validated AST](validated-ast.md)
-- [Compiler Conformance](compiler-conformance.md)
-- [Transpiler](transpiler.md)
-- [Testing](testing.md)
