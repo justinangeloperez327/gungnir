@@ -1,6 +1,6 @@
 # Compiler Conformance
 
-> **Status: living implementation matrix.** A feature is not considered compiler-complete merely because it parses. Completion requires the relevant syntax, semantic validation, validated representation, code generation, diagnostics and tests.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Status values
 
