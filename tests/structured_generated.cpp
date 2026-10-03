@@ -4,9 +4,23 @@
 #include <gungnir/mail/memory_transport.hpp>
 #include <gungnir/testing/http.hpp>
 #include <cassert>
+#include <utility>
 int main() {
     gungnir::Request request{gungnir::http::Method::get,"/"}; request.set_header("X-Name","Ada");
     Home home; assert(home.index(request).body() == "Ada"); Helpers helpers; assert(helpers.plan_up().empty());
+    PassThrough pass_through;
+    gungnir::Next next = [](gungnir::Request&) -> gungnir::Task<gungnir::Response> {
+        co_return gungnir::Response::text("next");
+    };
+    auto middleware_task = pass_through.handle(request,std::move(next));
+    middleware_task.run_inline();
+    assert(middleware_task.operator co_await().await_resume().body() == "next");
+    assert(AuditRecord::uses_timestamps());
+    assert(AuditRecord::uses_soft_deletes());
+    assert(AuditRecord::has_attribute("created_at"));
+    assert(AuditRecord::has_attribute("updated_at"));
+    assert(AuditRecord::has_attribute("deleted_at"));
+    assert(AuditRecord::deleted_at_column() == std::string_view{"deleted_at"});
     assert(gnr::main::result() == 11);
     assert(floating() == 3.5 && minimum() == std::numeric_limits<gungnir::Int64>::min());
     assert(embedded().size() == 3 && embedded()[1] == '\0' && lookup().string() == "hello" && loop() == 3);

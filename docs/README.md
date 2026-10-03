@@ -90,5 +90,6 @@ Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for t
 - [Compiler Conformance](compiler-conformance.md)
 - [Transpiler](transpiler.md)
 - [Compiler profiles and feature status](compiler-profiles.md)
+- [Framework Semantic Contracts](framework-semantics.md)
 
 [Editor tooling](editor-tooling.md) covers the structured language server and formatter.

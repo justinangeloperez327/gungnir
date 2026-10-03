@@ -274,27 +274,161 @@ public:
         for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
             auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
             // Metadata-only models still expose conventional typed attributes.
+            // Lifecycle metadata also implies concrete ORM fields so the
+            // generated model and the runtime contract cannot drift apart.
             if (declaration.kind == DeclarationKind::model) {
                 std::set<std::string> attributes;
+                std::unordered_map<std::string, std::string> casts;
+                bool timestamps = false;
+                bool soft_deletes = false;
+                std::string primary = "id";
+
                 for (const auto& metadata : declaration.metadata) {
-                    const auto& expression = v.syntax_.expressions[metadata.value];
-                    if (metadata.name == "fillable" || metadata.name == "hidden" || metadata.name == "visible")
-                        for (auto id : expression.operands) if (v.syntax_.expressions[id].literal_type == "string") attributes.insert(v.syntax_.expressions[id].text);
-                    if (metadata.name == "casts") for (const auto& key : expression.argument_names) attributes.insert(key);
-                }
-                std::string primary = "id"; for (const auto& metadata : declaration.metadata) if (metadata.name == "primaryKey") primary = v.syntax_.expressions[metadata.value].text;
-                attributes.insert(primary);
-                for (const auto& name : attributes) if (std::none_of(declaration.fields.begin(), declaration.fields.end(), [&](const auto& field) { return field.name == name; })) {
-                    std::string type_name = name == primary ? "int" : "string";
-                    for (const auto& metadata : declaration.metadata) if (metadata.name == "casts") {
-                        const auto& expression = v.syntax_.expressions[metadata.value];
-                        for (std::size_t i = 0; i < expression.argument_names.size(); ++i) if (expression.argument_names[i] == name) {
-                            const auto& cast = v.syntax_.expressions[expression.operands[i]];
-                            if (cast.text == "bool" || cast.text == "int" || cast.text == "double") type_name = cast.text;
-                            else if (cast.text == "integer") type_name = "int"; else if (cast.text == "decimal") type_name = "Decimal";
+                    const auto& expression =
+                        v.syntax_.expressions[metadata.value];
+
+                    if (
+                        metadata.name == "fillable" ||
+                        metadata.name == "hidden" ||
+                        metadata.name == "visible"
+                    ) {
+                        for (auto id : expression.operands) {
+                            const auto& item =
+                                v.syntax_.expressions[id];
+
+                            if (item.literal_type == "string") {
+                                attributes.insert(item.text);
+                            }
                         }
                     }
-                    declaration.fields.push_back({declaration.origin, name, {type_name, {}, false, declaration.origin}});
+
+                    if (metadata.name == "casts") {
+                        for (
+                            std::size_t i = 0;
+                            i < expression.argument_names.size() &&
+                            i < expression.operands.size();
+                            ++i
+                        ) {
+                            const auto& value =
+                                v.syntax_.expressions[
+                                    expression.operands[i]
+                                ];
+
+                            attributes.insert(
+                                expression.argument_names[i]
+                            );
+
+                            if (value.literal_type == "string") {
+                                casts.insert_or_assign(
+                                    expression.argument_names[i],
+                                    value.text
+                                );
+                            }
+                        }
+                    }
+
+                    if (
+                        metadata.name == "primaryKey" &&
+                        expression.literal_type == "string"
+                    ) {
+                        primary = expression.text;
+                    }
+
+                    if (
+                        metadata.name == "timestamps" &&
+                        expression.literal_type == "bool" &&
+                        expression.text == "true"
+                    ) {
+                        timestamps = true;
+                    }
+
+                    if (
+                        metadata.name == "softDeletes" &&
+                        expression.literal_type == "bool" &&
+                        expression.text == "true"
+                    ) {
+                        soft_deletes = true;
+                    }
+                }
+
+                attributes.insert(primary);
+
+                if (timestamps) {
+                    attributes.insert("created_at");
+                    attributes.insert("updated_at");
+                }
+
+                if (soft_deletes) {
+                    attributes.insert("deleted_at");
+                }
+
+                const auto cast_type = [&](const std::string& name) {
+                    const auto found = casts.find(name);
+
+                    if (found == casts.end()) {
+                        return name == primary
+                            ? std::string{"int"}
+                            : std::string{"string"};
+                    }
+
+                    if (
+                        found->second == "int" ||
+                        found->second == "integer"
+                    ) {
+                        return std::string{"int"};
+                    }
+
+                    if (found->second == "bool") {
+                        return std::string{"bool"};
+                    }
+
+                    if (found->second == "double") {
+                        return std::string{"double"};
+                    }
+
+                    if (found->second == "decimal") {
+                        return std::string{"Decimal"};
+                    }
+
+                    if (found->second == "json") {
+                        return std::string{"Json"};
+                    }
+
+                    return std::string{"string"};
+                };
+
+                for (const auto& name : attributes) {
+                    if (
+                        std::any_of(
+                            declaration.fields.begin(),
+                            declaration.fields.end(),
+                            [&](const auto& field) {
+                                return field.name == name;
+                            }
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    const bool lifecycle_nullable =
+                        (timestamps &&
+                         (name == "created_at" ||
+                          name == "updated_at")) ||
+                        (soft_deletes &&
+                         name == "deleted_at");
+
+                    declaration.fields.push_back(
+                        FieldSyntax{
+                            declaration.origin,
+                            name,
+                            TypeSyntax{
+                                cast_type(name),
+                                {},
+                                lifecycle_nullable,
+                                declaration.origin
+                            }
+                        }
+                    );
                 }
             }
             for (const auto& field : declaration.fields) {
@@ -711,58 +845,727 @@ public:
         }
     }
     void contracts(std::size_t d) {
-        auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d];
-        if (declaration.kind == DeclarationKind::event && (!declaration.methods.empty() || !declaration.metadata.empty() || std::any_of(declaration.fields.begin(),declaration.fields.end(),[](const auto& f){return f.injection;}))) report(declaration.origin,"Events contain data fields only");
-        if (declaration.kind == DeclarationKind::migration) for (const auto& name : {"up","down"}) {
-            auto found = std::find_if(declaration.methods.begin(),declaration.methods.end(),[&](const auto& method){return method.name == name;});
-            if (found == declaration.methods.end() || !found->parameters.empty() || found->result.name != "void" || found->asynchronous) report(declaration.origin,"Migration requires synchronous void up() and down() methods");
-        }
-        if (declaration.kind == DeclarationKind::listener || declaration.kind == DeclarationKind::job) {
-            auto found = std::find_if(declaration.methods.begin(),declaration.methods.end(),[](const auto& method){return method.name == "handle";});
-            if (found == declaration.methods.end()) report(declaration.origin,"This declaration requires handle()");
-            else if (declaration.kind == DeclarationKind::listener) {
-                if (found->parameters.size() != 1) report(found->origin,"Listener handle requires one event parameter");
-                else { const auto event = owner_of(resolve(found->parameters[0].type)); if (event == invalid_id || v.syntax_.declarations[declaration_ids[event]].kind != DeclarationKind::event) report(found->origin,"Listener parameter must be an event"); }
-            } else if (!found->parameters.empty()) report(found->origin,"Job handle() does not accept parameters");
-        }
-        if (declaration.kind == DeclarationKind::mail) for (const auto& name : {"subject"}) if (std::none_of(declaration.methods.begin(),declaration.methods.end(),[&](const auto& method){return method.name == name;})) report(declaration.origin,"Mail requires subject()");
-        if (declaration.kind == DeclarationKind::notification && std::none_of(declaration.methods.begin(),declaration.methods.end(),[](const auto& method){return method.name == "via";})) report(declaration.origin,"Notification requires via()");
-        if (declaration.kind == DeclarationKind::listener || declaration.kind == DeclarationKind::job) for (const auto& method : resolved.methods) if (v.symbols_[method.symbol].name == "handle" && v.symbols_[method.symbol].type != type_id("void")) report(declaration.origin,"handle() must return void");
-        if (declaration.kind == DeclarationKind::notification) for (std::size_t m = 0; m < declaration.methods.size(); ++m) if (declaration.methods[m].name == "via" && (declaration.methods[m].asynchronous || declaration.methods[m].parameters.size() != 1)) report(declaration.origin,"via() requires one recipient and must be synchronous");
-        if (declaration.kind == DeclarationKind::mail) for (const auto& method : declaration.methods) if ((method.name == "subject" || method.name == "text" || method.name == "html" || method.name == "content") && (method.asynchronous || !method.parameters.empty())) report(method.origin,"Mail composition methods must be synchronous and parameterless");
-        for (std::size_t m = 0; m < declaration.methods.size(); ++m) {
-            const auto& method = declaration.methods[m]; const auto& fn = v.symbols_[resolved.methods[m].symbol];
-            if ((declaration.kind == DeclarationKind::listener || declaration.kind == DeclarationKind::job) && method.name == "handle" && method.visibility != Visibility::public_)
-                report(method.origin,"handle() must be public");
-            if (declaration.kind == DeclarationKind::mail && (method.name == "subject" || method.name == "text" || method.name == "html") && fn.type != type_id("string"))
-                report(method.origin,"Mail composition must return string");
-            if (declaration.kind == DeclarationKind::mail && method.name == "content" && fn.type != type_id("Response")) report(method.origin,"Mail content must return Response");
-            if (declaration.kind == DeclarationKind::notification && method.name == "via" && fn.type != sequence("List",type_id("string")))
-                report(method.origin,"via() must return List<string>");
-            if (declaration.kind == DeclarationKind::notification && (method.name == "toMail" || method.name == "toDatabase")) {
-                const auto via = std::find_if(declaration.methods.begin(),declaration.methods.end(),[](const auto& method){return method.name == "via";});
-                if (via != declaration.methods.end()) { const auto& via_fn = v.symbols_[resolved.methods[via-declaration.methods.begin()].symbol]; if (fn.parameters != via_fn.parameters || method.asynchronous || method.visibility != Visibility::public_) report(method.origin,"Notification methods require the same recipient contract as via()"); }
+        auto& declaration = v.syntax_.declarations[d];
+        auto& resolved = v.declarations_[d];
+
+        const auto method_index = [&](std::string_view name) {
+            const auto found = std::find_if(
+                declaration.methods.begin(),
+                declaration.methods.end(),
+                [&](const auto& method) {
+                    return method.name == name;
+                }
+            );
+
+            return found == declaration.methods.end()
+                ? invalid_id
+                : static_cast<std::size_t>(
+                    found - declaration.methods.begin()
+                );
+        };
+
+        const auto is_model_type = [&](TypeId id) {
+            if (id == invalid_id || type(id).optional) {
+                return false;
+            }
+
+            const auto owner = owner_of(id);
+
+            return
+                owner != invalid_id &&
+                v.syntax_.declarations[
+                    declaration_ids.at(owner)
+                ].kind == DeclarationKind::model;
+        };
+
+        if (declaration.kind == DeclarationKind::event) {
+            if (
+                !declaration.methods.empty() ||
+                !declaration.metadata.empty() ||
+                std::any_of(
+                    declaration.fields.begin(),
+                    declaration.fields.end(),
+                    [](const auto& field) {
+                        return field.injection;
+                    }
+                )
+            ) {
+                report(
+                    declaration.origin,
+                    "Events contain immutable data fields only",
+                    "GNR2305"
+                );
             }
         }
+
+        if (declaration.kind == DeclarationKind::middleware) {
+            const auto index = method_index("handle");
+
+            if (index == invalid_id) {
+                report(
+                    declaration.origin,
+                    "Middleware requires handle(Request request, Next next)",
+                    "GNR2301"
+                );
+            } else {
+                const auto& method = declaration.methods[index];
+                const auto& function =
+                    v.symbols_[resolved.methods[index].symbol];
+
+                const bool parameters_valid =
+                    function.parameters.size() == 2 &&
+                    function.parameters[0] == type_id("Request") &&
+                    function.parameters[1] == type_id("Next");
+
+                const bool defaults_valid =
+                    std::none_of(
+                        method.parameters.begin(),
+                        method.parameters.end(),
+                        [](const auto& parameter) {
+                            return parameter.default_value != invalid_id;
+                        }
+                    );
+
+                if (
+                    method.visibility != Visibility::public_ ||
+                    !parameters_valid ||
+                    !defaults_valid ||
+                    function.type != type_id("Response")
+                ) {
+                    report(
+                        method.origin,
+                        "Middleware handle must be public and have the contract Response handle(Request, Next); async handle uses the same logical Response result",
+                        "GNR2301"
+                    );
+                }
+            }
+        }
+
+        if (declaration.kind == DeclarationKind::migration) {
+            for (const auto& name : {"up", "down"}) {
+                const auto index = method_index(name);
+
+                if (index == invalid_id) {
+                    report(
+                        declaration.origin,
+                        "Migration requires public synchronous void up() and down() methods",
+                        "GNR2302"
+                    );
+                    continue;
+                }
+
+                const auto& method = declaration.methods[index];
+                const auto& function =
+                    v.symbols_[resolved.methods[index].symbol];
+
+                if (
+                    method.visibility != Visibility::public_ ||
+                    method.asynchronous ||
+                    !method.parameters.empty() ||
+                    function.type != type_id("void")
+                ) {
+                    report(
+                        method.origin,
+                        "Migration requires public synchronous void up() and down() methods",
+                        "GNR2302"
+                    );
+                }
+            }
+        }
+
+        if (
+            declaration.kind == DeclarationKind::listener ||
+            declaration.kind == DeclarationKind::job
+        ) {
+            const auto index = method_index("handle");
+
+            if (index == invalid_id) {
+                report(
+                    declaration.origin,
+                    declaration.kind == DeclarationKind::listener
+                        ? "Listener requires handle(Event event)"
+                        : "Job requires handle()",
+                    "GNR2303"
+                );
+            } else {
+                const auto& method = declaration.methods[index];
+                const auto& function =
+                    v.symbols_[resolved.methods[index].symbol];
+
+                if (
+                    method.visibility != Visibility::public_ ||
+                    function.type != type_id("void")
+                ) {
+                    report(
+                        method.origin,
+                        "Listener and job handle methods must be public and return void",
+                        "GNR2303"
+                    );
+                }
+
+                if (declaration.kind == DeclarationKind::listener) {
+                    const bool one_event =
+                        function.parameters.size() == 1 &&
+                        !type(function.parameters[0]).optional;
+
+                    bool event_type = false;
+
+                    if (one_event) {
+                        const auto owner =
+                            owner_of(function.parameters[0]);
+
+                        event_type =
+                            owner != invalid_id &&
+                            v.syntax_.declarations[
+                                declaration_ids.at(owner)
+                            ].kind == DeclarationKind::event;
+                    }
+
+                    if (
+                        !one_event ||
+                        !event_type ||
+                        (!method.parameters.empty() &&
+                         method.parameters[0].default_value != invalid_id)
+                    ) {
+                        report(
+                            method.origin,
+                            "Listener handle requires one non-optional event parameter without a default value",
+                            "GNR2303"
+                        );
+                    }
+                } else if (!method.parameters.empty()) {
+                    report(
+                        method.origin,
+                        "Job handle() does not accept parameters",
+                        "GNR2303"
+                    );
+                }
+            }
+        }
+
+        if (declaration.kind == DeclarationKind::policy) {
+            std::size_t abilities = 0;
+
+            for (
+                std::size_t m = 0;
+                m < declaration.methods.size();
+                ++m
+            ) {
+                const auto& method = declaration.methods[m];
+
+                if (method.visibility != Visibility::public_) {
+                    continue;
+                }
+
+                ++abilities;
+
+                const auto& function =
+                    v.symbols_[resolved.methods[m].symbol];
+
+                const bool defaults_valid =
+                    std::none_of(
+                        method.parameters.begin(),
+                        method.parameters.end(),
+                        [](const auto& parameter) {
+                            return parameter.default_value != invalid_id;
+                        }
+                    );
+
+                if (
+                    method.asynchronous ||
+                    function.parameters.size() != 2 ||
+                    !defaults_valid ||
+                    function.type != type_id("Decision") ||
+                    !is_model_type(
+                        function.parameters.size() > 0
+                            ? function.parameters[0]
+                            : invalid_id
+                    ) ||
+                    !is_model_type(
+                        function.parameters.size() > 1
+                            ? function.parameters[1]
+                            : invalid_id
+                    )
+                ) {
+                    report(
+                        method.origin,
+                        "Public policy abilities must be synchronous Decision methods with exactly two non-optional model parameters: actor and resource",
+                        "GNR2304"
+                    );
+                }
+            }
+
+            if (abilities == 0) {
+                report(
+                    declaration.origin,
+                    "Policy requires at least one public actor/resource ability",
+                    "GNR2304"
+                );
+            }
+        }
+
+        if (declaration.kind == DeclarationKind::notification) {
+            const auto via_index = method_index("via");
+
+            if (via_index == invalid_id) {
+                report(
+                    declaration.origin,
+                    "Notification requires public synchronous via(Recipient recipient)",
+                    "GNR2306"
+                );
+            } else {
+                const auto& via = declaration.methods[via_index];
+                const auto& via_function =
+                    v.symbols_[resolved.methods[via_index].symbol];
+
+                const bool recipient_valid =
+                    via_function.parameters.size() == 1 &&
+                    is_model_type(via_function.parameters[0]);
+
+                const bool default_free =
+                    via.parameters.size() == 1 &&
+                    via.parameters[0].default_value == invalid_id;
+
+                if (
+                    via.visibility != Visibility::public_ ||
+                    via.asynchronous ||
+                    !recipient_valid ||
+                    !default_free ||
+                    via_function.type !=
+                        sequence("List", type_id("string"))
+                ) {
+                    report(
+                        via.origin,
+                        "Notification via must be public, synchronous, accept one non-optional model recipient, and return List<string>",
+                        "GNR2306"
+                    );
+                }
+
+                for (
+                    std::size_t m = 0;
+                    m < declaration.methods.size();
+                    ++m
+                ) {
+                    const auto& method = declaration.methods[m];
+
+                    if (
+                        method.name != "toMail" &&
+                        method.name != "toDatabase"
+                    ) {
+                        continue;
+                    }
+
+                    const auto& function =
+                        v.symbols_[resolved.methods[m].symbol];
+
+                    if (
+                        method.visibility != Visibility::public_ ||
+                        method.asynchronous ||
+                        function.parameters != via_function.parameters ||
+                        method.parameters.size() != 1 ||
+                        method.parameters[0].default_value != invalid_id
+                    ) {
+                        report(
+                            method.origin,
+                            "Notification payload methods must use the same public synchronous recipient contract as via()",
+                            "GNR2306"
+                        );
+                        continue;
+                    }
+
+                    if (method.name == "toMail") {
+                        const auto owner = owner_of(function.type);
+
+                        if (
+                            owner == invalid_id ||
+                            v.syntax_.declarations[
+                                declaration_ids.at(owner)
+                            ].kind != DeclarationKind::mail
+                        ) {
+                            report(
+                                method.origin,
+                                "Notification toMail must return a structured mail declaration",
+                                "GNR2306"
+                            );
+                        }
+                    } else if (
+                        type(function.type).name != "Json" &&
+                        type(function.type).name != "Data"
+                    ) {
+                        report(
+                            method.origin,
+                            "Notification toDatabase must return Json",
+                            "GNR2306"
+                        );
+                    }
+                }
+            }
+        }
+
+        if (declaration.kind == DeclarationKind::mail) {
+            const auto subject_index = method_index("subject");
+
+            if (subject_index == invalid_id) {
+                report(
+                    declaration.origin,
+                    "Mail requires subject()",
+                    "GNR2307"
+                );
+            }
+
+            bool has_html = false;
+            bool has_content = false;
+
+            for (
+                std::size_t m = 0;
+                m < declaration.methods.size();
+                ++m
+            ) {
+                const auto& method = declaration.methods[m];
+
+                if (
+                    method.name != "subject" &&
+                    method.name != "text" &&
+                    method.name != "html" &&
+                    method.name != "content"
+                ) {
+                    continue;
+                }
+
+                const auto& function =
+                    v.symbols_[resolved.methods[m].symbol];
+
+                if (
+                    method.asynchronous ||
+                    !method.parameters.empty()
+                ) {
+                    report(
+                        method.origin,
+                        "Mail composition methods must be synchronous and parameterless",
+                        "GNR2307"
+                    );
+                }
+
+                if (
+                    (method.name == "subject" ||
+                     method.name == "text" ||
+                     method.name == "html") &&
+                    function.type != type_id("string")
+                ) {
+                    report(
+                        method.origin,
+                        "Mail subject/text/html methods must return string",
+                        "GNR2307"
+                    );
+                }
+
+                if (
+                    method.name == "content" &&
+                    function.type != type_id("Response")
+                ) {
+                    report(
+                        method.origin,
+                        "Mail content() must return Response",
+                        "GNR2307"
+                    );
+                }
+
+                has_html |= method.name == "html";
+                has_content |= method.name == "content";
+            }
+
+            if (has_html && has_content) {
+                report(
+                    declaration.origin,
+                    "Mail cannot declare both html() and content(); choose one HTML body source",
+                    "GNR2307"
+                );
+            }
+        }
+
         std::unordered_set<std::string> metadata_names;
-        static const std::unordered_set<std::string> metadata_allowed{"table","connection","fillable","hidden","visible","casts","timestamps","softDeletes","primaryKey","incrementing"};
+        static const std::unordered_set<std::string>
+            metadata_allowed{
+                "table",
+                "connection",
+                "fillable",
+                "hidden",
+                "visible",
+                "casts",
+                "timestamps",
+                "softDeletes",
+                "primaryKey",
+                "incrementing"
+            };
+
         for (const auto& metadata : declaration.metadata) {
-            if (declaration.kind != DeclarationKind::model || !metadata_allowed.contains(metadata.name)) { report(metadata.origin,"Unknown framework metadata '" + metadata.name + "'"); continue; }
-            if (!metadata_names.insert(metadata.name).second) report(metadata.origin,"Duplicate metadata '" + metadata.name + "'");
-            const auto& expr = v.syntax_.expressions[metadata.value];
-            if (metadata.name == "fillable" || metadata.name == "hidden" || metadata.name == "visible") {
-                if (expr.kind != SyntaxExpressionKind::list) report(metadata.origin,"Attribute metadata requires a constant string list");
-                for (auto id : expr.operands) if (v.syntax_.expressions[id].literal_type != "string") report(metadata.origin,"Attribute names must be string constants");
+            if (
+                declaration.kind != DeclarationKind::model ||
+                !metadata_allowed.contains(metadata.name)
+            ) {
+                report(
+                    metadata.origin,
+                    "Unknown framework metadata '" +
+                        metadata.name + "'",
+                    "GNR2308"
+                );
+                continue;
+            }
+
+            if (!metadata_names.insert(metadata.name).second) {
+                report(
+                    metadata.origin,
+                    "Duplicate metadata '" +
+                        metadata.name + "'",
+                    "GNR2308"
+                );
+            }
+
+            const auto& expr =
+                v.syntax_.expressions[metadata.value];
+
+            if (
+                metadata.name == "fillable" ||
+                metadata.name == "hidden" ||
+                metadata.name == "visible"
+            ) {
+                if (expr.kind != SyntaxExpressionKind::list) {
+                    report(
+                        metadata.origin,
+                        "Attribute metadata requires a constant string list",
+                        "GNR2308"
+                    );
+                }
+
+                for (auto id : expr.operands) {
+                    if (
+                        v.syntax_.expressions[id].literal_type !=
+                        "string"
+                    ) {
+                        report(
+                            metadata.origin,
+                            "Attribute names must be string constants",
+                            "GNR2308"
+                        );
+                    }
+                }
             } else if (metadata.name == "casts") {
-                if (expr.kind != SyntaxExpressionKind::object) report(metadata.origin,"casts requires a constant object");
-                static const std::unordered_set<std::string> supported{"bool","int","integer","string","double","decimal","json","date","datetime"};
-                for (auto id : expr.operands) if (v.syntax_.expressions[id].literal_type != "string" || !supported.contains(v.syntax_.expressions[id].text)) report(metadata.origin,"Unknown model cast");
-            } else if (metadata.name == "timestamps" || metadata.name == "softDeletes" || metadata.name == "incrementing") { if (expr.literal_type != "bool") report(metadata.origin,"Metadata requires a boolean constant"); }
-            else if (expr.literal_type != "string") report(metadata.origin,"Metadata requires a string constant");
+                if (expr.kind != SyntaxExpressionKind::object) {
+                    report(
+                        metadata.origin,
+                        "casts requires a constant object",
+                        "GNR2308"
+                    );
+                }
+
+                static const std::unordered_set<std::string>
+                    supported{
+                        "bool",
+                        "int",
+                        "integer",
+                        "string",
+                        "double",
+                        "decimal",
+                        "json",
+                        "date",
+                        "datetime"
+                    };
+
+                for (auto id : expr.operands) {
+                    if (
+                        v.syntax_.expressions[id].literal_type !=
+                            "string" ||
+                        !supported.contains(
+                            v.syntax_.expressions[id].text
+                        )
+                    ) {
+                        report(
+                            metadata.origin,
+                            "Unknown model cast",
+                            "GNR2308"
+                        );
+                    }
+                }
+            } else if (
+                metadata.name == "timestamps" ||
+                metadata.name == "softDeletes" ||
+                metadata.name == "incrementing"
+            ) {
+                if (expr.literal_type != "bool") {
+                    report(
+                        metadata.origin,
+                        "Metadata requires a boolean constant",
+                        "GNR2308"
+                    );
+                }
+            } else if (expr.literal_type != "string") {
+                report(
+                    metadata.origin,
+                    "Metadata requires a string constant",
+                    "GNR2308"
+                );
+            }
+
+            if (
+                (metadata.name == "table" ||
+                 metadata.name == "connection") &&
+                expr.literal_type == "string" &&
+                expr.text.empty()
+            ) {
+                report(
+                    metadata.origin,
+                    metadata.name +
+                        " metadata cannot be empty",
+                    "GNR2308"
+                );
+            }
+
+            if (
+                metadata.name == "primaryKey" &&
+                expr.literal_type == "string" &&
+                !valid_identifier(expr.text)
+            ) {
+                report(
+                    metadata.origin,
+                    "primaryKey must name a valid model attribute",
+                    "GNR2308"
+                );
+            }
+
             expression(metadata.value);
         }
-        (void)resolved;
+
+        if (declaration.kind == DeclarationKind::model) {
+            std::string primary = "id";
+            bool incrementing = true;
+            bool incrementing_explicit = false;
+            bool timestamps = false;
+            bool soft_deletes = false;
+
+            for (const auto& metadata : declaration.metadata) {
+                const auto& expr =
+                    v.syntax_.expressions[metadata.value];
+
+                if (
+                    metadata.name == "primaryKey" &&
+                    expr.literal_type == "string"
+                ) {
+                    primary = expr.text;
+                }
+
+                if (
+                    metadata.name == "incrementing" &&
+                    expr.literal_type == "bool"
+                ) {
+                    incrementing_explicit = true;
+                    incrementing =
+                        expr.text == "true";
+                }
+
+                if (
+                    metadata.name == "timestamps" &&
+                    expr.literal_type == "bool"
+                ) {
+                    timestamps =
+                        expr.text == "true";
+                }
+
+                if (
+                    metadata.name == "softDeletes" &&
+                    expr.literal_type == "bool"
+                ) {
+                    soft_deletes =
+                        expr.text == "true";
+                }
+            }
+
+            const auto field_type = [&](std::string_view name) {
+                for (
+                    std::size_t i = 0;
+                    i < declaration.fields.size() &&
+                    i < resolved.fields.size();
+                    ++i
+                ) {
+                    if (declaration.fields[i].name == name) {
+                        return v.symbols_[
+                            resolved.fields[i]
+                        ].type;
+                    }
+                }
+
+                return invalid_id;
+            };
+
+            const auto primary_type =
+                field_type(primary);
+
+            if (
+                primary_type == invalid_id ||
+                type(primary_type).optional ||
+                (
+                    type(primary_type).name != "int" &&
+                    type(primary_type).name != "uint64" &&
+                    type(primary_type).name != "string"
+                )
+            ) {
+                report(
+                    declaration.origin,
+                    "Model primary key must be a non-optional int, uint64, or string attribute",
+                    "GNR2308"
+                );
+            }
+
+            if (
+                incrementing_explicit &&
+                incrementing &&
+                primary_type != invalid_id &&
+                type(primary_type).name != "int" &&
+                type(primary_type).name != "uint64"
+            ) {
+                report(
+                    declaration.origin,
+                    "incrementing=true requires an integer primary key",
+                    "GNR2308"
+                );
+            }
+
+            const auto lifecycle_string =
+                [&](std::string_view name) {
+                    const auto id = field_type(name);
+
+                    return
+                        id != invalid_id &&
+                        type(id).name == "string" &&
+                        type(id).optional;
+                };
+
+            if (
+                timestamps &&
+                (
+                    !lifecycle_string("created_at") ||
+                    !lifecycle_string("updated_at")
+                )
+            ) {
+                report(
+                    declaration.origin,
+                    "timestamps=true requires nullable string created_at and updated_at attributes",
+                    "GNR2308"
+                );
+            }
+
+            if (
+                soft_deletes &&
+                !lifecycle_string("deleted_at")
+            ) {
+                report(
+                    declaration.origin,
+                    "softDeletes=true requires a nullable string deleted_at attribute",
+                    "GNR2308"
+                );
+            }
+        }
     }
+
     void declaration_dependencies() {
         std::vector<unsigned> state(v.syntax_.declarations.size());
         std::function<void(std::size_t)> visit = [&](std::size_t d) {

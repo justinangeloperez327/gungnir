@@ -4,7 +4,7 @@
 
 ## Current behavior
 
-Structured notification declarations retain typed constructor data and require `via(Recipient recipient)`. `bind(recipient)` creates an adapter implementing native `notifications::Notification`, preserving the qualified name and recipient-specific channels. Typed `to_mail()` / `to_database()` accessors forward declared recipient payload methods.
+Structured notification declarations retain typed constructor data and require public synchronous `via(Recipient recipient) -> List<string>`, where the recipient is a non-optional model. `bind(recipient)` creates an adapter implementing native `notifications::Notification`, preserving the qualified name and recipient-specific channels. `toMail` must return a structured mail declaration and `toDatabase` must return `Json`; both use the same recipient contract as `via`. Invalid surfaces are rejected with `GNR2306`.
 
 ## Limits and planned work
 

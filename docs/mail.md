@@ -19,11 +19,11 @@ message.from({"sender@example.com", "Gungnir"})
 // Send through a Mailer configured with a Transport.
 ```
 
-Structured `mail` declarations generate typed data constructors and `message()` composition from parameterless subject/text/html methods. View-response content still needs native rendering integration before sending.
+Structured `mail` declarations generate typed data constructors and `message()` composition from synchronous parameterless `subject`, `text`, and `html` methods. A `content() -> Response` method is also supported and its response body becomes the HTML body. `html()` and `content()` cannot both define the HTML source.
 
 ## Limits and planned work
 
-Target `mail` action declarations, additional template composition, custom headers and fluent static sending are not all fields/methods of the current Message class. Sending does not automatically enqueue work.
+Target `mail` action declarations, additional template composition, custom headers and fluent static sending are not all fields/methods of the current Message class. Sending does not automatically enqueue work. Framework composition violations are rejected by `gungnirc --check` with `GNR2307`.
 
 ## Implementation references
 
