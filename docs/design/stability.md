@@ -48,7 +48,7 @@ For the 1.x line:
   with explicit migration guidance
 ~~~
 
-Prerelease identifiers such as `1.0.0-rc.1` represent candidate builds of the numeric package version.
+Prerelease identifiers such as `development` represent candidate builds of the numeric package version.
 
 # Source language
 
