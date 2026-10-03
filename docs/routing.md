@@ -1,29 +1,79 @@
 # Routing
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Routes connect HTTP requests to controllers and middleware.
 
-## Current behavior
+Application routes are normally defined in `routes/web.gnr` and API routes can be organized separately.
 
-Structured projects parse the current `.gnr` route shape into `RouteDeclaration` nodes, validate controller/action and middleware references against the project semantic index, and emit native route registration directly. Route generation for structured projects no longer relies on SourceEdit. The native router provides HTTP method registrations, middleware, named routes, parameter constraints, URL generation, fallback handlers and prefixed groups.
-
-Native `RouteRegistration` methods include `middleware`, `name`, `where`, `where_number`, and `where_uuid`. Native groups are obtained from `Router::group(prefix)`; this is separate from the proposed fluent group language.
-
-## Example
+## Basic routes
 
 ```gnr
 Route::get("/", HomeController::index);
+Route::post("/users", UserController::store);
+Route::put("/users/{user}", UserController::update);
+Route::patch("/users/{user}", UserController::update);
+Route::delete("/users/{user}", UserController::destroy);
 ```
 
-## Limits and planned work
+## Route parameters
 
-Use the current compiler-supported route shape before adding fluent modifiers. Do not assume support for every `Route::prefix(...).group(() => {...})`, arrow handler, resource route or implicit model binding in the design contract. Native names and `.gnr` lowering aliases are not interchangeable.
+Dynamic segments use braces:
 
-## Implementation references
+```gnr
+Route::get("/projects/{project}", ProjectController::show);
+```
 
-- [include/gungnir/routing/route.hpp](../include/gungnir/routing/route.hpp)
-- [include/gungnir/routing/router.hpp](../include/gungnir/routing/router.hpp)
-- [src/cli/structured_project.cpp](../src/cli/structured_project.cpp)
-- [src/language/parser.cpp](../src/language/parser.cpp)
-- [src/language/controller_lowering.cpp](../src/language/controller_lowering.cpp) — compatibility profile only
+Parameters are passed to the target action using the route's typed handler contract.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/routing.md).
+## Named routes
+
+Routes can be assigned stable names for URL generation and redirects.
+
+```gnr
+Route::get("/dashboard", DashboardController::index)
+    .name("dashboard");
+```
+
+## Constraints
+
+Route parameters can be constrained:
+
+```gnr
+Route::get("/users/{id}", UserController::show)
+    .whereNumber("id");
+```
+
+UUID and explicit pattern constraints can be used for identifiers with stricter formats.
+
+## Middleware
+
+```gnr
+Route::get("/account", AccountController::show)
+    .middleware("auth");
+```
+
+Middleware aliases and groups are registered by the application.
+
+## Route groups
+
+Groups share common prefixes, middleware, and naming conventions:
+
+```gnr
+Route::prefix("/admin")
+    .middleware("auth")
+    .group(() => {
+        Route::get("/users", AdminUserController::index);
+        Route::get("/projects", AdminProjectController::index);
+    });
+```
+
+## Model binding
+
+Typed model parameters can resolve route identifiers into model instances. Missing bound models use the framework's not-found response path.
+
+## Fallback routes
+
+Applications can register a fallback handler for requests that do not match another route.
+
+## URL generation
+
+Named routes provide stable URL generation independent of the controller implementation.
