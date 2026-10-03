@@ -46,11 +46,11 @@ string(REPLACE "\r\n" "\n" contract_output "${contract_output}")
 string(
     CONCAT expected_contract
     "package_version=${GUNGNIR_VERSION}\n"
-    "language_version=0.9\n"
-    "compiler_contract=0.9\n"
-    "diagnostic_contract=0.9\n"
+    "language_version=1.0\n"
+    "compiler_contract=1.0\n"
+    "diagnostic_contract=1.0\n"
     "structured_feature_freeze=true\n"
-    "compatibility=experimental\n"
+    "compatibility=stable\n"
 )
 if(NOT contract_output STREQUAL expected_contract)
     message(
