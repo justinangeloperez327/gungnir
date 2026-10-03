@@ -1,6 +1,6 @@
 # Security
 
-> **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/security.md).
+> **Status: Gungnir 1.0 current security surface.** This page describes the implemented security APIs and boundaries. Future proposals remain under [design/](design/security.md).
 
 ## Current behavior
 
