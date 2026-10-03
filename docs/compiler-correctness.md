@@ -1,6 +1,6 @@
 # Compiler Correctness
 
-> **Status: normative 1.0 compiler contract.** Compiler changes must preserve the invariants in this document. The compatibility transpiler remains transitional and is not the structured-language correctness boundary.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Definition
 
