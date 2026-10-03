@@ -1,6 +1,6 @@
 # Models
 
-> **Status: Gungnir 1.0 current contract.** Phase 12 hardens the runtime ORM behavioral baseline. Compiler-level model semantics that remain partial are tracked separately.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Current behavior
 
