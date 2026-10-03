@@ -1,26 +1,69 @@
 # Authentication
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir authentication connects requests, sessions, user models, credential verification, guards, and authorization.
 
-## Current behavior
+## Authentication flow
 
-Authentication currently uses `Identity`, credential-resolving `Guard`, a guard `Manager`, and a request-owned `Context`. Identity stores an ID, roles and string attributes.
+A guard resolves the authenticated user for the current request. Session-based applications persist the authenticated identity in the session and restore it on later requests.
 
-`Request::authenticated`, `guest` and `user` inspect attached identity state. `AuthenticateSession` integrates session authentication. Applications supply the resolver/provider behavior and configure guards explicitly.
+## Login
 
-Phase 14 promotes authentication/session lifecycle and CSRF regressions into the primary pull-request security gate. Session login/logout and stale identity recovery must continue rotating session identifiers without preserving obsolete authenticated state.
+Applications authenticate credentials through the configured guard:
 
-Enable `GUNGNIR_WITH_PASSWORD=ON` (OpenSSL 3) and include `<gungnir/auth/login.hpp>` for `SessionGuard`. Applications supply credential and identity resolvers. `attempt(request, response, login, password, remember)` verifies an scrypt hash and rotates the session on success. `recall` consumes and rotates a remember token; `logout` invalidates the session and revokes its token. `Password::hash`, `verify`, and `needs_rehash` handle the versioned hash format. Remember stores retain token digests; the included `MemoryRememberStore` is process-local. Run these operations inside session middleware, with `AuthenticateSession` to restore identities on subsequent requests.
+```gnr
+controller LoginController {
+    store(Request request) {
+        const credentials = request.validate({
+            "email": "required|email",
+            "password": "required|string"
+        });
 
-## Limits and planned work
+        if (!auth.attempt(request, credentials, request.input("remember"))) {
+            return redirect("/login");
+        }
 
-There is no complete Laravel-style static `Auth` facade represented by these APIs. Static `Auth::attempt`, automatic user-model hydration and distributed remember-token persistence remain application integrations.
+        return redirect("/dashboard");
+    }
+}
+```
 
-## Implementation references
+Successful session authentication rotates the session identifier.
 
-- [include/gungnir/auth/auth.hpp](../include/gungnir/auth/auth.hpp)
-- [include/gungnir/auth/context.hpp](../include/gungnir/auth/context.hpp)
-- [include/gungnir/auth/manager.hpp](../include/gungnir/auth/manager.hpp)
-- [include/gungnir/auth/session.hpp](../include/gungnir/auth/session.hpp)
+## Current user
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/authentication.md).
+Authenticated requests expose the resolved user:
+
+```gnr
+const user = request.user();
+```
+
+Applications can also test whether the request is authenticated or a guest.
+
+## Logout
+
+Logout clears authenticated state, rotates or invalidates the session as appropriate, and revokes remember-me credentials associated with the session.
+
+## Passwords
+
+Gungnir provides versioned password hashing and verification. Applications store password hashes rather than plaintext credentials.
+
+## Remember me
+
+Session guards can issue remember tokens. Tokens are stored as digests, rotated when consumed, and revoked on logout. Production applications should use a persistent remember-token store.
+
+## Authentication middleware
+
+Protected routes use authentication middleware:
+
+```gnr
+Route::get("/account", AccountController::show)
+    .middleware("auth");
+```
+
+Unauthenticated access follows the application's configured authentication response behavior.
+
+## Authorization
+
+Authentication establishes identity. Access to a specific resource or operation is handled by policies and authorization rules.
+
+See [Policies and Authorization](policy.md).
