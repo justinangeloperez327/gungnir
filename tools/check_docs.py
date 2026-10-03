@@ -62,7 +62,7 @@ def markdown_files() -> list[Path]:
         ROOT / "SUPPORT.md",
     ]
 
-    result.extend(sorted((ROOT / "docs").rglob("*.md")))
+    result.extend(sorted((ROOT / "docs").glob("*.md")))
     result.extend(sorted((ROOT / "examples").rglob("*.md")))
 
     return [path for path in result if path.is_file()]
