@@ -4,7 +4,7 @@
 
 Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-> **Current public preview: v0.9.0.** Gungnir remains pre-1.0. The structured language/compiler contract is feature-frozen at 0.9 while runtime, packaging, documentation, and release readiness continue toward 1.0.
+> Current public preview: **v0.9.0**. Gungnir remains pre-1.0. The structured language/compiler contract is feature-frozen at 0.9 while runtime, packaging, documentation, and release readiness continue toward 1.0.
 
 ## What Gungnir looks like
 
