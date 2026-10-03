@@ -1,6 +1,6 @@
 # HTTP Runtime
 
-> **Status: experimental, pre-1.0.** Phase 11 establishes the current runtime-lifecycle correctness baseline. Native C++ APIs remain subject to pre-1.0 compatibility rules.
+> **Status: Gungnir 1.0 current contract.** Phase 11 establishes the current runtime-lifecycle correctness baseline. Native C++ APIs remain subject to 1.0 RC compatibility rules.
 
 ## Current behavior
 

@@ -1,6 +1,6 @@
 # Performance Baseline
 
-> **Status: experimental, pre-1.0.** Phase 16 establishes a reproducible benchmark surface and measurement policy. The numbers produced by a benchmark run are observational, not universal performance guarantees.
+> **Status: Gungnir 1.0 benchmark contract.** Phase 16 establishes the reproducible benchmark surface and measurement policy. Numbers produced by a benchmark run are observational, not universal performance guarantees.
 
 ## Principles
 

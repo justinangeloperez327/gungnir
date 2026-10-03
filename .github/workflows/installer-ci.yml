@@ -127,7 +127,19 @@ jobs:
                   throw "Unable to read the Gungnir version"
               }
 
-              $expectedVersion = "Gungnir $($Matches[1])"
+              $coreVersion = $Matches[1]
+              $prerelease = ""
+
+              if ($cmake -match 'set\(GUNGNIR_VERSION_PRERELEASE "([^"]*)"\)') {
+                  $prerelease = $Matches[1]
+              }
+
+              $releaseVersion = $coreVersion
+              if ($prerelease) {
+                  $releaseVersion = "$coreVersion-$prerelease"
+              }
+
+              $expectedVersion = "Gungnir $releaseVersion"
               $actualVersion = (& $cli --version).Trim()
 
               if ($actualVersion -ne $expectedVersion) {
@@ -140,18 +152,19 @@ jobs:
               }
 
               $compilerVersion = (& $compiler --version).Trim()
-              $expectedCompiler = "Gungnir compiler $($Matches[1]) (language 0.9)"
+              $expectedCompiler = "Gungnir compiler $releaseVersion (language 1.0)"
               if ($compilerVersion -ne $expectedCompiler) {
                   throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
               }
 
               $contract = (& $compiler --print-contract) -join "`n"
               foreach ($required in @(
-                  "package_version=$($Matches[1])",
-                  "language_version=0.9",
-                  "compiler_contract=0.9",
-                  "diagnostic_contract=0.9",
-                  "structured_feature_freeze=true"
+                  "package_version=$releaseVersion",
+                  "language_version=1.0",
+                  "compiler_contract=1.0",
+                  "diagnostic_contract=1.0",
+                  "structured_feature_freeze=true",
+                  "compatibility=stable"
               )) {
                   if ($contract -notmatch [regex]::Escape($required)) {
                       throw "Installed compiler contract is missing '$required'."

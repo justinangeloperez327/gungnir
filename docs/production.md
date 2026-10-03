@@ -1,6 +1,6 @@
 # Production and Deployment
 
-> **Status: experimental, pre-1.0.** Phases 11 and 15 harden lifecycle, shutdown, health, retry, and overload behavior, but this is not a blanket production-certification claim.
+> **Status: Gungnir 1.0 production-runtime contract.** Phases 11 and 15 define lifecycle, shutdown, health, retry, and overload behavior, but this is not a blanket production-certification claim.
 
 ## Current behavior
 

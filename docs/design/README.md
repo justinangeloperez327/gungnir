@@ -1,6 +1,18 @@
 # Gungnir Design Specifications
 
-These documents preserve the proposed contracts and architecture. They are not current usage instructions. Start at the [current documentation index](../README.md).
+> **Gungnir 1.x design set.** These documents describe intended long-term architecture beyond the frozen `1.0.0-rc.1` release-candidate contract. They are not current usage instructions. The [current documentation index](../README.md) is authoritative for shipped behavior.
+
+## 1.0 RC design governance
+
+The 1.0 language, compiler, diagnostic, framework-semantic, and representative native C++ API contracts are frozen. Design proposals in this directory may target additive 1.x evolution or a future major version, but they must not be presented as already implemented unless the current guides and executable contract tests agree.
+
+Design work should preserve the canonical compiler pipeline:
+
+```text
+source -> lexer -> parser -> syntax AST -> semantics -> validated AST -> typed C++ IR -> C++23 emitter
+```
+
+Runtime proposals must preserve the tested lifecycle, security, resilience, and API/ABI boundaries established for 1.0.
 
 - [Application Lifecycle](application-lifecycle.md)
 - [Abstract Syntax Tree](ast.md)

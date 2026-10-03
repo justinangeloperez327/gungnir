@@ -42,13 +42,13 @@ CompilationResult check(
 
 void frozen_metadata_is_consistent() {
     static_assert(language_name == "Gungnir");
-    static_assert(language_version == "0.9");
-    static_assert(compiler_contract_version == "0.9");
-    static_assert(diagnostic_contract_version == "0.9");
+    static_assert(language_version == "1.0");
+    static_assert(compiler_contract_version == "1.0");
+    static_assert(diagnostic_contract_version == "1.0");
     static_assert(structured_profile_feature_frozen);
     static_assert(
         compiler_compatibility ==
-        Compatibility::experimental
+        Compatibility::stable
     );
 
     const CompilerOptions defaults;
@@ -157,7 +157,7 @@ void frozen_check_and_compile_semantics_match() {
     assert(!compiled.code.empty());
     assert(
         compiled.code.find(
-            "compiler_contract_version == \"0.9\""
+            "compiler_contract_version == \"1.0\""
         ) != std::string::npos
     );
     assert(checked.diagnostics.empty());

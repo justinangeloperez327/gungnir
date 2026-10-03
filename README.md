@@ -4,7 +4,7 @@
 
 Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-> Current public preview: **v0.9.0**. Gungnir remains pre-1.0. The structured language/compiler contract is feature-frozen at 0.9 while runtime, packaging, documentation, and release readiness continue toward 1.0.
+> Current release candidate: **v1.0.0-rc.1**. The 1.0 language/compiler/native API contracts are frozen; Phase 20 is the final promotion to stable 1.0.0.
 
 ## What Gungnir looks like
 
@@ -45,7 +45,7 @@ Download release packages from [GitHub Releases](https://github.com/justinangelo
 Use the setup executable:
 
 ```text
-gungnir-v0.9.0-windows-x86_64-setup.exe
+gungnir-v1.0.0-rc.1-windows-x86_64-setup.exe
 ```
 
 The installer adds Gungnir's `bin` directory to the **current user's PATH** without replacing the rest of the user's PATH.
@@ -65,7 +65,7 @@ A portable Windows ZIP is also published.
 Use the portable archive:
 
 ```text
-gungnir-v0.9.0-linux-x86_64.tar.gz
+gungnir-v1.0.0-rc.1-linux-x86_64.tar.gz
 ```
 
 Extract it, add its `bin` directory to `PATH`, and use the installation prefix as `GUNGNIR_CMAKE_PREFIX` when your layout is not automatically discoverable.
@@ -134,7 +134,7 @@ Application
 
 ## Framework surface
 
-The 0.9 line includes framework contracts for:
+The 1.0 release-candidate line includes framework contracts for:
 
 - models and Eloquent-style ORM querying;
 - migrations;
@@ -158,16 +158,16 @@ Backend-specific capabilities and dependencies remain explicit. Review the curre
 
 ## Stability
 
-Gungnir 0.9 separates several compatibility contracts:
+Gungnir 1.0 RC freezes the compatibility contracts intended for stable 1.x:
 
 | Contract | Version / status |
 | --- | --- |
-| Package | 0.9.0 |
-| Structured language | 0.9 feature-frozen |
-| Compiler semantic contract | 0.9 |
-| Diagnostic contract | 0.9 |
-| Native C++ source API contract | 0.9 |
-| Native ABI epoch | 0 |
+| Package | 1.0.0-rc.1 |
+| Structured language | 1.0 feature-frozen |
+| Compiler semantic contract | 1.0 |
+| Diagnostic contract | 1.0 |
+| Native C++ source API contract | 1.0 |
+| Native ABI epoch | 1 |
 | Generated C++ ABI/spelling | rebuild with matching package |
 
 Native binary compatibility is scoped to compatible platform/compiler/standard-library ABIs. See [Stability](docs/stability.md) and [Native API and ABI Stability](docs/native-api-abi.md).
@@ -197,6 +197,7 @@ Start with:
 - [Security](docs/security-hardening.md)
 - [Stability](docs/stability.md)
 - [Upgrading](docs/upgrading.md)
+- [1.0 Release Candidate](docs/release-candidate.md)
 
 The `docs/design/` directory preserves intended architecture and future-facing design contracts. Do not treat design-only examples as implemented current syntax unless the current guides say so.
 

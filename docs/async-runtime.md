@@ -1,6 +1,6 @@
 # Async Runtime
 
-> **Status: experimental, pre-1.0.** Phase 11 defines the current ownership and cooperative-cancellation baseline. Native async APIs are not yet 1.0-stable.
+> **Status: Gungnir 1.0 current contract.** Phase 11 defines the current ownership and cooperative-cancellation baseline. Native async APIs are not yet 1.0-stable.
 
 ## Current behavior
 

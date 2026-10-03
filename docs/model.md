@@ -1,6 +1,6 @@
 # Models
 
-> **Status: experimental, pre-1.0.** Phase 12 hardens the runtime ORM behavioral baseline. Compiler-level model semantics that remain partial are tracked separately.
+> **Status: Gungnir 1.0 current contract.** Phase 12 hardens the runtime ORM behavioral baseline. Compiler-level model semantics that remain partial are tracked separately.
 
 ## Current behavior
 

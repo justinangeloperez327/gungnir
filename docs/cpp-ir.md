@@ -1,6 +1,6 @@
 # C++ Intermediate Representation
 
-> **Status: structural backend IR, pre-1.0.** Phase 4 replaces monolithic implementation fragments with typed target IR for executable functions, statements, expressions and module ownership.
+> **Status: structural backend IR, 1.0 RC.** Phase 4 replaces monolithic implementation fragments with typed target IR for executable functions, statements, expressions and module ownership.
 
 ## Pipeline
 
@@ -159,7 +159,7 @@ auto cpp = CppEmitter{}.emit(ir);
 auto units = CppEmitter{}.emit_units(ir);
 ```
 
-The pre-1.0 `CppEmitter(ValidatedProject)` overload remains a convenience wrapper. It lowers through structural IR and does not bypass the backend boundary.
+The 1.0 RC `CppEmitter(ValidatedProject)` overload remains a convenience wrapper. It lowers through structural IR and does not bypass the backend boundary.
 
 ## Inspecting IR
 
@@ -194,7 +194,7 @@ Remaining backend refinement is intentionally narrower:
 
 1. refine class-definition target spelling into field/member-level nodes only where it improves verification or tooling;
 2. progressively replace cached expression target spelling with finer target-expression fields where that materially improves optimization or verification;
-3. remove the pre-1.0 `CppEmitter(ValidatedProject)` convenience overload once internal callers use IR directly.
+3. remove the 1.0 RC `CppEmitter(ValidatedProject)` convenience overload once internal callers use IR directly.
 
 Do not introduce an LLVM-like optimizer unless concrete Gungnir requirements justify it. After declaration-side cleanup, compiler effort should return to semantic/type completeness and authoritative `--check`.
 
