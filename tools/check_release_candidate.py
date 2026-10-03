@@ -176,6 +176,13 @@ def main() -> int:
         "release-candidate guide does not name the current RC",
     )
 
+    for path in sorted((ROOT / "docs").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        if "pre-1.0" in text:
+            errors.append(
+                f"{path.relative_to(ROOT)} still carries a pre-1.0 status/reference"
+            )
+
     if errors:
         print("Release-candidate contract failed:", file=sys.stderr)
 
