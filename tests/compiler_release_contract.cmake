@@ -18,7 +18,7 @@ endif()
 string(REPLACE "\r\n" "\n" version_output "${version_output}")
 set(
     expected_version
-    "Gungnir compiler ${GUNGNIR_VERSION} (language 0.9)\n"
+    "Gungnir compiler ${GUNGNIR_VERSION} (language 1.0)\n"
 )
 if(NOT version_output STREQUAL expected_version)
     message(
