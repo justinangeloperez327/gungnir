@@ -1,6 +1,6 @@
 # Security
 
-> **Status: Gungnir 1.0 current security surface.** This page describes the implemented security APIs and boundaries. Future proposals remain under [design/](design/security.md).
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Current behavior
 
