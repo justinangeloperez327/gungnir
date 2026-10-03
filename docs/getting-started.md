@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status: Gungnir 0.9 preview.** The structured compiler profile is feature-frozen for the 0.9 line. Use a C++23 compiler and CMake 3.25 or newer.
+> **Status: Gungnir 1.0.0-rc.1.** The 1.0 structured compiler contract is feature-frozen. Use a C++23 compiler and CMake 3.25 or newer.
 
 ## Install
 
@@ -28,7 +28,7 @@ Uninstalling Gungnir removes its own user-PATH entry without rewriting unrelated
 
 ### Portable packages
 
-Windows ZIP and Linux tarball packages remain available. The current Linux asset is `gungnir-v0.9.0-linux-x86_64.tar.gz`. Extract the package and add its `bin` directory to `PATH`.
+Windows ZIP and Linux tarball packages remain available. The current Linux asset is `gungnir-v1.0.0-rc.1-linux-x86_64.tar.gz`. Extract the package and add its `bin` directory to `PATH`.
 
 For custom layouts, `GUNGNIR_CMAKE_PREFIX` can explicitly point the CLI at the Gungnir installation prefix.
 
