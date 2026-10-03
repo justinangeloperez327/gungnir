@@ -1,29 +1,19 @@
 # Gungnir Documentation
 
-Implementation baseline: active Gungnir development, reviewed on 3 October 2026.
+Gungnir is an expressive web application framework built in C++23. It combines a concise, framework-oriented `.gnr` language with a native C++ runtime so applications can use high-level conventions without giving up compiled performance, static analysis, or native interoperability.
 
-Gungnir is under active feature-completion development. Language/compiler/diagnostic/native API contracts are not frozen for 1.0 yet. Start with the current usage guides below; future architecture remains under [design/](design/README.md).
+The documentation defines the Gungnir developer experience: how applications are structured, how the language works, and how framework services are used.
 
-| Documentation | Meaning |
-| --- | --- |
-| Current guides in this directory | APIs and implementation limits grounded in current source |
-| `gnr` examples in current guides | Current frontend syntax; compile the generated C++ as well |
-| `cpp` examples | Native interoperability; do not substitute their names into `.gnr` blindly |
-| Design specifications | Intended contracts; examples may require future compiler/runtime work |
-
-`gungnirc --check` is the authoritative structured semantic gate and intentionally stops before C++ IR/native compilation. Use `gungnir build` for backend verification. See [Stability](stability.md) and [Development Status](development-status.md) for the current compatibility boundary.
-
-## Start here
+## Getting started
 
 - [Getting Started](getting-started.md)
-- [Language Frontend](language.md)
+- [Language](language.md)
 - [CLI and Code Generation](cli-codegen.md)
-- [Stability](stability.md)
-- [Upgrading](upgrading.md)
-- [Development Status](development-status.md)
-- [Framework Completeness Audit](framework-completeness-audit.md)
+- [Editor Tooling](editor-tooling.md)
+- [Testing](testing.md)
+- [Production and Deployment](production.md)
 
-## HTTP application
+## HTTP applications
 
 - [Routing](routing.md)
 - [Controllers](controller.md)
@@ -34,52 +24,38 @@ Gungnir is under active feature-completion development. Language/compiler/diagno
 - [Views](view.md)
 - [Authentication](authentication.md)
 - [Policies and Authorization](policy.md)
+- [Security](security.md)
 
 ## Data
 
 - [Models](model.md)
 - [ORM](orm.md)
 - [Collections](collection.md)
-- [ORM Relationships](relationships.md)
+- [Relationships](relationships.md)
 - [Migrations](migration.md)
-- [Database Runtime](database.md)
-- [Database and ORM Correctness](database-correctness.md)
-- [MySQL Adapter](mysql.md)
-- [PostgreSQL Adapter](postgresql.md)
-- [SQL Server Adapter](sqlserver.md)
-- [MongoDB Adapter](mongodb.md)
+- [Database](database.md)
+- [MySQL](mysql.md)
+- [PostgreSQL](postgresql.md)
+- [SQL Server](sqlserver.md)
+- [MongoDB](mongodb.md)
 
-## Services
+## Application services
 
+- [Dependency Injection](dependency-injection.md)
+- [Application Lifecycle](application-lifecycle.md)
+- [Sessions](session.md)
 - [Events](event.md)
 - [Listeners](listener.md)
+- [Queues and Jobs](queues.md)
 - [Notifications](notification.md)
 - [Mail](mail.md)
 - [Cache](cache.md)
-- [Sessions](session.md)
-- [Queues and Jobs](queues.md)
-- [Scheduler](scheduler.md)
 - [Storage](storage.md)
-
-## Runtime and operations
-
-- [Application Lifecycle](application-lifecycle.md)
-- [Dependency Injection](dependency-injection.md)
-- [Async Runtime](async-runtime.md)
-- [HTTP Runtime](http-runtime.md)
-- [Runtime Correctness](runtime-correctness.md)
-- [Errors](errors.md)
-- [Packages and Extensions](extensions.md)
+- [Scheduler](scheduler.md)
 - [Logging and Observability](logging-observability.md)
-- [Production and Deployment](production.md)
-- [Production Resilience](production-resilience.md)
-- [Performance Baseline](performance.md)
-- [Native API and ABI Stability](native-api-abi.md)
-- [Security](security.md)
-- [Security Hardening](security-hardening.md)
-- [Testing](testing.md)
+- [Packages and Extensions](extensions.md)
 
-## Compiler implementation
+## The Gungnir language
 
 - [Language Types](language-types.md)
 - [Expressions](expressions.md)
@@ -88,15 +64,30 @@ Gungnir is under active feature-completion development. Language/compiler/diagno
 - [Async and Await](async.md)
 - [Modules](modules.md)
 - [Grammar](grammar.md)
+- [Errors and Diagnostics](errors.md)
+
+## Runtime and native integration
+
+- [Async Runtime](async-runtime.md)
+- [HTTP Runtime](http-runtime.md)
+- [Native API and ABI](native-api-abi.md)
+- [Performance](performance.md)
+- [Production Resilience](production-resilience.md)
+- [Security Hardening](security-hardening.md)
+
+## Compiler and contributor reference
+
+These documents explain how Gungnir itself works. Application developers do not need them for ordinary framework use.
+
 - [Abstract Syntax Tree](ast.md)
 - [Semantic Analysis](semantics.md)
 - [Validated AST](validated-ast.md)
 - [C++ Intermediate Representation](cpp-ir.md)
-- [Compiler Correctness](compiler-correctness.md)
-- [Compiler Fuzzing](fuzzing.md)
-- [Compiler Conformance](compiler-conformance.md)
 - [Transpiler](transpiler.md)
-- [Compiler profiles and feature status](compiler-profiles.md)
+- [Compiler Correctness](compiler-correctness.md)
+- [Compiler Conformance](compiler-conformance.md)
+- [Compiler Fuzzing](fuzzing.md)
+- [Compiler Profiles](compiler-profiles.md)
 - [Framework Semantic Contracts](framework-semantics.md)
-
-[Editor tooling](editor-tooling.md) covers the structured language server and formatter.
+- [Runtime Correctness](runtime-correctness.md)
+- [Database and ORM Correctness](database-correctness.md)
