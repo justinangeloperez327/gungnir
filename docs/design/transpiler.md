@@ -1,8 +1,8 @@
 # Transpiler and C++23 Lowering
 
-> **Gungnir 1.x design specification.** This document describes the canonical lowering architecture beyond the frozen `1.0.0-rc.1` contract. The [current transpiler guide](../transpiler.md) is authoritative for shipped behavior.
+> **Development design specification.** This document describes the canonical lowering architecture beyond the frozen `development` contract. The [current transpiler guide](../transpiler.md) is authoritative for shipped behavior.
 
-## 1.0 RC alignment
+## Development alignment
 
 The 1.0 compiler no longer treats raw-source rewriting as the canonical structured compilation path. The normal compiler boundary is:
 
