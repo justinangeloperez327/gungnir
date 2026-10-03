@@ -86,9 +86,36 @@ def normalized_link_target(raw: str) -> str:
     return unquote(value)
 
 
+def prose_without_fenced_code(text: str) -> str:
+    output: list[str] = []
+    fence: str | None = None
+
+    for line in text.splitlines():
+        stripped = line.lstrip()
+
+        if fence is None:
+            if stripped.startswith("```"):
+                fence = "```"
+                continue
+
+            if stripped.startswith("~~~"):
+                fence = "~~~"
+                continue
+
+            output.append(line)
+            continue
+
+        if stripped.startswith(fence):
+            fence = None
+
+    return "\n".join(output)
+
+
 def check_relative_links(errors: list[str]) -> None:
     for source in markdown_files():
-        text = source.read_text(encoding="utf-8")
+        text = prose_without_fenced_code(
+            source.read_text(encoding="utf-8")
+        )
 
         for raw in LINK_PATTERN.findall(text):
             target = normalized_link_target(raw)
