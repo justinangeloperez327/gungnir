@@ -923,9 +923,10 @@ std::size_t request_content_length(
         request_line_end ==
         std::string_view::npos
     ) {
-        throw std::invalid_argument(
-            "Invalid HTTP request line"
-        );
+        // header_end points at the CRLF that terminates a
+        // headerless request line, so the sliced header block
+        // contains only the request line in this case.
+        return 0;
     }
 
     std::size_t cursor =
