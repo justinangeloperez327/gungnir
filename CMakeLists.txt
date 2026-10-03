@@ -1,6 +1,20 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(gungnir VERSION 0.9.0 LANGUAGES CXX)
+project(gungnir VERSION 1.0.0 LANGUAGES CXX)
+
+set(GUNGNIR_VERSION_PRERELEASE "rc.1")
+
+if(GUNGNIR_VERSION_PRERELEASE)
+    set(
+        GUNGNIR_VERSION_FULL
+        "${PROJECT_VERSION}-${GUNGNIR_VERSION_PRERELEASE}"
+    )
+else()
+    set(
+        GUNGNIR_VERSION_FULL
+        "${PROJECT_VERSION}"
+    )
+endif()
 
 set(
     GUNGNIR_GENERATED_INCLUDE_DIR
@@ -1017,7 +1031,7 @@ if(GUNGNIR_BUILD_TOOLS)
     target_compile_definitions(
         gungnirc
         PRIVATE
-            GUNGNIR_VERSION="${PROJECT_VERSION}"
+            GUNGNIR_VERSION="${GUNGNIR_VERSION_FULL}"
     )
 
     add_executable(gungnir-cli tools/gungnir.cpp)
@@ -1034,7 +1048,7 @@ if(GUNGNIR_BUILD_TOOLS)
     target_compile_definitions(
         gungnir-cli
         PRIVATE
-            GUNGNIR_VERSION="${PROJECT_VERSION}"
+            GUNGNIR_VERSION="${GUNGNIR_VERSION_FULL}"
     )
     set_target_properties(
         gungnir-cli
@@ -1402,7 +1416,7 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 ${CMAKE_COMMAND}
                 -DGUNGNIRC=$<TARGET_FILE:gungnirc>
-                -DGUNGNIR_VERSION=${PROJECT_VERSION}
+                -DGUNGNIR_VERSION=${GUNGNIR_VERSION_FULL}
                 -P
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/compiler_release_contract.cmake
         )
@@ -2515,7 +2529,7 @@ write_basic_package_version_file(
     VERSION
         ${PROJECT_VERSION}
     COMPATIBILITY
-        SameMinorVersion
+        SameMajorVersion
 )
 
 install(
