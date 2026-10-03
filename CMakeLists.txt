@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(gungnir VERSION 1.0.0 LANGUAGES CXX)
+project(gungnir VERSION 0.0.0 LANGUAGES CXX)
 
-set(GUNGNIR_VERSION_PRERELEASE "rc.1")
+set(GUNGNIR_VERSION_PRERELEASE "dev")
 
 if(GUNGNIR_VERSION_PRERELEASE)
     set(
