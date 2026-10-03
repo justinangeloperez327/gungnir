@@ -12,7 +12,7 @@ Download the Windows setup executable from GitHub Releases:
 gungnir-v<version>-windows-x86_64-setup.exe
 ```
 
-Run the installer normally. Beginning with v0.1.2, the installer adds `<install directory>\bin` to the **current user's PATH** automatically. It does not modify the system PATH, so an already-long machine PATH does not block Gungnir from being registered.
+Run the installer normally. The current 0.9 installer adds `<install directory>\bin` to the **current user's PATH** automatically. It does not modify the system PATH, so an already-long machine PATH does not block Gungnir from being registered.
 
 After installation, close existing terminal windows and open a new PowerShell or Command Prompt:
 
