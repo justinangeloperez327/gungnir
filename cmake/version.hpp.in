@@ -5,7 +5,7 @@
 #define GUNGNIR_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
 #define GUNGNIR_VERSION_MINOR @PROJECT_VERSION_MINOR@
 #define GUNGNIR_VERSION_PATCH @PROJECT_VERSION_PATCH@
-#define GUNGNIR_VERSION_STRING "@PROJECT_VERSION@"
+#define GUNGNIR_VERSION_STRING "@GUNGNIR_VERSION_FULL@"\n#define GUNGNIR_VERSION_PRERELEASE "@GUNGNIR_VERSION_PRERELEASE@"
 
 #define GUNGNIR_NATIVE_API_CONTRACT_MAJOR 0
 #define GUNGNIR_NATIVE_API_CONTRACT_MINOR 9
@@ -30,7 +30,7 @@ inline constexpr std::string_view
     native_api_contract_version = "0.9";
 
 // ABI epoch identifies intentionally incompatible native binary lines.
-// Epoch 0 remains pre-1.0 and requires a matching toolchain/stdlib ABI.
+// Epoch 1 is the 1.x native ABI line and still requires a matching toolchain/stdlib ABI.
 inline constexpr int native_abi_epoch =
     GUNGNIR_NATIVE_ABI_EPOCH;
 
