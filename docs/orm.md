@@ -2,6 +2,10 @@
 
 > **Status: experimental, pre-1.0.** This page describes the current implementation. Native C++ APIs and `.gnr` syntax are identified separately. Proposed contracts are in the [design specification](design/orm.md).
 
+## Performance baseline
+
+Phase 16 benchmarks complex ORM query-plan compilation for PostgreSQL, MySQL/MariaDB, SQL Server, and MongoDB. Database execution latency is intentionally excluded from this microbenchmark surface. See [Performance Baseline](performance.md).
+
 ## Current behavior
 
 The native ORM supplies model queries, hydration, persistence, pagination, soft-delete operations and relationship loading/mutations. Multi-model results use `orm::Collection<Model>`; pagination returns `orm::Page<Model>`.
