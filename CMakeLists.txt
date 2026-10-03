@@ -2,6 +2,22 @@ cmake_minimum_required(VERSION 3.25)
 
 project(gungnir VERSION 0.9.0 LANGUAGES CXX)
 
+set(
+    GUNGNIR_GENERATED_INCLUDE_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/include"
+)
+
+file(
+    MAKE_DIRECTORY
+    "${GUNGNIR_GENERATED_INCLUDE_DIR}/gungnir"
+)
+
+configure_file(
+    cmake/version.hpp.in
+    "${GUNGNIR_GENERATED_INCLUDE_DIR}/gungnir/version.hpp"
+    @ONLY
+)
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -332,6 +348,7 @@ add_library(gungnir::language ALIAS gungnir-language)
 target_compile_features(gungnir-language PUBLIC cxx_std_23)
 target_include_directories(gungnir-language
     PUBLIC
+        $<BUILD_INTERFACE:${GUNGNIR_GENERATED_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
@@ -340,6 +357,8 @@ set_target_properties(gungnir-language PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME language
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
 if(GUNGNIR_BUILD_FUZZERS)
@@ -426,6 +445,7 @@ target_compile_features(gungnir-orm PUBLIC cxx_std_23)
 target_link_libraries(gungnir-orm PUBLIC gungnir::gungnir)
 target_include_directories(gungnir-orm
     PUBLIC
+        $<BUILD_INTERFACE:${GUNGNIR_GENERATED_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
@@ -434,6 +454,8 @@ set_target_properties(gungnir-orm PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME orm
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
 target_compile_features(gungnir PUBLIC cxx_std_23)
@@ -485,6 +507,7 @@ endif()
 
 target_include_directories(gungnir
     PUBLIC
+        $<BUILD_INTERFACE:${GUNGNIR_GENERATED_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
@@ -493,7 +516,35 @@ set_target_properties(gungnir PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME gungnir
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
 )
+
+if(BUILD_SHARED_LIBS)
+    foreach(
+        target
+        IN ITEMS
+            gungnir
+            gungnir-orm
+            gungnir-language
+    )
+        target_compile_definitions(
+            ${target}
+            PUBLIC
+                GUNGNIR_SHARED=1
+            PRIVATE
+                GUNGNIR_BUILDING_LIBRARY=1
+        )
+
+        if(WIN32)
+            set_target_properties(
+                ${target}
+                PROPERTIES
+                    WINDOWS_EXPORT_ALL_SYMBOLS ON
+            )
+        endif()
+    endforeach()
+endif()
 
 if(GUNGNIR_WITH_POSTGRESQL)
     add_library(
@@ -1065,6 +1116,27 @@ endif()
 
 if(GUNGNIR_BUILD_TESTS)
     enable_testing()
+
+    add_executable(
+        gungnir_public_api_contract_test
+        tests/public_api_contract.cpp
+    )
+    target_link_libraries(
+        gungnir_public_api_contract_test
+        PRIVATE
+            gungnir::gungnir
+            gungnir::orm
+            gungnir::language
+    )
+    target_compile_features(
+        gungnir_public_api_contract_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.public_api_contract
+        COMMAND gungnir_public_api_contract_test
+    )
 
     add_executable(gungnir_project_tooling_test tests/project_tooling.cpp)
     target_link_libraries(gungnir_project_tooling_test PRIVATE gungnir-cli-support)
@@ -2414,6 +2486,13 @@ install(
 )
 
 install(
+    FILES
+        "${GUNGNIR_GENERATED_INCLUDE_DIR}/gungnir/version.hpp"
+    DESTINATION
+        "${CMAKE_INSTALL_INCLUDEDIR}/gungnir"
+)
+
+install(
     EXPORT
         GungnirTargets
     FILE
@@ -2436,7 +2515,7 @@ write_basic_package_version_file(
     VERSION
         ${PROJECT_VERSION}
     COMPATIBILITY
-        SameMajorVersion
+        SameMinorVersion
 )
 
 install(

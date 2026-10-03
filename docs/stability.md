@@ -12,18 +12,21 @@ Gungnir 0.9 separates package, source-language, compiler, and diagnostic compati
 | Structured language | 0.9 | Feature-frozen for the 0.9 line |
 | Compiler semantic contract | 0.9 | Changes must preserve accepted/rejected behavior for the frozen profile unless explicitly documented as a correction |
 | Diagnostic code contract | 0.9 | Existing diagnostic codes used by tooling/tests must not be casually renumbered |
-| Generated C++ ABI/spelling | Unstable | Rebuild with the matching compiler/runtime |
-| Native runtime C++ API | Experimental | Source/ABI compatibility is not guaranteed before 1.0 |
+| Generated C++ ABI/spelling | Unstable | Rebuild generated application code with the matching compiler/runtime |
+| Native runtime C++ API | 0.9 | Stabilized representative public source signatures are compile-time gated across the 0.9 patch line |
+| Native runtime ABI epoch | 0 | Shared-library identity is versioned, but binary compatibility still requires a compatible platform/compiler/standard-library ABI |
 | Compatibility transpiler | Transitional | Explicit `--compat` only; not part of the 0.9 structured-language guarantee |
 
-The compiler exposes this metadata through:
+The compiler exposes source-language/compiler metadata through:
 
 ```sh
 gungnirc --version
 gungnirc --print-contract
 ```
 
-The contract output is machine-readable and verified in CI and release packaging.
+Native C++ consumers use `<gungnir/version.hpp>` and the installed CMake package metadata for package version, native API contract, and native ABI epoch. The compiler contract output remains source-language focused and is not expanded merely to carry native package metadata.
+
+The contract outputs are machine-readable and verified in CI and release packaging. See [Native API and ABI Stability](native-api-abi.md).
 
 ## What “feature-frozen” means
 
@@ -51,6 +54,9 @@ The structured compiler is the canonical `gungnirc` profile. `--strict` remains 
 
 Within the 0.9 line:
 
+- representative stabilized native C++ signatures are guarded by the public API contract test;
+- installed-package consumers request the 0.9 minor compatibility line and validate native API/ABI metadata;
+- Linux and Windows shared-library package consumers are exercised in dedicated ABI CI;
 - validated source behavior and diagnostic codes are guarded by dedicated stability tests;
 - `--check` remains a validation-only semantic gate and stops at `ValidatedProject`;
 - GCC, Clang, and MSVC must pass the same compiler stability/correctness corpus;

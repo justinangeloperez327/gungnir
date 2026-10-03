@@ -1,0 +1,37 @@
+#pragma once
+
+#include <string_view>
+
+#define GUNGNIR_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define GUNGNIR_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define GUNGNIR_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define GUNGNIR_VERSION_STRING "@PROJECT_VERSION@"
+
+#define GUNGNIR_NATIVE_API_CONTRACT_MAJOR 0
+#define GUNGNIR_NATIVE_API_CONTRACT_MINOR 9
+#define GUNGNIR_NATIVE_ABI_EPOCH 0
+
+namespace gungnir {
+
+inline constexpr int version_major =
+    GUNGNIR_VERSION_MAJOR;
+
+inline constexpr int version_minor =
+    GUNGNIR_VERSION_MINOR;
+
+inline constexpr int version_patch =
+    GUNGNIR_VERSION_PATCH;
+
+inline constexpr std::string_view version =
+    GUNGNIR_VERSION_STRING;
+
+// Native C++ source API contract for the stabilized 0.9 line.
+inline constexpr std::string_view
+    native_api_contract_version = "0.9";
+
+// ABI epoch identifies intentionally incompatible native binary lines.
+// Epoch 0 remains pre-1.0 and requires a matching toolchain/stdlib ABI.
+inline constexpr int native_abi_epoch =
+    GUNGNIR_NATIVE_ABI_EPOCH;
+
+} // namespace gungnir
