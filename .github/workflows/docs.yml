@@ -1,0 +1,86 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "docs/**"
+      - "examples/**"
+      - "tools/check_docs.py"
+      - "include/gungnir/language/**"
+      - "src/language/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "docs/**"
+      - "examples/**"
+      - "tools/check_docs.py"
+      - "include/gungnir/language/**"
+      - "src/language/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Public docs and examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate documentation integrity
+        run: python3 tools/check_docs.py
+
+      - name: Configure compiler
+        run: >
+          cmake -S . -B build-docs -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
+
+      - name: Build structured compiler
+        run: >
+          cmake --build build-docs
+          --target gungnirc
+          --parallel 2
+
+      - name: Validate canonical example
+        run: >
+          ./build-docs/gungnirc
+          examples/hello/app/controllers/HomeController.gnr
+          --check
+
+      - name: Emit canonical example C++
+        run: >
+          ./build-docs/gungnirc
+          examples/hello/app/controllers/HomeController.gnr
+          -o hello-example.cpp
+
+      - name: Compile emitted example
+        run: >
+          c++ -std=c++23
+          -Iinclude
+          -Ibuild-docs/generated/include
+          -c hello-example.cpp
+          -o hello-example.o
