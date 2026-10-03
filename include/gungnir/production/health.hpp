@@ -58,23 +58,27 @@ public:
 
     [[nodiscard]]
     bool live() const noexcept {
-        return liveness_report().healthy;
+        return evaluate_boolean(
+            liveness_
+        );
     }
 
     [[nodiscard]]
     bool ready() const noexcept {
-        return readiness_report().healthy;
+        return evaluate_boolean(
+            readiness_
+        );
     }
 
     [[nodiscard]]
     HealthReport liveness_report()
-        const noexcept {
+        const {
         return evaluate(liveness_);
     }
 
     [[nodiscard]]
     HealthReport readiness_report()
-        const noexcept {
+        const {
         return evaluate(readiness_);
     }
 
@@ -132,9 +136,29 @@ private:
     }
 
     [[nodiscard]]
-    static HealthReport evaluate(
+    static bool evaluate_boolean(
         const std::vector<HealthCheck>& checks
     ) noexcept {
+        for (const auto& item : checks) {
+            try {
+                if (
+                    !item.check ||
+                    !item.check()
+                ) {
+                    return false;
+                }
+            } catch (...) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    [[nodiscard]]
+    static HealthReport evaluate(
+        const std::vector<HealthCheck>& checks
+    ) {
         HealthReport report;
         report.checks.reserve(
             checks.size()
