@@ -1,6 +1,6 @@
 # Security Hardening
 
-> **Status: experimental, pre-1.0.** Phase 14 establishes a tested security baseline for Gungnir's currently supported HTTP/session runtime. It does not replace application threat modeling or deployment-specific controls.
+> **Status: Gungnir 1.0 security baseline.** Phase 14 establishes tested HTTP/session security behavior. It does not replace application threat modeling or deployment-specific controls.
 
 ## Phase 14 guarantees
 
