@@ -1207,6 +1207,11 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_compiler_correctness_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.compiler_correctness COMMAND gungnir_compiler_correctness_test)
 
+    add_executable(gungnir_model_relationships_test tests/model_relationships.cpp)
+    target_link_libraries(gungnir_model_relationships_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_model_relationships_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.model_relationships COMMAND gungnir_model_relationships_test)
+
     add_executable(gungnir_compiler_stability_test tests/compiler_stability.cpp)
     target_link_libraries(gungnir_compiler_stability_test PRIVATE gungnir::language)
     target_compile_features(gungnir_compiler_stability_test PRIVATE cxx_std_23)
@@ -1224,6 +1229,23 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(NAME gungnir.language COMMAND gungnir_language_test)
 
     if(GUNGNIR_BUILD_TOOLS)
+        set(GUNGNIR_STRUCTURED_ORM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_orm_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_ORM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/orm.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_ORM}"
+            DEPENDS gungnirc tests/fixtures/structured/orm.gnr VERBATIM)
+        set_source_files_properties("${GUNGNIR_STRUCTURED_ORM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        add_executable(gungnir_structured_orm_contract_test tests/structured_orm_contract.cpp "${GUNGNIR_STRUCTURED_ORM}")
+        target_include_directories(gungnir_structured_orm_contract_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_orm_contract_test PRIVATE gungnir::gungnir gungnir::orm)
+        target_compile_features(gungnir_structured_orm_contract_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_orm_contract COMMAND gungnir_structured_orm_contract_test)
+        if(GUNGNIR_WITH_SQLITE)
+            add_executable(gungnir_structured_orm_test tests/structured_orm.cpp "${GUNGNIR_STRUCTURED_ORM}")
+            target_include_directories(gungnir_structured_orm_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+            target_link_libraries(gungnir_structured_orm_test PRIVATE gungnir::gungnir gungnir::orm)
+            target_compile_features(gungnir_structured_orm_test PRIVATE cxx_std_23)
+            add_test(NAME gungnir.structured_orm COMMAND gungnir_structured_orm_test)
+        endif()
         set(GUNGNIR_STRUCTURED_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/program.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_PROGRAM}"
@@ -1378,6 +1400,8 @@ if(GUNGNIR_BUILD_TESTS)
 
     if(GUNGNIR_BUILD_TOOLS)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME gungnir.docs_orm_examples COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_orm_examples.py $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.lsp_protocol COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp_protocol.py $<TARGET_FILE:gungnir-cli>)
         add_test(
@@ -2665,4 +2689,3 @@ SendMessage 0xffff 0x001A 0 "STR:Environment" /TIMEOUT=5000
 endif()
 
 include(CPack)
-

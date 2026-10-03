@@ -40,3 +40,17 @@ target_link_libraries(
         gungnir::orm
         gungnir::language
 )
+
+if(DEFINED GUNGNIR_STRUCTURED_ORM_GENERATED)
+    get_filename_component(orm_generated_dir "${GUNGNIR_STRUCTURED_ORM_GENERATED}" DIRECTORY)
+    add_executable(gungnir_installed_orm_contract ../structured_orm_contract.cpp)
+    target_include_directories(gungnir_installed_orm_contract PRIVATE "${orm_generated_dir}")
+    target_compile_features(gungnir_installed_orm_contract PRIVATE cxx_std_23)
+    target_link_libraries(gungnir_installed_orm_contract PRIVATE gungnir::gungnir gungnir::orm)
+    if(TARGET SQLite::SQLite3 OR TARGET SQLite3::SQLite3)
+        add_executable(gungnir_installed_orm ../structured_orm.cpp)
+        target_include_directories(gungnir_installed_orm PRIVATE "${orm_generated_dir}")
+        target_compile_features(gungnir_installed_orm PRIVATE cxx_std_23)
+        target_link_libraries(gungnir_installed_orm PRIVATE gungnir::gungnir gungnir::orm)
+    endif()
+endif()

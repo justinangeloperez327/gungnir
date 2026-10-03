@@ -251,6 +251,12 @@ void load_relation(
             pivot_plan,
             connection->backend()
         );
+        report(QueryEvent{
+            pivot_plan.connection,
+            connection->backend(),
+            compiled.text,
+            compiled.bindings.size()
+        });
         const auto pivot = connection->execute(
             compiled.text,
             compiled.bindings
@@ -874,4 +880,3 @@ Derived Model<Derived>::replicate() const {
 }
 
 } // namespace gungnir
-

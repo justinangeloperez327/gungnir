@@ -1,69 +1,112 @@
 # ORM Relationships
 
-Relationships describe how models are connected. Gungnir supports one-to-one, one-to-many, inverse, many-to-many, and through relationships with typed related models and eager loading.
-
-## One to one
-
-```gnr
-model User {
-    profile() {
-        return hasOne<Profile>();
-    }
-}
-```
-
-## One to many
+Relationships connect typed models. Declare a public, synchronous, parameterless
+method that returns one of the six relationship helpers.
 
 ```gnr
 model User {
-    posts() {
-        return hasMany<Post>();
-    }
+    profile() { return hasOne<Profile>(); }
+    posts() { return hasMany<Post>(); }
+    roles() { return belongsToMany<Role>(); }
+    firstComment() { return hasOneThrough<Comment, Post>(); }
+    comments() { return hasManyThrough<Comment, Post>(); }
 }
-```
 
-## Belongs to
-
-```gnr
 model Post {
-    author() {
-        return belongsTo<User>();
-    }
+    author() { return belongsTo<User>("user_id"); }
+    comments() { return hasMany<Comment>(); }
 }
 ```
 
-## Many to many
+Through helpers take the related model first and the intermediate model second.
+Related types can be imported models, including module aliases. Self relationships
+use the same syntax.
+
+## Keys
+
+Keys default to the models' declared primary keys. Foreign keys combine the
+singular snake-case model name and its key, such as `user_id` or `tenant_uuid`.
+`belongsTo` instead combines the relationship name and the related key: an
+`author` relationship defaults to `author_id`. The default pivot table joins the
+two singular model names alphabetically, such as `role_user`.
+
+Override keys with positional or named string literals:
 
 ```gnr
-model User {
-    roles() {
-        return belongsToMany<Role>();
-    }
+model Tenant {
+    primaryKey = "uuid";
+    incrementing = false;
+    casts = {"uuid": "string"};
+    projects() { return hasMany<Project>(foreignKey: "owner_uuid"); }
+}
+
+model Project {
+    owner() { return belongsTo<Tenant>("owner_uuid"); }
 }
 ```
 
-Many-to-many relationships expose pivot-aware relationship operations for attaching and detaching related records.
+| Helper | Key arguments, in order |
+| --- | --- |
+| `hasOne`, `hasMany` | `foreignKey`, `localKey` |
+| `belongsTo` | `foreignKey`, `ownerKey` |
+| `belongsToMany` | `pivotTable`, `foreignPivotKey`, `relatedPivotKey`, `parentKey`, `relatedKey` |
+| `hasOneThrough`, `hasManyThrough` | `firstKey`, `secondKey`, `localKey`, `secondLocalKey` |
 
-## Through relationships
+Key names must be valid attribute or table identifiers. Foreign-key fields are
+typed from their referenced keys; an explicitly declared field must agree.
+Declare an optional field, such as `int? parent_id`, when a relationship permits
+a null foreign key. Create the actual columns and pivot tables with migrations.
+Include foreign keys in `fillable` when assigning them through `create` or `update`.
 
-Gungnir provides `hasOneThrough` and `hasManyThrough` for relationships reached through an intermediate model.
-
-## Key conventions
-
-Relationship definitions use conventional foreign and local keys by default. Applications can provide explicit keys when their database schema does not follow those conventions.
-
-## Eager loading
+## Eager loading and loaded values
 
 ```gnr
-const users = User::with("posts").get();
+const users = User::with(["posts.comments", "profile", "roles"]).get();
 ```
 
-Eager loading batches parent keys and populates the loaded relationship state. A loaded empty relationship is distinct from a relationship that has not been loaded.
+Eager loading batches parent keys. Nested paths load each requested edge in
+batches; pivot and through relationships query their intermediate data as well.
+Query counts depend on the requested paths rather than the number of parents.
 
-## Relationship access
+Property access inspects the loaded relationship:
 
-Accessing a relationship that was not loaded may require a relationship query or explicit eager load, depending on the operation. Gungnir does not silently hide N+1 database access behind ordinary property access.
+```gnr
+const loaded = user.posts.loaded();
+const posts = user.posts.get();
+const count = user.posts.size();
+const profile = user.profile.value();
+```
 
-## Relationship queries
+Many-valued `get()` returns `List<Related>`. Single-valued `get()` returns a model
+and throws when loaded empty; `value()` returns `Related?` instead. `loaded()`
+distinguishes an unloaded relationship from a loaded empty one. Loaded-value
+access and many-valued `empty()` throw `RelationNotLoaded` if no load has occurred.
+Single-valued `empty()` is false until loaded. `unload()`
+clears the loaded state. Traversing loaded values performs no database queries.
 
-Relationships can be used as query scopes so filtering, ordering, pagination, and other query operations remain available for related records.
+## Scoped queries
+
+Calling the relationship method creates a query scoped to that parent:
+
+```gnr
+const posts = user.posts().where("title", "!=", "draft").orderBy("id", "desc").get();
+```
+
+The scoped query returns ordinary ORM results and supports filtering, retrieval,
+pagination and mutations. It does not require or populate the property cache.
+See [ORM](orm.md) for terminal operations and result types.
+
+## Pivot mutations
+
+```gnr
+let user = User::with("roles").findOrFail(id);
+user.roles.attach([role_id]);
+user.roles.detach(role_id);
+user.roles.detach();
+```
+
+`attach` and `detach` accept a related key or a list of related keys and return
+the affected pivot count. Calling `detach()` removes all links for that parent.
+Keys use the relationship's configured `relatedKey` type. Mutations require a
+mutable model and invalidate its loaded relationship cache. Parent and related
+records remain intact.

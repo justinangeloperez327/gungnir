@@ -1,0 +1,151 @@
+model User {
+    fillable = ["name", "active", "settings", "password"];
+    hidden = ["password"];
+    casts = {"active": "bool", "settings": "json"};
+    timestamps = true;
+    softDeletes = true;
+
+    profile() { return hasOne<Profile>(); }
+    posts() { return hasMany<Post>(); }
+    roles() { return belongsToMany<Role>(); }
+    rolesByName() { return belongsToMany<Role>(pivotTable: "role_name_user", relatedPivotKey: "role_name", relatedKey: "name"); }
+    comments() { return hasManyThrough<Comment, Post>(); }
+    firstComment() { return hasOneThrough<Comment, Post>(); }
+}
+
+model Post {
+    fillable = ["user_id", "title"];
+    author() { return belongsTo<User>("user_id"); }
+    comments() { return hasMany<Comment>(); }
+}
+
+model Profile { fillable = ["user_id", "display_name"]; }
+model Role {
+    fillable = ["name"];
+    users() { return belongsToMany<User>(); }
+}
+model Comment { fillable = ["post_id", "body"]; }
+
+model Tenant {
+    primaryKey = "uuid";
+    incrementing = false;
+    fillable = ["uuid", "name"];
+    casts = {"uuid": "string"};
+    projects() { return hasMany<Project>(foreignKey: "owner_uuid"); }
+}
+model Project {
+    fillable = ["owner_uuid", "name"];
+    owner() { return belongsTo<Tenant>("owner_uuid"); }
+}
+model Node {
+    int? parent_id;
+    fillable = ["parent_id", "name"];
+    children() { return hasMany<Node>("parent_id"); }
+    parent() { return belongsTo<Node>(); }
+}
+
+migration CreateOrmTables {
+    up() {
+        Table::create("users", (table) => {
+            table.id();
+            table.string("name");
+            table.boolean("active");
+            table.json("settings");
+            table.string("password");
+            table.timestamps();
+            table.softDeletes();
+        });
+        Table::create("posts", (table) => {
+            table.id(); table.integer("user_id"); table.string("title");
+        });
+        Table::create("profiles", (table) => {
+            table.id(); table.integer("user_id"); table.string("display_name");
+        });
+        Table::create("roles", (table) => { table.id(); table.string("name"); });
+        Table::create("role_user", (table) => { table.integer("role_id"); table.integer("user_id"); });
+        Table::create("role_name_user", (table) => { table.string("role_name"); table.integer("user_id"); });
+        Table::create("comments", (table) => { table.id(); table.integer("post_id"); table.string("body"); });
+        Table::create("tenants", (table) => { table.string("uuid").primary(); table.string("name"); });
+        Table::create("projects", (table) => { table.id(); table.string("owner_uuid"); table.string("name"); });
+        Table::create("nodes", (table) => { table.id(); table.integer("parent_id").nullable(); table.string("name"); });
+    }
+    down() {
+        Table::dropIfExists("nodes"); Table::dropIfExists("projects"); Table::dropIfExists("tenants");
+        Table::dropIfExists("comments"); Table::dropIfExists("role_name_user"); Table::dropIfExists("role_user"); Table::dropIfExists("roles");
+        Table::dropIfExists("profiles"); Table::dropIfExists("posts"); Table::dropIfExists("users");
+    }
+}
+
+function User createUser(string name) {
+    return User::create({"name": name, "active": true, "settings": {"theme": "blue"}, "password": "secret"});
+}
+function Post createPost(int user, string title) { return Post::create({"user_id": user, "title": title}); }
+function Profile createProfile(int user, string name) { return Profile::create({"user_id": user, "display_name": name}); }
+function Role createRole(string name) { return Role::create({"name": name}); }
+function Comment createComment(int post, string body) { return Comment::create({"post_id": post, "body": body}); }
+function Tenant createTenant(string key) { return Tenant::create({"uuid": key, "name": "Tenant"}); }
+function Project createProject(string key) { return Project::create({"owner_uuid": key, "name": "Project"}); }
+function Node createNode(int? parent) { return Node::create({"parent_id": parent, "name": "Node"}); }
+
+function Collection<User> loadedUsers() {
+    return User::with(["posts.comments", "profile", "roles", "comments", "firstComment"])
+        .orderBy("name", "desc").get();
+}
+function Collection<User> filteredUsers() { return User::where("active", true).limit(20).offset(0).get(); }
+function Collection<User> selectedUsers() { return User::query().select(["id", "name"]).orderByDesc("id").get(); }
+function Collection<User> listedUsers(int first, int second) { return User::whereIn("id", [first, second]).get(); }
+function User? findUser(int id) { return User::find(id); }
+function User requireUser(int id) { return User::findOrFail(id); }
+function User? firstUser() { return User::where("active", true).first(); }
+function User requireFirstUser() { return User::where("active", true).firstOrFail(); }
+function Page<User> userPage() { return User::where("active", true).orderBy("id").paginate(1, 1); }
+function int pageTotal() { return userPage().total; }
+function int queryFind(int id) { return User::where("active", true).findOrFail(id).id; }
+function int postCount(int user) { return User::findOrFail(user).posts().where("title", "!=", "excluded").count(); }
+function int roleCount(int user) { return User::findOrFail(user).roles().count(); }
+function Collection<User> collectionFilter() { return User::all().filter((user) => user.active).sortBy((user) => user.name); }
+function Collection<User> collectionReject() { return User::all().reject((user) => user.name == "Empty").take(1); }
+function bool collectionPredicates() { return User::all().contains((user) => user.name == "Ada") && User::all().every((user) => user.active); }
+function int collectionSum() { return User::all().sum((user) => user.id); }
+function int collectionReduce() { return User::all().reduce(0, (sum, user) => sum + user.id); }
+function User? collectionFind(int id) { return User::all().find(id); }
+function int collectionSizes() { return User::all().skip(1).unique((user) => user.name).values().size(); }
+function int collectionChunks() { return User::all().chunk(2).size(); }
+function string collectionFirst() { return User::all().sortBy((user) => user.name).first().name; }
+function Collection<User> storedRelations() { const relations = ["posts", "roles"]; return User::with(relations).get(); }
+function Collection<User> noUsers() { return User::whereIn("id", []).get(); }
+function bool savedName(int id, string name) {
+    let user = User::findOrFail(id);
+    user.name = name;
+    if (!user.dirty()) { return false; }
+    user.save();
+    return !user.dirty();
+}
+function bool savedSettings(int id) {
+    let user = User::findOrFail(id);
+    user.settings = {"theme": "silver"};
+    user.save();
+    return !user.dirty();
+}
+function int bulkName(int id) { return User::where("id", id).update({"name": "updated"}); }
+function bool removeUser(int id) { let user = User::findOrFail(id); return user.remove(); }
+function int deletedUsers() { return User::onlyDeleted().count(); }
+function int restoreUser(int id) { return User::withDeleted().where("id", id).restore(); }
+function int attachRole(int id, int role) {
+    let user = User::with("roles").findOrFail(id);
+    const keys = [role];
+    user.roles.attach(keys);
+    if (user.roles.loaded()) { return -1; }
+    return user.roles().count();
+}
+function int detachRole(int id, int role) { let user = User::findOrFail(id); return user.roles.detach(role); }
+function int detachRoles(int id) { let user = User::findOrFail(id); return user.roles.detach(); }
+function int attachNamedRole(int id, string key) { let user = User::findOrFail(id); return user.rolesByName.attach(key); }
+function int namedRoleCount(int id) { return User::findOrFail(id).rolesByName().count(); }
+function List<Role> loadedNamedRoles(int id) { return User::with("rolesByName").findOrFail(id).rolesByName.get(); }
+function Collection<Project> tenantProjects(string key) { return Tenant::findOrFail(key).projects().get(); }
+function Collection<Node> nodeChildren(int id) { return Node::findOrFail(id).children().get(); }
+
+controller UserApi {
+    index() { return json(User::where("active", true).orderBy("name").get()); }
+}
