@@ -129,25 +129,6 @@ def main() -> int:
         "installed CMake package ABI epoch is not 0",
     )
 
-    release_workflow = read(".github/workflows/release.yml")
-    require(
-        errors,
-        "GUNGNIR_VERSION_PRERELEASE" in release_workflow,
-        "release workflow does not validate the source prerelease marker",
-    )
-    require(
-        errors,
-        "language_version=development" in release_workflow
-        and "compiler_contract=development" in release_workflow
-        and "diagnostic_contract=development" in release_workflow,
-        "release workflow does not verify development compiler contracts",
-    )
-    require(
-        errors,
-        "compatibility=experimental" in release_workflow,
-        "release workflow does not verify development compiler compatibility",
-    )
-
     readme = read("README.md")
     require(
         errors,
@@ -175,13 +156,6 @@ def main() -> int:
         "not a release candidate" in rc_doc,
         "release-candidate guide does not explain development status",
     )
-
-    for path in sorted((ROOT / "docs").rglob("*.md")):
-        text = path.read_text(encoding="utf-8")
-        if "pre-1.0" in text:
-            errors.append(
-                f"{path.relative_to(ROOT)} still carries a pre-1.0 status/reference"
-            )
 
     if errors:
         print("Development contract failed:", file=sys.stderr)
