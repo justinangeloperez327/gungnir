@@ -1,11 +1,11 @@
 # Validation
 
-> **Gungnir 1.x design specification.** This document describes intended long-term architecture beyond the frozen `1.0.0-rc.1` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../validation.md) before using an API.
+> **Development design specification.** This document describes intended long-term architecture beyond the frozen `development` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../validation.md) before using an API.
 
 
-## 1.0 RC alignment
+## Development alignment
 
-The shipped baseline is `1.0.0-rc.1`. The 1.0 contracts are frozen; this design document may describe additive 1.x evolution or future-major work, but current implementation guides and executable tests remain authoritative.
+Gungnir is under active development. No 1.0 compatibility contract is frozen; this document may describe intended future architecture, but current implementation guides and executable tests remain authoritative.
 
 Gungnir validation verifies that incoming or application data satisfies declared rules before the data is used.
 
