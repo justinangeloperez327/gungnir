@@ -1,6 +1,29 @@
 # Changelog
 
-Gungnir follows a pre-1.0 stabilization model. This changelog records user-visible contract milestones; Git history remains the detailed implementation record.
+This changelog records user-visible contract milestones; Git history remains the detailed implementation record.
+
+## [1.0.0-rc.1] - 2026-10-03
+
+### 1.0 contract freeze
+
+- promoted the structured language contract to 1.0;
+- promoted compiler semantics and diagnostic contracts to 1.0;
+- marked the structured compiler compatibility level stable;
+- promoted the native C++ source API contract to 1.0;
+- advanced the native ABI epoch to 1;
+- switched installed CMake compatibility to the 1.x same-major policy.
+
+### Release-candidate hardening
+
+- added a release-candidate contract checker and dedicated RC package workflow;
+- made CLI/compiler/package identity prerelease-aware;
+- made release tag validation require the source-tree prerelease marker;
+- verified installed package consumers and benchmark smoke from the RC package;
+- froze Phase 20 as promotion-only work.
+
+### Maturity baseline
+
+The RC incorporates runtime lifecycle correctness, database/ORM correctness, framework semantic completion, security hardening, production resilience, performance baselines, native API/ABI stabilization, and documentation/ecosystem readiness completed after 0.9.0.
 
 ## [0.9.0] - 2026-10-02
 
@@ -35,9 +58,4 @@ Gungnir follows a pre-1.0 stabilization model. This changelog records user-visib
 
 ## Unreleased
 
-### Documentation and ecosystem
-
-- canonical documentation integrity checking;
-- canonical minimal application example;
-- contributor, support, security, and upgrade guidance;
-- documentation CI and copyable-example validation.
+- final 1.0.0 promotion only; no new features are planned between RC1 and stable unless required by a release-blocking correction.
