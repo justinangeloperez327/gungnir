@@ -1,26 +1,51 @@
 # Queues and Jobs
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Queues move work outside the immediate request path. Jobs are typed units of work that can be serialized, dispatched, retried, and executed by workers.
 
-## Current behavior
+## Defining a job
 
-Queue contracts separate envelopes, drivers and workers. The envelope carries serialized payload and job identity/attempt information. Worker handlers are registered by name; worker options control retries and execution policy. Memory and optional Redis drivers are provided.
+```gnr
+job GenerateReport {
+    int report_id;
 
-Workers expose stop requests and cancellation-aware execution. Lease renewal supports driver-owned reservations.
+    handle() {
+        // Generate the report.
+    }
+}
+```
 
-Structured `job` declarations generate immutable data constructors, typed JSON payloads, `from_payload` and `register_job(worker)`. Jobs with injected services use `register_job(worker, container)` and resolve services during decoding. Async handlers are awaited to completion by the synchronous worker; failures propagate to its retry handling. The container must outlive registered handlers.
+Job fields form the serialized payload.
 
-## Limits and planned work
+## Dependency injection
 
-Jobs must tolerate retries; do not promise exactly-once side effects. Memory queues are process-local. Queue delivery does not share the request's open database transaction. `queue::Dispatcher` defaults to publishing after the active transaction commits; nested rollback discards that scope's pending jobs. Publication failures propagate after the database has committed, so this is not a durable transactional outbox. Pass `after_commit=false` for immediate dispatch. Static `.gnr` dispatch syntax remains separate.
+Jobs can inject services required by their handler. Services are resolved by the worker when the payload is reconstructed.
 
-Register `ServicesProvider` with explicit queue/cache/mail/storage adapters during bootstrap. It also exposes scheduler, event, resource-policy and notification services. Native `register_job`, `register_listener` and `register_policy` helpers wire generated declarations from boot hooks. `schedule_job` connects a scheduled action to the dispatcher; starting workers and running the scheduler remain explicit.
+## Dispatching
 
-## Implementation references
+Jobs are dispatched through the queue dispatcher. Applications choose the configured queue connection/driver.
 
-- [include/gungnir/queue/job.hpp](../include/gungnir/queue/job.hpp)
-- [include/gungnir/queue/driver.hpp](../include/gungnir/queue/driver.hpp)
-- [include/gungnir/queue/worker.hpp](../include/gungnir/queue/worker.hpp)
-- [include/gungnir/queue/redis_driver.hpp](../include/gungnir/queue/redis_driver.hpp)
+## After-commit dispatch
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/queues.md).
+Database-dependent jobs can be published after the active transaction commits so workers do not observe data that later rolls back.
+
+## Workers
+
+Workers reserve jobs from a queue, reconstruct the typed job, execute `handle`, and apply retry/failure policy.
+
+## Retries
+
+Jobs must be designed for retry-safe execution. Queue delivery should not be treated as exactly-once execution.
+
+## Drivers
+
+Gungnir provides an in-memory queue for development/testing and Redis-backed queues for persistent shared workers.
+
+## Cancellation and shutdown
+
+Workers support controlled stop requests and cancellation-aware execution so applications can shut down without abandoning process state unnecessarily.
+
+## Scheduling jobs
+
+The scheduler can dispatch queued jobs on a recurring schedule.
+
+See [Scheduler](scheduler.md).
