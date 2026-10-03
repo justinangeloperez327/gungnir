@@ -216,6 +216,14 @@ void request_framing() {
 
     assert(valid.path() == "/");
 
+    const auto legacy =
+        wire::parse_request(
+            "GET / HTTP/1.0\r\n"
+            "\r\n"
+        );
+
+    assert(legacy.path() == "/");
+
     assert(
         throws_invalid_argument(
             [] {
