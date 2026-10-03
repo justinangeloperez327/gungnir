@@ -93,7 +93,7 @@ Phase 12 is a correctness baseline, not a claim that blocking native database cl
 
 Transaction scopes should not be shared concurrently across unrelated execution contexts. A transaction retains its leased connection for the scope lifetime.
 
-The generated model surface remains pre-1.0. Compiler-level framework semantics that are still marked Partial are handled separately from runtime ORM correctness.
+The generated model surface remains 1.0 RC. Compiler-level framework semantics that are still marked Partial are handled separately from runtime ORM correctness.
 
 ## Implementation references
 
