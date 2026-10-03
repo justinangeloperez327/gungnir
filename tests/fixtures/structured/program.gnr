@@ -41,3 +41,16 @@ notification WelcomeNotice { via(User recipient) { return ['mail']; } toMail(Use
 model Price { table = 'prices'; casts = { amount: 'decimal' }; }
 function Decimal exactAmount() { return exactDecimal('12345678901234567890.123400'); }
 function Json validatePayload(Request request) { return request.validate({ enabled: 'required|boolean', count: 'integer' }); }
+
+middleware PassThrough {
+    async handle(Request request, Next next) {
+        return await next(request);
+    }
+}
+
+model AuditRecord {
+    table = 'audit_records';
+    fillable = ['name'];
+    timestamps = true;
+    softDeletes = true;
+}
