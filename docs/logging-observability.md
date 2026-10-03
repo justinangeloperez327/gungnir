@@ -1,18 +1,14 @@
 # Logging and Observability
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
-## Current behavior
-
+## Overview
 Logging, tracing and metrics have native APIs and memory sinks. Framework paths record HTTP/database/messaging-related instrumentation where integrated. An optional OTLP HTTP exporter is built with `GUNGNIR_WITH_OTLP` and exported as `gungnir::otlp`.
 
 Configure sinks/exporters explicitly; bound buffering and exclude credentials and sensitive payloads.
 
-## Limits and planned work
-
+## Scope
 An exporter is not automatically configured by enabling its build flag. Do not promise complete distributed context propagation or telemetry coverage for every coroutine/native callback without validating that path.
 
-## Implementation references
+
 
 - [include/gungnir/logging/logger.hpp](../include/gungnir/logging/logger.hpp)
 - [include/gungnir/observability/trace.hpp](../include/gungnir/observability/trace.hpp)

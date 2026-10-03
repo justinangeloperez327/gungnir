@@ -1,16 +1,12 @@
 # Packages and Extensions
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
-## Current behavior
-
+## Overview
 Providers register services and participate in application boot/shutdown. The extension Registry stores explicit Plugin instances by package name and rejects duplicate registrations. A plugin supplies package metadata and a provider.
 
-## Limits and planned work
-
+## Scope
 This interface does not implement dynamic library discovery/loading, dependency solving or a package manager. Header/interface presence alone is not a tested installable plugin workflow. Validate a plugin against the exact framework commit and native toolchain.
 
-## Implementation references
+
 
 - [include/gungnir/core/provider.hpp](../include/gungnir/core/provider.hpp)
 - [include/gungnir/extensions/plugin.hpp](../include/gungnir/extensions/plugin.hpp)

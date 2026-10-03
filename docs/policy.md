@@ -1,22 +1,50 @@
 # Policies and Authorization
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Policies organize authorization rules around application models and actions.
 
-## Current behavior
+Authentication answers **who is making the request**. Authorization answers **whether that actor may perform an operation on a resource**.
 
-Structured policy methods infer `auth::Decision`, including conversion from bool expressions. Every public policy ability is now required to be synchronous, return the logical `Decision` type, and accept exactly two non-optional model parameters: actor and resource. Generated `register_policy` binds those methods to `auth::ResourceAuthorization`. Invalid policy surfaces stop at semantic validation with `GNR2304` instead of being silently skipped by registration. Register an authenticated actor resolver with `ResourceAuthorization::actor<Actor>` and register generated policies during application bootstrap. Structured `.gnr` handlers can call `authorize(request, 'view', resource)` using the request service scope. Guests receive 401; denied, missing or ambiguous policy bindings receive 403.
+## Defining a policy
 
-## Limits and planned work
+```gnr
+policy ProjectPolicy {
+    view(User actor, Project project) {
+        return actor.id == project.owner_id
+            ? allow()
+            : deny("You cannot view this project.");
+    }
 
-The existing Identity-only `Authorization` API remains separate. Async resource-policy registration and automatic ORM/authenticated-user resolution are not implemented.
+    update(User actor, Project project) {
+        return actor.id == project.owner_id
+            ? allow()
+            : deny("You cannot update this project.");
+    }
+}
+```
 
-## Implementation references
+Policy abilities receive a typed actor and resource and return an authorization decision.
 
-- [Structured compiler API](../include/gungnir/language/compiler.hpp)
-- [Structured compiler tests](../tests/structured_language.cpp)
+## Authorizing a request
 
-- [include/gungnir/auth/authorization.hpp](../include/gungnir/auth/authorization.hpp)
-- [include/gungnir/auth/authorize.hpp](../include/gungnir/auth/authorize.hpp)
-- [include/gungnir/core/framework_artifacts.hpp](../include/gungnir/core/framework_artifacts.hpp)
+```gnr
+controller ProjectController {
+    show(Request request, Project project) {
+        authorize(request, "view", project);
+        return json(project);
+    }
+}
+```
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/policy.md).
+Authorization resolves the authenticated actor and the policy registered for the resource type.
+
+## Decisions
+
+`allow()` grants the ability. `deny(message)` rejects it and may carry a user-facing or diagnostic reason.
+
+## HTTP behavior
+
+Unauthenticated access and authenticated-but-denied access remain distinct conditions. Applications can customize how those authorization failures are represented to clients.
+
+## Registration
+
+Policies are registered during application bootstrap. The framework uses typed actor/resource contracts so invalid policy signatures can be rejected during compilation.

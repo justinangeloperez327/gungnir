@@ -1,33 +1,77 @@
 # Controllers
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Controllers organize HTTP request handling into typed application actions.
 
-The structured profile (`gungnirc --strict`) supports typed functions and framework actions, structured callbacks, and validated C++ emission. See [compiler profiles](compiler-profiles.md) for usage and current limits. The compatibility profile retains the native syntax described below.
-
-## Current behavior
-
-Use a typed action in the current language frontend. A synchronous action returns `Response`; async actions use an explicit logical result type. The lowerer generates the native controller base and injected dependency plumbing.
-
-Controller helpers include `response`, `text`, `json`, `view`, `html`, `download`, `no_content`, and `redirect`. Request arguments and route arguments must match the currently generated handler signatures.
-
-## Example
+## Defining a controller
 
 ```gnr
-controller HomeController {
-    Response index() {
-        return text("Hello from Gungnir");
+controller UserController {
+    index() {
+        return json(User::all());
     }
 }
 ```
 
-## Limits and planned work
+Controller actions use `Response` as their logical result, so the explicit result type can be omitted when the controller contract makes it unambiguous.
 
-`public index()` uses the implicit Response contract in the structured profile. Compatibility mode continues to require typed actions. Route binding is a separate contract; successful parsing alone does not establish that a handler can be invoked.
+## Requests
 
-## Implementation references
+Actions can receive the current request:
 
-- [include/gungnir/controller/controller.hpp](../include/gungnir/controller/controller.hpp)
-- [src/language/controller_lowering.cpp](../src/language/controller_lowering.cpp)
-- [src/language/parser.cpp](../src/language/parser.cpp)
+```gnr
+controller UserController {
+    store(Request request) {
+        const data = request.validate({
+            "name": "required|string",
+            "email": "required|email"
+        });
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/controller.md).
+        return json(User::create(data), 201);
+    }
+}
+```
+
+## Dependency injection
+
+Services can be injected into controllers and resolved from the application container.
+
+```gnr
+controller ReportController {
+    inject ReportService reports;
+
+    index() {
+        return json(reports.summary());
+    }
+}
+```
+
+## Async actions
+
+```gnr
+controller ReportController {
+    async index() {
+        const report = await reports.generate();
+        return json(report);
+    }
+}
+```
+
+Async actions use the same logical `Response` contract while executing on Gungnir's coroutine runtime.
+
+## Route parameters and model binding
+
+Route parameters are matched to typed action parameters. Model parameters can use route model binding:
+
+```gnr
+controller ProjectController {
+    show(Project project) {
+        return json(project);
+    }
+}
+```
+
+## Responses
+
+Controllers can return text, JSON, views, HTML, redirects, downloads, streams, or no-content responses through the response APIs.
+
+See [Responses](response.md).

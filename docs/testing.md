@@ -1,9 +1,6 @@
 # Testing
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
-## Current behavior
-
+## Overview
 Native `testing::Http` dispatches through the real router and calls the resulting task. It exposes `get`, `post` and generic `send`; use `send` for other HTTP methods. Response assertions and application helpers are provided.
 
 Use memory stores/transports/sinks to inspect application behavior. Compile `.gnr` examples to generated C++ and check that generated code compiles with real framework headers.
@@ -21,19 +18,19 @@ Compiler testing is split by responsibility:
 - **determinism** cases require identical validated dumps and emitted output for identical inputs, including reordered multi-file input;
 - **cross-compiler conformance** requires the same structured fixtures to build, execute and emit byte-identical compiler snapshots under GCC, Clang and MSVC.
 
-`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Phase 6 adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline. Phase 8 adds `gungnir.compiler_robustness`, deterministic mutation coverage, bounded parser nesting, and Clang/libFuzzer targets for the lexer and authoritative structured compiler. Phase 9 adds `gungnir.compiler_conformance_snapshot` plus a targeted GCC/Clang/MSVC CI matrix that compiles and executes generated structured code and compares compiler outputs byte-for-byte. See [Compiler Fuzzing](fuzzing.md) and [Compiler Conformance](compiler-conformance.md).
+`tests/compiler_correctness.cpp` is the focused invariant gate for the structured compiler. It complements `structured_language.cpp`, `frontend_diagnostics.cpp` and generated/native execution tests. Gungnir adds a semantic-closure corpus that runs in validation-only mode and compares its accept/reject decisions and diagnostic codes with normal compilation, so `gungnirc --check` cannot silently become weaker than the full compiler pipeline. Gungnir adds `gungnir.compiler_robustness`, deterministic mutation coverage, bounded parser nesting, and Clang/libFuzzer targets for the lexer and authoritative structured compiler. Gungnir adds `gungnir.compiler_conformance_snapshot` plus a targeted GCC/Clang/MSVC CI matrix that compiles and executes generated structured code and compares compiler outputs byte-for-byte. See [Compiler Fuzzing](fuzzing.md) and [Compiler Conformance](compiler-conformance.md).
 
 See [Compiler Correctness](compiler-correctness.md) and [Compiler Conformance](compiler-conformance.md).
 
 ## Framework semantic tests
 
-Phase 13 adds `gungnir.framework_semantics` to the primary PR gate. It verifies positive and negative contracts for middleware, migrations, listeners, jobs, policies, events, notifications, mail, and model lifecycle metadata. The generated structured-program test also compiles and executes async middleware forwarding and verifies timestamp/soft-delete model attributes.
+Gungnir adds `gungnir.framework_semantics` to the primary PR gate. It verifies positive and negative contracts for middleware, migrations, listeners, jobs, policies, events, notifications, mail, and model lifecycle metadata. The generated structured-program test also compiles and executes async middleware forwarding and verifies timestamp/soft-delete model attributes.
 
 See [Framework Semantic Contracts](framework-semantics.md).
 
 ## Runtime correctness tests
 
-Phase 11 promotes lifecycle behavior into the primary PR gate. The focused runtime set covers:
+Gungnir promotes lifecycle behavior into the primary PR gate. The focused runtime set covers:
 
 - request cancellation on disconnect and request deadline;
 - graceful in-flight request drain after admission closes;
@@ -50,7 +47,7 @@ See [Runtime Correctness](runtime-correctness.md).
 
 ## Database and ORM correctness tests
 
-Phase 12 adds focused behavioral gates:
+Gungnir adds focused behavioral gates:
 
 - `gungnir.database_correctness` verifies transaction ownership, nested savepoint ordering, after-commit behavior, pool cancellation/timeout accounting, reconnect behavior, error context and lease cleanup;
 - `gungnir.orm_correctness` verifies strict hydration, dirty-state preservation, insert/update transitions, batched eager loading and one-slot-pool lease cleanup;
@@ -62,7 +59,7 @@ See [Database and ORM Correctness](database-correctness.md).
 
 ## Documentation and ecosystem tests
 
-Phase 18 adds a documentation contract gate. It verifies:
+Gungnir adds a documentation contract gate. It verifies:
 
 - required project ecosystem files are present;
 - the root README release version matches `CMakeLists.txt`;
@@ -74,11 +71,10 @@ Phase 18 adds a documentation contract gate. It verifies:
 
 This keeps public onboarding coupled to the same compiler contract users install.
 
-## Limits and planned work
-
+## Scope
 A successful `gungnirc --check` is not a full native type check or a live transport/integration test. Router-only tests do not cover TLS, HTTP parsing, database connectivity or distributed leases. Run relevant integration tests for the selected adapter.
 
-## Implementation references
+
 
 - [include/gungnir/testing/http.hpp](../include/gungnir/testing/http.hpp)
 - [include/gungnir/testing/response_assertions.hpp](../include/gungnir/testing/response_assertions.hpp)

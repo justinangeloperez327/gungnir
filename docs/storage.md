@@ -1,21 +1,40 @@
 # Storage
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir provides a filesystem abstraction for application files and object storage.
 
-## Current behavior
+## Disks
 
-Manager registers named Disk instances and selects a default disk. The native Disk contract uses `exists`, `get`, `put`, `remove`, `move`, `copy`, `size` and `files`. `get` returns an optional string; LocalDisk roots object paths under a configured directory.
+Applications configure named storage disks and select a default disk.
 
-Cancellation overloads check cancellation around operations. Keep paths logical and let the adapter resolve them.
+Common deployments use:
 
-## Limits and planned work
+- local filesystem storage;
+- S3-compatible object storage.
 
-The public names are not `read`/`write`/`delete`/`list`. Enable `GUNGNIR_WITH_S3=ON` (libcurl 7.75+) for `S3Disk`, a path-style S3-compatible adapter with SigV4 authentication, optional session credentials, bounded transfers/listing, timeouts and cancellation. Configure `S3Options` and register the instance with `Manager`. HTTPS is required by default; `allow_http` is an explicit local-test option. Listing follows continuation tokens. Copy downloads and uploads an object within the configured size limit; move performs copy then delete and is not atomic. Live service behavior still depends on the chosen S3-compatible endpoint. Cancellation checks around synchronous operations do not guarantee interruption of a blocked filesystem call or undo a completed write.
+## Writing files
 
-## Implementation references
+```gnr
+storage.put("reports/monthly.csv", contents);
+```
 
-- [include/gungnir/storage/disk.hpp](../include/gungnir/storage/disk.hpp)
-- [include/gungnir/storage/local_disk.hpp](../include/gungnir/storage/local_disk.hpp)
-- [include/gungnir/storage/manager.hpp](../include/gungnir/storage/manager.hpp)
+## Reading files
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/storage.md).
+```gnr
+const contents = storage.get("reports/monthly.csv");
+```
+
+## File operations
+
+Storage supports existence checks, deletion, copying/moving, metadata, and stream-oriented operations for large files.
+
+## Paths
+
+Logical storage paths are resolved beneath the configured disk root or object-store prefix. Applications should not concatenate untrusted filesystem paths directly.
+
+## Uploads
+
+Validated request uploads can be written to a configured storage disk.
+
+## S3-compatible storage
+
+Object-storage disks use the configured endpoint, region, bucket, credentials, and prefix. S3-compatible services can be used when they implement the required API behavior.

@@ -1,9 +1,6 @@
 # Modules
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
-## Current behavior
-
+## Overview
 `gungnirc ROOT --project` compiles `.gnr` modules together. A dotted module name maps to its path relative to ROOT; an explicit `module` declaration must match. Imports may use aliases, for example `import billing as Billing;` followed by `Billing::invoice()`. Top-level declarations are exported by default; `export` is accepted explicitly. Missing imports, cycles, duplicate aliases/declarations and ambiguous imported names are diagnosed. Dependency order and file order are deterministic.
 
 ## Application builds and incremental output
@@ -12,7 +9,7 @@ New `gungnir` projects use the same validated module graph for application build
 
 This is incremental native compilation, not a persisted parser/semantic cache. Changes that alter generated symbol identities may also regenerate other implementation files. Standalone `gungnirc ROOT --project` still expects only structured modules. Application route/bootstrap handling belongs to `gungnir build`; see [CLI and code generation](cli-codegen.md).
 
-## Implementation references
+
 
 - [Structured compiler API](../include/gungnir/language/compiler.hpp)
 - [Structured compiler tests](../tests/structured_language.cpp)

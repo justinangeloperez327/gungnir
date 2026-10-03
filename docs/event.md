@@ -1,21 +1,28 @@
 # Events
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Events represent facts that have occurred in the application and allow independent parts of the system to react without tightly coupling the producer to every consumer.
 
-## Current behavior
+## Defining an event
 
-In the structured frontend, events contain typed data fields and generate immutable constructors, a qualified event name and the native `events::Event` interface. Event methods and metadata are rejected.
+```gnr
+event UserRegistered {
+    int user_id;
+    string email;
+}
+```
 
-## Limits and planned work
+Events are immutable typed data declarations.
 
-General event serialization and externally supplied custom event bases remain native concerns.
+## Dispatching events
 
-## Implementation references
+Application services dispatch an event through the event dispatcher. Registered listeners for that event type are invoked according to their priority and sync/async contract.
 
-- [Structured compiler API](../include/gungnir/language/compiler.hpp)
-- [Structured compiler tests](../tests/structured_language.cpp)
+## Event names
 
-- [include/gungnir/events/event.hpp](../include/gungnir/events/event.hpp)
-- [include/gungnir/events/dispatcher.hpp](../include/gungnir/events/dispatcher.hpp)
+Generated events have stable qualified names derived from their module and declaration.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/event.md).
+## Async dispatch
+
+Asynchronous listeners can be awaited through asynchronous dispatch. Synchronous dispatch is reserved for synchronous listeners.
+
+For background work that must survive the current process or be retried, use [Queues and Jobs](queues.md) rather than treating in-process events as a durable queue.

@@ -1,26 +1,103 @@
 # ORM
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir's ORM provides typed model querying, hydration, persistence, pagination, soft deletes, eager loading, relationships, and collections.
 
-## Performance baseline
+## Querying models
 
-The performance benchmark suite measures complex ORM query-plan compilation for PostgreSQL, MySQL/MariaDB, SQL Server, and MongoDB. Database execution latency is intentionally excluded from this microbenchmark surface. See [Performance Baseline](performance.md).
+Use a model as the entry point to a query:
 
-## Current behavior
+```gnr
+const users = User::all();
 
-The native ORM supplies model queries, hydration, persistence, pagination, soft-delete operations and relationship loading/mutations. Multi-model results use `orm::Collection<Model>`; pagination returns `orm::Page<Model>`.
+const active = User::where("active", true)
+    .orderBy("name")
+    .get();
+```
 
-The lowerer maps selected camelCase call names to native names. Use typed controller actions and the currently supported model shape. A terminal query performs database work; collections operate on already-loaded values.
+Queries remain composable until a terminal operation such as `get`, `first`, `find`, or a persistence operation executes them.
 
-## Limits and planned work
+## Finding records
 
-The target catalogue includes query methods, callbacks, lifecycle hooks and model metadata beyond current lowering. Inspect the Query/Model signature and lowerer alias table before adopting an example. Target string-named relationship declarations and arrow query closures are not automatically implemented. SQL operations do not all map to MongoDB.
+```gnr
+const user = User::find(id);
+const required = User::findOrFail(id);
+const first = User::where("active", true).first();
+const requiredFirst = User::where("active", true).firstOrFail();
+```
 
-## Implementation references
+Methods that may not find a row return an optional result. `OrFail` variants raise the framework's not-found error.
 
-- [include/gungnir/model/model.hpp](../include/gungnir/model/model.hpp)
-- [include/gungnir/orm/query.hpp](../include/gungnir/orm/query.hpp)
-- [include/gungnir/orm/advanced.hpp](../include/gungnir/orm/advanced.hpp)
-- [src/language/model_lowering.cpp](../src/language/model_lowering.cpp)
+## Filtering
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/orm.md).
+```gnr
+const users = User::where("status", "active")
+    .where("verified", true)
+    .get();
+```
+
+Gungnir uses bound database parameters for values rather than interpolating application input into SQL.
+
+## Ordering and limits
+
+```gnr
+const users = User::where("active", true)
+    .orderBy("created_at", "desc")
+    .limit(20)
+    .get();
+```
+
+## Creating records
+
+```gnr
+const user = User::create({
+    "name": "Freya",
+    "email": "freya@example.com"
+});
+```
+
+Mass assignment respects the model's `fillable` contract.
+
+## Updating records
+
+Models track changes to persisted attributes and synchronize dirty state after successful persistence.
+
+```gnr
+user.name = "Freya Njord";
+user.save();
+```
+
+Query-based updates are available for bulk operations.
+
+## Deleting records
+
+```gnr
+user.remove();
+```
+
+Models configured with `softDeletes = true` retain deleted rows and can use the ORM's soft-delete query and restore operations.
+
+## Eager loading
+
+Load related models with the parent query:
+
+```gnr
+const users = User::with("posts").get();
+```
+
+Eager loading batches parent keys so relationship traversal does not degrade into one query per parent.
+
+## Collections
+
+Multi-record results return typed model collections. Collections provide iteration and application-side collection operations. See [Collections](collection.md).
+
+## Pagination
+
+Paginated queries return a page containing the selected models and pagination metadata.
+
+## Transactions
+
+Use the database transaction API when multiple persistence operations must commit or roll back together. See [Database](database.md).
+
+## Relationships
+
+Relationship queries and mutations use the same ORM infrastructure. See [Relationships](relationships.md).

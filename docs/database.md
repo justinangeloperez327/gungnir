@@ -1,26 +1,63 @@
-# Database Runtime
+# Database
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir provides a unified database layer for application connections, queries, transactions, migrations, ORM persistence, and supported SQL and document databases.
 
-## Current behavior
+## Connections
 
-The runtime has named connections, a driver registry, connection pooling, query execution, transaction handling and backend SQL compilation. Register an optional adapter before calling `Application::configure_database()`.
+Applications configure named database connections through environment and configuration values. A default connection is used unless a model or operation selects another connection.
 
-Settings include connection name/backend, host/port, database, username/password, pool size, pool acquisition timeout, validation interval, reconnect attempts and backend options. The generated environment uses `DB_CONNECTION`, `DB_NAME`, `DB_POOL_SIZE`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`.
+## Supported databases
 
-Use bindings for values; select backend-supported operations and inspect driver capabilities. Pool acquisition is cancellation-aware, and `Manager::pool_stats()` exposes primary-pool lease, availability, reconnect and timeout counters. Transaction scopes are strictly LIFO: a root transaction cannot be completed while a nested savepoint scope is active. Enable `GUNGNIR_WITH_SQLITE=ON` to build and automatically register SQLite. Use `DB_CONNECTION=sqlite` and a file in `DB_DATABASE`; relative paths resolve under the application root. `:memory:` requires a one-connection pool. SQLite supports prepared queries, cancellation, transactions and savepoints; schema changes needing a table rebuild and row-lock clauses are rejected explicitly. Decimal migration columns use TEXT to preserve exact values.
+Gungnir provides adapters for:
 
-`model::Decimal` preserves SQL decimal text and scale; JSON/view serialization emits its exact string. Convert to binary floating point explicitly with `to_double()`. Integral model hydration rejects out-of-range values. PostgreSQL numeric, MySQL decimal, SQL Server decimal/numeric and MongoDB Decimal128 decoding retain decimal values.
+- SQLite
+- PostgreSQL
+- MySQL and MariaDB
+- Microsoft SQL Server
+- MongoDB
 
-## Limits and planned work
+Database-specific documentation explains configuration and capabilities for each adapter.
 
-Blocking native clients are not made asynchronous by wrapping a caller in `async`. Cancellation remains limited by the selected native driver. Do not share one transaction scope concurrently across unrelated execution contexts, and do not assume all backends have equivalent savepoints, joins, DDL or decimal representations. Primary CI runs a live SQLite behavioral baseline for commit/rollback, savepoints, foreign keys, prepared bindings, nulls, exact decimal text and pool lease cleanup. See [Database and ORM Correctness](database-correctness.md) for the Phase 12 invariants and backend boundaries.
+## Connection pools
 
-## Implementation references
+Database connections are managed through pools so requests and background work can lease connections without opening a new network connection for every operation.
 
-- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
-- [include/gungnir/database/manager.hpp](../include/gungnir/database/manager.hpp)
-- [include/gungnir/database/driver.hpp](../include/gungnir/database/driver.hpp)
-- [include/gungnir/database/transaction.hpp](../include/gungnir/database/transaction.hpp)
+## Transactions
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/database.md).
+Use transactions when a group of operations must commit atomically:
+
+```gnr
+database.transaction(() => {
+    const project = Project::create(data);
+    AuditEntry::create({
+        "project_id": project.id,
+        "action": "created"
+    });
+});
+```
+
+Nested transaction behavior follows the selected database driver's transaction/savepoint capabilities.
+
+## Queries
+
+The query layer uses bound parameters for application values. Identifiers that must be dynamic are validated separately rather than being treated as bound values.
+
+## ORM
+
+Models use the database layer for hydration, persistence, eager loading, pagination, and relationships.
+
+See [ORM](orm.md).
+
+## Migrations
+
+Database structure is managed through migrations.
+
+See [Migrations](migration.md).
+
+## Multiple connections
+
+Models can select a named connection through model metadata, allowing an application to separate operational, reporting, or service-specific data stores.
+
+## MongoDB
+
+MongoDB uses the same application database manager but retains document-database semantics where SQL concepts do not apply.

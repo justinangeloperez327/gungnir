@@ -1,28 +1,61 @@
 # Requests
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+The `Request` object represents the incoming HTTP request and provides access to headers, route parameters, query values, cookies, body data, uploaded files, sessions, authentication, and validated input.
 
-## Current behavior
+## Reading input
 
-The native `Request` exposes method, target, path, body, body stream and cancellation; headers, query parameters, route parameters, cookies and parsed JSON; input selection; and attached service, session and authentication contexts.
+```gnr
+const name = request.input("name");
+const search = request.query("search");
+const id = request.parameter("id");
+const agent = request.header("User-Agent");
+```
 
-| Input API | Current result |
-| --- | --- |
-| `input(name)` | `std::string` |
-| `all`, `only`, `except` | String-to-string map |
-| `query(name)`, `parameter(name)`, `header(name)` | String view |
-| `json()` | Parsed `Json` |
-| `validate(rules)` | Validated string map or exception |
-| `check(rules)` | Result with values and errors |
+Use `all`, `only`, and `except` when working with groups of input values.
 
-Native multiword names include `expects_json`, `is_json`, `content_type`, `user_agent`, `client_ip` and `bearer_token`. `only`/`except` take initializer lists in C++.
+## JSON
 
-## Limits and planned work
+JSON requests can be read as structured values:
 
-The broader typed input, default-value overloads, upload conveniences and camelCase methods in the design specification are not all public methods of the current Request class. Multipart and transport capabilities must not be confused with a complete Request upload API.
+```gnr
+const payload = request.json();
+```
 
-## Implementation references
+Structured values preserve arrays, objects, numbers, booleans, strings, and null values.
 
-- [include/gungnir/http/request.hpp](../include/gungnir/http/request.hpp)
+## Validation
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/request.md).
+```gnr
+const data = request.validate({
+    "email": "required|email",
+    "name": "required|string|max:100"
+});
+```
+
+Validation returns the selected validated data or raises a validation exception handled by the HTTP exception layer.
+
+See [Validation](validation.md).
+
+## Request metadata
+
+Requests expose the HTTP method, target, path, content type, client information, headers, and cancellation state.
+
+## Cookies and sessions
+
+Cookies are available through the request cookie APIs. Session-enabled requests expose the current session through the session middleware.
+
+See [Sessions](session.md).
+
+## Authentication
+
+Authenticated requests expose the resolved user and authentication state.
+
+See [Authentication](authentication.md).
+
+## Uploaded files
+
+Multipart requests expose uploaded files through the request upload API. File validation should be applied before storing user-provided files.
+
+## Bearer tokens
+
+Bearer credentials can be read from the authorization header through the request authentication helpers.

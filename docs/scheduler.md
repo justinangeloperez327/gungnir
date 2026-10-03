@@ -1,22 +1,31 @@
 # Scheduler
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+The scheduler runs recurring application work using a central schedule rather than separate operating-system cron definitions for every task.
 
-## Current behavior
+## Scheduling work
 
-Native Scheduler registers interval tasks with `every` and cron tasks with `cron`; convenience methods include hourly/daily/weekly/monthly schedules. Task callbacks are synchronous `void()` actions.
+Applications can schedule callbacks or jobs using intervals or cron expressions.
 
-Task exposes timezone selection, `without_overlapping` and `on_one_server` policies. Lock-backed coordination requires an appropriate LockStore; the optional Redis lock store enables shared coordination.
+## Common frequencies
 
-## Limits and planned work
+Gungnir provides helpers for common schedules such as hourly, daily, weekly, and monthly execution.
 
-Keep callback dependencies and timezone objects alive. In-memory locks cannot coordinate separate hosts. Scheduling is not automatic `.gnr` lowering or durable queue delivery; choose the runtime host and lock policy explicitly.
+## Time zones
 
-## Implementation references
+Scheduled work can specify a time zone when business schedules should not be interpreted in the server's default zone.
 
-- [include/gungnir/scheduler/scheduler.hpp](../include/gungnir/scheduler/scheduler.hpp)
-- [include/gungnir/scheduler/task.hpp](../include/gungnir/scheduler/task.hpp)
-- [include/gungnir/scheduler/cron.hpp](../include/gungnir/scheduler/cron.hpp)
-- [include/gungnir/scheduler/redis_lock.hpp](../include/gungnir/scheduler/redis_lock.hpp)
+## Preventing overlap
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/scheduler.md).
+Tasks that must not run concurrently can acquire scheduler locks so a slow previous execution does not overlap the next occurrence.
+
+## Single-server execution
+
+Distributed deployments can use shared locks to ensure selected scheduled work runs on only one application instance.
+
+## Queued jobs
+
+Scheduled actions can dispatch jobs to the queue instead of performing long-running work inside the scheduler process.
+
+## Runtime
+
+The scheduler participates in application startup and graceful shutdown so scheduled work follows the application's lifecycle and cancellation policy.

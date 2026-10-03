@@ -1,21 +1,69 @@
 # ORM Relationships
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Relationships describe how models are connected. Gungnir supports one-to-one, one-to-many, inverse, many-to-many, and through relationships with typed related models and eager loading.
 
-## Current behavior
+## One to one
 
-Native relationship wrappers cover HasOne, HasMany, BelongsTo, BelongsToMany, HasOneThrough and HasManyThrough. Generated metadata drives eager loading and relationship access.
+```gnr
+model User {
+    profile() {
+        return hasOne<Profile>();
+    }
+}
+```
 
-Eager loading batches parent keys. Loaded state distinguishes an unloaded relation from a loaded empty relation; accessing an unloaded relation raises `RelationNotLoaded`. Pivot mutation APIs operate through the relationship runtime.
+## One to many
 
-## Limits and planned work
+```gnr
+model User {
+    posts() {
+        return hasMany<Post>();
+    }
+}
+```
 
-The planned `posts() { return hasMany("posts"); }` syntax, polymorphic relations and one-of-many modifiers have a separate implementation path. Do not infer those capabilities from the six existing native wrapper types. Use explicit eager loading and validate backend support.
+## Belongs to
 
-## Implementation references
+```gnr
+model Post {
+    author() {
+        return belongsTo<User>();
+    }
+}
+```
 
-- [include/gungnir/model/relation.hpp](../include/gungnir/model/relation.hpp)
-- [include/gungnir/orm/relation_query.hpp](../include/gungnir/orm/relation_query.hpp)
-- [include/gungnir/orm/relation_mutation.hpp](../include/gungnir/orm/relation_mutation.hpp)
+## Many to many
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/relationships.md).
+```gnr
+model User {
+    roles() {
+        return belongsToMany<Role>();
+    }
+}
+```
+
+Many-to-many relationships expose pivot-aware relationship operations for attaching and detaching related records.
+
+## Through relationships
+
+Gungnir provides `hasOneThrough` and `hasManyThrough` for relationships reached through an intermediate model.
+
+## Key conventions
+
+Relationship definitions use conventional foreign and local keys by default. Applications can provide explicit keys when their database schema does not follow those conventions.
+
+## Eager loading
+
+```gnr
+const users = User::with("posts").get();
+```
+
+Eager loading batches parent keys and populates the loaded relationship state. A loaded empty relationship is distinct from a relationship that has not been loaded.
+
+## Relationship access
+
+Accessing a relationship that was not loaded may require a relationship query or explicit eager load, depending on the operation. Gungnir does not silently hide N+1 database access behind ordinary property access.
+
+## Relationship queries
+
+Relationships can be used as query scopes so filtering, ordering, pagination, and other query operations remain available for related records.

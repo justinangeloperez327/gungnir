@@ -1,9 +1,6 @@
 # Collections
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
-## Current behavior
-
+## Overview
 `gungnir::orm::Collection<Model>` owns a `std::vector<Model>`. ORM queries use it for materialized model results.
 
 | Operation | Current behavior |
@@ -25,11 +22,10 @@
 | `sort_by`, `unique` | Stable projection sorting or first-occurrence deduplication |
 | `group_by`, `key_by` | Build maps from projected keys |
 
-## Limits and planned work
+## Scope
+Predicate overloads of `first`/`last`, optional empty results, additional aggregation, flattening, lazy collections and the wider Laravel-style catalogue are extended APIs. A `.gnr` arrow callback is not established merely because a native callback overload exists.
 
-Predicate overloads of `first`/`last`, optional empty results, additional aggregation, flattening, lazy collections and the wider Laravel-style catalogue are planned APIs. A `.gnr` arrow callback is not established merely because a native callback overload exists.
 
-## Implementation references
 
 - [include/gungnir/orm/collection.hpp](../include/gungnir/orm/collection.hpp)
 

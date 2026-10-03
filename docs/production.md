@@ -1,9 +1,6 @@
 # Production and Deployment
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
-
-## Current behavior
-
+## Overview
 Health supports named liveness and readiness callbacks with fail-closed evaluation. A callback that returns false or throws marks the probe unhealthy without propagating the dependency failure through the probe call. Named reports expose each check result.
 
 `RuntimeHost` supervises the HTTP application, queue workers and scheduler through a shared cancellation boundary and exposes lifecycle-aware health. Its readiness becomes false during shutdown or after a fatal supervised-service failure.
@@ -12,7 +9,7 @@ A graceful HTTP stop closes admission first, drains active work, applies the con
 
 HTTP production limits now include `max_active_dispatches` in addition to connection, request-size and timeout bounds. New work above the active dispatch budget is shed with 503 rather than admitted without bound. `production::retry` provides explicit bounded exponential backoff for operations the application classifies as transient.
 
-Register required dependency checks, configure HTTP limits/timeouts, choose TLS or a reverse proxy, and run workers/scheduler under an appropriate host. See [Production Resilience](production-resilience.md) for the Phase 15 contract.
+Register required dependency checks, configure HTTP limits/timeouts, choose TLS or a reverse proxy, and run workers/scheduler under an appropriate host. See [Production Resilience](production-resilience.md) for the Gungnir contract.
 
 ## Shutdown contract
 
@@ -29,7 +26,7 @@ Cancellation remains cooperative. User code that blocks or ignores cancellation 
 
 The Health object does not install HTTP endpoints automatically; `live()` is not an external process probe. Probe callbacks are isolated and fail closed, but applications still decide which dependencies belong in liveness versus readiness. Runtime lifecycle hardening does not remove the need for workload-specific load testing, dependency health checks, deployment probes and external process supervision.
 
-## Implementation references
+
 
 - [include/gungnir/production/health.hpp](../include/gungnir/production/health.hpp)
 - [include/gungnir/production/runtime_host.hpp](../include/gungnir/production/runtime_host.hpp)
