@@ -37,16 +37,19 @@ New application projects use `profile=structured`. Projects without that marker 
 | Structured AST and validated-only emission | Implemented |
 | Single/double quoted strings, numeric separators | Implemented |
 | Typed arrows, collections, migration callbacks | Implemented |
-| Model attribute descriptors and metadata | Implemented; runtime casting/serialization enforcement remains separate |
+| Model attribute descriptors and metadata | Implemented; lifecycle metadata and supported casts are semantically enforced |
 | Immutable events, sync/async listeners | Implemented |
 | Job payload/worker registration, injected services | Implemented |
-| Actor/resource policies | Public synchronous two-argument bindings |
-| Mail message composition | Subject/text/html composition; rendering view responses needs native integration |
-| Recipient-bound notifications | Implemented; native channels must be registered |
+| Middleware contracts | Public `handle(Request, Next) -> Response`; sync and async supported |
+| Actor/resource policies | Public synchronous `Decision(actor, resource)` bindings with model actor/resource types |
+| Mail message composition | Subject/text/html plus `content() -> Response`; conflicting HTML body sources are rejected |
+| Recipient-bound notifications | `via`, `toMail`, and `toDatabase` contracts are validated; native channels must still be registered |
 | General classes/interfaces/enums | Unsupported |
 | Arbitrary C++, preprocessor, overload resolution | Compatibility profile only |
 | String interpolation, advanced null-flow analysis | Unsupported |
 | Incremental compilation/application bootstrap | Structured projects emit per-module C++; editable native bootstrap hooks register services |
+
+Phase 13 adds authoritative framework-artifact semantic contracts for the already-supported declaration surface. These checks close previously partial runtime/compiler contracts rather than introducing general-purpose language constructs. See [Framework Semantic Contracts](framework-semantics.md).
 
 The structured profile is feature-frozen for the 0.9 line. This freezes the currently supported source-language behavior; it does not promote partial framework rows to complete and does not stabilize generated C++ or native runtime ABI. `compiler_compatibility` remains experimental until 1.0-level compatibility is declared.
 
