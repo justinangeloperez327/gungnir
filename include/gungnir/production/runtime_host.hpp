@@ -13,6 +13,7 @@
 #include <gungnir/core/cancellation.hpp>
 #include <gungnir/scheduler/scheduler.hpp>
 #include <gungnir/production/supervisor.hpp>
+#include <gungnir/production/health.hpp>
 
 namespace gungnir {
 
@@ -76,6 +77,14 @@ public:
         const noexcept;
 
     [[nodiscard]]
+    Health& health()
+        noexcept;
+
+    [[nodiscard]]
+    const Health& health()
+        const noexcept;
+
+    [[nodiscard]]
     Supervisor& supervisor()
         noexcept;
 
@@ -119,6 +128,7 @@ private:
 
     Application* application_;
     Supervisor supervisor_;
+    Health health_;
     std::vector<Service> services_;
     std::vector<std::thread> threads_;
 

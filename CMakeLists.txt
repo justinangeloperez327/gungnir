@@ -1524,6 +1524,56 @@ if(GUNGNIR_BUILD_TESTS)
     )
 
     add_executable(
+        gungnir_production_resilience_test
+        tests/production_resilience.cpp
+    )
+    target_link_libraries(
+        gungnir_production_resilience_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_production_resilience_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.production_resilience
+        COMMAND gungnir_production_resilience_test
+    )
+
+    add_executable(
+        gungnir_http_overload_test
+        tests/http_overload.cpp
+    )
+    target_link_libraries(
+        gungnir_http_overload_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_http_overload_test
+        PRIVATE
+            cxx_std_23
+    )
+    if(WIN32)
+        target_link_libraries(
+            gungnir_http_overload_test
+            PRIVATE
+                ws2_32
+        )
+    endif()
+    add_test(
+        NAME gungnir.http_overload
+        COMMAND gungnir_http_overload_test
+    )
+    set_tests_properties(
+        gungnir.http_overload
+        PROPERTIES
+            TIMEOUT 15
+    )
+
+    add_executable(
         gungnir_runtime_signals_test
         tests/runtime_signals.cpp
     )

@@ -34,6 +34,7 @@ struct RuntimeOptions {
     std::size_t max_request_bytes{1024U * 1024U};
     std::size_t max_header_bytes{64U * 1024U};
     std::size_t max_connections{4096};
+    std::size_t max_active_dispatches{1024};
     std::size_t max_requests_per_connection{100};
     std::size_t max_stream_chunk_bytes{64U * 1024U};
     std::size_t max_websocket_message_bytes{
