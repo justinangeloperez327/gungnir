@@ -1,6 +1,6 @@
 # Contributing to Gungnir
 
-Gungnir is in its 0.9 stabilization line. Contributions should preserve the frozen structured-language contract unless a change is explicitly approved as a contract-version change.
+Gungnir is in the 1.0 release-candidate freeze. Contributions must preserve the frozen 1.0 language/compiler/native API contracts unless a release-blocking correction is explicitly approved.
 
 ## Before opening a change
 
@@ -37,10 +37,10 @@ ctest --test-dir build --output-on-failure
 
 A contribution should:
 
-1. preserve the 0.9 language/compiler contract unless the change intentionally advances it;
+1. preserve the 1.0 language/compiler contract unless the change intentionally advances it;
 2. include a focused regression test for behavioral fixes;
 3. preserve generated-output determinism;
-4. keep public native API changes compatible with the 0.9 contract or document an intentional break;
+4. keep public native API changes compatible with the 1.0 contract or document an intentional break;
 5. update current documentation when behavior changes;
 6. avoid presenting design-only behavior as already implemented;
 7. keep platform-specific behavior explicit.
@@ -76,7 +76,7 @@ The canonical minimal application is under [examples/hello](examples/hello/READM
 
 ## Compatibility discipline
 
-Gungnir 0.9 uses separate contracts for:
+Gungnir 1.0 uses separate contracts for:
 
 - package version;
 - structured language;
