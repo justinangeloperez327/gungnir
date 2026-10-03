@@ -1,37 +1,70 @@
 # Validation
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir validates request and structured application data with declarative rules.
 
-## Current behavior
-
-`Validator::check` returns `Result { values, errors }`; `Validator::validate` throws `ValidationException` on failure. Request methods use these contracts. The legacy overload uses string maps. JSON overloads return `StructuredResult` and preserve scalar, array, object and null types. Native request methods are `structured_input`, `check_structured` and `validate_structured`; structured `.gnr` controllers use `request.structuredInput()` and `request.validate({...})`. Errors map each field to a vector of messages.
-
-The current rule names are `required`, `present`, `nullable`, `sometimes`, `string`, `integer`, `numeric`, `boolean`, `email`, `accepted`, `length`, `min`, `max`, `in`, `same`, `confirmed`, `array`, `object`, `bail`, `unique` and `exists`. Numeric `min`/`max` semantics depend on the numeric rules on that field.
-
-Nested fields use dot paths; array elements use complete wildcard segments such as `users.*.email`. Selecting a parent object validates and returns that subtree; select child paths when only those fields should be returned. SQL `unique:table,column` and `exists:table,column` use bound values and checked identifiers on the active connection. `unique:table,column,ignored_id,id_column` supports updates. These checks supplement database constraints and cannot eliminate concurrent-write races. Unknown rules are rejected before inspecting optional or missing fields. See the native validator for exact value parsing and error messages.
-
-## Example
+## Validating a request
 
 ```gnr
-controller FormController {
-    Response store(Request& request) {
-        const data = request.validate({
-            "email": "required|email"
-        });
-        return json(data);
-    }
-}
+const data = request.validate({
+    "name": "required|string|max:100",
+    "email": "required|email",
+    "age": "nullable|integer|min:18"
+});
 ```
 
-## Limits and planned work
+Successful validation returns validated data. Invalid input raises a validation exception that can be converted into an HTTP error response.
 
-URL/UUID/date, file/image, conditional-required rules and custom-rule registration remain planned. Structured validation preserves the supplied JSON types; it does not coerce numeric strings to numbers. Database rules currently require SQL connections.
+## Rules
 
-## Implementation references
+Gungnir provides rules for presence, scalar types, strings, numbers, booleans, email addresses, accepted values, lengths, ranges, arrays, objects, UUIDs, URLs, dates, files, images, equality/confirmation, membership, conditional requirements, and database-backed uniqueness/existence checks.
 
-- [include/gungnir/validation/rules.hpp](../include/gungnir/validation/rules.hpp)
-- [include/gungnir/validation/result.hpp](../include/gungnir/validation/result.hpp)
-- [src/validation/validator.cpp](../src/validation/validator.cpp)
-- [src/language/validation_lowering.cpp](../src/language/validation_lowering.cpp)
+Rules can be combined with pipe syntax.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/validation.md).
+## Optional values
+
+Use `nullable` when null is accepted and `sometimes` when a field should only be validated when supplied.
+
+## Nested data
+
+Dot notation selects nested fields:
+
+```gnr
+const data = request.validate({
+    "profile.name": "required|string",
+    "profile.email": "required|email"
+});
+```
+
+## Arrays and wildcards
+
+```gnr
+const data = request.validate({
+    "users": "required|array",
+    "users.*.email": "required|email"
+});
+```
+
+## Database rules
+
+```text
+unique:users,email
+exists:projects,id
+```
+
+Database validation uses bound values and validated identifiers. Database constraints remain the final protection against concurrent writes.
+
+## Files
+
+Uploaded files can be validated for file type, image requirements, size, and related upload constraints before storage.
+
+## Custom rules
+
+Applications can register reusable validation rules for domain-specific constraints.
+
+## Bail
+
+The `bail` rule stops validation of a field after its first failure.
+
+## Validation results
+
+Lower-level validation APIs can return a result containing validated values and field-specific error messages instead of throwing.
