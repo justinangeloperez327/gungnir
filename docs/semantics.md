@@ -8,6 +8,8 @@
 
 Phase 5 centralizes common-type selection for conditional expressions and inferred callable/lambda returns. Numeric result typing is deterministic instead of operand-order dependent, nullable inference can form `T?` from `null` plus `T`, and terminating null guards propagate a proven non-null fact into the surviving control-flow path. Writes invalidate those narrowing facts.
 
+Phase 13 extends semantic validation to framework-artifact runtime contracts. Middleware signatures, migration entry points, policy abilities, event/listener/job contracts, notification payload methods, mail composition, and model lifecycle metadata are rejected before C++ IR when their generated runtime surface would be invalid. Focused diagnostics use `GNR2301` through `GNR2308`. Model `timestamps=true` and `softDeletes=true` also synthesize the nullable lifecycle fields required by ORM persistence.
+
 Phase 6 makes structured `gungnirc --check` an authoritative semantic gate for the supported language profile. Validation-only compilation stops at `ValidatedProject` and does not require C++ IR lowering or emission to decide source validity. Return-path analysis now uses structured flow summaries rather than a first-match return scan: return, throw, break, continue and fallthrough are modeled separately, exhaustive branches are recognized, and loops remain conservative unless their termination can be proven without backend assumptions.
 
 ## Limits and planned work
