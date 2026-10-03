@@ -1,6 +1,11 @@
 # MongoDB Adapter
 
-> **Design specification.** This document preserves the intended contract. Examples and requirements below may exceed the current implementation. See the [current implementation guide](../mongodb.md) before using an API.
+> **Gungnir 1.x design specification.** This document describes intended long-term architecture beyond the frozen `1.0.0-rc.1` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../mongodb.md) before using an API.
+
+
+## 1.0 RC alignment
+
+The shipped baseline is `1.0.0-rc.1`. The 1.0 contracts are frozen; this design document may describe additive 1.x evolution or future-major work, but current implementation guides and executable tests remain authoritative.
 
 Gungnir provides an optional MongoDB adapter backed by the official MongoDB C Driver.
 

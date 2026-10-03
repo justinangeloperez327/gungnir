@@ -1,6 +1,11 @@
 # Gungnir Language Frontend
 
-> **Design specification.** This document preserves the intended contract. Examples and requirements below may exceed the current implementation. See the [current implementation guide](../language.md) before using an API.
+> **Gungnir 1.x design specification.** This document describes intended long-term architecture beyond the frozen `1.0.0-rc.1` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../language.md) before using an API.
+
+
+## 1.0 RC alignment
+
+The shipped baseline is `1.0.0-rc.1`. The 1.0 contracts are frozen; this design document may describe additive 1.x evolution or future-major work, but current implementation guides and executable tests remain authoritative.
 
 Gungnir application code is allowed to be more expressive than native C++.
 C++ remains the compilation target and runtime implementation language.
@@ -79,21 +84,22 @@ generated cache file.
 
 ## Architecture
 
-The frontend pipeline is:
+The canonical 1.0 frontend pipeline is:
 
 ```text
 .gnr source
     -> Lexer
-    -> Parser / lexical scope analysis
-    -> Gungnir AST
-    -> lowering
-    -> generated C++
+    -> Parser
+    -> Syntax AST
+    -> Semantic analysis
+    -> Validated AST
+    -> Typed structural C++ IR
+    -> C++23 emitter
     -> Clang / GCC / MSVC
     -> native binary
 ```
 
-This is not a macro preprocessor. Language-specific constructs are parsed
-outside strings and comments and lowered through explicit AST nodes.
+The normal structured compiler does not rely on raw-source rewriting after semantic validation. Compatibility lowering remains an explicit transitional path for `--compat`, not the canonical 1.0 compiler architecture.
 
 ## Design rules
 
