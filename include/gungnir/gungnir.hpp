@@ -1,5 +1,7 @@
 #pragma once
 
+#include <gungnir/api.hpp>
+#include <gungnir/version.hpp>
 #include <gungnir/auth/authentication.hpp>
 #include <gungnir/cache/cache.hpp>
 #include <gungnir/config/config.hpp>
