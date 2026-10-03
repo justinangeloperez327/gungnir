@@ -14,6 +14,8 @@ namespace gungnir::security {
     std::string_view right
 ) noexcept;
 
+[[nodiscard]] bool valid_header_name(std::string_view value) noexcept;
+
 [[nodiscard]] bool valid_header_value(std::string_view value) noexcept;
 
 [[nodiscard]] bool valid_cookie_name(std::string_view value) noexcept;
