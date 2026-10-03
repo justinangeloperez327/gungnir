@@ -3,6 +3,7 @@
 #include <gungnir/auth/context.hpp>
 #include <gungnir/core/container.hpp>
 #include <gungnir/session/session.hpp>
+#include <gungnir/security/security.hpp>
 
 #include <gungnir/validation/validator.hpp>
 
@@ -222,6 +223,10 @@ bool Request::secure() const noexcept {
     return secure_;
 }
 
+void Request::secure(bool value) noexcept {
+    secure_ = value;
+}
+
 CancellationToken Request::cancellation() const noexcept {
     return cancellation_;
 }
@@ -316,6 +321,15 @@ const auth::Identity* Request::user() const noexcept {
 }
 
 void Request::set_header(std::string name, std::string value) {
+    if (
+        !security::valid_header_name(name) ||
+        !security::valid_header_value(value)
+    ) {
+        throw std::invalid_argument(
+            "Invalid HTTP request header"
+        );
+    }
+
     headers_.insert_or_assign(
         normalize_header_name(name),
         std::move(value)

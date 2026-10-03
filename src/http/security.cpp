@@ -2,19 +2,23 @@
 
 #include <gungnir/security/security.hpp>
 
-#include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <charconv>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace gungnir::http {
 namespace {
-
-std::atomic_uint64_t ids{1};
 
 bool csrf_safe_method(
     Method method
@@ -23,6 +27,431 @@ bool csrf_safe_method(
         method == Method::get ||
         method == Method::head ||
         method == Method::options;
+}
+
+std::string_view trim(
+    std::string_view value
+) noexcept {
+    while (
+        !value.empty() &&
+        (
+            value.front() == ' ' ||
+            value.front() == '\t'
+        )
+    ) {
+        value.remove_prefix(1);
+    }
+
+    while (
+        !value.empty() &&
+        (
+            value.back() == ' ' ||
+            value.back() == '\t'
+        )
+    ) {
+        value.remove_suffix(1);
+    }
+
+    return value;
+}
+
+std::string lowercase(
+    std::string_view value
+) {
+    std::string result{value};
+
+    std::transform(
+        result.begin(),
+        result.end(),
+        result.begin(),
+        [](unsigned char character) {
+            return static_cast<char>(
+                std::tolower(character)
+            );
+        }
+    );
+
+    return result;
+}
+
+std::vector<std::string>
+split_csv(
+    std::string_view value,
+    std::size_t maximum = 64
+) {
+    std::vector<std::string> values;
+    std::size_t cursor = 0;
+
+    while (cursor <= value.size()) {
+        if (values.size() >= maximum) {
+            return {};
+        }
+
+        const auto comma =
+            value.find(',', cursor);
+
+        const auto end =
+            comma == std::string_view::npos
+                ? value.size()
+                : comma;
+
+        const auto item =
+            trim(
+                value.substr(
+                    cursor,
+                    end - cursor
+                )
+            );
+
+        if (item.empty()) {
+            return {};
+        }
+
+        values.emplace_back(item);
+
+        if (comma == std::string_view::npos) {
+            break;
+        }
+
+        cursor = comma + 1;
+    }
+
+    return values;
+}
+
+bool csv_contains(
+    std::string_view csv,
+    std::string_view candidate
+) {
+    const auto expected =
+        lowercase(trim(candidate));
+
+    if (expected.empty()) {
+        return false;
+    }
+
+    if (trim(csv) == "*") {
+        return true;
+    }
+
+    for (const auto& item : split_csv(csv)) {
+        if (lowercase(item) == expected) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool valid_port(
+    std::string_view value
+) noexcept {
+    if (value.empty()) {
+        return false;
+    }
+
+    unsigned port = 0;
+    const auto parsed =
+        std::from_chars(
+            value.data(),
+            value.data() + value.size(),
+            port
+        );
+
+    return
+        parsed.ec == std::errc{} &&
+        parsed.ptr == value.data() + value.size() &&
+        port > 0 &&
+        port <= 65535;
+}
+
+std::optional<std::string>
+canonical_host(
+    std::string_view input
+) {
+    input = trim(input);
+
+    if (
+        input.empty() ||
+        !security::valid_header_value(input) ||
+        input.find_first_of("/\\@") !=
+            std::string_view::npos
+    ) {
+        return std::nullopt;
+    }
+
+    std::string_view host = input;
+
+    if (input.front() == '[') {
+        const auto close = input.find(']');
+
+        if (
+            close == std::string_view::npos ||
+            close <= 1
+        ) {
+            return std::nullopt;
+        }
+
+        host = input.substr(1, close - 1);
+
+        const auto suffix =
+            input.substr(close + 1);
+
+        if (
+            !suffix.empty() &&
+            (
+                suffix.front() != ':' ||
+                !valid_port(
+                    suffix.substr(1)
+                )
+            )
+        ) {
+            return std::nullopt;
+        }
+
+        if (
+            !std::all_of(
+                host.begin(),
+                host.end(),
+                [](unsigned char character) {
+                    return
+                        std::isxdigit(character) != 0 ||
+                        character == ':' ||
+                        character == '.';
+                }
+            )
+        ) {
+            return std::nullopt;
+        }
+
+        return lowercase(host);
+    }
+
+    const auto first_colon = input.find(':');
+
+    if (
+        first_colon != std::string_view::npos &&
+        input.find(':', first_colon + 1) !=
+            std::string_view::npos
+    ) {
+        // IPv6 Host values must use bracket notation.
+        return std::nullopt;
+    }
+
+    if (first_colon != std::string_view::npos) {
+        if (
+            !valid_port(
+                input.substr(first_colon + 1)
+            )
+        ) {
+            return std::nullopt;
+        }
+
+        host = input.substr(0, first_colon);
+    }
+
+    if (
+        host.size() > 253 ||
+        host.empty()
+    ) {
+        return std::nullopt;
+    }
+
+    if (host.back() == '.') {
+        host.remove_suffix(1);
+    }
+
+    if (host.empty()) {
+        return std::nullopt;
+    }
+
+    std::size_t cursor = 0;
+
+    while (cursor <= host.size()) {
+        const auto dot =
+            host.find('.', cursor);
+
+        const auto end =
+            dot == std::string_view::npos
+                ? host.size()
+                : dot;
+
+        const auto label =
+            host.substr(
+                cursor,
+                end - cursor
+            );
+
+        if (
+            label.empty() ||
+            label.size() > 63 ||
+            label.front() == '-' ||
+            label.back() == '-' ||
+            !std::all_of(
+                label.begin(),
+                label.end(),
+                [](unsigned char character) {
+                    return
+                        std::isalnum(character) != 0 ||
+                        character == '-';
+                }
+            )
+        ) {
+            return std::nullopt;
+        }
+
+        if (dot == std::string_view::npos) {
+            break;
+        }
+
+        cursor = dot + 1;
+    }
+
+    return lowercase(host);
+}
+
+bool valid_request_id(
+    std::string_view value
+) noexcept {
+    if (
+        value.empty() ||
+        value.size() > 128 ||
+        !security::valid_header_value(value)
+    ) {
+        return false;
+    }
+
+    return std::all_of(
+        value.begin(),
+        value.end(),
+        [](unsigned char character) {
+            return
+                std::isalnum(character) != 0 ||
+                character == '-' ||
+                character == '_' ||
+                character == '.' ||
+                character == ':' ||
+                character == '/';
+        }
+    );
+}
+
+std::optional<std::string>
+cors_origin(
+    const CorsOptions& options,
+    std::string_view presented
+) {
+    if (presented.empty()) {
+        return std::nullopt;
+    }
+
+    if (!options.allow_origins.empty()) {
+        if (
+            options.allow_origins.contains(
+                std::string{presented}
+            )
+        ) {
+            return std::string{presented};
+        }
+
+        return std::nullopt;
+    }
+
+    if (options.allow_origin == "*") {
+        return std::string{"*"};
+    }
+
+    if (options.allow_origin == presented) {
+        return std::string{presented};
+    }
+
+    return std::nullopt;
+}
+
+void append_vary(
+    Response& response,
+    std::string_view value
+) {
+    const auto existing =
+        response.header("vary");
+
+    if (existing.empty()) {
+        response.header(
+            "vary",
+            std::string{value}
+        );
+        return;
+    }
+
+    if (
+        lowercase(existing).find(
+            lowercase(value)
+        ) != std::string::npos
+    ) {
+        return;
+    }
+
+    response.header(
+        "vary",
+        std::string{existing} +
+            ", " +
+            std::string{value}
+    );
+}
+
+void apply_cors_headers(
+    Response& response,
+    const CorsOptions& options,
+    std::string_view origin,
+    bool preflight
+) {
+    response.header(
+        "access-control-allow-origin",
+        std::string{origin}
+    );
+
+    if (options.allow_credentials) {
+        response.header(
+            "access-control-allow-credentials",
+            "true"
+        );
+    }
+
+    if (origin != "*") {
+        append_vary(
+            response,
+            "Origin"
+        );
+    }
+
+    if (!preflight) {
+        return;
+    }
+
+    response
+        .header(
+            "access-control-allow-methods",
+            options.allow_methods
+        )
+        .header(
+            "access-control-allow-headers",
+            options.allow_headers
+        )
+        .header(
+            "access-control-max-age",
+            std::to_string(
+                options.max_age.count()
+            )
+        );
+
+    append_vary(
+        response,
+        "Access-Control-Request-Method"
+    );
+    append_vary(
+        response,
+        "Access-Control-Request-Headers"
+    );
 }
 
 std::string_view presented_csrf_token(
@@ -63,9 +492,13 @@ void validate_csrf_options(
         );
     }
 
-    if (options.header_name.empty()) {
+    if (
+        !security::valid_header_name(
+            options.header_name
+        )
+    ) {
         throw std::invalid_argument(
-            "CSRF header name cannot be empty"
+            "CSRF header name is invalid"
         );
     }
 
@@ -76,104 +509,329 @@ void validate_csrf_options(
     }
 }
 
-std::string_view trim(
-    std::string_view value
-) {
-    while (
-        !value.empty() &&
-        std::isspace(
-            static_cast<unsigned char>(
-                value.front()
-            )
-        ) != 0
-    ) {
-        value.remove_prefix(1);
-    }
-
-    while (
-        !value.empty() &&
-        std::isspace(
-            static_cast<unsigned char>(
-                value.back()
-            )
-        ) != 0
-    ) {
-        value.remove_suffix(1);
-    }
-
-    return value;
-}
-
-std::string forwarded_for_client(
-    std::string_view value
-) {
-    const auto comma =
-        value.find(',');
-
-    return std::string{
-        trim(
-            comma == std::string_view::npos
-                ? value
-                : value.substr(0, comma)
-        )
-    };
-}
-
 } // namespace
 
-MiddlewareHandler cors(CorsOptions options) {
-    return [options = std::move(options)](Request& request, Next next) -> Task<Response> {
-        auto response = co_await next(request);
-        response.header("access-control-allow-origin", options.allow_origin)
-            .header("access-control-allow-methods", options.allow_methods)
-            .header("access-control-allow-headers", options.allow_headers);
+MiddlewareHandler cors(
+    CorsOptions options
+) {
+    if (
+        options.max_age.count() < 0 ||
+        !security::valid_header_value(
+            options.allow_methods
+        ) ||
+        !security::valid_header_value(
+            options.allow_headers
+        ) ||
+        !security::valid_header_value(
+            options.allow_origin
+        )
+    ) {
+        throw std::invalid_argument(
+            "Invalid CORS configuration"
+        );
+    }
+
+    const bool wildcard =
+        options.allow_origins.empty() &&
+        options.allow_origin == "*";
+
+    if (
+        options.allow_credentials &&
+        wildcard
+    ) {
+        throw std::invalid_argument(
+            "Credentialed CORS cannot use a wildcard origin"
+        );
+    }
+
+    for (const auto& origin :
+         options.allow_origins) {
+        if (
+            origin.empty() ||
+            origin == "*" ||
+            !security::valid_header_value(
+                origin
+            )
+        ) {
+            throw std::invalid_argument(
+                "Invalid CORS origin"
+            );
+        }
+    }
+
+    return [
+        options = std::move(options)
+    ](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        const auto presented_origin =
+            request.header("origin");
+
+        const auto allowed =
+            cors_origin(
+                options,
+                presented_origin
+            );
+
+        const bool preflight =
+            request.method() ==
+                Method::options &&
+            !presented_origin.empty() &&
+            !request.header(
+                "access-control-request-method"
+            ).empty();
+
+        if (preflight) {
+            if (!allowed) {
+                co_return Response::text(
+                    "CORS Origin Denied",
+                    403
+                );
+            }
+
+            const auto requested_method =
+                request.header(
+                    "access-control-request-method"
+                );
+
+            if (
+                !csv_contains(
+                    options.allow_methods,
+                    requested_method
+                )
+            ) {
+                co_return Response::text(
+                    "CORS Method Denied",
+                    403
+                );
+            }
+
+            const auto requested_headers =
+                request.header(
+                    "access-control-request-headers"
+                );
+
+            if (!requested_headers.empty()) {
+                const auto headers =
+                    split_csv(
+                        requested_headers
+                    );
+
+                if (headers.empty()) {
+                    co_return Response::text(
+                        "CORS Headers Denied",
+                        403
+                    );
+                }
+
+                for (const auto& header :
+                     headers) {
+                    if (
+                        !csv_contains(
+                            options.allow_headers,
+                            header
+                        )
+                    ) {
+                        co_return Response::text(
+                            "CORS Headers Denied",
+                            403
+                        );
+                    }
+                }
+            }
+
+            auto response =
+                Response::no_content();
+
+            apply_cors_headers(
+                response,
+                options,
+                *allowed,
+                true
+            );
+
+            co_return response;
+        }
+
+        auto response =
+            co_await next(request);
+
+        if (allowed) {
+            apply_cors_headers(
+                response,
+                options,
+                *allowed,
+                false
+            );
+        }
+
         co_return response;
     };
 }
 
 MiddlewareHandler security_headers() {
-    return [](Request& request, Next next) -> Task<Response> {
-        auto response = co_await next(request);
-        response.header("x-content-type-options", "nosniff")
-            .header("x-frame-options", "DENY")
-            .header("referrer-policy", "strict-origin-when-cross-origin")
-            .header("content-security-policy", "default-src 'self'");
+    return [](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        auto response =
+            co_await next(request);
+
+        response
+            .header(
+                "x-content-type-options",
+                "nosniff"
+            )
+            .header(
+                "x-frame-options",
+                "DENY"
+            )
+            .header(
+                "referrer-policy",
+                "strict-origin-when-cross-origin"
+            )
+            .header(
+                "content-security-policy",
+                "default-src 'self'"
+            );
+
+        if (request.secure()) {
+            response.header(
+                "strict-transport-security",
+                "max-age=31536000"
+            );
+        }
+
         co_return response;
     };
 }
 
-MiddlewareHandler body_limit(std::size_t bytes) {
-    return [bytes](Request& request, Next next) -> Task<Response> {
-        if (request.body().size() > bytes) co_return Response::text("Payload Too Large", 413);
+MiddlewareHandler body_limit(
+    std::size_t bytes
+) {
+    return [bytes](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        if (
+            request.body().size() >
+            bytes
+        ) {
+            co_return Response::text(
+                "Payload Too Large",
+                413
+            );
+        }
+
         co_return co_await next(request);
     };
 }
 
-MiddlewareHandler host_validation(std::unordered_set<std::string> hosts) {
-    return [hosts = std::move(hosts)](Request& request, Next next) -> Task<Response> {
-        const auto host = std::string{request.header("host")};
-        if (!hosts.empty() && !hosts.contains(host)) co_return Response::text("Invalid Host", 400);
+MiddlewareHandler host_validation(
+    std::unordered_set<std::string> hosts
+) {
+    std::unordered_set<std::string>
+        allowed;
+
+    for (const auto& value : hosts) {
+        const auto host =
+            canonical_host(value);
+
+        if (!host) {
+            throw std::invalid_argument(
+                "Invalid allowed Host value"
+            );
+        }
+
+        allowed.insert(*host);
+    }
+
+    return [
+        hosts = std::move(allowed)
+    ](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        const auto host =
+            canonical_host(
+                request.header("host")
+            );
+
+        if (
+            !host ||
+            (
+                !hosts.empty() &&
+                !hosts.contains(*host)
+            )
+        ) {
+            co_return Response::text(
+                "Invalid Host",
+                400
+            );
+        }
+
         co_return co_await next(request);
     };
 }
 
 MiddlewareHandler request_id() {
-    return [](Request& request, Next next) -> Task<Response> {
-        auto id = std::string{request.header("x-request-id")};
-        if (id.empty()) id = "gungnir-" + std::to_string(ids.fetch_add(1));
-        auto response = co_await next(request);
-        response.header("x-request-id", id);
+    return [](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        auto id =
+            std::string{
+                request.header(
+                    "x-request-id"
+                )
+            };
+
+        if (!valid_request_id(id)) {
+            id =
+                "gungnir-" +
+                security::random_token(16);
+        }
+
+        auto response =
+            co_await next(request);
+
+        response.header(
+            "x-request-id",
+            std::move(id)
+        );
+
         co_return response;
     };
 }
 
 MiddlewareHandler request_timing() {
-    return [](Request& request, Next next) -> Task<Response> {
-        const auto start = std::chrono::steady_clock::now();
-        auto response = co_await next(request);
-        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - start).count();
-        response.header("server-timing", "app;dur=" + std::to_string(elapsed / 1000.0));
+    return [](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        const auto start =
+            std::chrono::steady_clock::now();
+
+        auto response =
+            co_await next(request);
+
+        const auto elapsed =
+            std::chrono::duration_cast<
+                std::chrono::microseconds
+            >(
+                std::chrono::steady_clock::now() -
+                start
+            ).count();
+
+        response.header(
+            "server-timing",
+            "app;dur=" +
+                std::to_string(
+                    elapsed / 1000.0
+                )
+        );
+
         co_return response;
     };
 }
@@ -181,6 +839,33 @@ MiddlewareHandler request_timing() {
 MiddlewareHandler trusted_proxies(
     TrustedProxyOptions options
 ) {
+    std::unordered_set<std::string>
+        proxies;
+
+    for (const auto& proxy :
+         options.proxies) {
+        const auto normalized =
+            std::string{trim(proxy)};
+
+        if (
+            normalized.empty() ||
+            normalized.find(',') !=
+                std::string::npos ||
+            !security::valid_header_value(
+                normalized
+            )
+        ) {
+            throw std::invalid_argument(
+                "Invalid trusted proxy"
+            );
+        }
+
+        proxies.insert(normalized);
+    }
+
+    options.proxies =
+        std::move(proxies);
+
     return [
         options = std::move(options)
     ](
@@ -193,31 +878,105 @@ MiddlewareHandler trusted_proxies(
             };
 
         if (
-            !peer.empty() &&
-            options.proxies.contains(peer)
+            peer.empty() ||
+            !options.proxies.contains(peer)
         ) {
-            auto forwarded =
-                forwarded_for_client(
+            co_return co_await next(request);
+        }
+
+        const auto forwarded =
+            request.header(
+                "x-forwarded-for"
+            );
+
+        if (!forwarded.empty()) {
+            const auto chain =
+                split_csv(
+                    forwarded,
+                    32
+                );
+
+            if (!chain.empty()) {
+                std::string client = peer;
+
+                for (
+                    auto iterator =
+                        chain.rbegin();
+                    iterator !=
+                        chain.rend();
+                    ++iterator
+                ) {
+                    if (
+                        !options.proxies.contains(
+                            client
+                        )
+                    ) {
+                        break;
+                    }
+
+                    if (
+                        iterator->size() > 255 ||
+                        !security::
+                            valid_header_value(
+                                *iterator
+                            )
+                    ) {
+                        client = peer;
+                        break;
+                    }
+
+                    client = *iterator;
+                }
+
+                if (client != peer) {
+                    request.client_ip(
+                        std::move(client)
+                    );
+                }
+            }
+        } else {
+            const auto real_ip =
+                trim(
                     request.header(
-                        "x-forwarded-for"
+                        "x-real-ip"
                     )
                 );
 
-            if (forwarded.empty()) {
-                forwarded =
-                    std::string{
-                        trim(
-                            request.header(
-                                "x-real-ip"
-                            )
-                        )
-                    };
-            }
-
-            if (!forwarded.empty()) {
+            if (
+                !real_ip.empty() &&
+                real_ip.size() <= 255 &&
+                security::valid_header_value(
+                    real_ip
+                )
+            ) {
                 request.client_ip(
-                    std::move(forwarded)
+                    std::string{real_ip}
                 );
+            }
+        }
+
+        if (options.trust_forwarded_proto) {
+            const auto values =
+                split_csv(
+                    request.header(
+                        "x-forwarded-proto"
+                    ),
+                    32
+                );
+
+            if (!values.empty()) {
+                const auto proto =
+                    lowercase(
+                        values.back()
+                    );
+
+                if (proto == "https") {
+                    request.secure(true);
+                } else if (
+                    proto == "http"
+                ) {
+                    request.secure(false);
+                }
             }
         }
 
@@ -225,23 +984,179 @@ MiddlewareHandler trusted_proxies(
     };
 }
 
-MiddlewareHandler rate_limit(RateLimitOptions options) {
-    struct Bucket { std::size_t count{}; std::chrono::steady_clock::time_point reset{}; };
-    auto buckets = std::make_shared<std::unordered_map<std::string, Bucket>>();
-    auto mutex = std::make_shared<std::mutex>();
-    return [options, buckets, mutex](Request& request, Next next) -> Task<Response> {
-        auto key = std::string{request.client_ip()};
+MiddlewareHandler rate_limit(
+    RateLimitOptions options
+) {
+    if (
+        options.requests == 0 ||
+        options.window.count() <= 0 ||
+        options.max_clients == 0
+    ) {
+        throw std::invalid_argument(
+            "Rate limit values must be greater than zero"
+        );
+    }
+
+    struct Bucket {
+        std::size_t count{};
+        std::chrono::steady_clock::
+            time_point reset{};
+    };
+
+    auto buckets =
+        std::make_shared<
+            std::unordered_map<
+                std::string,
+                Bucket
+            >
+        >();
+
+    auto mutex =
+        std::make_shared<std::mutex>();
+
+    return [
+        options,
+        buckets,
+        mutex
+    ](
+        Request& request,
+        Next next
+    ) -> Task<Response> {
+        auto key =
+            std::string{
+                request.client_ip()
+            };
+
         if (key.empty()) {
             key = "unknown-client";
         }
-        const auto now = std::chrono::steady_clock::now();
+
+        const auto now =
+            std::chrono::steady_clock::now();
+
+        bool limited = false;
+        std::size_t remaining = 0;
+        std::chrono::seconds retry_after{1};
+
         {
-            std::lock_guard lock{*mutex};
-            auto& bucket = (*buckets)[key];
-            if (bucket.reset <= now) { bucket.count = 0; bucket.reset = now + options.window; }
-            if (++bucket.count > options.requests) co_return Response::text("Too Many Requests", 429);
+            std::lock_guard lock{
+                *mutex
+            };
+
+            auto found =
+                buckets->find(key);
+
+            if (
+                found == buckets->end() &&
+                buckets->size() >=
+                    options.max_clients
+            ) {
+                std::erase_if(
+                    *buckets,
+                    [&](const auto& item) {
+                        return
+                            item.second.reset <=
+                            now;
+                    }
+                );
+
+                found =
+                    buckets->find(key);
+            }
+
+            if (
+                found == buckets->end() &&
+                buckets->size() >=
+                    options.max_clients
+            ) {
+                limited = true;
+                retry_after =
+                    options.window;
+            } else {
+                auto& bucket =
+                    (*buckets)[key];
+
+                if (bucket.reset <= now) {
+                    bucket.count = 0;
+                    bucket.reset =
+                        now + options.window;
+                }
+
+                ++bucket.count;
+
+                limited =
+                    bucket.count >
+                    options.requests;
+
+                remaining =
+                    bucket.count >=
+                        options.requests
+                    ? 0
+                    : options.requests -
+                        bucket.count;
+
+                const auto retry =
+                    std::chrono::
+                        duration_cast<
+                            std::chrono::seconds
+                        >(
+                            bucket.reset -
+                            now
+                        );
+
+                retry_after =
+                    retry.count() > 0
+                    ? retry
+                    : std::chrono::seconds{1};
+            }
         }
-        co_return co_await next(request);
+
+        if (limited) {
+            auto response =
+                Response::text(
+                    "Too Many Requests",
+                    429
+                );
+
+            response
+                .header(
+                    "retry-after",
+                    std::to_string(
+                        retry_after.count()
+                    )
+                )
+                .header(
+                    "x-ratelimit-limit",
+                    std::to_string(
+                        options.requests
+                    )
+                )
+                .header(
+                    "x-ratelimit-remaining",
+                    "0"
+                );
+
+            co_return response;
+        }
+
+        auto response =
+            co_await next(request);
+
+        response
+            .header(
+                "x-ratelimit-limit",
+                std::to_string(
+                    options.requests
+                )
+            )
+            .header(
+                "x-ratelimit-remaining",
+                std::to_string(
+                    remaining
+                )
+            );
+
+        co_return response;
     };
 }
 

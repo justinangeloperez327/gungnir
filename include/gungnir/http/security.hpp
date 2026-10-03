@@ -12,13 +12,18 @@
 namespace gungnir::http {
 
 struct CorsOptions {
+    // allow_origin remains the single-origin compatibility setting.
+    // When allow_origins is non-empty it becomes the authoritative allowlist.
     std::string allow_origin{"*"};
+    std::unordered_set<std::string> allow_origins;
     std::string allow_methods{
         "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     };
     std::string allow_headers{
         "Content-Type, Authorization, X-CSRF-Token"
     };
+    bool allow_credentials{false};
+    std::chrono::seconds max_age{600};
 };
 
 [[nodiscard]]
@@ -47,6 +52,7 @@ MiddlewareHandler request_timing();
 
 struct TrustedProxyOptions {
     std::unordered_set<std::string> proxies;
+    bool trust_forwarded_proto{true};
 };
 
 [[nodiscard]]
@@ -57,6 +63,8 @@ MiddlewareHandler trusted_proxies(
 struct RateLimitOptions {
     std::size_t requests{60};
     std::chrono::seconds window{60};
+    // Bounds process-local limiter memory under high-cardinality client input.
+    std::size_t max_clients{10000};
 };
 
 [[nodiscard]]

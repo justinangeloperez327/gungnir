@@ -1,4 +1,5 @@
 #include <gungnir/http/message.hpp>
+#include <gungnir/security/security.hpp>
 
 #include <charconv>
 #include <optional>
@@ -82,11 +83,8 @@ std::string_view reason_phrase(int status) noexcept {
 
 void validate_header(std::string_view name, std::string_view value) {
     if (
-        name.empty() ||
-        name.find('\r') != std::string_view::npos ||
-        name.find('\n') != std::string_view::npos ||
-        value.find('\r') != std::string_view::npos ||
-        value.find('\n') != std::string_view::npos
+        !security::valid_header_name(name) ||
+        !security::valid_header_value(value)
     ) {
         throw std::invalid_argument("Invalid HTTP header");
     }
@@ -147,6 +145,7 @@ Request parse_request(
 
     std::vector<std::pair<std::string, std::string>> headers;
     std::optional<std::size_t> content_length;
+    bool host_seen = false;
 
     std::size_t cursor = request_line_end + 2;
     while (cursor < header_end) {
@@ -162,10 +161,16 @@ Request parse_request(
             throw std::invalid_argument("Invalid HTTP header");
         }
 
-        const auto name = trim(line.substr(0, colon));
+        const auto raw_name = line.substr(0, colon);
+        const auto name = trim(raw_name);
         const auto value = trim(line.substr(colon + 1));
-        if (name.empty()) {
-            throw std::invalid_argument("Invalid HTTP header name");
+
+        if (
+            raw_name != name ||
+            !security::valid_header_name(name) ||
+            !security::valid_header_value(value)
+        ) {
+            throw std::invalid_argument("Invalid HTTP header");
         }
 
         std::string lower_name{name};
@@ -175,7 +180,21 @@ Request parse_request(
             }
         }
 
+        if (lower_name == "host") {
+            if (host_seen || value.empty()) {
+                throw std::invalid_argument("Invalid Host header");
+            }
+
+            host_seen = true;
+        }
+
         if (lower_name == "content-length") {
+            if (content_length) {
+                throw std::invalid_argument(
+                    "Duplicate Content-Length is not allowed"
+                );
+            }
+
             std::size_t parsed = 0;
             const auto* begin = value.data();
             const auto* end = value.data() + value.size();
@@ -186,10 +205,7 @@ Request parse_request(
             content_length = parsed;
         }
 
-        if (
-            lower_name == "transfer-encoding" &&
-            value != "identity"
-        ) {
+        if (lower_name == "transfer-encoding") {
             throw std::invalid_argument(
                 "Transfer-Encoding is not supported by this HTTP backend"
             );
@@ -201,6 +217,12 @@ Request parse_request(
             break;
         }
         cursor = bounded_end + 2;
+    }
+
+    if (version == "HTTP/1.1" && !host_seen) {
+        throw std::invalid_argument(
+            "HTTP/1.1 requires exactly one Host header"
+        );
     }
 
     const auto body_offset = header_end + 4;

@@ -7,6 +7,7 @@
 
 #include <gungnir/view/engine.hpp>
 #include <gungnir/view/runtime.hpp>
+#include <gungnir/security/security.hpp>
 
 namespace gungnir::http {
 
@@ -148,6 +149,15 @@ Response& Response::header(
     std::string name,
     std::string value
 ) {
+    if (
+        !security::valid_header_name(name) ||
+        !security::valid_header_value(value)
+    ) {
+        throw std::invalid_argument(
+            "Invalid HTTP response header"
+        );
+    }
+
     headers_.insert_or_assign(
         normalize_header_name(name),
         std::move(value)

@@ -176,13 +176,51 @@ bool constant_time_equal(
     return difference == 0;
 }
 
+bool valid_header_name(
+    std::string_view value
+) noexcept {
+    if (value.empty()) {
+        return false;
+    }
+
+    constexpr std::string_view separators{
+        "()<>@,;:\\\"/[]?={} \t"
+    };
+
+    for (const auto character : value) {
+        const auto c =
+            static_cast<unsigned char>(
+                character
+            );
+
+        if (
+            c <= 0x20 ||
+            c >= 0x7f ||
+            separators.find(character) !=
+                std::string_view::npos
+        ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool valid_header_value(
     std::string_view value
 ) noexcept {
     for (const auto character : value) {
+        const auto c =
+            static_cast<unsigned char>(
+                character
+            );
+
         if (
             character == '\r' ||
-            character == '\n'
+            character == '\n' ||
+            c == 0x00 ||
+            c == 0x7f ||
+            (c < 0x20 && c != '\t')
         ) {
             return false;
         }

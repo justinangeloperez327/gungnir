@@ -1582,6 +1582,25 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(NAME gungnir.security COMMAND gungnir_security_test)
 
     add_executable(
+        gungnir_security_hardening_test
+        tests/security_hardening.cpp
+    )
+    target_link_libraries(
+        gungnir_security_hardening_test
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_security_hardening_test
+        PRIVATE
+            cxx_std_23
+    )
+    add_test(
+        NAME gungnir.security_hardening
+        COMMAND gungnir_security_hardening_test
+    )
+
+    add_executable(
         gungnir_csrf_test
         tests/csrf.cpp
     )

@@ -62,6 +62,7 @@ public:
 
     [[nodiscard]] bool cancelled() const noexcept;
     [[nodiscard]] bool secure() const noexcept;
+    void secure(bool value) noexcept;
     [[nodiscard]] CancellationToken cancellation() const noexcept;
     [[nodiscard]] bool has_services() const noexcept;
     [[nodiscard]] ServiceScope& services();

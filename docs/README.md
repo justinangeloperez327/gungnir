@@ -70,6 +70,7 @@ Gungnir remains pre-1.0. The structured compiler profile is feature-frozen for t
 - [Logging and Observability](logging-observability.md)
 - [Production and Deployment](production.md)
 - [Security](security.md)
+- [Security Hardening](security-hardening.md)
 - [Testing](testing.md)
 
 ## Compiler implementation
