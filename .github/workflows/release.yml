@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to package, for example v0.9.0
+        description: Existing release tag to package, for example v1.0.0-rc.1
         required: true
         type: string
 
@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
 
           if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must use SemVer, for example v0.9.0 or v0.9.0-rc.1."
+            echo "Release tag must use SemVer, for example v1.0.0-rc.1 or v1.0.0-rc.1."
             exit 1
           fi
 
@@ -51,6 +51,19 @@ jobs:
 
           if [[ "$tag_version" != "$cmake_version" ]]; then
             echo "Tag version $tag_version does not match CMake project version $cmake_version."
+            exit 1
+          fi
+
+          prerelease="$(
+            sed -nE 's/^[[:space:]]*set\(GUNGNIR_VERSION_PRERELEASE "([^"]*)".*/\1/p' CMakeLists.txt
+          )"
+          expected_tag="v${cmake_version}"
+          if [[ -n "$prerelease" ]]; then
+            expected_tag="${expected_tag}-${prerelease}"
+          fi
+
+          if [[ "$RELEASE_TAG" != "$expected_tag" ]]; then
+            echo "Release tag $RELEASE_TAG does not match source release identity $expected_tag."
             exit 1
           fi
 
@@ -92,9 +105,8 @@ jobs:
           cmake --build install-smoke-build --parallel 2
 
           actual_version="$("$GUNGNIR_PREFIX/bin/gungnir" --version)"
-          tag_core="${RELEASE_TAG#v}"
-          tag_core="${tag_core%%-*}"
-          expected_version="Gungnir $tag_core"
+          release_version="${RELEASE_TAG#v}"
+          expected_version="Gungnir $release_version"
 
           if [[ "$actual_version" != "$expected_version" ]]; then
             echo "Installed CLI reports '$actual_version'; expected '$expected_version'."
@@ -102,17 +114,17 @@ jobs:
           fi
 
           compiler_version="$("$GUNGNIR_PREFIX/bin/gungnirc" --version)"
-          expected_compiler="Gungnir compiler $tag_core (language 0.9)"
+          expected_compiler="Gungnir compiler $release_version (language 1.0)"
           if [[ "$compiler_version" != "$expected_compiler" ]]; then
             echo "Installed compiler reports '$compiler_version'; expected '$expected_compiler'."
             exit 1
           fi
 
           contract="$("$GUNGNIR_PREFIX/bin/gungnirc" --print-contract)"
-          grep -qx "package_version=$tag_core" <<< "$contract"
-          grep -qx "language_version=0.9" <<< "$contract"
-          grep -qx "compiler_contract=0.9" <<< "$contract"
-          grep -qx "diagnostic_contract=0.9" <<< "$contract"
+          grep -qx "package_version=$release_version" <<< "$contract"
+          grep -qx "language_version=1.0" <<< "$contract"
+          grep -qx "compiler_contract=1.0" <<< "$contract"
+          grep -qx "diagnostic_contract=1.0" <<< "$contract"
           grep -qx "structured_feature_freeze=true" <<< "$contract"
 
       - name: Create archive
@@ -146,7 +158,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:RELEASE_TAG -notmatch '^v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
-              throw "Release tag must use SemVer, for example v0.9.0 or v0.9.0-rc.1."
+              throw "Release tag must use SemVer, for example v1.0.0-rc.1 or v1.0.0-rc.1."
           }
 
           $tagVersion = $Matches[1]
@@ -160,6 +172,20 @@ jobs:
 
           if ($tagVersion -ne $cmakeVersion) {
               throw "Tag version $tagVersion does not match CMake project version $cmakeVersion."
+          }
+
+          $prerelease = ""
+          if ($cmake -match 'set\(GUNGNIR_VERSION_PRERELEASE "([^"]*)"\)') {
+              $prerelease = $Matches[1]
+          }
+
+          $expectedTag = "v$cmakeVersion"
+          if ($prerelease) {
+              $expectedTag = "$expectedTag-$prerelease"
+          }
+
+          if ($env:RELEASE_TAG -ne $expectedTag) {
+              throw "Release tag $env:RELEASE_TAG does not match source release identity $expectedTag."
           }
 
       - name: Configure
@@ -192,25 +218,25 @@ jobs:
           cmake --build install-smoke-build --config Release --parallel 2
 
           $actualVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnir.exe" --version).Trim()
-          $tagCore = $env:RELEASE_TAG.Substring(1).Split('-')[0]
-          $expectedVersion = "Gungnir $tagCore"
+          $releaseVersion = $env:RELEASE_TAG.Substring(1)
+          $expectedVersion = "Gungnir $releaseVersion"
 
           if ($actualVersion -ne $expectedVersion) {
               throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
           }
 
           $compilerVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnirc.exe" --version).Trim()
-          $expectedCompiler = "Gungnir compiler $tagCore (language 0.9)"
+          $expectedCompiler = "Gungnir compiler $releaseVersion (language 1.0)"
           if ($compilerVersion -ne $expectedCompiler) {
               throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
           }
 
           $contract = (& "$env:GUNGNIR_PREFIX\bin\gungnirc.exe" --print-contract) -join "`n"
           foreach ($required in @(
-              "package_version=$tagCore",
-              "language_version=0.9",
-              "compiler_contract=0.9",
-              "diagnostic_contract=0.9",
+              "package_version=$releaseVersion",
+              "language_version=1.0",
+              "compiler_contract=1.0",
+              "diagnostic_contract=1.0",
               "structured_feature_freeze=true"
           )) {
               if ($contract -notmatch [regex]::Escape($required)) {
@@ -317,8 +343,8 @@ jobs:
               }
 
               $actualVersion = (& $cli --version).Trim()
-              $tagCore = $env:RELEASE_TAG.Substring(1).Split('-')[0]
-              $expectedVersion = "Gungnir $tagCore"
+              $releaseVersion = $env:RELEASE_TAG.Substring(1).Split('-')[0]
+              $expectedVersion = "Gungnir $releaseVersion"
 
               if ($actualVersion -ne $expectedVersion) {
                   throw "Installed CLI reports '$actualVersion'; expected '$expectedVersion'."
@@ -330,14 +356,14 @@ jobs:
               }
 
               $compilerVersion = (& $compiler --version).Trim()
-              $expectedCompiler = "Gungnir compiler $tagCore (language 0.9)"
+              $expectedCompiler = "Gungnir compiler $releaseVersion (language 1.0)"
               if ($compilerVersion -ne $expectedCompiler) {
                   throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
               }
 
               $contract = (& $compiler --print-contract) -join "`n"
               if ($contract -notmatch "structured_feature_freeze=true") {
-                  throw "Installed compiler does not report the 0.9 feature freeze."
+                  throw "Installed compiler does not report the 1.0 contract freeze."
               }
 
               Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
