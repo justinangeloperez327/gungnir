@@ -1,6 +1,6 @@
 # Database and ORM Correctness
 
-> **Status: experimental, pre-1.0.** Phase 12 defines the current behavioral-correctness baseline for pooled database access, transactions, model hydration, persistence, and eager loading. Backend-specific native APIs remain subject to pre-1.0 compatibility rules.
+> **Status: Gungnir 1.0 correctness contract.** Phase 12 defines the behavioral baseline for pooled database access, transactions, model hydration, persistence, and eager loading. Backend-specific limitations remain documented explicitly.
 
 ## Correctness contract
 
