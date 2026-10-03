@@ -1,8 +1,8 @@
 # Gungnir Documentation
 
-Implementation baseline: Gungnir 1.0.0-rc.1 release-candidate contract, reviewed on 3 October 2026.
+Implementation baseline: active Gungnir development, reviewed on 3 October 2026.
 
-Gungnir is in its 1.0 release-candidate freeze. Structured language/compiler/diagnostic and representative native C++ source APIs are now 1.0 contracts; generated C++ and cross-toolchain binary ABI remain constrained. Start with the current usage guides below. The full proposed language and architecture contracts are preserved under [design/](design/README.md).
+Gungnir is under active feature-completion development. Language/compiler/diagnostic/native API contracts are not frozen for 1.0 yet. Start with the current usage guides below; future architecture remains under [design/](design/README.md).
 
 | Documentation | Meaning |
 | --- | --- |
@@ -11,7 +11,7 @@ Gungnir is in its 1.0 release-candidate freeze. Structured language/compiler/dia
 | `cpp` examples | Native interoperability; do not substitute their names into `.gnr` blindly |
 | Design specifications | Intended contracts; examples may require future compiler/runtime work |
 
-`gungnirc --check` is the authoritative structured semantic gate and intentionally stops before C++ IR/native compilation. Use `gungnir build` for backend verification. See [Stability](stability.md) and [1.0 Release Candidate](release-candidate.md) for the frozen compatibility boundary.
+`gungnirc --check` is the authoritative structured semantic gate and intentionally stops before C++ IR/native compilation. Use `gungnir build` for backend verification. See [Stability](stability.md) and [Development Status](development-status.md) for the current compatibility boundary.
 
 ## Start here
 
@@ -20,7 +20,7 @@ Gungnir is in its 1.0 release-candidate freeze. Structured language/compiler/dia
 - [CLI and Code Generation](cli-codegen.md)
 - [Stability](stability.md)
 - [Upgrading](upgrading.md)
-- [1.0 Release Candidate](release-candidate.md)
+- [Development Status](development-status.md)
 
 ## HTTP application
 
