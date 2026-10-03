@@ -45,11 +45,22 @@ std::string serialize_cookie(const Cookie& cookie) {
                    (c >= 0x5d && c <= 0x7e);
         });
     };
+    const bool secure_prefix =
+        cookie.name.starts_with("__Secure-");
+
+    const bool host_prefix =
+        cookie.name.starts_with("__Host-");
+
     if (cookie.name.empty() ||
         !std::all_of(cookie.name.begin(), cookie.name.end(), token) ||
         !value(cookie.value) || !attribute(cookie.path) ||
         (cookie.domain && !domain(*cookie.domain)) ||
         (cookie.same_site == SameSite::none && !cookie.secure) ||
+        (secure_prefix && !cookie.secure) ||
+        (host_prefix &&
+         (!cookie.secure ||
+          cookie.domain.has_value() ||
+          cookie.path != "/")) ||
         (cookie.same_site != SameSite::none && cookie.same_site != SameSite::lax &&
          cookie.same_site != SameSite::strict)) {
         throw std::invalid_argument("Invalid HTTP cookie");
