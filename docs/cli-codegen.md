@@ -1,6 +1,6 @@
 # CLI and Code Generation
 
-> **Status: Gungnir 1.0 current contract.** Generated applications use the structured compiler. Native extension hooks remain C++.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 | Command | Purpose |
 | --- | --- |

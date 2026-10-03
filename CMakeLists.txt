@@ -1,20 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(gungnir VERSION 1.0.0 LANGUAGES CXX)
+# CMake requires a numeric project version. During active framework
+# development this is an internal placeholder, not a public release number.
+project(gungnir VERSION 0.0.0 LANGUAGES CXX)
 
-set(GUNGNIR_VERSION_PRERELEASE "rc.1")
-
-if(GUNGNIR_VERSION_PRERELEASE)
-    set(
-        GUNGNIR_VERSION_FULL
-        "${PROJECT_VERSION}-${GUNGNIR_VERSION_PRERELEASE}"
-    )
-else()
-    set(
-        GUNGNIR_VERSION_FULL
-        "${PROJECT_VERSION}"
-    )
-endif()
+set(GUNGNIR_RELEASE_CHANNEL "development")
+set(GUNGNIR_VERSION_FULL "development")
 
 set(
     GUNGNIR_GENERATED_INCLUDE_DIR
@@ -2529,7 +2520,7 @@ write_basic_package_version_file(
     VERSION
         ${PROJECT_VERSION}
     COMPATIBILITY
-        SameMajorVersion
+        ExactVersion
 )
 
 install(
@@ -2630,7 +2621,7 @@ if(WIN32)
     set(CPACK_GENERATOR "NSIS")
     set(
         CPACK_PACKAGE_FILE_NAME
-        "gungnir-v${GUNGNIR_VERSION_FULL}-windows-x86_64-setup"
+        "gungnir-${GUNGNIR_VERSION_FULL}-windows-x86_64-setup"
     )
     set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
     set(CPACK_NSIS_DISPLAY_NAME "Gungnir")

@@ -1,6 +1,6 @@
 # Compiler Conformance
 
-> **Status: living implementation matrix.** A feature is not considered compiler-complete merely because it parses. Completion requires the relevant syntax, semantic validation, validated representation, code generation, diagnostics and tests.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Status values
 
@@ -38,7 +38,7 @@
 | Diagnostic/source mapping | Complete baseline | Phase 7 preserves source spans, deterministic diagnostic order, rich CLI rendering and statement-level `#line` mapping |
 | Fuzzing and compiler robustness | Complete baseline | Phase 8 adds bounded parser nesting, deterministic adversarial mutations and ASan/UBSan-backed libFuzzer targets for lexer and structured compiler |
 | GCC/Clang/MSVC conformance | Complete baseline | Phase 9 builds and runs compiler correctness, robustness and generated structured application tests under all three supported compiler families, then requires byte-identical structured compiler snapshots |
-| 1.0 stability contract | Feature-frozen | Phase 19 promotes the frozen structured profile and diagnostic contract to 1.0, with the same stability gate under GCC, Clang and MSVC |
+| Development compatibility contract | Active | The structured compiler remains under development while correctness/conformance gates continue under GCC, Clang and MSVC |
 
 ## Feature completion rule
 
@@ -62,7 +62,7 @@ For each supported feature, track the following columns:
 | Notifications/mail | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
 | Jobs | Yes | Yes | Partial | Yes | Yes | Yes | Yes | Partial |
 
-“Partial” does not mean unusable. It means the correctness contract has additional semantic or framework-specific cases that must be closed before a 1.0 language guarantee.
+“Partial” does not mean unusable. It means semantic or framework-specific cases remain before the eventual 1.0 completeness gate can close.
 
 ## Definition of compiler-complete
 
@@ -109,21 +109,9 @@ The comparison job requires the generated C++, validated dump, C++ IR dump and m
 Compiler-specific warnings or backend implementation defects are fixed in the originating compiler/runtime layer; they must not be papered over with toolchain-specific generated semantics.
 
 
-## 1.0 release-candidate stabilization contract
+## Development stabilization contract
 
-Phase 10 originally froze the structured compiler profile for the 0.9 stabilization line. Phase 19 promotes that proven profile into the 1.0 contract without adding new syntax.
+The structured compiler remains the canonical development compiler. Existing acceptance/rejection tests, diagnostics, validated/compiler IR boundaries, cross-compiler agreement, and deterministic snapshots remain protected while the language/framework feature set continues to mature.
 
-The protected 1.0 surface includes:
-
-- structured-profile acceptance/rejection behavior represented by the stability corpus;
-- authoritative validation-only `--check` semantics;
-- diagnostic-code identity for frozen regressions;
-- deterministic validated/compiler IR boundaries;
-- package/language/compiler/diagnostic version metadata;
-- GCC, Clang, and MSVC agreement;
-- byte-identical canonical compiler snapshots.
-
-Generated C++ helper spelling remains a rebuild artifact rather than a source compatibility contract. Native C++ API/ABI guarantees are governed by [Native API and ABI Stability](native-api-abi.md). Explicit `--compat` behavior and unsupported syntax remain outside the structured 1.0 language contract.
-
-New structured-language features are deferred until after the 1.0 release line unless the contract version is intentionally advanced.
+No 1.0 source-language compatibility guarantee is frozen yet. New structured features are allowed when they follow the canonical parser -> semantics -> validated AST -> typed C++ IR -> emitter architecture and add the required compile-fail/run-pass coverage.
 

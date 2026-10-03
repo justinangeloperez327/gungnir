@@ -1,6 +1,6 @@
 # HTTP Runtime
 
-> **Status: Gungnir 1.0 current contract.** Phase 11 establishes the current runtime-lifecycle correctness baseline. Native C++ APIs remain subject to 1.0 RC compatibility rules.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Current behavior
 

@@ -1,6 +1,6 @@
 # Production Resilience
 
-> **Status: Gungnir 1.0 resilience contract.** Phase 15 defines bounded failure and overload behavior for the production runtime. It does not replace infrastructure-level redundancy, autoscaling, load balancing, backups, or disaster recovery.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Health
 

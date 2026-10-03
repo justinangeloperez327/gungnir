@@ -1,6 +1,6 @@
 # Security Hardening
 
-> **Status: Gungnir 1.0 security baseline.** Phase 14 establishes tested HTTP/session security behavior. It does not replace application threat modeling or deployment-specific controls.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Phase 14 guarantees
 

@@ -1,6 +1,6 @@
 # Framework Semantic Contracts
 
-> **Status: stable 1.0 semantic contract.** Phase 13 makes framework declarations authoritative semantic contracts. A structured program is rejected before C++ IR lowering when a framework artifact cannot satisfy the runtime surface Gungnir will generate for it.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Why this exists
 

@@ -1,6 +1,6 @@
 # Database and ORM Correctness
 
-> **Status: Gungnir 1.0 correctness contract.** Phase 12 defines the behavioral baseline for pooled database access, transactions, model hydration, persistence, and eager loading. Backend-specific limitations remain documented explicitly.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Correctness contract
 

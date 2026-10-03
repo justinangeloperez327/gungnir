@@ -4,10 +4,10 @@
 namespace gungnir::language {
 
 inline constexpr std::string_view language_name = "Gungnir";
-inline constexpr std::string_view language_version = "1.0";
-inline constexpr std::string_view compiler_contract_version = "1.0";
-inline constexpr std::string_view diagnostic_contract_version = "1.0";
-inline constexpr bool structured_profile_feature_frozen = true;
+inline constexpr std::string_view language_version = "development";
+inline constexpr std::string_view compiler_contract_version = "development";
+inline constexpr std::string_view diagnostic_contract_version = "development";
+inline constexpr bool structured_profile_feature_frozen = false;
 inline constexpr std::string_view source_extension = ".gnr";
 
 enum class Compatibility {
@@ -31,7 +31,7 @@ struct LanguageFeatures {
 
 // Capability flags describe the structured Compiler / --strict frontend.
 // Native C++ passthrough is available separately through Transpiler.
-inline constexpr Compatibility compiler_compatibility = Compatibility::stable;
+inline constexpr Compatibility compiler_compatibility = Compatibility::experimental;
 inline constexpr LanguageFeatures implemented_features{};
 inline constexpr LanguageFeatures stable_features = implemented_features; // Legacy API name; not a stability guarantee.
 

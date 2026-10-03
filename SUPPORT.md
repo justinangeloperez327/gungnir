@@ -1,6 +1,6 @@
 # Support
 
-Gungnir is currently in the 1.0 release-candidate stage. Support is provided through the repository and documentation; there is no guaranteed response-time SLA.
+Gungnir is currently under active development and feature completion. Support is provided through the repository and documentation; there is no guaranteed response-time SLA.
 
 ## Before asking for help
 
@@ -30,7 +30,7 @@ Do not use bug reports for design proposals or behavior documented only under `d
 
 ## Feature requests
 
-Feature requests are welcome, but the structured language is feature-frozen for the 1.0 release-candidate line. New syntax or semantics may be deferred until the compiler contract is intentionally advanced.
+Feature requests are welcome, but the structured language is still evolving toward the final 1.0 completeness target. New syntax or semantics may be deferred until the compiler contract is intentionally advanced.
 
 ## Security
 
@@ -38,4 +38,4 @@ Potential vulnerabilities should follow [SECURITY.md](SECURITY.md) rather than t
 
 ## Production use
 
-Gungnir 1.0.0-rc.1 is a release candidate, not the final stable release. Pin exact versions, review the [stability contract](docs/stability.md), run workload-specific tests, and use appropriate external supervision, TLS, database resilience, backup, monitoring, and capacity controls.
+Development builds are not a stable release and may change before 1.0. Pin exact versions, review the [stability contract](docs/stability.md), run workload-specific tests, and use appropriate external supervision, TLS, database resilience, backup, monitoring, and capacity controls.

@@ -1,6 +1,6 @@
 # Hello Gungnir
 
-This is the canonical minimal Gungnir 1.0 application example.
+This is the canonical minimal Gungnir development application example.
 
 Create a generated project first:
 
@@ -28,4 +28,4 @@ The default generated environment listens on `127.0.0.1:8000`. A request to `/` 
 Hello from Gungnir
 ```
 
-The documentation workflow validates the controller with the current structured compiler so this example cannot silently drift away from the supported 1.0 language contract.
+The documentation workflow validates the controller with the current structured compiler so this example cannot silently drift away from the current development language contract.

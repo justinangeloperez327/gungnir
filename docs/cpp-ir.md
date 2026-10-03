@@ -1,6 +1,6 @@
 # C++ Intermediate Representation
 
-> **Status: structural backend IR, 1.0 RC.** Phase 4 replaces monolithic implementation fragments with typed target IR for executable functions, statements, expressions and module ownership.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Pipeline
 

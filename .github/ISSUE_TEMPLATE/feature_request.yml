@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Gungnir's structured language is feature-frozen for the 1.0 release line. New syntax or semantics may be deferred for a later contract/version line.
+        Gungnir is still completing its feature set before 1.0. New syntax or semantics should fit the canonical compiler architecture and the framework-completeness roadmap.
 
   - type: textarea
     id: problem

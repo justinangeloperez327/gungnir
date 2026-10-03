@@ -30,8 +30,8 @@ LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 PROJECT_VERSION_PATTERN = re.compile(
     r"project\(gungnir VERSION (\d+\.\d+\.\d+) LANGUAGES CXX\)"
 )
-PRERELEASE_PATTERN = re.compile(
-    r'set\(GUNGNIR_VERSION_PRERELEASE "([^"]*)"\)'
+RELEASE_CHANNEL_PATTERN = re.compile(
+    r'set\(GUNGNIR_RELEASE_CHANNEL "([^"]*)"\)'
 )
 
 
@@ -39,19 +39,21 @@ def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
-def release_version(errors: list[str]) -> str:
+def project_identity(errors: list[str]) -> tuple[str, str]:
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     match = PROJECT_VERSION_PATTERN.search(cmake)
 
     if not match:
-        fail(errors, "Unable to determine project version from CMakeLists.txt")
-        return "unknown"
+        fail(errors, "Unable to determine internal CMake version")
+        return "unknown", "unknown"
 
-    core = match.group(1)
-    prerelease_match = PRERELEASE_PATTERN.search(cmake)
-    prerelease = prerelease_match.group(1) if prerelease_match else ""
+    channel_match = RELEASE_CHANNEL_PATTERN.search(cmake)
 
-    return core + (f"-{prerelease}" if prerelease else "")
+    if not channel_match:
+        fail(errors, "Unable to determine GUNGNIR_RELEASE_CHANNEL")
+        return match.group(1), "unknown"
+
+    return match.group(1), channel_match.group(1)
 
 
 def check_required_files(errors: list[str]) -> None:
@@ -172,25 +174,35 @@ def check_docs_index(errors: list[str]) -> None:
             )
 
 
-def check_version_contract(errors: list[str], version: str) -> None:
+def check_identity_contract(
+    errors: list[str],
+    internal_version: str,
+    release_channel: str,
+) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    if "-rc." in version:
-        expected_status = f"Current release candidate: **v{version}**"
-    else:
-        expected_status = f"Current stable release: **v{version}**"
+    if internal_version != "0.0.0":
+        fail(
+            errors,
+            f"Development CMake placeholder must remain 0.0.0, got {internal_version}",
+        )
+
+    if release_channel != "development":
+        fail(
+            errors,
+            f"Development release channel must be development, got {release_channel}",
+        )
+
+    expected_status = "Project status: **Development**"
 
     if expected_status not in readme:
         fail(errors, f"README.md must contain: {expected_status}")
 
-    expected_linux = f"gungnir-v{version}-linux-x86_64.tar.gz"
-
-    if expected_linux not in readme:
-        fail(errors, f"README.md must show current Linux asset {expected_linux}")
-
     stale = (
-        "Current public preview: **v0.9.0**",
-        "Gungnir 0.9 preview",
+        "Current release candidate:",
+        "Current stable release:",
+        "1.0.0-rc.1",
+        "Gungnir 1.0 release candidate",
         "v0.1.0",
         "v0.1.1",
         "v0.1.2",
@@ -203,7 +215,7 @@ def check_version_contract(errors: list[str], version: str) -> None:
             if value in text:
                 fail(
                     errors,
-                    f"{source.relative_to(ROOT)} contains stale status reference {value}",
+                    f"{source.relative_to(ROOT)} contains stale maturity reference {value}",
                 )
 
 
@@ -226,10 +238,14 @@ def main() -> int:
     errors: list[str] = []
 
     check_required_files(errors)
-    version = release_version(errors)
+    internal_version, release_channel = project_identity(errors)
     check_relative_links(errors)
     check_docs_index(errors)
-    check_version_contract(errors, version)
+    check_identity_contract(
+        errors,
+        internal_version,
+        release_channel,
+    )
     check_example_contract(errors)
 
     if errors:
@@ -240,7 +256,7 @@ def main() -> int:
 
         return 1
 
-    print(f"Documentation contract passed for Gungnir {version}.")
+    print("Documentation contract passed for Gungnir development.")
     return 0
 
 

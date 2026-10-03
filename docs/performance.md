@@ -1,6 +1,6 @@
 # Performance Baseline
 
-> **Status: Gungnir 1.0 benchmark contract.** Phase 16 establishes the reproducible benchmark surface and measurement policy. Numbers produced by a benchmark run are observational, not universal performance guarantees.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Principles
 

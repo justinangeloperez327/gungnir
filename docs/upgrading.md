@@ -1,29 +1,15 @@
 # Upgrading Gungnir
 
-> **Current line: 1.0.0-rc.1.** The 1.0 language/compiler/native API contracts are frozen. Pin the exact RC in production evaluation environments and review [Stability](stability.md) plus [Release Candidate](release-candidate.md) before upgrading.
+> **Status: Development.** Development builds have no public compatibility version. Pin exact commits or artifacts when evaluating main and rebuild generated/native code after framework changes.
 
-## From 0.9.0 to 1.0.0-rc.1
+## Historical releases
 
-The accepted structured language profile is promoted from the stabilized 0.9 behavior into the 1.0 contract. Phase 19 does not intentionally add new syntax.
+Published historical releases such as `0.9.0` remain valid historical artifacts, but they do not describe the current development contract on `main`.
 
-Contract identifiers change:
-
-| Contract | 0.9.0 | 1.0.0-rc.1 |
-| --- | ---: | ---: |
-| Structured language | 0.9 | 1.0 |
-| Compiler semantics | 0.9 | 1.0 |
-| Diagnostics | 0.9 | 1.0 |
-| Native C++ API | 0.9 | 1.0 |
-| Native ABI epoch | 0 | 1 |
-
-Because compiler/runtime contract identifiers change, regenerate and rebuild all generated C++ with the RC package.
-
-Native applications should also be rebuilt for ABI epoch 1.
-
-## Recommended upgrade procedure
+## Moving from a historical release to development
 
 1. Read [CHANGELOG.md](../CHANGELOG.md).
-2. Install the exact Gungnir RC package.
+2. Install/build the exact development revision you intend to test.
 3. Verify:
 
    ```sh
@@ -32,33 +18,22 @@ Native applications should also be rebuilt for ABI epoch 1.
    gungnirc --print-contract
    ```
 
-   RC1 should report `1.0.0-rc.1`, language/compiler/diagnostic contract `1.0`, feature freeze `true`, and compatibility `stable`.
+4. Development builds should report `development` contract identities.
+5. Run `gungnirc <entry>.gnr --check`.
+6. Regenerate/rebuild all generated C++.
+7. Rebuild native application code.
+8. Run the complete application test suite.
+9. Plan database migrations before applying them.
+10. Re-run workload-specific integration, security and performance tests.
 
-4. Run semantic validation:
+## Development compatibility
 
-   ```sh
-   gungnirc <entry>.gnr --check
-   ```
+Do not assume source or ABI compatibility between arbitrary development commits.
 
-5. Regenerate/rebuild all generated C++.
-6. Run the application's native build and full test suite.
-7. Run migration planning before applying database migrations.
-8. Re-run workload-specific security, integration, and performance tests for production deployments.
+The project tries to evolve coherently and regression tests protect implemented behavior, but the framework remains free to make necessary design changes until the 1.0 completeness gate is closed.
 
-## RC to stable 1.0.0
+## Future 1.0
 
-The intended RC-to-stable transition changes release identity only:
+When the framework is complete, a final coordinated release change will assign the stable 1.0 package/language/compiler/native API/ABI contracts.
 
-```text
-1.0.0-rc.1 -> 1.0.0
-```
-
-The language, compiler, diagnostic, native API, and ABI epoch contracts should remain at 1.0 / epoch 1.
-
-If a release-blocking fix requires a contract change, it must be documented before stable promotion.
-
-## Native binary compatibility
-
-ABI epoch equality is necessary but not sufficient. Rebuild native applications when changing compiler family, standard library ABI, runtime model, architecture, linked dependency ABI, or incompatible build options.
-
-See [Native API and ABI Stability](native-api-abi.md).
+See [Development Status](development-status.md) and [Stability](stability.md).

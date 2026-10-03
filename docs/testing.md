@@ -1,6 +1,6 @@
 # Testing
 
-> **Status: Gungnir 1.0 current contract.** This page describes the supported testing surface. Proposed future contracts remain under [design/](design/testing.md).
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Current behavior
 

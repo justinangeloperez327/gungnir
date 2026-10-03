@@ -1,52 +1,59 @@
 # Changelog
 
-This changelog records user-visible contract milestones; Git history remains the detailed implementation record.
+This changelog records published releases and material development changes. Git history remains the detailed implementation record.
 
-## [1.0.0-rc.1] - 2026-10-03
+## Unreleased
 
-### 1.0 contract freeze
+### Development consistency reset
 
-- promoted the structured language contract to 1.0;
-- promoted compiler semantics and diagnostic contracts to 1.0;
-- marked the structured compiler compatibility level stable;
-- promoted the native C++ source API contract to 1.0;
-- advanced the native ABI epoch to 1;
-- switched installed CMake compatibility to the 1.x same-major policy.
+- removed the premature 1.0 release-candidate positioning;
+- returned package/language/compiler/diagnostic/native API metadata to development status;
+- returned the native ABI epoch to development epoch 0;
+- reopened the structured feature set for planned completion work;
+- retained compiler correctness, conformance, security, runtime, performance, package and documentation gates;
+- replaced RC promotion logic with a framework completeness rule for the eventual 1.0 release.
 
-### Release-candidate hardening
+### Completed maturity work retained
 
-- added a release-candidate contract checker and dedicated RC package workflow;
-- made CLI/compiler/package identity prerelease-aware;
-- made release tag validation require the source-tree prerelease marker;
-- verified installed package consumers and benchmark smoke from the RC package;
-- froze Phase 20 as promotion-only work.
+The development branch already includes:
 
-### Maturity baseline
+- compiler correctness and canonical structured compilation;
+- typed C++ IR;
+- semantic/type-system hardening;
+- authoritative semantic checking;
+- diagnostic/source mapping hardening;
+- fuzzing and cross-compiler conformance;
+- runtime lifecycle correctness;
+- database/ORM correctness;
+- framework semantic contracts;
+- security hardening;
+- production resilience;
+- performance benchmarks;
+- native package/API/ABI verification infrastructure;
+- documentation and ecosystem integrity gates.
 
-The RC incorporates runtime lifecycle correctness, database/ORM correctness, framework semantic completion, security hardening, production resilience, performance baselines, native API/ABI stabilization, and documentation/ecosystem readiness completed after 0.9.0.
+These capabilities remain implemented, but they are not treated as a final 1.0 compatibility promise while feature completion continues.
 
 ## [0.9.0] - 2026-10-02
 
 ### Compiler stabilization
 
-- froze the structured language/compiler contract at 0.9;
-- made the structured compiler canonical;
+- established the structured compiler as the canonical compilation path;
 - established dedicated structural C++ IR boundaries;
-- completed semantic/type-system validation required by the 0.9 profile;
+- completed semantic/type-system validation for the then-current profile;
 - made `gungnirc --check` authoritative through validated semantics;
 - hardened diagnostics/source mapping;
 - added fuzzing and compiler robustness gates;
-- added GCC, Clang, and MSVC conformance with byte-identical structured output.
+- added GCC, Clang and MSVC conformance with deterministic structured output.
 
 ### Runtime and framework maturity
 
 - hardened request/coroutine lifecycle and graceful shutdown;
 - strengthened database and ORM correctness;
-- completed the Phase 13 framework semantic contract;
-- hardened HTTP/session/application security boundaries;
-- added production resilience, health, retry, and overload admission controls;
-- established reproducible compiler, HTTP/routing, and ORM benchmarks;
-- stabilized representative native C++ API signatures and native ABI epoch metadata.
+- hardened framework semantics and security boundaries;
+- added production resilience, health, retry and overload controls;
+- established reproducible compiler, HTTP/routing and ORM benchmarks;
+- introduced native API/ABI verification infrastructure.
 
 ### Packaging
 
@@ -55,7 +62,3 @@ The RC incorporates runtime lifecycle correctness, database/ORM correctness, fra
 - Windows setup executable;
 - installed CMake package targets;
 - compiler and CLI contract/version verification.
-
-## Unreleased
-
-- final 1.0.0 promotion only; no new features are planned between RC1 and stable unless required by a release-blocking correction.
