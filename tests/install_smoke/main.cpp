@@ -6,7 +6,7 @@
 #include <gungnir/version.hpp>
 
 static_assert(
-    gungnir::version == "0.9.0"
+    gungnir::version == "1.0.0-rc.1"
 );
 
 static_assert(
@@ -15,7 +15,7 @@ static_assert(
 );
 
 static_assert(
-    gungnir::native_abi_epoch == 0
+    gungnir::native_abi_epoch == 1
 );
 
 int main() {
