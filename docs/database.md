@@ -1,6 +1,6 @@
 # Database Runtime
 
-> **Status: experimental, pre-1.0.** Phase 12 defines the current database behavioral-correctness baseline. Native C++ APIs and `.gnr` syntax remain subject to pre-1.0 compatibility rules.
+> **Status: Gungnir 1.0 current contract.** Phase 12 defines the current database behavioral-correctness baseline. Native C++ APIs and `.gnr` syntax remain subject to 1.0 RC compatibility rules.
 
 ## Current behavior
 
