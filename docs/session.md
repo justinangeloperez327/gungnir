@@ -1,22 +1,38 @@
 # Sessions
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Sessions persist request-scoped user state across HTTP requests.
 
-## Current behavior
+## Session middleware
 
-Session supplies server-side request state, identity regeneration, invalidation and flash state. StartSession middleware loads/persists state using a Store and configures the session cookie. Memory and optional Redis store implementations are available.
+Session middleware loads the incoming session before the route pipeline and persists session changes with the response.
 
-Access attached state through `Request::session`; check `has_session` when middleware may be absent. Authentication and CSRF must be configured alongside session middleware.
+## Reading and writing values
 
-## Limits and planned work
+```gnr
+const locale = request.session().get("locale");
+request.session().put("locale", "en");
+```
 
-Memory state is not shared across processes. Distributed storage does not by itself prevent concurrent request updates or provide application transaction semantics. Configure cookie security, expiry and store failure handling for the deployment.
+Sessions support retrieving, storing, removing, and clearing values.
 
-## Implementation references
+## Flash data
 
-- [include/gungnir/session/session.hpp](../include/gungnir/session/session.hpp)
-- [include/gungnir/session/middleware.hpp](../include/gungnir/session/middleware.hpp)
-- [include/gungnir/session/store.hpp](../include/gungnir/session/store.hpp)
-- [include/gungnir/session/redis_store.hpp](../include/gungnir/session/redis_store.hpp)
+Flash values are available for the next request and are useful for validation messages, status notices, and redirect workflows.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/session.md).
+## Session identifiers
+
+Authentication and other privilege changes rotate the session identifier to protect against session fixation.
+
+## Authentication
+
+Session authentication stores the authenticated identity in the session and restores it on later requests.
+
+See [Authentication](authentication.md).
+
+## Drivers
+
+Applications can configure session persistence appropriate to their deployment. Process-local storage is suitable for development and tests; shared production deployments should use a shared session backend.
+
+## Cookies
+
+The session identifier is transported using a configured cookie with appropriate security, same-site, and lifetime settings.
