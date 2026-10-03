@@ -1,5 +1,7 @@
+#include <chrono>
 #include <concepts>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -197,36 +199,42 @@ static_assert(
 
 static_assert(
     std::same_as<
-        decltype(
-            std::declval<
-                gungnir::http::
-                    RuntimeOptions
-            >().max_request_bytes
-        ),
+        std::remove_cvref_t<
+            decltype(
+                std::declval<
+                    gungnir::http::
+                        RuntimeOptions
+                >().max_request_bytes
+            )
+        >,
         std::size_t
     >
 );
 
 static_assert(
     std::same_as<
-        decltype(
-            std::declval<
-                gungnir::http::
-                    RuntimeOptions
-            >().request_timeout
-        ),
+        std::remove_cvref_t<
+            decltype(
+                std::declval<
+                    gungnir::http::
+                        RuntimeOptions
+                >().request_timeout
+            )
+        >,
         std::chrono::milliseconds
     >
 );
 
 static_assert(
     std::same_as<
-        decltype(
-            std::declval<
-                gungnir::http::
-                    RuntimeOptions
-            >().tls
-        ),
+        std::remove_cvref_t<
+            decltype(
+                std::declval<
+                    gungnir::http::
+                        RuntimeOptions
+                >().tls
+            )
+        >,
         std::optional<
             gungnir::http::TlsOptions
         >
@@ -235,12 +243,14 @@ static_assert(
 
 static_assert(
     std::same_as<
-        decltype(
-            std::declval<
-                gungnir::orm::
-                    CompiledQuery
-            >().text
-        ),
+        std::remove_cvref_t<
+            decltype(
+                std::declval<
+                    gungnir::orm::
+                        CompiledQuery
+                >().text
+            )
+        >,
         gungnir::String
     >
 );
