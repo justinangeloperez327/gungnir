@@ -1,0 +1,137 @@
+name: Development Consistency
+
+on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/gungnir/language/**"
+      - "include/gungnir/api.hpp"
+      - "include/gungnir/gungnir.hpp"
+      - "tools/gungnir.cpp"
+      - "tools/gungnirc.cpp"
+      - "tools/check_development_contract.py"
+      - "tests/compiler_release_contract.cmake"
+      - "tests/compiler_stability.cpp"
+      - "tests/public_api_contract.cpp"
+      - "tests/install_smoke/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "docs/**"
+      - ".github/workflows/development.yml"
+      - ".github/workflows/installer-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/gungnir/language/**"
+      - "include/gungnir/api.hpp"
+      - "include/gungnir/gungnir.hpp"
+      - "tools/gungnir.cpp"
+      - "tools/gungnirc.cpp"
+      - "tools/check_development_contract.py"
+      - "tests/compiler_release_contract.cmake"
+      - "tests/compiler_stability.cpp"
+      - "tests/public_api_contract.cpp"
+      - "tests/install_smoke/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "docs/**"
+      - ".github/workflows/development.yml"
+      - ".github/workflows/installer-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  consistency:
+    name: Development contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate development metadata
+        run: python3 tools/check_development_contract.py
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure development package
+        run: >
+          cmake -S . -B build-development -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_BUILD_TESTS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_BUILD_BENCHMARKS=ON
+
+      - name: Build package and benchmark smoke targets
+        run: >
+          cmake --build build-development
+          --target gungnir gungnir-orm gungnir-language gungnir-cli gungnirc gungnir_benchmarks
+          --parallel 2
+
+      - name: Install package
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/gungnir-development"
+          cmake --install build-development --prefix "$prefix"
+          echo "GUNGNIR_DEVELOPMENT_PREFIX=$prefix" >> "$GITHUB_ENV"
+
+      - name: Verify installed CLI contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnir" --version)" = "Gungnir development"
+          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --version)" = "Gungnir compiler development (language development)"
+
+          contract="$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --print-contract)"
+          grep -qx "package_version=development" <<< "$contract"
+          grep -qx "language_version=development" <<< "$contract"
+          grep -qx "compiler_contract=development" <<< "$contract"
+          grep -qx "diagnostic_contract=development" <<< "$contract"
+          grep -qx "structured_feature_freeze=false" <<< "$contract"
+          grep -qx "compatibility=experimental" <<< "$contract"
+
+      - name: Configure installed-package consumer
+        run: >
+          cmake -S tests/install_smoke -B development-consumer -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$GUNGNIR_DEVELOPMENT_PREFIX"
+
+      - name: Link and run installed-package consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build development-consumer --parallel 2
+          "$PWD/development-consumer/gungnir_install_smoke"
+
+      - name: Run benchmark contract smoke
+        run: >
+          python3 benchmarks/run.py
+          --build-dir build-development
+          --smoke
+          --output development-benchmark-smoke.json
+
+      - name: Upload development smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gungnir-development-smoke
+          path: development-benchmark-smoke.json
+          if-no-files-found: error
+          retention-days: 30
