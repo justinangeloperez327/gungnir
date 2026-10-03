@@ -18,6 +18,11 @@ option(GUNGNIR_WITH_PASSWORD "Build OpenSSL scrypt password hashing" OFF)
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
 option(
+    GUNGNIR_BUILD_BENCHMARKS
+    "Build reproducible Gungnir performance benchmarks"
+    OFF
+)
+option(
     GUNGNIR_BUILD_FUZZERS
     "Build Clang/libFuzzer compiler robustness targets"
     OFF
@@ -985,6 +990,76 @@ if(GUNGNIR_BUILD_TOOLS)
         PROPERTIES
             OUTPUT_NAME gungnir
             PDB_NAME gungnir-cli
+    )
+endif()
+
+if(GUNGNIR_BUILD_BENCHMARKS)
+    add_executable(
+        gungnir_benchmark_compiler
+        benchmarks/compiler.cpp
+    )
+    target_link_libraries(
+        gungnir_benchmark_compiler
+        PRIVATE
+            gungnir::language
+    )
+    target_compile_features(
+        gungnir_benchmark_compiler
+        PRIVATE
+            cxx_std_23
+    )
+    target_include_directories(
+        gungnir_benchmark_compiler
+        PRIVATE
+            benchmarks
+    )
+
+    add_executable(
+        gungnir_benchmark_http_routing
+        benchmarks/http_routing.cpp
+    )
+    target_link_libraries(
+        gungnir_benchmark_http_routing
+        PRIVATE
+            gungnir::gungnir
+    )
+    target_compile_features(
+        gungnir_benchmark_http_routing
+        PRIVATE
+            cxx_std_23
+    )
+    target_include_directories(
+        gungnir_benchmark_http_routing
+        PRIVATE
+            benchmarks
+    )
+
+    add_executable(
+        gungnir_benchmark_orm
+        benchmarks/orm.cpp
+    )
+    target_link_libraries(
+        gungnir_benchmark_orm
+        PRIVATE
+            gungnir::orm
+    )
+    target_compile_features(
+        gungnir_benchmark_orm
+        PRIVATE
+            cxx_std_23
+    )
+    target_include_directories(
+        gungnir_benchmark_orm
+        PRIVATE
+            benchmarks
+    )
+
+    add_custom_target(
+        gungnir_benchmarks
+        DEPENDS
+            gungnir_benchmark_compiler
+            gungnir_benchmark_http_routing
+            gungnir_benchmark_orm
     )
 endif()
 
