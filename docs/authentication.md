@@ -8,6 +8,8 @@ Authentication currently uses `Identity`, credential-resolving `Guard`, a guard 
 
 `Request::authenticated`, `guest` and `user` inspect attached identity state. `AuthenticateSession` integrates session authentication. Applications supply the resolver/provider behavior and configure guards explicitly.
 
+Phase 14 promotes authentication/session lifecycle and CSRF regressions into the primary pull-request security gate. Session login/logout and stale identity recovery must continue rotating session identifiers without preserving obsolete authenticated state.
+
 Enable `GUNGNIR_WITH_PASSWORD=ON` (OpenSSL 3) and include `<gungnir/auth/login.hpp>` for `SessionGuard`. Applications supply credential and identity resolvers. `attempt(request, response, login, password, remember)` verifies an scrypt hash and rotates the session on success. `recall` consumes and rotates a remember token; `logout` invalidates the session and revokes its token. `Password::hash`, `verify`, and `needs_rehash` handle the versioned hash format. Remember stores retain token digests; the included `MemoryRememberStore` is process-local. Run these operations inside session middleware, with `AuthenticateSession` to restore identities on subsequent requests.
 
 ## Limits and planned work
