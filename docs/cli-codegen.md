@@ -1,6 +1,6 @@
 # CLI and Code Generation
 
-> **Status: experimental, pre-1.0.** Generated applications use the structured compiler. Native extension hooks remain C++.
+> **Status: Gungnir 1.0 current contract.** Generated applications use the structured compiler. Native extension hooks remain C++.
 
 | Command | Purpose |
 | --- | --- |
