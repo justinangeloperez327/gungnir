@@ -69,7 +69,7 @@ def markdown_files() -> list[Path]:
         ROOT / "SUPPORT.md",
     ]
 
-    result.extend(sorted((ROOT / "docs").glob("*.md")))
+    result.extend(sorted((ROOT / "docs").rglob("*.md")))
     result.extend(sorted((ROOT / "examples").rglob("*.md")))
 
     return [path for path in result if path.is_file()]
@@ -129,6 +129,20 @@ def check_docs_index(errors: list[str]) -> None:
 
         if f"({path.name})" not in index:
             fail(errors, f"docs/README.md does not index {path.name}")
+
+    design_index = (
+        ROOT / "docs" / "design" / "README.md"
+    ).read_text(encoding="utf-8")
+
+    for path in sorted((ROOT / "docs" / "design").glob("*.md")):
+        if path.name == "README.md":
+            continue
+
+        if f"({path.name})" not in design_index:
+            fail(
+                errors,
+                f"docs/design/README.md does not index {path.name}",
+            )
 
 
 def check_version_contract(errors: list[str], version: str) -> None:
