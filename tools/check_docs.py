@@ -30,13 +30,16 @@ LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 PROJECT_VERSION_PATTERN = re.compile(
     r"project\(gungnir VERSION (\d+\.\d+\.\d+) LANGUAGES CXX\)"
 )
+PRERELEASE_PATTERN = re.compile(
+    r'set\(GUNGNIR_VERSION_PRERELEASE "([^"]*)"\)'
+)
 
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
-def project_version(errors: list[str]) -> str:
+def release_version(errors: list[str]) -> str:
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     match = PROJECT_VERSION_PATTERN.search(cmake)
 
@@ -44,7 +47,11 @@ def project_version(errors: list[str]) -> str:
         fail(errors, "Unable to determine project version from CMakeLists.txt")
         return "unknown"
 
-    return match.group(1)
+    core = match.group(1)
+    prerelease_match = PRERELEASE_PATTERN.search(cmake)
+    prerelease = prerelease_match.group(1) if prerelease_match else ""
+
+    return core + (f"-{prerelease}" if prerelease else "")
 
 
 def check_required_files(errors: list[str]) -> None:
@@ -74,8 +81,6 @@ def normalized_link_target(raw: str) -> str:
     if value.startswith("<") and value.endswith(">"):
         value = value[1:-1]
 
-    # Markdown titles after a URL are intentionally not supported by the
-    # public docs contract because they complicate deterministic checking.
     value = value.split("#", 1)[0]
     value = value.split("?", 1)[0]
     return unquote(value)
@@ -129,17 +134,26 @@ def check_docs_index(errors: list[str]) -> None:
 def check_version_contract(errors: list[str], version: str) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    expected_preview = f"Current public preview: **v{version}**"
+    if "-rc." in version:
+        expected_status = f"Current release candidate: **v{version}**"
+    else:
+        expected_status = f"Current stable release: **v{version}**"
 
-    if expected_preview not in readme:
-        fail(errors, f"README.md must contain: {expected_preview}")
+    if expected_status not in readme:
+        fail(errors, f"README.md must contain: {expected_status}")
 
     expected_linux = f"gungnir-v{version}-linux-x86_64.tar.gz"
 
     if expected_linux not in readme:
         fail(errors, f"README.md must show current Linux asset {expected_linux}")
 
-    stale = ("v0.1.0", "v0.1.1", "v0.1.2")
+    stale = (
+        "Current public preview: **v0.9.0**",
+        "Gungnir 0.9 preview",
+        "v0.1.0",
+        "v0.1.1",
+        "v0.1.2",
+    )
 
     for source in PUBLIC_DOC_ROOTS:
         text = source.read_text(encoding="utf-8")
@@ -148,7 +162,7 @@ def check_version_contract(errors: list[str], version: str) -> None:
             if value in text:
                 fail(
                     errors,
-                    f"{source.relative_to(ROOT)} contains stale release reference {value}",
+                    f"{source.relative_to(ROOT)} contains stale status reference {value}",
                 )
 
 
@@ -171,7 +185,7 @@ def main() -> int:
     errors: list[str] = []
 
     check_required_files(errors)
-    version = project_version(errors)
+    version = release_version(errors)
     check_relative_links(errors)
     check_docs_index(errors)
     check_version_contract(errors, version)
