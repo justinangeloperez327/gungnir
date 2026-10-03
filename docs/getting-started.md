@@ -28,7 +28,7 @@ Uninstalling Gungnir removes its own user-PATH entry without rewriting unrelated
 
 ### Portable packages
 
-Windows ZIP and Linux tarball packages remain available. The current Linux asset is `gungnir-v1.0.0-rc.1-linux-x86_64.tar.gz`. Extract the package and add its `bin` directory to `PATH`.
+Windows ZIP and Linux tarball packages remain available. The current development build is produced from source; historical packaged releases remain available on GitHub Releases. Extract the package and add its `bin` directory to `PATH`.
 
 For custom layouts, `GUNGNIR_CMAKE_PREFIX` can explicitly point the CLI at the Gungnir installation prefix.
 
