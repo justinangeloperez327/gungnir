@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status: Gungnir 1.0.0-rc.1.** The 1.0 structured compiler contract is feature-frozen. Use a C++23 compiler and CMake 3.25 or newer.
+> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
 
 ## Install
 
