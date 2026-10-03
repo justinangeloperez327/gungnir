@@ -1,19 +1,21 @@
 # Stability
 
-> **Status: Gungnir 1.0 release candidate.** The structured language, compiler semantic contract, diagnostic contract, and representative native C++ source API are frozen for the 1.x line. Generated C++ remains a rebuild artifact, and native binary compatibility remains scoped by the C++ ABI environment.
+> **Status: Development.** Gungnir has not frozen its 1.0 compatibility contract. Current behavior is protected by correctness and regression tests, but language, compiler, native API, and ABI surfaces may still evolve while feature completeness is being finished.
 
-## Versioned contracts
+## Current development contracts
 
-| Contract | RC value | 1.x policy |
-| --- | --- | --- |
-| Package / CLI | 1.0.0-rc.1 | SemVer; stable release promotion removes only the prerelease marker |
-| Structured language | 1.0 | Feature-frozen for the 1.0 RC/stable boundary |
-| Compiler semantic contract | 1.0 | Accepted/rejected behavior changes require an explicit compatibility decision |
-| Diagnostic code contract | 1.0 | Existing documented/tooling diagnostic codes are stable within 1.x |
-| Native runtime C++ API | 1.0 | Stabilized public source signatures follow 1.x compatibility |
-| Native runtime ABI epoch | 1 | Binary compatibility also requires compatible platform/toolchain/stdlib/runtime ABI |
-| Generated C++ ABI/spelling | Rebuild artifact | Regenerate/rebuild with the matching Gungnir package |
-| Compatibility transpiler | Transitional | Explicit `--compat`; not part of the structured 1.0 language guarantee |
+| Surface | Current status |
+| --- | --- |
+| Package identity | `development` |
+| Internal CMake placeholder | `0.0.0` |
+| Structured language contract | `development` |
+| Compiler semantic contract | `development` |
+| Diagnostic contract | `development` |
+| Structured feature freeze | false |
+| Compiler compatibility | experimental |
+| Native C++ source API | `development` |
+| Native ABI epoch | 0 |
+| Generated C++ | rebuild with the matching development package |
 
 The compiler exposes:
 
@@ -22,75 +24,83 @@ gungnirc --version
 gungnirc --print-contract
 ```
 
-The RC reports:
+Current development metadata is machine-readable so CI can detect accidental premature release claims.
+
+## What is protected during development
+
+Development status does not mean correctness is optional. Existing regression suites protect:
+
+- accepted/rejected compiler behavior;
+- diagnostics and source mapping;
+- validated AST and structural C++ IR;
+- deterministic compiler output;
+- GCC, Clang and MSVC conformance;
+- runtime lifecycle behavior;
+- database/ORM correctness;
+- security boundaries;
+- production resilience;
+- installed package consumers;
+- benchmark integrity;
+- documentation integrity.
+
+These are implementation contracts under active development, not final 1.0 compatibility promises.
+
+## Feature evolution
+
+The feature set is intentionally not frozen.
+
+New work is allowed when it moves Gungnir toward the defined framework-completeness target and follows the canonical architecture.
+
+Structured language work must continue through:
 
 ```text
-package_version=1.0.0-rc.1
-language_version=1.0
-compiler_contract=1.0
-diagnostic_contract=1.0
-structured_feature_freeze=true
-compatibility=stable
+lexer
+-> parser
+-> syntax AST
+-> semantics
+-> validated AST
+-> typed C++ IR
+-> C++23 emitter
 ```
 
-Native consumers use `<gungnir/version.hpp>` and installed CMake metadata for release version, native API contract, and ABI epoch.
+New canonical features must not be added as raw source rewriting shortcuts.
 
-## What feature-frozen means
+## Native API and ABI
 
-During the RC and stable 1.0 boundary, changes should be limited to:
+Native source APIs remain under development. Compatibility-friendly evolution is preferred, but source compatibility is not promised until the final 1.0 audit.
 
-- correctness and security fixes;
-- diagnostic/source-location corrections that preserve diagnostic identity where practical;
-- crash, memory-safety, and resource-limit fixes;
-- backend/toolchain portability fixes;
-- packaging and installation fixes;
-- performance fixes that preserve public semantics;
-- documentation corrections;
-- release automation/test fixes.
-
-New syntax, framework declarations, semantic expansion, and public API redesign should wait for a later contract/version line.
-
-## Source compatibility
-
-The structured compiler is the canonical `gungnirc` profile. `--strict` remains a compatibility alias for that default. Legacy/native-compatible source requires explicit `--compat`.
-
-The 1.x contract is protected by:
-
-- compile-pass/fail semantic stability tests;
-- frozen diagnostic-code assertions;
-- authoritative `--check` parity;
-- GCC, Clang, and MSVC conformance;
-- byte-identical compiler snapshots;
-- public native API signature assertions;
-- installed-package consumer tests;
-- Linux/Windows shared-library consumer tests.
-
-A severe correctness or security issue may require a behavior correction. Such a correction must be documented rather than hidden.
-
-## Native ABI scope
-
-ABI epoch 1 does not make unrelated C++ ABI environments interchangeable. Compatibility still depends on operating system, architecture, compiler ABI, standard library ABI, runtime model, dependency ABI, and relevant feature/build options.
+ABI epoch 0 identifies development binaries only. Rebuild native applications when the framework changes.
 
 See [Native API and ABI Stability](native-api-abi.md).
 
 ## Generated C++
 
-Generated C++ is intentionally inspectable but is not a stable source or binary API. Applications should not depend on generated namespaces, helper names, class layout, or emitted spelling.
+Generated C++ remains an implementation artifact. Regenerate and rebuild it with the matching development compiler/runtime.
 
-Always regenerate and rebuild application code with the matching framework/compiler package. Generated structured output embeds a compiler/runtime contract assertion so mismatches fail during native compilation.
+Applications should not depend on generated helper names, namespaces, layout, or emitter spelling.
 
-## Release-candidate policy
+## 1.0 transition
 
-Phase 19 freezes the intended 1.0 contracts. [Release Candidate](release-candidate.md) defines the release-blocking gates and allowed RC changes.
+There is no release-candidate countdown.
 
-Phase 20 should only remove the prerelease marker, update release-facing text, verify all gates, and tag/publish `v1.0.0`.
+Gungnir moves directly from **Development** to **1.0.0** only after the framework completeness matrix, consistency audit, production audit, integration tests, package verification, performance/stress/fuzz validation, and documentation audit are complete.
+
+At that point, one coordinated change will assign:
+
+- package `1.0.0`;
+- language/compiler/diagnostic contract `1.0`;
+- native API contract `1.0`;
+- ABI epoch `1`;
+- feature freeze `true`;
+- compatibility `stable`.
+
+See [Development Status](development-status.md).
 
 ## Implementation references
 
+- [Development Status](development-status.md)
 - [Compiler Correctness](compiler-correctness.md)
 - [Compiler Conformance](compiler-conformance.md)
 - [Compiler Profiles](compiler-profiles.md)
 - [Native API and ABI Stability](native-api-abi.md)
-- [1.0 Release Candidate](release-candidate.md)
 - [Upgrading](upgrading.md)
-- [include/gungnir/language/spec.hpp](../include/gungnir/language/spec.hpp)
