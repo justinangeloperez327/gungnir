@@ -1,21 +1,43 @@
 # Notifications
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Notifications deliver application messages to a recipient through one or more channels.
 
-## Current behavior
+## Defining a notification
 
-Structured notification declarations retain typed constructor data and require public synchronous `via(Recipient recipient) -> List<string>`, where the recipient is a non-optional model. `bind(recipient)` creates an adapter implementing native `notifications::Notification`, preserving the qualified name and recipient-specific channels. `toMail` must return a structured mail declaration and `toDatabase` must return `Json`; both use the same recipient contract as `via`. Invalid surfaces are rejected with `GNR2306`.
+```gnr
+notification WelcomeNotification {
+    via(User recipient) {
+        return ["mail", "database"];
+    }
 
-## Limits and planned work
+    toMail(User recipient) {
+        return WelcomeMail(recipient.name, recipient.email);
+    }
 
-Channels still need explicit native registration. Built-in database/mail channel delivery adapters and automatic recipient addressing are not supplied by this compiler.
+    toDatabase(User recipient) {
+        return {
+            "message": "Welcome to Gungnir"
+        };
+    }
+}
+```
 
-## Implementation references
+`via` selects the channels for a specific recipient.
 
-- [Structured compiler API](../include/gungnir/language/compiler.hpp)
-- [Structured compiler tests](../tests/structured_language.cpp)
+## Mail notifications
 
-- [include/gungnir/notifications/notification.hpp](../include/gungnir/notifications/notification.hpp)
-- [include/gungnir/notifications/channel.hpp](../include/gungnir/notifications/channel.hpp)
+`toMail` returns a structured mail declaration. The mail channel resolves the recipient address and sends the resulting message through the configured mail transport.
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/notification.md).
+## Database notifications
+
+`toDatabase` returns structured JSON stored by the database notification channel.
+
+## Custom channels
+
+Applications and extensions can register additional notification channels.
+
+## Queueing
+
+Notification delivery can be moved to a queue when a channel should not delay the current HTTP request.
+
+See [Mail](mail.md) and [Queues and Jobs](queues.md).
