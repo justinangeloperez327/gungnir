@@ -1,16 +1,18 @@
 # Stability
 
-> **Design specification.** This document defines the long-term compatibility model that extends the current [1.0 stability contract](../stability.md). The current implementation guide is authoritative for shipped guarantees.
+> **Development design specification.** This document defines the compatibility model Gungnir should adopt when the framework eventually reaches stable 1.0. The current [stability guide](../stability.md) remains authoritative for development behavior.
 
-Gungnir has entered the 1.x compatibility line.
+Gungnir is still under active feature-completion development.
 
-The 1.0 release candidate freezes the structured language, compiler semantic contract, diagnostic contract, and representative native C++ source API intended for stable 1.0.
+## Development rule
 
-Future evolution should be deliberate, versioned, and separated by compatibility surface rather than treating the framework as one undifferentiated contract.
+No stable source, compiler, diagnostic, native API, or ABI version is frozen yet.
 
-# Stability layers
+Current development work should still favor compatibility-friendly evolution, clear migration paths, and executable regression contracts, but necessary architectural changes remain allowed until the final completeness audit.
 
-Gungnir has several compatibility surfaces:
+## Stability layers
+
+Gungnir tracks several independent compatibility surfaces:
 
 ~~~text
 package/release identity
@@ -26,17 +28,17 @@ package/plugin API
 database/storage adapter contracts
 ~~~
 
-These layers do not need identical compatibility guarantees.
+These surfaces do not need identical compatibility guarantees.
 
-# Package versioning
+## Eventual stable versioning
 
-Stable Gungnir releases follow semantic versioning.
+When Gungnir becomes complete, stable releases should follow semantic versioning.
 
-For the 1.x line:
+The intended stable policy is:
 
 ~~~text
 1.x patch
-  bug/security/portability fixes
+  correctness/security/portability fixes
   no intentional stable source break
 
 1.x minor
@@ -48,37 +50,31 @@ For the 1.x line:
   with explicit migration guidance
 ~~~
 
-Prerelease identifiers such as `development` represent candidate builds of the numeric package version.
+Development builds before that point are identified as `development`, not as artificial prerelease milestones.
 
-# Source language
+## Source language
 
-Canonical source-language behavior is defined by:
+Canonical source-language behavior is defined by the current grammar, type, expression, statement, function, async, module, AST, semantic, validated-AST and transpiler documentation.
+
+Before stable 1.0, new syntax is allowed when it is needed for framework completeness and is implemented end-to-end through:
 
 ~~~text
-grammar.md
-language-types.md
-expressions.md
-statements.md
-functions.md
-async.md
-modules.md
-ast.md
-semantics.md
-validated-ast.md
-transpiler.md
+lexer
+-> parser
+-> syntax AST
+-> semantics
+-> validated AST
+-> typed C++ IR
+-> emitter
 ~~~
 
-The 1.0 structured language is feature-frozen at the RC/stable boundary.
+Raw source rewriting must not become the canonical implementation path for new structured features.
 
-After 1.0, accepted syntax and defined semantic behavior should remain source-compatible throughout the 1.x line unless preserving prior behavior would create a material correctness or security defect.
+## Compiler semantic contract
 
-New syntax should normally be additive and must have defined parser, semantic, validated-AST, lowering, diagnostics, and cross-compiler behavior before entering a stable contract.
+Compiler development must preserve correctness invariants while the language evolves.
 
-# Compiler semantic contract
-
-A syntactically accepted program is not enough to define compatibility.
-
-The compiler contract also includes:
+The compiler contract includes:
 
 - name resolution;
 - type checking;
@@ -86,195 +82,106 @@ The compiler contract also includes:
 - control-flow validation;
 - framework declaration semantics;
 - `--check` behavior;
-- deterministic lowering inputs;
-- stable diagnostic identity where documented.
+- deterministic lowering;
+- diagnostic identity where tooling depends on it.
 
-Compiler changes should not silently reinterpret valid 1.x programs.
+A deliberate semantic change must update tests and documentation in the same change.
 
-# Diagnostic contract
+## Diagnostics
 
-Diagnostics have a separate compatibility surface.
+Diagnostic codes used by tooling should remain stable where practical even during development.
 
-Stable diagnostic codes used by tooling or documented workflows should not be renumbered or repurposed casually.
+A code must not be silently repurposed for unrelated meaning. Message wording and source-range quality may improve as long as machine-facing behavior stays coherent.
 
-Message wording may improve when meaning remains equivalent, but machine-facing codes and source ranges should remain deterministic where the contract requires them.
+## Framework API
 
-# Application-facing framework API
+Current framework guides define implemented behavior.
 
-Canonical framework behavior is defined by concept-specific current guides such as:
+Design documents may propose richer APIs, but proposed behavior is not considered implemented until code, tests, and current documentation agree.
 
-~~~text
-model.md
-orm.md
-migration.md
-controller.md
-routing.md
-middleware.md
-request.md
-response.md
-validation.md
-collection.md
-authentication.md
-policy.md
-event.md
-listener.md
-notification.md
-mail.md
-view.md
-~~~
-
-Stable framework behavior should evolve additively during 1.x.
-
-A feature appearing in a design document does not make it part of the shipped contract. Current implementation guides and executable tests remain authoritative.
-
-# Native runtime source API
+## Native source API
 
 Headers under `include/gungnir` form the native integration surface.
 
-The 1.x native source API contract is versioned separately from the source language and is protected by compile-time contract tests plus installed-package consumer tests.
+During development, source compatibility is preferred but not guaranteed. The package-consumer and public-API tests exist to make changes visible, not to freeze the surface prematurely.
 
-Stable source-compatible evolution should prefer:
+## Native ABI
 
-- additive types/functions;
-- overloads that do not create ambiguity;
-- new optional configuration fields with compatible defaults;
-- deprecation before removal;
-- migration guidance for renamed or superseded APIs.
+Development ABI epoch is 0.
 
-# Native binary ABI
+ABI epoch 0 means unstable development binary compatibility. Native applications should rebuild when the framework changes.
 
-Native binary compatibility is tracked by an explicit ABI epoch.
+When stable 1.0 is finally assigned, the native ABI epoch should advance to 1 in the same coordinated release change.
 
-The 1.x line uses ABI epoch 1.
+## Generated C++
 
-Epoch equality is necessary but not sufficient. Binary compatibility also depends on:
+Generated C++ remains an implementation artifact and is not a stable public source/ABI surface.
 
-- operating system;
-- architecture;
-- compiler ABI;
-- standard library ABI;
-- runtime library model;
-- native dependency ABI;
-- relevant build features.
+Projects must regenerate/rebuild generated code with the matching development compiler/runtime.
 
-Gungnir should not claim universal cross-toolchain C++ ABI compatibility.
+## Deprecation
 
-# Generated C++
+During development, deprecation is still preferred when a public API has real external users and a safe migration path exists.
 
-Generated C++ is not a stable public source or binary API.
+After stable 1.0, source-incompatible removal should normally wait for an appropriate major release unless security/correctness requires faster action.
 
-Projects must regenerate and rebuild generated code with the matching compiler/runtime package.
+## Capability claims
 
-Applications should not depend directly on generated namespaces, helper names, internal class layout, or emitter spelling.
-
-Generated output may change within 1.x when observable source-language/runtime behavior remains compatible.
-
-# Runtime/compiler compatibility
-
-The compiler and runtime carry explicit compatibility metadata.
-
-Generated code must fail early rather than silently compile against an incompatible runtime contract.
-
-The version relationship should be machine-readable and validated by release/package CI.
-
-# Deprecation
-
-Stable 1.x source APIs should normally pass through a deprecation period before removal.
-
-A typical lifecycle is:
-
-~~~text
-introduce replacement
-  -> document migration
-  -> mark old API deprecated
-  -> preserve compatibility through 1.x where practical
-  -> remove in the next appropriate major version
-~~~
-
-Faster removal is acceptable when:
-
-- a security issue requires it;
-- prior behavior cannot be made safe;
-- preserving compatibility would maintain materially incorrect semantics.
-
-# Capability claims
-
-A type, stub, branch, design document, or passing compile is not proof that a feature is production-ready.
+A type, stub, parser node, design document, or successful compilation is not proof of feature completion.
 
 Documentation should distinguish:
 
 ~~~text
 implemented
-stable
-experimental
+complete
 partial
 planned
 unsupported
 ~~~
 
-The current implementation guide wins over aspirational design text.
+The current implementation guide wins over design text.
 
-# Concurrency claims
+## Concurrency claims
 
-An API is not thread-safe, coroutine-safe, cancellation-safe, or distributed-safe merely because it compiles in concurrent code.
+Thread-safety, coroutine-safety, cancellation-safety, and distributed-safety must be explicit and tested.
 
-Concurrency guarantees must be explicit and backed by implementation/tests.
+## Backend portability
 
-# Backend portability
+Portable APIs must document backend capability differences.
 
-A Gungnir API may be portable while a backend lacks a capability.
+Unsupported operations should fail as early and explicitly as practical.
 
-Backend documentation must identify unsupported operations and capability differences clearly.
+## Plugins and packages
 
-Where practical, unsupported selected-backend operations should fail during validation/planning rather than during production execution.
+Extension compatibility should eventually declare:
 
-# Plugins and packages
-
-Extension/package compatibility should declare:
-
-- supported Gungnir package range;
+- supported Gungnir stable range;
 - required native API contract;
-- required ABI epoch when shipping native binaries;
+- ABI epoch for native binaries;
 - platform/toolchain constraints;
 - optional backend/runtime dependencies.
 
-Binary extensions must not infer compatibility solely from package version.
+During development, extensions should pin exact revisions or development artifacts.
 
-# Release candidates
+## Final 1.0 transition
 
-Release candidates freeze the intended stable contract.
+Gungnir should move from `development` directly to `1.0.0` only after the framework completeness gate and release audit are green.
 
-During an RC, acceptable changes are primarily:
+At that point the project can freeze:
 
-- release-blocking correctness fixes;
-- security fixes;
-- portability fixes;
-- packaging/install fixes;
-- deterministic diagnostic fixes;
-- documentation corrections;
-- performance fixes that preserve behavior;
-- release/test automation fixes.
+- language contract 1.0;
+- compiler contract 1.0;
+- diagnostic contract 1.0;
+- native API contract 1.0;
+- native ABI epoch 1;
+- stable compatibility policy.
 
-An RC is not a normal feature-development window.
-
-# Documentation authority
-
-When design text conflicts with current implementation documentation:
+## Design rule
 
 ~~~text
-current implementation guide
-    wins over
-design specification
-~~~
-
-Historical migration/changelog references should remain when they explain how contracts evolved.
-
-# Design rule
-
-~~~text
-stable contracts evolve deliberately
-compatibility surfaces are versioned separately
+development may evolve
+correctness stays enforced
+canonical architecture stays consistent
+stable promises wait until completeness
 generated C++ remains rebuildable implementation detail
-native ABI claims stay scoped to real C++ ABI boundaries
-documentation and executable contracts must agree
 ~~~
