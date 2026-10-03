@@ -20,7 +20,7 @@ Use `gungnirc --compat` only for source that intentionally depends on the earlie
 
 `CompatibilityTranspiler` tokenizes source, parses the legacy `Program`, runs compatibility semantic diagnostics, invokes specialized lowerers and applies `SourceEdit` replacements to the original source.
 
-The historical `Transpiler` C++ name remains as an alias to `CompatibilityTranspiler` so existing 1.0 RC callers continue to build.
+The historical `Transpiler` C++ name remains as an alias to `CompatibilityTranspiler` while compatibility migration continues.
 
 ## Rules for new compiler work
 
@@ -39,7 +39,7 @@ Do not add new Gungnir language behavior to:
 
 New syntax and framework semantics belong in the structured parser, semantic validator, validated compiler structures and C++ IR lowering. The final emitter must remain semantic-free.
 
-Compatibility fixes are limited to regressions required to keep explicitly opted-in legacy applications working during the 1.0 RC migration window.
+Compatibility fixes remain limited to explicitly opted-in legacy/native-compatible behavior; new structured semantics belong in the canonical compiler pipeline.
 
 ## Remaining migration work
 
