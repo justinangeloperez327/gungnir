@@ -98,6 +98,8 @@ def main() -> int:
         "Gungnir 1.0 release candidate",
         "feature-frozen for the 1.0",
         "compatibility=stable",
+        "Phase 16 benchmarks",
+        "the 0.9 language",
     )
 
     current_files = [
