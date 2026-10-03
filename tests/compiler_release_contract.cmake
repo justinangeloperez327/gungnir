@@ -18,7 +18,7 @@ endif()
 string(REPLACE "\r\n" "\n" version_output "${version_output}")
 set(
     expected_version
-    "Gungnir compiler ${GUNGNIR_VERSION} (language 1.0)\n"
+    "Gungnir compiler ${GUNGNIR_VERSION} (language development)\n"
 )
 if(NOT version_output STREQUAL expected_version)
     message(
@@ -46,11 +46,11 @@ string(REPLACE "\r\n" "\n" contract_output "${contract_output}")
 string(
     CONCAT expected_contract
     "package_version=${GUNGNIR_VERSION}\n"
-    "language_version=1.0\n"
-    "compiler_contract=1.0\n"
-    "diagnostic_contract=1.0\n"
-    "structured_feature_freeze=true\n"
-    "compatibility=stable\n"
+    "language_version=development\n"
+    "compiler_contract=development\n"
+    "diagnostic_contract=development\n"
+    "structured_feature_freeze=false\n"
+    "compatibility=experimental\n"
 )
 if(NOT contract_output STREQUAL expected_contract)
     message(
