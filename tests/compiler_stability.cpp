@@ -40,7 +40,7 @@ CompilationResult check(
     );
 }
 
-void frozen_metadata_is_consistent() {
+void development_metadata_is_consistent() {
     static_assert(language_name == "Gungnir");
     static_assert(language_version == "development");
     static_assert(compiler_contract_version == "development");
@@ -56,7 +56,7 @@ void frozen_metadata_is_consistent() {
     assert(!defaults.validate_only);
 }
 
-void frozen_acceptance_contract() {
+void development_acceptance_contract() {
     const std::vector<std::string_view> accepted{
         "function int answer() { return 42; }",
         "function string require(string? value) { "
@@ -80,7 +80,7 @@ void frozen_acceptance_contract() {
     }
 }
 
-void frozen_diagnostic_codes() {
+void development_diagnostic_codes() {
     struct Case {
         std::string_view source;
         std::string_view code;
@@ -125,7 +125,7 @@ void frozen_diagnostic_codes() {
     }
 }
 
-void frozen_check_and_compile_semantics_match() {
+void development_check_and_compile_semantics_match() {
     constexpr std::string_view source =
         "function string require(string? value) { "
         "if (value == null) { throw \"missing\"; } "
@@ -172,8 +172,8 @@ void frozen_check_and_compile_semantics_match() {
 } // namespace
 
 int main() {
-    frozen_metadata_is_consistent();
-    frozen_acceptance_contract();
-    frozen_diagnostic_codes();
-    frozen_check_and_compile_semantics_match();
+    development_metadata_is_consistent();
+    development_acceptance_contract();
+    development_diagnostic_codes();
+    development_check_and_compile_semantics_match();
 }
