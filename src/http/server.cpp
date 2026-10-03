@@ -1435,6 +1435,33 @@ Response error_response(
     );
 }
 
+Response overload_response() {
+    auto response =
+        Response::text(
+            "Service Unavailable",
+            503
+        );
+
+    response.header(
+        "retry-after",
+        "1"
+    );
+
+    return response;
+}
+
+void record_overload() noexcept {
+    try {
+        observability::
+            global_meter()
+            ->counter(
+                "http.server.overload.count"
+            )
+            .add();
+    } catch (...) {
+    }
+}
+
 struct PendingDispatch {
     PendingDispatch(
         Request value,
@@ -3799,6 +3826,22 @@ public:
                 requests
             ) {
                 if (
+                    dispatches->active() >=
+                    options.max_active_dispatches
+                ) {
+                    connection.http2
+                        ->submit_response(
+                            request_data.stream_id,
+                            overload_response(),
+                            request_data.method ==
+                                Method::head
+                        );
+
+                    record_overload();
+                    continue;
+                }
+
+                if (
                     connection.pending_http2
                         .size() >=
                     options.http2
@@ -5704,6 +5747,30 @@ public:
 
         ++connection.requests_served;
 
+        if (
+            dispatches->active() >=
+            options.max_active_dispatches
+        ) {
+            connection.output =
+                wire::serialize_response(
+                    overload_response(),
+                    request.method() ==
+                        Method::head,
+                    ConnectionDirective::
+                        close
+                );
+
+            connection.output_offset = 0;
+            connection.close_after_write =
+                true;
+            connection.phase_started =
+                Clock::now();
+            connection.input.clear();
+
+            record_overload();
+            return;
+        }
+
         auto pending =
             std::make_shared<
                 PendingDispatch
@@ -6254,6 +6321,14 @@ public:
         ) {
             throw std::invalid_argument(
                 "HTTP max_connections must be greater than zero"
+            );
+        }
+
+        if (
+            options.max_active_dispatches == 0
+        ) {
+            throw std::invalid_argument(
+                "HTTP max_active_dispatches must be greater than zero"
             );
         }
 
