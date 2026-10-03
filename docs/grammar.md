@@ -1,19 +1,52 @@
 # Grammar
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+Gungnir source uses declarations, typed parameters, expression values and statement
+blocks. Statements end with semicolons; declaration and callable bodies use braces.
+Single and double quotes create strings.
 
-## Current behavior
+## Declarations and types
 
-The accepted frontend grammar is implemented by the lexer/parser and specialized lowerers. It includes transitional native C++ forms alongside supported framework syntax.
+```ebnf
+function = [ "async" ], "function", type, identifier, parameters, block ;
+parameters = "(", [ parameter, { ",", parameter } ], ")" ;
+parameter = type, identifier, [ "=", literal ] ;
+type = qualifiedName, [ "<", type, { ",", type }, ">" ], [ "?" ] ;
+block = "{", { statement }, "}" ;
+```
 
-## Limits and planned work
+Framework declarations include `controller`, `model`, `migration`, `middleware`,
+`event`, `listener`, `job`, `policy`, `notification` and `mail`. Their bodies
+contain fields and methods according to each declaration's contract. Model
+configuration uses `name = value;`. Relationships have a dedicated form:
 
-The canonical EBNF is the target specification. It is not a claim that the parser rejects every unsupported C++ form or implements every listed declaration, closure, type or modifier. Use transpilation plus native compilation to verify current examples.
+```ebnf
+relationship = [ "public" ], identifier, "(", ")", "{", "return",
+    helper, "<", type, [ ",", type ], ">", "(", [ keys ], ")", ";", "}" ;
+helper = "hasOne" | "hasMany" | "belongsTo" | "belongsToMany"
+       | "hasOneThrough" | "hasManyThrough" ;
+```
 
-## Implementation references
+Relationship keys are string literals, optionally preceded by their argument
+name and a colon. See [Relationships](relationships.md) for ordering and defaults.
 
-- [src/language/lexer.cpp](../src/language/lexer.cpp)
-- [src/language/parser.cpp](../src/language/parser.cpp)
-- [include/gungnir/language/token.hpp](../include/gungnir/language/token.hpp)
+## Expressions and statements
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/grammar.md).
+Expressions include literals, lists, objects, names, member access, calls,
+indexing, arithmetic, comparisons, boolean operations and conditional values.
+Calls can use positional arguments followed by named arguments. Arrow callbacks
+use `(parameters) => expression` or `(parameters) => { statements }`.
+
+`const` declares an immutable binding; `let` declares a mutable binding.
+Blocks support `return`, `throw`, `if`/`else`, loops, `break` and `continue`.
+`await` appears inside an async callable.
+
+Imports use a dotted module name and an optional alias:
+
+```gnr
+import app.models.User as Models;
+```
+
+An alias qualifies declarations with `::`, such as `Models::User`.
+See [Types](language-types.md), [Expressions](expressions.md),
+[Statements](statements.md), [Functions](functions.md) and [Modules](modules.md)
+for the detailed language rules.

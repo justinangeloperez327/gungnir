@@ -13,6 +13,7 @@
 
 #include <gungnir/core/types.hpp>
 #include <gungnir/model/value.hpp>
+#include <gungnir/model/metadata.hpp>
 
 namespace gungnir::http {
 
@@ -63,6 +64,7 @@ public:
 
     [[nodiscard]] String string() const;
     [[nodiscard]] String dump() const;
+    [[nodiscard]] bool operator==(const Json& other) const;
 
 private:
     Storage storage_;
@@ -130,6 +132,13 @@ template <JsonModel T>
     for (const auto& [name, attribute] : attributes) {
         object.insert_or_assign(name, make_json(attribute));
     }
+
+    // Persistence encodes structured casts as database values. Serialization
+    // retains the application value type and its visibility contract.
+    model::for_each_attribute<T>([&](const auto& descriptor) {
+        const auto found = object.find(String{descriptor.name});
+        if (found != object.end()) found->second = make_json((value.*descriptor.member).get());
+    });
 
     return Json::object(std::move(object));
 }

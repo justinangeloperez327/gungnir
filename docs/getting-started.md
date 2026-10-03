@@ -72,10 +72,10 @@ gungnir make:model User
 gungnir make:controller UserController
 gungnir make:migration CreateUsers
 gungnir make:middleware Authenticate
-gungnir make:policy UserPolicy
+gungnir make:policy UserPolicy app.models.User::User
 gungnir make:event UserRegistered
-gungnir make:listener SendWelcomeEmail
-gungnir make:notification WelcomeNotification
+gungnir make:listener SendWelcomeEmail app.events.UserRegistered::UserRegistered
+gungnir make:notification WelcomeNotification app.models.User::User
 gungnir make:mail WelcomeMail
 gungnir make:job ProcessImport
 ```

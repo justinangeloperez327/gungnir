@@ -73,7 +73,7 @@ public:
     TypeId optional(TypeId id) { const auto t = type(id); return t.optional ? id : intern(t.name, "std::optional<" + t.cpp_name + ">", t.arguments, true); }
     TypeId unoptional(TypeId id) { const auto t = type(id); if (!t.optional) return id; return intern(t.name, t.cpp_name.substr(14, t.cpp_name.size() - 15), t.arguments); }
     TypeId sequence(std::string name, TypeId element) {
-        return intern(name, (name == "Query" ? "gungnir::orm::Query<" : name == "Collection" ? "gungnir::orm::Collection<" : "std::vector<") + type(element).cpp_name + ">", {element});
+        return intern(name, (name == "Query" ? "gungnir::orm::Query<" : name == "Collection" ? "gungnir::orm::Collection<" : name == "Page" ? "gungnir::orm::Page<" : "std::vector<") + type(element).cpp_name + ">", {element});
     }
     bool valid_identifier(std::string_view name) const {
         if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name.front())) || name.front() == '_')) return false;
@@ -139,9 +139,15 @@ public:
         if (name == "json" || name == "map") name = "Json";
         if (name == "list") name = "List";
         TypeId value = invalid_id;
-        if (name == "List" || name == "Collection" || name == "Query") {
+        if (name == "List" || name == "Collection" || name == "Query" || name == "Page") {
             if (syntax.arguments.size() != 1) { report(syntax.origin, name + " requires one type argument"); return type_id("Value"); }
-            value = sequence(name, resolve(syntax.arguments.front()));
+            const auto element = resolve(syntax.arguments.front());
+            if (name == "Query" || name == "Page") {
+                const auto owner = owner_of(element);
+                if (type(element).optional || owner == invalid_id || v.syntax_.declarations[declaration_ids.at(owner)].kind != DeclarationKind::model)
+                    report(syntax.origin, name + " requires a non-optional model type", "GNR2311");
+            }
+            value = sequence(name, element);
         } else if (name == "Map") {
             if (syntax.arguments.size() != 2 || syntax.arguments[0].name != "string") { report(syntax.origin, "Map requires string keys and one value type"); return type_id("Value"); }
             const auto element = resolve(syntax.arguments[1]); value = intern("Map", "std::unordered_map<gungnir::String," + type(element).cpp_name + ">", {type_id("string"), element});
@@ -235,10 +241,151 @@ public:
             const auto id = symbol({ResolvedSymbolKind::field, name, name, resolve({field.type, {}, false, origin}), owner});
             return id;
         }
+        if (type(receiver).name == "Page") {
+            const auto& page = type(receiver);
+            if (name == "data") return symbol({ResolvedSymbolKind::field, name, name, sequence("Collection", page.arguments[0])});
+            static const std::unordered_map<std::string, std::string> fields{
+                {"currentPage", "current_page"}, {"perPage", "per_page"},
+                {"total", "total"}, {"lastPage", "last_page"}
+            };
+            if (const auto found = fields.find(name); found != fields.end())
+                return symbol({ResolvedSymbolKind::field, name, found->second, type_id("int")});
+        }
         if (diagnose) report(origin, "Unknown member '" + name + "' on " + type(receiver).name, "GNR2206"); return invalid_id;
     }
     SymbolId builtin(std::string name, std::string cpp, TypeId result, std::vector<TypeId> parameters = {}, bool async = false) {
         ResolvedSymbol value{ResolvedSymbolKind::builtin, std::move(name), std::move(cpp), result}; value.parameters = std::move(parameters); value.asynchronous = async; return symbol(std::move(value));
+    }
+    static std::string relationship_type(const std::string& kind) {
+        auto result = kind;
+        result.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(result.front())));
+        return result;
+    }
+    std::string primary_key(std::size_t declaration) const {
+        for (const auto& metadata : v.syntax_.declarations[declaration].metadata)
+            if (metadata.name == "primaryKey") {
+                const auto& value = v.syntax_.expressions[metadata.value];
+                if (value.literal_type == "string") return value.text;
+            }
+        return "id";
+    }
+    static std::string foreign_key(const DeclarationSyntax& declaration, const std::string& key) {
+        auto result = snake(declaration.name);
+        if (result.starts_with('_')) result.erase(0, 1);
+        return result + "_" + key;
+    }
+    TypeId relationship_key_type(std::size_t declaration, const std::string& key, const Origin& origin) {
+        const auto& model = v.syntax_.declarations[declaration];
+        const auto field = std::find_if(model.fields.begin(), model.fields.end(),
+            [&](const auto& value) { return value.name == key; });
+        if (field == model.fields.end()) {
+            report(origin, "Unknown relationship key '" + key + "' on " + model.name, "GNR2310");
+            return type_id("int");
+        }
+        const auto previous_module = current_module;
+        current_module = model.module;
+        const auto result = unoptional(resolve(field->type));
+        current_module = previous_module;
+        if (result != type_id("int") && result != type_id("uint64") && result != type_id("string"))
+            report(origin, "Relationship keys require integer or string attributes", "GNR2310");
+        return result;
+    }
+    void relationship_foreign_key(std::size_t declaration, const std::string& key,
+                                  TypeId value_type, const Origin& origin) {
+        auto& model = v.syntax_.declarations[declaration];
+        auto field = std::find_if(model.fields.begin(), model.fields.end(),
+            [&](const auto& value) { return value.name == key; });
+        if (field == model.fields.end()) {
+            model.fields.push_back({origin, key, {type(value_type).name, {}, false, origin}});
+        } else if (field->inferred_type) {
+            field->type.name = type(value_type).name;
+            field->inferred_type = false;
+        } else if (relationship_key_type(declaration, key, origin) != value_type) {
+            report(origin, "Relationship foreign and local key types disagree for '" + key + "'", "GNR2310");
+        }
+    }
+    void index_relationships(std::size_t d) {
+        const auto& declaration = v.syntax_.declarations[d];
+        current_module = declaration.module;
+        current_owner = v.declarations_[d].symbol;
+        for (const auto& relation : declaration.relationships) {
+            RelationshipResolution resolved;
+            const bool through = relation.kind == "hasOneThrough" || relation.kind == "hasManyThrough";
+            if (relation.types.size() != (through ? 2 : 1)) {
+                report(relation.origin, "Relationship requires a related model" +
+                    std::string(through ? " and an intermediate model" : ""), "GNR2310");
+                continue;
+            }
+            const auto model_type = [&](const TypeSyntax& syntax) {
+                const auto value = resolve(syntax);
+                const auto owner = owner_of(value);
+                if (type(value).optional || owner == invalid_id ||
+                    v.syntax_.declarations[declaration_ids.at(owner)].kind != DeclarationKind::model) {
+                    report(syntax.origin, "Relationships require non-optional model types", "GNR2310");
+                    return invalid_id;
+                }
+                return value;
+            };
+            resolved.related = model_type(relation.types[0]);
+            if (through) resolved.through = model_type(relation.types[1]);
+            if (resolved.related == invalid_id || (through && resolved.through == invalid_id)) continue;
+            const auto related = declaration_ids.at(owner_of(resolved.related));
+            const auto intermediate = through ? declaration_ids.at(owner_of(resolved.through)) : invalid_id;
+            const auto parent_key = primary_key(d), related_key = primary_key(related);
+            std::vector<std::string> names;
+            if (relation.kind == "belongsToMany") {
+                auto parent_name = foreign_key(declaration, ""); parent_name.pop_back();
+                auto related_name = foreign_key(v.syntax_.declarations[related], ""); related_name.pop_back();
+                names = {"pivotTable", "foreignPivotKey", "relatedPivotKey", "parentKey", "relatedKey"};
+                resolved.keys = {std::min(parent_name, related_name) + "_" + std::max(parent_name, related_name),
+                    foreign_key(declaration, parent_key), foreign_key(v.syntax_.declarations[related], related_key),
+                    parent_key, related_key};
+            } else if (through) {
+                names = {"firstKey", "secondKey", "localKey", "secondLocalKey"};
+                resolved.keys = {foreign_key(declaration, parent_key),
+                    foreign_key(v.syntax_.declarations[intermediate], primary_key(intermediate)),
+                    parent_key, primary_key(intermediate)};
+            } else {
+                names = {"foreignKey", relation.kind == "belongsTo" ? "ownerKey" : "localKey"};
+                resolved.keys = {relation.kind == "belongsTo" ? relation.name + "_" + related_key : foreign_key(declaration, parent_key),
+                    relation.kind == "belongsTo" ? related_key : parent_key};
+            }
+            std::unordered_set<std::size_t> supplied;
+            bool named = false;
+            std::size_t position = 0;
+            for (std::size_t a = 0; a < relation.arguments.size(); ++a) {
+                const auto& argument = v.syntax_.expressions[relation.arguments[a]];
+                std::size_t target = position++;
+                if (!relation.argument_names[a].empty()) {
+                    named = true;
+                    const auto found = std::find(names.begin(), names.end(), relation.argument_names[a]);
+                    target = static_cast<std::size_t>(found - names.begin());
+                } else if (named) report(argument.origin, "Positional relationship keys must precede named keys", "GNR2310");
+                if (target >= names.size() || !supplied.insert(target).second) {
+                    report(argument.origin, "Unknown, duplicate, or excess relationship key", "GNR2310");
+                    continue;
+                }
+                if (argument.literal_type != "string" || !valid_identifier(argument.text)) {
+                    report(argument.origin, "Relationship keys must be constant attribute/table identifiers", "GNR2310");
+                    continue;
+                }
+                v.expressions_[relation.arguments[a]].type = type_id("string");
+                resolved.keys[target] = argument.text;
+            }
+            const auto& keys = resolved.keys;
+            if (relation.kind == "belongsToMany") {
+                relationship_key_type(d, keys[3], relation.origin);
+                relationship_key_type(related, keys[4], relation.origin);
+            } else if (through) {
+                relationship_foreign_key(intermediate, keys[0], relationship_key_type(d, keys[2], relation.origin), relation.origin);
+                relationship_foreign_key(related, keys[1], relationship_key_type(intermediate, keys[3], relation.origin), relation.origin);
+            } else if (relation.kind == "belongsTo") {
+                relationship_foreign_key(d, keys[0], relationship_key_type(related, keys[1], relation.origin), relation.origin);
+            } else {
+                relationship_foreign_key(related, keys[0], relationship_key_type(d, keys[1], relation.origin), relation.origin);
+            }
+            v.declarations_[d].relationships.push_back(std::move(resolved));
+        }
     }
     void index() {
         for (std::size_t m = 0; m < v.syntax_.modules.size(); ++m) {
@@ -272,7 +419,7 @@ public:
             for (const auto& import : v.syntax_.modules[current_module].imports) if (import.alias == declaration.name) report(import.origin, "Import alias conflicts with a declaration", "GNR2103");
         }
         for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
-            auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
+            auto& declaration = v.syntax_.declarations[d];
             // Metadata-only models still expose conventional typed attributes.
             // Lifecycle metadata also implies concrete ORM fields so the
             // generated model and the runtime contract cannot drift apart.
@@ -426,17 +573,40 @@ public:
                                 {},
                                 lifecycle_nullable,
                                 declaration.origin
-                            }
+                            },
+                            false, invalid_id, Visibility::public_,
+                            name != primary && !casts.contains(name) && !lifecycle_nullable
                         }
                     );
                 }
             }
+        }
+        for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) index_relationships(d);
+        if (!diagnostics.empty()) return;
+        for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
+            auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
             for (const auto& field : declaration.fields) {
                 if (resolve(field.type) == type_id("void")) report(field.origin,"Fields cannot have type void");
                 if (!valid_identifier(field.name)) report(field.origin,"Field name is not a valid native identifier");
                 const auto id = symbol({field.injection ? ResolvedSymbolKind::injection : ResolvedSymbolKind::field, field.name, field.name, resolve(field.type), current_owner,
                     declaration.kind == DeclarationKind::event || declaration.kind == DeclarationKind::mail || declaration.kind == DeclarationKind::notification || declaration.kind == DeclarationKind::job, false, field.visibility});
                 if (!members.emplace(std::to_string(current_owner) + ":" + field.name, id).second) report(field.origin, "Duplicate field '" + field.name + "'"); resolved.fields.push_back(id);
+            }
+            for (std::size_t r = 0; r < declaration.relationships.size(); ++r) {
+                const auto& relation = declaration.relationships[r];
+                auto& resolved_relation = resolved.relationships[r];
+                const auto cpp = "gungnir::" + relationship_type(relation.kind) + "<" +
+                    type(resolved_relation.related).cpp_name +
+                    (resolved_relation.through == invalid_id ? "" : "," + type(resolved_relation.through).cpp_name) + ">";
+                std::vector<TypeId> arguments{resolved_relation.related};
+                if (resolved_relation.through != invalid_id) arguments.push_back(resolved_relation.through);
+                const auto relation_type = intern(relationship_type(relation.kind), cpp, arguments);
+                const auto field = symbol({ResolvedSymbolKind::field, relation.name, relation.name,
+                    relation_type, current_owner});
+                resolved_relation.field = field;
+                if (!valid_identifier(relation.name) ||
+                    !members.emplace(std::to_string(current_owner) + ":" + relation.name, field).second)
+                    report(relation.origin, "Relationship conflicts with a model member: " + relation.name, "GNR2310");
             }
             for (const auto& method : declaration.methods) {
                 if (!valid_identifier(method.name)) report(method.origin,"Method name conflicts with a reserved native identifier");
@@ -611,6 +781,7 @@ public:
     }
     TypeId call(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id]; const auto callee = v.syntax_.expressions[e.operands[0]];
+        info.argument_order.clear(); info.argument_conversions.clear();
         SymbolId callable_id = invalid_id; TypeId receiver = invalid_id; SyntaxId receiver_expression = invalid_id; std::string name;
         if (callee.kind == SyntaxExpressionKind::name) { name = callee.text; callable_id = visible(name, callee.origin, false); }
         else if (callee.kind == SyntaxExpressionKind::member) {
@@ -623,7 +794,15 @@ public:
         std::vector<TypeId> argument_types;
         auto arity = [&](std::size_t low, std::size_t high) { if (count < low || count > high) report(e.origin, "Incorrect argument count for '" + name + "'", "GNR2209"); };
         auto finish_builtin = [&](TypeId result, std::string cpp, std::vector<std::optional<TypeId>> contexts = {}) {
-            for (std::size_t i = 0; i < count; ++i) { argument_types.push_back(expression(e.operands[i + 1], i < contexts.size() ? contexts[i] : std::nullopt)); if (i < contexts.size() && contexts[i] && type(*contexts[i]).name != "Function" && !assignable(*contexts[i],argument_types.back())) report(e.origin,"Builtin argument type mismatch"); }
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto argument = e.operands[i + 1];
+                const auto context = i < contexts.size() ? contexts[i] : std::nullopt;
+                const auto cached = v.expressions_[argument].type;
+                argument_types.push_back(cached != invalid_id && (!context || *context == cached || type(*context).name != "Function")
+                    ? cached : expression(argument, context));
+                if (context && type(*context).name != "Function" && !assignable(*context, argument_types.back()))
+                    report(e.origin, "Builtin argument type mismatch");
+            }
             callable_id = builtin(name, std::move(cpp), result, argument_types);
             info.type = result; info.symbol = callable_id;
             v.expressions_[e.operands[0]] = {type_id("Callable"), callable_id};
@@ -645,7 +824,7 @@ public:
             if (name == "authorize") { arity(3,3); return finish_builtin(type_id("void"), "gungnir::language::runtime::authorize", {type_id("Request"),type_id("string"),std::nullopt}); }
             if (name == "allow" || name == "deny") { arity(0, name == "allow" ? 0 : 1); return finish_builtin(type_id("Decision"), "gungnir::auth::Decision::" + name, {type_id("string")}); }
         }
-        if (callable_id == invalid_id && receiver != invalid_id) {
+        if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
             for (const auto& binding : options.native_callables) if (binding.owner == t.name && binding.name == name) {
                 ResolvedSymbol callable{ResolvedSymbolKind::builtin, name, binding.cpp_name, resolve({binding.result}), owner_of(receiver), true, binding.asynchronous};
@@ -676,26 +855,219 @@ public:
             }
             const auto owner = owner_of(receiver);
             const bool model = owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
+            if (model && callable_id != invalid_id) {
+                const auto& relations = v.declarations_[declaration_ids.at(owner)].relationships;
+                const auto found = std::find_if(relations.begin(), relations.end(),
+                    [&](const auto& relation) { return relation.field == callable_id; });
+                if (found != relations.end()) {
+                    arity(0, 0);
+                    if (callee.literal_type == "::") report(callee.origin, "Relationship queries require an instance receiver", "GNR2311");
+                    const auto cpp = "gungnir::language::runtime::relationship_query<&" +
+                        type(unoptional(receiver)).cpp_name + "::" + name + ">";
+                    const auto result = finish_builtin(sequence("Query", found->related), cpp);
+                    v.symbols_[info.symbol].receives_receiver = true;
+                    v.symbols_[info.symbol].owner = found->field;
+                    return result;
+                }
+            }
+            const bool relation_type = t.name == "HasOne" || t.name == "HasMany" ||
+                t.name == "BelongsTo" || t.name == "BelongsToMany" ||
+                t.name == "HasOneThrough" || t.name == "HasManyThrough";
+            if (callable_id == invalid_id && relation_type) {
+                const auto related = t.arguments[0];
+                const bool many = t.name == "HasMany" || t.name == "BelongsToMany" || t.name == "HasManyThrough";
+                if (name == "loaded" || name == "empty") { arity(0, 0); return finish_builtin(type_id("bool"), name); }
+                if (name == "unload") { arity(0, 0); return finish_builtin(type_id("void"), name); }
+                if (name == "get") { arity(0, 0); return finish_builtin(many ? sequence("List", related) : related, name); }
+                if (many && (name == "size" || name == "count")) { arity(0, 0); return finish_builtin(type_id("int"), "size"); }
+                if (!many && name == "value") {
+                    arity(0, 0);
+                    const auto result = finish_builtin(optional(related), "gungnir::language::runtime::relationship_value");
+                    v.symbols_[info.symbol].receives_receiver = true;
+                    return result;
+                }
+                if (t.name == "BelongsToMany" && (name == "attach" || name == "detach")) {
+                    arity(name == "attach" ? 1 : 0, 1);
+                    const auto& field = v.syntax_.expressions[receiver_expression];
+                    if (field.kind != SyntaxExpressionKind::member || field.operands.empty()) {
+                        report(e.origin, "Pivot mutations require a model relationship access", "GNR2311");
+                        return finish_builtin(type_id("int"), name);
+                    }
+                    const auto parent = v.expressions_[field.operands[0]].type;
+                    const auto parent_symbol = v.expressions_[field.operands[0]].symbol;
+                    if (parent_symbol != invalid_id && v.symbols_[parent_symbol].immutable)
+                        report(e.origin, "Cannot modify an immutable binding", "GNR2208");
+                    const auto parent_declaration = declaration_ids.at(owner_of(parent));
+                    const auto& relations = v.declarations_[parent_declaration].relationships;
+                    const auto relation = std::find_if(relations.begin(), relations.end(), [&](const auto& value) {
+                        return value.field == v.expressions_[receiver_expression].symbol;
+                    });
+                    const auto related_declaration = declaration_ids.at(owner_of(related));
+                    const auto key = relationship_key_type(related_declaration,
+                        relation == relations.end() ? primary_key(related_declaration) : relation->keys[4], e.origin);
+                    const bool list = count && (v.syntax_.expressions[e.operands[1]].kind == SyntaxExpressionKind::list ||
+                        type(expression(e.operands[1])).name == "List");
+                    const auto result = finish_builtin(type_id("int"), "gungnir::language::runtime::relationship_" + name +
+                        "<&" + type(unoptional(parent)).cpp_name + "::" + field.text + ">",
+                        list
+                            ? std::vector<std::optional<TypeId>>{sequence("List", key)}
+                            : std::vector<std::optional<TypeId>>{key});
+                    v.symbols_[info.symbol].receives_receiver = true;
+                    info.receiver_expression = field.operands[0];
+                    return result;
+                }
+            }
             if (callable_id == invalid_id && (model || t.name == "Query")) {
                 const auto model_type = model ? unoptional(receiver) : t.arguments[0];
-                if (name == "all" || name == "get") { arity(0, 0); return finish_builtin(sequence("Collection", model_type), name); }
-                if (name == "findOrFail" || name == "firstOrFail" || name == "create") { arity(name == "firstOrFail" ? 0 : 1, name == "firstOrFail" ? 0 : 1); return finish_builtin(model_type, snake(name)); }
-                if (name == "find" || name == "first") { arity(name == "first" ? 0 : 1, name == "first" ? 0 : 1); return finish_builtin(optional(model_type), name); }
-                if (name == "count") { arity(0, 0); return finish_builtin(type_id("int"), name); }
-                if (name == "save" || name == "remove" || name == "update") { arity(name == "update" ? 1 : 0, name == "update" ? 1 : 0); return finish_builtin(type_id("bool"), name); }
-                static const std::unordered_set<std::string> query{"query","where","whereIn","orderBy","orderByDesc","with","limit","offset","select","withDeleted","onlyDeleted"};
-                if (query.contains(name)) { arity(name == "query" || name == "withDeleted" || name == "onlyDeleted" ? 0 : 1, name == "where" ? 2 : name == "orderBy" ? 2 : 1); return finish_builtin(sequence("Query", model_type), snake(name)); }
+                const auto model_declaration = declaration_ids.at(owner_of(model_type));
+                const auto query_type = sequence("Query", model_type);
+                const auto query_cpp = [&](const std::string& method) { return model ? "query()." + method : method; };
+                const auto scalar_argument = [&](std::size_t index) {
+                    if (index >= count) return;
+                    const auto value = unoptional(expression(e.operands[index + 1]));
+                    const auto& value_name = type(value).name;
+                    if (!numeric(value) && value_name != "Decimal" && value_name != "string" &&
+                        value_name != "bool" && value_name != "null")
+                        report(e.origin, "ORM values require scalar or optional scalar attributes", "GNR2311");
+                };
+                if (name == "all" || name == "get") {
+                    arity(0, 0); return finish_builtin(sequence("Collection", model_type), query_cpp("get"));
+                }
+                if (name == "first" || name == "firstOrFail") {
+                    arity(0, 0); return finish_builtin(name == "first" ? optional(model_type) : model_type, query_cpp(snake(name)));
+                }
+                if (name == "find" || name == "findOrFail") {
+                    arity(1, 1);
+                    const auto key = relationship_key_type(model_declaration, primary_key(model_declaration), e.origin);
+                    const auto result = finish_builtin(name == "find" ? optional(model_type) : model_type,
+                        model ? snake(name) : "gungnir::language::runtime::query_" + snake(name), {key});
+                    if (!model) v.symbols_[info.symbol].receives_receiver = true;
+                    return result;
+                }
+                if (model && name == "create") { arity(1, 1); return finish_builtin(model_type, name, {type_id("Json")}); }
+                if (name == "count" || (!model && name == "exists")) {
+                    arity(0, 0); return finish_builtin(type_id(name == "exists" ? "bool" : "int"), query_cpp(name));
+                }
+                if (name == "paginate") {
+                    arity(0, 2); return finish_builtin(sequence("Page", model_type), query_cpp(name), {type_id("int"), type_id("int")});
+                }
+                static const std::unordered_set<std::string> mutations{"save", "remove", "forceRemove", "update", "restore", "touch", "refresh"};
+                if (mutations.contains(name) && (model || (name != "save" && name != "touch" && name != "refresh"))) {
+                    arity(name == "update" ? 1 : 0, name == "update" ? 1 : 0);
+                    if (model && callee.literal_type == "::") report(callee.origin, "Model mutations require an instance receiver", "GNR2311");
+                    if (model && v.expressions_[receiver_expression].symbol != invalid_id &&
+                        v.symbols_[v.expressions_[receiver_expression].symbol].immutable)
+                        report(callee.origin, "Cannot modify an immutable binding", "GNR2208");
+                    return finish_builtin(type_id(model ? "bool" : "int"), snake(name), {type_id("Json")});
+                }
+                if (model && (name == "dirty" || name == "exists" || name == "trashed" || name == "relationLoaded" || name == "isDirty")) {
+                    if (callee.literal_type == "::") report(callee.origin, "Model state methods require an instance receiver", "GNR2311");
+                    const bool argument = name == "relationLoaded" || name == "isDirty";
+                    arity(argument ? 1 : 0, argument ? 1 : 0);
+                    return finish_builtin(type_id("bool"), snake(name), {type_id("string")});
+                }
+                if (model && name == "unloadRelations") { arity(0, 0); return finish_builtin(type_id("void"), "unload_relations"); }
+                if (name == "query") { arity(0, 0); if (model) return finish_builtin(query_type, name); }
+                if (name == "where" || name == "orWhere") {
+                    arity(2, 3); scalar_argument(count == 3 ? 2 : 1);
+                    if (count == 3) {
+                        const auto& comparison = v.syntax_.expressions[e.operands[2]];
+                        static const std::unordered_set<std::string> comparisons{"=", "==", "!=", "<>", "<", "<=", ">", ">=", "like"};
+                        if (comparison.literal_type == "string" && !comparisons.contains(comparison.text))
+                            report(comparison.origin, "Unsupported ORM comparison", "GNR2311");
+                    }
+                    return finish_builtin(query_type, query_cpp(snake(name)), count == 3
+                        ? std::vector<std::optional<TypeId>>{type_id("string"), type_id("string"), std::nullopt}
+                        : std::vector<std::optional<TypeId>>{type_id("string"), std::nullopt});
+                }
+                if (name == "whereIn" || name == "whereNotIn") {
+                    arity(2, 2);
+                    if (count > 1) {
+                        const auto& argument = v.syntax_.expressions[e.operands[2]];
+                        const auto values = expression(e.operands[2], argument.kind == SyntaxExpressionKind::list && argument.operands.empty()
+                            ? std::optional<TypeId>{sequence("List", type_id("int"))} : std::nullopt);
+                        if (type(values).name != "List" || type(values).arguments.empty()) report(e.origin, "whereIn requires a list of scalar attributes", "GNR2311");
+                        else {
+                            const auto element = unoptional(type(values).arguments[0]);
+                            const auto& element_name = type(element).name;
+                            if (!numeric(element) && element_name != "string" && element_name != "bool" && element_name != "Decimal" && element_name != "null")
+                                report(e.origin, "whereIn requires a list of scalar attributes", "GNR2311");
+                        }
+                    }
+                    return finish_builtin(query_type, query_cpp(snake(name)), {type_id("string"), std::nullopt});
+                }
+                if (name == "orderBy" || name == "orderByDesc" || name == "latest" || name == "oldest") {
+                    arity(name == "latest" || name == "oldest" ? 0 : 1, name == "orderBy" ? 2 : 1);
+                    if (name == "orderBy" && count == 2) {
+                        const auto& direction = v.syntax_.expressions[e.operands[2]];
+                        if (direction.literal_type == "string" && direction.text != "asc" && direction.text != "desc")
+                            report(direction.origin, "Order direction must be asc or desc", "GNR2311");
+                    }
+                    return finish_builtin(query_type, query_cpp(snake(name)), {type_id("string"), type_id("string")});
+                }
+                if (name == "limit" || name == "offset" || name == "take" || name == "skip") {
+                    arity(1, 1); return finish_builtin(query_type, query_cpp(name), {type_id("int")});
+                }
+                if (name == "with") {
+                    arity(1, 1);
+                    const bool list = count && (v.syntax_.expressions[e.operands[1]].kind == SyntaxExpressionKind::list ||
+                        type(expression(e.operands[1])).name == "List");
+                    return finish_builtin(query_type, query_cpp(name), {list
+                        ? sequence("List", type_id("string")) : type_id("string")});
+                }
+                if (name == "select") { arity(1, 1); return finish_builtin(query_type, query_cpp(name), {sequence("List", type_id("string"))}); }
+                if (name == "withDeleted" || name == "onlyDeleted") { arity(0, 0); return finish_builtin(query_type, query_cpp(snake(name))); }
+            }
+            if (callable_id == invalid_id && t.name == "Page" && (name == "empty" || name == "hasMore" || name == "hasPrevious")) {
+                arity(0, 0); return finish_builtin(type_id("bool"), snake(name));
             }
             if (callable_id == invalid_id && (t.name == "List" || t.name == "Collection")) {
                 const auto element = t.arguments[0];
                 if (name == "count" || name == "size") { arity(0, 0); return finish_builtin(type_id("int"), "size"); }
                 if (name == "empty" || name == "isEmpty") { arity(0, 0); return finish_builtin(type_id("bool"), "empty"); }
+                if (t.name == "Collection") {
+                    if (name == "first" || name == "last") { arity(0, 0); return finish_builtin(element, name); }
+                    if (name == "at") { arity(1, 1); return finish_builtin(element, name, {type_id("int")}); }
+                    if (name == "values") { arity(0, 0); return finish_builtin(sequence("List", element), name); }
+                    if (name == "find") {
+                        arity(1, 1);
+                        const auto element_owner = owner_of(element);
+                        if (element_owner == invalid_id || v.syntax_.declarations[declaration_ids.at(element_owner)].kind != DeclarationKind::model) {
+                            report(e.origin, "Collection find requires model elements", "GNR2311");
+                            return finish_builtin(optional(element), name);
+                        }
+                        const auto declaration = declaration_ids.at(element_owner);
+                        return finish_builtin(optional(element), name, {relationship_key_type(declaration, primary_key(declaration), e.origin)});
+                    }
+                    if (name == "take" || name == "skip" || name == "chunk") {
+                        arity(1, 1); return finish_builtin(name == "chunk" ? sequence("List", receiver) : receiver, name, {type_id("int")});
+                    }
+                    if (name == "contains" || name == "every" || name == "reject") {
+                        arity(1, 1);
+                        return finish_builtin(name == "reject" ? receiver : type_id("bool"), name,
+                            {intern("Function", "auto", {element, type_id("bool")})});
+                    }
+                    if (name == "sortBy" || name == "unique" || name == "sum") {
+                        arity(1, name == "sortBy" ? 2 : 1);
+                        const auto callback = count ? expression(e.operands[1], intern("Function", "auto", {element, type_id("Value")})) : type_id("Callable");
+                        const auto projected = type(callback).arguments.empty() ? type_id("Value") : type(callback).arguments.back();
+                        if ((name == "sum" && !numeric(projected)) || (name != "sum" && !numeric(projected) && projected != type_id("string") && projected != type_id("bool")))
+                            report(e.origin, "Collection projection must return " + std::string(name == "sum" ? "a number" : "a comparable scalar"), "GNR2311");
+                        return finish_builtin(name == "sum" ? projected : receiver, snake(name), {callback, type_id("bool")});
+                    }
+                    if (name == "reduce") {
+                        arity(2, 2);
+                        const auto initial = count ? expression(e.operands[1]) : type_id("Value");
+                        return finish_builtin(initial, name, {initial, intern("Function", "auto", {initial, element, initial})});
+                    }
+                }
                 if (name == "map" || name == "filter" || name == "each") {
                     arity(1, 1); const auto callback = count ? expression(e.operands[1], intern("Function", "auto", {element, type_id("Value")})) : type_id("Callable");
                     if (name == "filter" && (type(callback).arguments.empty() || type(callback).arguments.back() != type_id("bool"))) report(e.origin,"filter callback must return bool");
                     if (name == "map" && !type(callback).arguments.empty() && type(callback).arguments.back() == type_id("void")) report(e.origin,"map callback must return a value; use each for void callbacks");
-                    auto result = name == "each" ? type_id("void") : sequence("List", name == "map" && !type(callback).arguments.empty() ? type(callback).arguments.back() : element);
-                    callable_id = builtin(name, "gungnir::language::runtime::" + name, result, {callback}); info.type = result; info.symbol = callable_id; info.argument_order = {0}; info.argument_conversions = {callback}; v.expressions_[e.operands[0]] = {type_id("Callable"), callable_id}; return result;
+                    const bool collection_filter = name == "filter" && t.name == "Collection";
+                    auto result = name == "each" ? type_id("void") : sequence(collection_filter ? "Collection" : "List", name == "map" && !type(callback).arguments.empty() ? type(callback).arguments.back() : element);
+                    callable_id = builtin(name, collection_filter ? name : "gungnir::language::runtime::" + name, result, {callback}); info.type = result; info.symbol = callable_id; info.argument_order = {0}; info.argument_conversions = {callback}; v.expressions_[e.operands[0]] = {type_id("Callable"), callable_id}; return result;
                 }
             }
             if (callable_id == invalid_id && t.name == "string" && (name == "size" || name == "length" || name == "empty")) { arity(0,0); return finish_builtin(type_id(name == "empty" ? "bool" : "int"), name == "length" ? "size" : name); }
