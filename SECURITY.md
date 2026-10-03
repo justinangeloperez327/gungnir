@@ -2,7 +2,7 @@
 
 ## Supported line
 
-Gungnir 1.0.0-rc.1 is the active release-candidate line. Security fixes that affect the intended 1.0 contract are release blockers.
+Gungnir is under active development. Security defects remain high-priority correctness issues and must be resolved before the eventual 1.0 release.
 
 Security fixes may require behavior changes when preserving prior behavior would leave a material vulnerability. Such changes should be documented explicitly.
 
