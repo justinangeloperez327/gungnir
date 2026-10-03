@@ -51,6 +51,6 @@ New application projects use `profile=structured`. Projects without that marker 
 
 Phase 13 adds authoritative framework-artifact semantic contracts for the already-supported declaration surface. These checks close previously partial runtime/compiler contracts rather than introducing general-purpose language constructs. See [Framework Semantic Contracts](framework-semantics.md).
 
-The structured profile is feature-frozen for the 0.9 line. This freezes the currently supported source-language behavior; it does not promote partial framework rows to complete and does not stabilize generated C++ or native runtime ABI. `compiler_compatibility` remains experimental until 1.0-level compatibility is declared.
+The structured profile is feature-frozen as the 1.0 contract. `compiler_compatibility` is `stable`. Generated C++ remains a rebuild artifact, while native source compatibility and ABI scope are governed separately by the 1.0 API/ABI contract.
 
 Use `gungnirc --print-contract` to inspect the package, language, compiler, diagnostic, and freeze metadata. See [Stability](stability.md), [generated runtime tests](../tests/structured_generated.cpp), and [compiler correctness](compiler-correctness.md).
