@@ -1,6 +1,6 @@
 # Compiler Correctness
 
-> **Status: normative engineering contract for the structured compiler.** Gungnir is pre-1.0, but compiler changes are expected to preserve the invariants in this document. The compatibility transpiler remains transitional and is not the long-term correctness boundary.
+> **Status: normative 1.0 compiler contract.** Compiler changes must preserve the invariants in this document. The compatibility transpiler remains transitional and is not the structured-language correctness boundary.
 
 ## Definition
 
@@ -332,9 +332,9 @@ The profile is authoritative only for constructs the structured compiler claims 
 
 Phase 6 also requires semantic-gate parity: for the supported profile, validation-only checking and normal compilation must make the same accept/reject decision and produce the same semantic diagnostic codes. Backend IR verification may still detect internal compiler defects, but it must not be needed to diagnose ordinary source errors.
 
-## 0.9 feature-freeze gate
+## 1.0 feature-freeze gate
 
-The structured compiler contract is versioned as 0.9 and is feature-frozen for the 0.9 release line.
+The structured compiler contract is versioned as 1.0 and is feature-frozen for the 1.0 RC/stable line.
 
 Compiler-facing changes must preserve the frozen acceptance/diagnostic corpus unless the change is an intentional correctness correction. The stability gate verifies representative accepted programs, stable diagnostic codes, `--check`/full-compilation semantic parity, and machine-readable compiler contract metadata. The same gate runs under GCC, Clang, and MSVC.
 
