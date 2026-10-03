@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
 
           if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must use SemVer, for example v1.0.0-rc.1 or v1.0.0-rc.1."
+            echo "Release tag must use SemVer, for example v1.0.0 or v1.0.0-rc.1."
             exit 1
           fi
 
@@ -126,6 +126,7 @@ jobs:
           grep -qx "compiler_contract=1.0" <<< "$contract"
           grep -qx "diagnostic_contract=1.0" <<< "$contract"
           grep -qx "structured_feature_freeze=true" <<< "$contract"
+          grep -qx "compatibility=stable" <<< "$contract"
 
       - name: Create archive
         shell: bash
@@ -158,7 +159,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:RELEASE_TAG -notmatch '^v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
-              throw "Release tag must use SemVer, for example v1.0.0-rc.1 or v1.0.0-rc.1."
+              throw "Release tag must use SemVer, for example v1.0.0 or v1.0.0-rc.1."
           }
 
           $tagVersion = $Matches[1]
@@ -237,7 +238,8 @@ jobs:
               "language_version=1.0",
               "compiler_contract=1.0",
               "diagnostic_contract=1.0",
-              "structured_feature_freeze=true"
+              "structured_feature_freeze=true",
+              "compatibility=stable"
           )) {
               if ($contract -notmatch [regex]::Escape($required)) {
                   throw "Installed compiler contract is missing '$required'."
@@ -362,8 +364,17 @@ jobs:
               }
 
               $contract = (& $compiler --print-contract) -join "`n"
-              if ($contract -notmatch "structured_feature_freeze=true") {
-                  throw "Installed compiler does not report the 1.0 contract freeze."
+              foreach ($required in @(
+                  "package_version=$releaseVersion",
+                  "language_version=1.0",
+                  "compiler_contract=1.0",
+                  "diagnostic_contract=1.0",
+                  "structured_feature_freeze=true",
+                  "compatibility=stable"
+              )) {
+                  if ($contract -notmatch [regex]::Escape($required)) {
+                      throw "Installed compiler contract is missing '$required'."
+                  }
               }
 
               Remove-Item Env:GUNGNIR_CMAKE_PREFIX -ErrorAction SilentlyContinue
