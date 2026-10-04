@@ -87,7 +87,13 @@ class CppIrLoweringRenderer {
                 const bool injection = rr.symbol != invalid_id && symbol(rr.symbol).kind == ResolvedSymbolKind::injection;
                 if (!target.starts_with("gungnir::") && !target.starts_with("::")) {
                     if (is_static) target = expr(callee.operands[0]) + "::" + target;
-                    else { receiver = expr(receiver_id); target = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" + std::string(injection ? "->" : ".") + target; }
+                    else {
+                        receiver = expr(receiver_id);
+                        const auto base = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))";
+                        target = (p.types()[rr.type].name == "Session"
+                            ? "gungnir::language::runtime::session_receiver(" + std::string{base} + ")."
+                            : std::string{base} + (injection ? "->" : ".")) + target;
+                    }
                 } else if (callable.receives_receiver || (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate"))) { receiver = expr(receiver_id); receiver_argument = true; }
             }
             // Braced tuple construction fixes evaluation order, including await

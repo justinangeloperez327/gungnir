@@ -18,7 +18,7 @@ controller LoginController {
             "password": "required|string"
         });
 
-        if (!auth.attempt(request, credentials, request.input("remember"))) {
+        if (!auth.attempt(request, credentials, request.input("remember") == "1")) {
             return redirect("/login");
         }
 
@@ -28,6 +28,40 @@ controller LoginController {
 ```
 
 Successful session authentication rotates the session identifier.
+
+`auth.attempt(request, credentials, remember = false)` accepts an object with
+string `email` and `password` fields and a boolean remember choice. Invalid
+credentials return `false`; malformed credential objects raise HTTP 400. Input
+validation errors use the validation response. Request input values are strings,
+so compare a submitted remember choice explicitly.
+
+## Guard configuration
+
+Build Gungnir with `GUNGNIR_WITH_PASSWORD=ON` to enable the OpenSSL Crypto password
+backend. Register one shared `SessionGuard` in `ServiceOptions.authentication`.
+Install session middleware, identity-restoration middleware, and guard middleware
+in that order:
+
+```cpp
+auto guard = std::make_shared<gungnir::auth::SessionGuard>(
+    credential_resolver, identity_resolver, remember_store);
+app.provider<gungnir::ServicesProvider>(
+    gungnir::ServiceOptions{.authentication = guard});
+app.router().use(gungnir::session::middleware(session_store));
+app.router().use(gungnir::auth::session(identity_resolver));
+app.router().use(gungnir::auth::guard(guard));
+```
+
+The credential resolver returns a `PasswordIdentity` containing the public
+identity and its stored hash; the identity resolver restores an identity by id.
+Guard middleware recalls valid remember tokens before the action and attaches
+guard cookies to the final response after awaited middleware completes. The
+request's auth context owns these staged cookies. Native callers can also use the
+guard overloads that accept an explicit response.
+
+Use the same guard instance for service registration and middleware. Place guard
+middleware before actions and middleware that call the authentication APIs.
+Request-only guard calls reject a missing, mismatched, or finished guard scope.
 
 ## Current user
 
@@ -56,9 +90,27 @@ Identity providers define the public attributes and resolve identities from user
 
 Logout clears authenticated state, rotates or invalidates the session as appropriate, and revokes remember-me credentials associated with the session.
 
+```gnr
+controller LogoutController {
+    destroy(Request request) {
+        auth.logout(request);
+        return redirect("/login");
+    }
+}
+```
+
 ## Passwords
 
 Gungnir provides versioned password hashing and verification. Applications store password hashes rather than plaintext credentials.
+
+```gnr
+const encoded = Password::hash("example-password");
+const valid = Password::verify("example-password", encoded);
+const needsUpdate = Password::needsRehash(encoded);
+```
+
+Hash a submitted password when creating or changing credentials. Verify against
+the stored hash; do not hash again and compare the two randomly salted strings.
 
 ## Remember me
 

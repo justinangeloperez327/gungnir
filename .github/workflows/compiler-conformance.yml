@@ -11,6 +11,7 @@ on:
       - "tests/compiler_*.cmake"
       - "tests/structured_generated.cpp"
       - "tests/structured_http.cpp"
+      - "tests/structured_authentication.cpp"
       - "tests/structured_request_context.cpp"
       - "tests/model_relationships.cpp"
       - "tests/structured_orm_contract.cpp"
@@ -28,6 +29,7 @@ on:
       - "tests/compiler_*.cmake"
       - "tests/structured_generated.cpp"
       - "tests/structured_http.cpp"
+      - "tests/structured_authentication.cpp"
       - "tests/structured_request_context.cpp"
       - "tests/model_relationships.cpp"
       - "tests/structured_orm_contract.cpp"
@@ -80,13 +82,14 @@ jobs:
           gungnir_structured_generated_test
           gungnir_model_relationships_test gungnir_structured_orm_contract_test
           gungnir_structured_http_test
+          gungnir_structured_authentication_test
           gungnir_structured_request_context_test
           gungnirc
 
       - name: Run compiler conformance tests
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_request_context|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
+          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_request_context|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
 
       - name: Produce deterministic compiler snapshot
         run: >
@@ -127,6 +130,7 @@ jobs:
           gungnir_structured_generated_test
           gungnir_model_relationships_test gungnir_structured_orm_contract_test
           gungnir_structured_http_test
+          gungnir_structured_authentication_test
           gungnir_structured_request_context_test
           gungnirc
 
@@ -134,7 +138,7 @@ jobs:
         run: >
           ctest --test-dir build --build-config Release
           --output-on-failure --no-tests=error
-          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_request_context|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$"
+          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_request_context|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$"
 
       - name: Produce deterministic compiler snapshot
         shell: pwsh
@@ -165,7 +169,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for file in program.cpp program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir; do
+          for file in program.cpp program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir; do
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-Clang/$file"
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-MSVC/$file"
           done

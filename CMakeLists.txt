@@ -1266,6 +1266,16 @@ if(GUNGNIR_BUILD_TESTS)
         target_link_libraries(gungnir_structured_request_context_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
         target_compile_features(gungnir_structured_request_context_test PRIVATE cxx_std_23)
         add_test(NAME gungnir.structured_request_context COMMAND gungnir_structured_request_context_test)
+        set(GUNGNIR_STRUCTURED_AUTH_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_authentication_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_AUTH_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/authentication.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_AUTH_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/authentication.gnr VERBATIM)
+        add_executable(gungnir_structured_authentication_test tests/structured_authentication.cpp "${GUNGNIR_STRUCTURED_AUTH_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_AUTH_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_authentication_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_authentication_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_features(gungnir_structured_authentication_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_authentication COMMAND gungnir_structured_authentication_test)
         set(GUNGNIR_STRUCTURED_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/program.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_PROGRAM}"
@@ -1424,6 +1434,8 @@ if(GUNGNIR_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_orm_examples.py $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_http_examples COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_http_examples.py $<TARGET_FILE:gungnirc>)
+        add_test(NAME gungnir.docs_auth_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_auth_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_context_examples COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_context_examples.py $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.lsp_protocol COMMAND ${Python3_EXECUTABLE}

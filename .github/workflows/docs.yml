@@ -14,6 +14,7 @@ on:
       - "tests/docs_orm_examples.py"
       - "tests/docs_http_examples.py"
       - "tests/docs_context_examples.py"
+      - "tests/docs_auth_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -33,6 +34,7 @@ on:
       - "tests/docs_orm_examples.py"
       - "tests/docs_http_examples.py"
       - "tests/docs_context_examples.py"
+      - "tests/docs_auth_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -86,6 +88,9 @@ jobs:
 
       - name: Validate public request-context examples
         run: python3 tests/docs_context_examples.py ./build-docs/gungnirc
+
+      - name: Validate public authentication examples
+        run: python3 tests/docs_auth_examples.py ./build-docs/gungnirc
 
       - name: Emit canonical example C++
         run: >
