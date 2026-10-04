@@ -13,12 +13,15 @@
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/method.hpp>
 #include <gungnir/http/request_stream.hpp>
+#include <gungnir/http/uploads.hpp>
 #include <gungnir/validation/rules.hpp>
 #include <gungnir/validation/result.hpp>
 
 namespace gungnir {
 class ServiceScope;
 }
+
+namespace gungnir::validation { class Engine; }
 
 namespace gungnir::session {
 class Session;
@@ -109,7 +112,12 @@ public:
     [[nodiscard]] const Input& cookies() const noexcept;
 
     [[nodiscard]] const Json& json() const;
-    [[nodiscard]] const Input& form() const noexcept;
+    [[nodiscard]] const Input& form() const;
+    [[nodiscard]] const std::vector<UploadedFile>& files() const;
+    [[nodiscard]] std::vector<UploadedFile> files(std::string_view name) const;
+    [[nodiscard]] std::optional<UploadedFile> file(std::string_view name) const;
+    [[nodiscard]] bool has_file(std::string_view name) const;
+    void multipart_limits(MultipartLimits limits);
     [[nodiscard]] bool expects_json() const noexcept;
     [[nodiscard]] bool is_json() const noexcept;
     [[nodiscard]] bool accepts(std::string_view media_type) const noexcept;
@@ -128,6 +136,8 @@ public:
     [[nodiscard]] Json structured_input() const;
     [[nodiscard]] Json validate_structured(const validation::Rules& rules) const;
     [[nodiscard]] validation::StructuredResult check_structured(const validation::Rules& rules) const;
+    [[nodiscard]] Json validate_structured(const validation::Rules& rules, const validation::Engine& custom_rules) const;
+    [[nodiscard]] validation::StructuredResult check_structured(const validation::Rules& rules, const validation::Engine& custom_rules) const;
     [[nodiscard]] Input only(
         std::initializer_list<std::string_view> names
     ) const;
@@ -179,6 +189,8 @@ private:
     Parameters parameters_;
     Input query_;
     mutable Input form_;
+    mutable std::vector<UploadedFile> files_;
+    MultipartLimits multipart_limits_;
     mutable Input cookies_;
     mutable std::optional<Json> json_;
     mutable bool body_parsed_{false};

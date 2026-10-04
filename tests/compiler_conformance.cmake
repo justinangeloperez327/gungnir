@@ -100,6 +100,10 @@ set(routing "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/routing.gnr")
 run_gungnirc("routing.cpp" "${routing}" --strict --no-line-directives)
 run_gungnirc("routing.validated" "${routing}" --dump-validated-ast --no-line-directives)
 run_gungnirc("routing.ir" "${routing}" --dump-cpp-ir --no-line-directives)
+set(validation "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/validation.gnr")
+run_gungnirc("validation.cpp" "${validation}" --strict --no-line-directives)
+run_gungnirc("validation.validated" "${validation}" --dump-validated-ast --no-line-directives)
+run_gungnirc("validation.ir" "${validation}" --dump-cpp-ir --no-line-directives)
 file(
     SHA256
     "${GUNGNIR_OUTPUT_DIR}/program.cpp"
@@ -121,7 +125,7 @@ file(WRITE
     "program.cpp ${first_program_hash}\n"
 )
 
-foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir services.cpp services.validated services.ir routing.cpp routing.validated routing.ir)
+foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir services.cpp services.validated services.ir routing.cpp routing.validated routing.ir validation.cpp validation.validated validation.ir)
     file(SHA256 "${GUNGNIR_OUTPUT_DIR}/${file_name}" file_hash)
     file(APPEND
         "${GUNGNIR_OUTPUT_DIR}/manifest.txt"

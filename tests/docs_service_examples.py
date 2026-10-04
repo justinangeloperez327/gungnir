@@ -17,5 +17,5 @@ with tempfile.TemporaryDirectory(prefix="gungnir-docs-services-") as temporary:
             if result.returncode:
                 raise AssertionError(f"docs/{guide} snippet {number}\n{result.stdout}{result.stderr}")
             count += 1
-assert count == 6, f"Expected six cache/storage examples, got {count}"
+assert count == 7, f"Expected seven cache/storage examples, got {count}"
 print(f"Validated {count} public cache/storage examples")

@@ -79,6 +79,23 @@ Logical paths resolve beneath the configured disk root or object-store prefix. L
 
 Validated request uploads can be written to a configured storage disk.
 
+```gnr
+controller UploadController {
+    inject Storage storage;
+    store(Request request) {
+        const data = request.validate({"attachment": "bail|required|file|max:1048576"});
+        const attachment = request.file("attachment");
+        if (attachment != null) {
+            storage.put("uploads/attachment.bin", attachment.bytes());
+            return json(data);
+        }
+        return text("Missing attachment", 400);
+    }
+}
+```
+
+Validation finishes before this write. Storage accepts owned, binary-safe upload bytes. Choose an application-controlled path within the configured disk; the client filename is metadata.
+
 ## S3-compatible storage
 
 Object-storage disks use the configured endpoint, region, bucket, credentials and prefix. S3-compatible services can be used when they implement the required API behavior.

@@ -1,0 +1,106 @@
+function Json validatePayload(Json payload) {
+    return Validator::validate(payload, {"count": "required|integer|min:-2|max:18446744073709551615"});
+}
+function ValidationResult checkPayload(Json payload) {
+    return Validator::check(payload, {"count": "bail|required|integer|min:-2|max:18446744073709551615"});
+}
+function bool namedValidation(Json value, Json data) { return value.isString() && value.string() == "GNR"; }
+function Validator domainRules(string code) {
+    const registry = Validator::make();
+    registry.extend("projectCode", "The code must identify this project.", (Json value, Json data) => value.isString() && value.string() == code);
+    registry.extend("namedCode", "The code must be GNR.", namedValidation);
+    return registry;
+}
+function UploadedFile? captureUpload(Request request) { return request.file("attachment"); }
+function Validator retainRules(Validator registry) { return registry; }
+controller InjectedValidation {
+    inject Validator rules;
+    store(Request request) {
+        const retained = retainRules(rules);
+        const checked = rules.check(request.json(), {"code": "required|custom:projectCode"});
+        if (checked.failed()) { return json(checked.errors(), 422); }
+        return json(request.validate({"code": "required|custom:projectCode"}, retained));
+    }
+}
+
+controller ValidationController {
+    inject Storage storage;
+    profile(Request request) {
+        return json(request.validate({
+            "enabled": "required|boolean",
+            "count": "required|integer|min:-2|max:18446744073709551615",
+            "price": "required|numeric|min:-1.5|max:3.25",
+            "profile": "required|object",
+            "profile.email": "required|email",
+            "users": "required|array|min:1|max:3",
+            "users.*.email": "bail|required|email",
+            "users.*.confirmation": "required|same:users.*.email",
+            "users.*.delivery": "requiredIf:users.*.mode,email|string",
+            "public_id": "required|uuid",
+            "website": "nullable|url",
+            "birthday": "required|date",
+            "published": "nullable|datetime",
+            "role": "required|in:reader,writer|notIn:admin",
+            "password": "required|confirmed|different:profile.email|min:8",
+            "optional": "sometimes|string",
+            "empty": "present|nullable|string"
+        }));
+    }
+    checked(Request request) {
+        const result = request.check({"email": "bail|required|email|max:8", "count": "required|integer"});
+        return json({"valid": result.valid(), "failed": result.failed(), "values": result.values(), "errors": result.errors()});
+    }
+    custom(Request request) {
+        const registry = domainRules("GNR");
+        return json(request.validate({"code": "required|custom:projectCode|custom:namedCode"}, registry));
+    }
+    customChecked(Request request) {
+        const registry = domainRules("GNR");
+        const result = registry.check(request.structuredInput(), {"code": "required|custom:projectCode"});
+        return json({"valid": result.valid(), "errors": result.errors()});
+    }
+    customData(Request request) {
+        const registry = domainRules("GNR");
+        return json(registry.validate(request.json(), {"code": "required|custom:projectCode"}));
+    }
+    upload(Request request) {
+        const data = request.validate({"caption": "required|string", "attachment": "bail|required|file|max:4096"});
+        const attachment = captureUpload(request);
+        if (attachment != null) {
+            storage.put("uploads/attachment.bin", attachment.bytes());
+            return json({"data": data, "field": attachment.field(), "name": attachment.name(),
+                "contentType": attachment.contentType(), "size": attachment.size(),
+                "count": request.files().size(), "present": request.hasFile("attachment")});
+        }
+        return noContent();
+    }
+    image(Request request) { return json(request.validate({"avatar": "bail|required|file|image|mimes:png,jpeg,gif,webp|max:4096"})); }
+    multiple(Request request) {
+        const data = request.validate({"photos": "required|array|max:3", "photos.*": "bail|required|file|image|max:4096"});
+        return json({"data": data, "count": request.files("photos").size(), "single": request.file("photos") == null});
+    }
+    dynamic(Request request, Json rules) { return json(request.validate(rules)); }
+    unique(Request request) { return json(request.validate({"email": "required|email|unique:validation_users,email"})); }
+    exists(Request request) { return json(request.validate({"id": "required|integer|exists:validation_users,id"})); }
+}
+middleware UploadAudit {
+    async handle(Request request, Next next) {
+        const upload = request.file("attachment");
+        const registry = domainRules("GNR");
+        let response = await next(request);
+        const checked = registry.check({"code": "GNR"}, {"code": "custom:projectCode"});
+        if (upload != null) { response.header("X-Upload-Name", upload.name()); }
+        return response.header("X-Validation-Registry", checked.valid() ? "valid" : "invalid");
+    }
+}
+Route::post("/validation/profile", ValidationController::profile);
+Route::post("/validation/check", ValidationController::checked);
+Route::post("/validation/custom", ValidationController::custom);
+Route::post("/validation/custom-check", ValidationController::customChecked);
+Route::post("/validation/custom-data", ValidationController::customData);
+Route::post("/validation/injected", InjectedValidation::store);
+Route::post("/validation/upload", ValidationController::upload).middleware(UploadAudit);
+Route::post("/validation/image", ValidationController::image);
+Route::post("/validation/multiple", ValidationController::multiple);
+Route::post("/validation/unique", ValidationController::unique);
+Route::post("/validation/exists", ValidationController::exists);

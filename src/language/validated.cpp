@@ -1,4 +1,5 @@
 #include <gungnir/language/compiler.hpp>
+#include <gungnir/validation/definition.hpp>
 #include <algorithm>
 #include <cctype>
 #include <functional>
@@ -89,6 +90,7 @@ public:
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
+            {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
             {"Route","gungnir::Route"},{"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
@@ -180,7 +182,7 @@ public:
     }
     bool contains_service(TypeId id) const {
         const auto& value = type(id);
-        return value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" ||
+        return value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" ||
             std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_service(argument); });
     }
     bool contains_callable(TypeId id) const {
@@ -190,7 +192,7 @@ public:
     }
     bool contains_session(TypeId id) const {
         const auto& value = type(id);
-        return value.name == "Session" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_session(argument); });
+        return value.name == "Session" || value.name == "UploadedFile" || value.name == "ValidationResult" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_session(argument); });
     }
     bool contains_identity(TypeId id) const {
         const auto& value = type(id);
@@ -700,6 +702,8 @@ public:
         if (e.kind == SyntaxExpressionKind::name) {
             const auto symbol_id = visible(e.text, e.origin); if (symbol_id == invalid_id) return set(type_id("Value"));
             if (v.symbols_[symbol_id].type == type_id("Route")) report(e.origin,"Route is a static API, not a value", "GNR2320");
+            if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && v.symbols_[symbol_id].name == "Validator") report(e.origin,"Construct a validation registry with Validator::make()", "GNR2330");
+            if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "UploadedFile" || v.symbols_[symbol_id].name == "ValidationResult")) report(e.origin,"Obtain upload and validation-result values through their request or validation APIs", "GNR2330");
             const auto& value = v.symbols_[symbol_id]; return set(value.kind == ResolvedSymbolKind::callable ? type_id("Callable") : narrowed.contains(symbol_id) ? unoptional(value.type) : value.type, symbol_id);
         }
         if (e.kind == SyntaxExpressionKind::member) {
@@ -840,6 +844,37 @@ public:
         async_context = previous_async; return_type = previous_return; returned = std::move(previous_returns); loops = previous_loops;
         return info.type;
     }
+    void validation_definitions(SyntaxId id, bool registry) {
+        const auto& value = v.syntax_.expressions[id];
+        const auto& actual = type(v.expressions_[id].type);
+        if (actual.optional || (actual.name != "Json" && actual.name != "Data" && actual.name != "Value" && actual.name != "Map")) report(value.origin,"Validation definitions require an object of rule strings", "GNR2330");
+        if (actual.name == "Map" && (actual.arguments.size() != 2 || actual.arguments[0] != type_id("string") || actual.arguments[1] != type_id("string"))) report(value.origin,"Validation definitions require string keys and values", "GNR2330");
+        if (value.kind == SyntaxExpressionKind::literal || value.kind == SyntaxExpressionKind::list) report(value.origin,"Validation definitions require an object", "GNR2330");
+        if (value.kind == SyntaxExpressionKind::object) for (std::size_t i = 0; i < value.operands.size(); ++i) {
+            const auto& expression = v.syntax_.expressions[value.operands[i]];
+            if (!validation::rule_path(value.argument_names[i])) report(value.origin,"Invalid validation field path", "GNR2330");
+            if (v.expressions_[value.operands[i]].type != type_id("string")) report(expression.origin,"Validation rule expressions must be strings", "GNR2330");
+            if (expression.kind == SyntaxExpressionKind::literal && expression.literal_type == "string") {
+                try {
+                    const auto rules = validation::parse_rule_expression(value.argument_names[i], expression.text);
+                    if (!registry && std::any_of(rules.begin(),rules.end(),[](const auto& rule) { return rule.name == "custom"; })) report(expression.origin,"Custom validation requires an explicitly passed registry", "GNR2330");
+                } catch (const std::logic_error& error) { report(expression.origin,error.what(), "GNR2330"); }
+            }
+        }
+    }
+    void validation_predicate(SyntaxId id) {
+        const auto& factory = v.expressions_[id]; const auto& signature = type(factory.type);
+        bool valid = signature.name == "Function" && signature.arguments == std::vector<TypeId>{type_id("Json"),type_id("Json"),type_id("bool")};
+        if (signature.name == "Callable" && factory.symbol != invalid_id && v.syntax_.expressions[id].kind == SyntaxExpressionKind::name) {
+            const auto* callable = &v.symbols_[factory.symbol];
+            if (callable->kind == ResolvedSymbolKind::declaration && declaration_ids.contains(factory.symbol)) {
+                const auto declaration = declaration_ids.at(factory.symbol);
+                if (v.syntax_.declarations[declaration].kind == DeclarationKind::function) callable = &v.symbols_[v.declarations_[declaration].methods.front().symbol];
+            }
+            valid = callable->kind == ResolvedSymbolKind::callable && callable->parameters == std::vector<TypeId>{type_id("Json"),type_id("Json")} && !callable->asynchronous && callable->type == type_id("bool");
+        }
+        if (!valid) report(v.syntax_.expressions[id].origin,"Validation predicate must be synchronous, take two Json values and return bool", "GNR2330");
+    }
     TypeId call(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id]; const auto callee = v.syntax_.expressions[e.operands[0]];
         info.argument_order.clear(); info.argument_conversions.clear();
@@ -850,9 +885,9 @@ public:
             const auto& prefix = v.syntax_.expressions[receiver_expression];
             if (callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name) { callable_id = visible(prefix.text + "::" + name, callee.origin, false); if (callable_id != invalid_id) v.expressions_[receiver_expression] = {type_id("Callable"), builtin(prefix.text,prefix.text,type_id("Callable"))}; }
             if (callable_id == invalid_id) {
-                if (callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name && prefix.text == "Route") {
-                    receiver = type_id("Route");
-                    v.expressions_[receiver_expression] = {receiver,visible("Route",prefix.origin)};
+                if (callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name && (prefix.text == "Route" || prefix.text == "Validator")) {
+                    receiver = type_id(prefix.text);
+                    v.expressions_[receiver_expression] = {receiver,visible(prefix.text,prefix.origin)};
                 } else receiver = expression(receiver_expression);
                 if (type(receiver).optional || callee.literal_type == "?.") report(callee.origin,"Optional method calls require an explicit null guard");
                 callable_id = member(unoptional(receiver), name, callee.origin, false);
@@ -896,6 +931,41 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Validator") {
+                const auto& prefix = v.syntax_.expressions[receiver_expression];
+                const bool static_api = callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name && prefix.text == "Validator";
+                if (callee.literal_type == "::" && !static_api) report(callee.origin,"Static validation calls use Validator", "GNR2330");
+                if (name == "make") {
+                    if (!static_api) report(callee.origin,"Construct a registry with Validator::make()", "GNR2330");
+                    arity(0,0); return finish_builtin(type_id("Validator"), "gungnir::validation::Engine::make");
+                }
+                if (name == "extend") {
+                    if (static_api) report(callee.origin,"Custom validation rules require a registry instance", "GNR2330");
+                    arity(3,3);
+                    const auto result = finish_builtin(type_id("void"), name, {type_id("string"),type_id("string"),intern("Function","auto",{type_id("Json"),type_id("Json"),type_id("bool")})});
+                    if (count == 3) validation_predicate(e.operands[3]);
+                    if (count >= 1) { const auto& argument = v.syntax_.expressions[e.operands[1]]; if (argument.kind == SyntaxExpressionKind::literal && argument.literal_type == "string" && !validation::rule_identifier(argument.text)) report(argument.origin,"Invalid custom validation rule name", "GNR2330"); }
+                    return result;
+                }
+                if (name == "validate" || name == "check") {
+                    arity(2,2);
+                    const auto result = finish_builtin(type_id(name == "validate" ? "Json" : "ValidationResult"), "gungnir::language::runtime::" + name + "_data", {type_id("Json"),type_id("Json")});
+                    v.symbols_[info.symbol].receives_receiver = !static_api;
+                    if (count >= 2) validation_definitions(e.operands[2], !static_api);
+                    return result;
+                }
+            }
+            if (t.name == "ValidationResult") {
+                if (callee.literal_type == "::") report(callee.origin,"Validation results require an instance", "GNR2330");
+                if (name == "valid" || name == "failed") { arity(0,0); return finish_builtin(type_id("bool"), name); }
+                if (name == "values") { arity(0,0); return finish_builtin(type_id("Json"), name); }
+                if (name == "errors") { arity(0,0); return finish_builtin(intern("Map","std::unordered_map<gungnir::String,std::vector<gungnir::String>>",{type_id("string"),sequence("List",type_id("string"))}), name); }
+            }
+            if (t.name == "UploadedFile") {
+                if (callee.literal_type == "::") report(callee.origin,"Upload methods require an instance", "GNR2330");
+                if (name == "field" || name == "name" || name == "contentType" || name == "bytes") { arity(0,0); return finish_builtin(type_id("string"), name == "name" ? "original_name" : name == "contentType" ? "media_type" : name); }
+                if (name == "size") { arity(0,0); return finish_builtin(type_id("uint64"), name); }
+            }
             if (t.name == "Route") {
                 if (callee.literal_type != "::") report(callee.origin,"Route helpers require static calls", "GNR2320");
                 if (name == "has") { arity(1,1); return finish_builtin(type_id("bool"), "gungnir::language::runtime::route_has", {type_id("string")}); }
@@ -1014,7 +1084,15 @@ public:
                 if (name == "user") { arity(0,0); return finish_builtin(optional(type_id("AuthIdentity")), "current_user"); }
                 if (name == "structuredInput") { arity(0,0); return finish_builtin(type_id("Json"), "structured_input"); }
                 if (name == "json") { arity(0,0); return finish_builtin(type_id("Json"), name); }
-                if (name == "validate") { arity(1,1); return finish_builtin(type_id("Json"), "gungnir::language::runtime::validate", {type_id("Json")}); }
+                if (name == "validate" || name == "check") {
+                    arity(1,2);
+                    const auto result = finish_builtin(type_id(name == "validate" ? "Json" : "ValidationResult"), "gungnir::language::runtime::" + name, {type_id("Json"),type_id("Validator")});
+                    v.symbols_[info.symbol].receives_receiver = true;
+                    if (count) validation_definitions(e.operands[1], count == 2);
+                    return result;
+                }
+                if (name == "file" || name == "hasFile") { arity(1,1); return finish_builtin(name == "file" ? optional(type_id("UploadedFile")) : type_id("bool"), name == "hasFile" ? "has_file" : name, {type_id("string")}); }
+                if (name == "files") { arity(0,1); return finish_builtin(sequence("List",type_id("UploadedFile")), name, {type_id("string")}); }
                 const auto input_map = intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")});
                 if (name == "query") { arity(0,1); return finish_builtin(count ? type_id("string") : input_map, name, {type_id("string")}); }
                 if (name == "all" || name == "headers" || name == "parameters" || name == "cookies" || name == "form") { arity(0,0); return finish_builtin(input_map, name); }
