@@ -95,7 +95,7 @@ class CppIrLoweringRenderer {
                             ? "gungnir::language::runtime::session_receiver(" + std::string{base} + ")."
                             : std::string{base} + (injection ? "->" : ".")) + target;
                     }
-                } else if (callable.receives_receiver || (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate"))) { receiver = expr(receiver_id); receiver_argument = true; }
+                } else if (callable.receives_receiver || (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each"))) { receiver = expr(receiver_id); receiver_argument = true; }
             }
             // Braced tuple construction fixes evaluation order, including await
             // expressions, before named arguments are reordered for the call.

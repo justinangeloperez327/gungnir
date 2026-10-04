@@ -48,6 +48,8 @@ extra = project / "app/controllers/ExtraController.gnr"
 extra.write_text("controller ExtraController { index() { return text('first'); } }\n")
 routes = project / "routes/web.gnr"
 routes.write_text('''Route::get("/", HomeController::index).name("home");
+Route::post("/validated", ProjectValidationController::store);
+Route::post("/upload", ProjectValidationController::upload);
 Route::prefix("/api").name("api.").middleware("PassMiddleware").group(() => {
     Route::prefix("/v1").name("v1.").middleware(RouteMiddleware).group(() => {
         Route::get("/users/{user}", RouteController::show).name("users.show").whereNumber("user");
@@ -65,6 +67,24 @@ controller RouteController {
     scalar(bool enabled, Request request, int id) { return json({ id: id, enabled: enabled }); }
     echo(string value) { return text(value); }
     missing() { return text("fallback", 404); }
+}
+''')
+(project / "app/controllers/ProjectValidationController.gnr").write_text('''controller ProjectValidationController {
+    inject Storage storage;
+    store(Request request) {
+        const rules = Validator::make();
+        rules.extend("code", "The code is invalid.", (Json value, Json data) => value.isString() && value.string() == "GNR");
+        return json(request.validate({"profile": "required|object", "profile.email": "required|email", "code": "required|custom:code"}, rules));
+    }
+    upload(Request request) {
+        const data = request.validate({"attachment": "bail|required|file|max:4096"});
+        const attachment = request.file("attachment");
+        if (attachment != null) {
+            storage.put("uploads/attachment.bin", attachment.bytes());
+            return json({"name": attachment.name(), "size": attachment.size()});
+        }
+        return text("Missing attachment", 400);
+    }
 }
 ''')
 (project / "app/middleware/PassMiddleware.gnr").write_text('''middleware PassMiddleware {
@@ -169,9 +189,11 @@ def stop(process):
         raise AssertionError("Process failed to stop")
 
 
-def response(path):
+def response(path, data=None, content_type=None):
+    request = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data,
+        headers={"Content-Type": content_type, "Accept": "application/json"} if content_type else {})
     try:
-        result = urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5)
+        result = urllib.request.urlopen(request, timeout=5)
     except urllib.error.HTTPError as error:
         result = error
     with result:
@@ -195,6 +217,22 @@ with (project / "dev.log").open("w") as log:
         process = subprocess.Popen([cli, "dev"], cwd=project, env=env, stdout=log, stderr=log)
     try:
         wait_response("first", process)
+        payload = {"code": "GNR", "profile": {"email": "a@example.test", "admin": True}, "secret": "omit"}
+        status, body, headers = response("/validated", json.dumps(payload).encode(), "application/json")
+        assert status == 200 and json.loads(body) == {"code": "GNR", "profile": {"email": "a@example.test"}}
+        payload["code"] = "bad"
+        assert response("/validated", json.dumps(payload).encode(), "application/json")[0] == 422
+        assert response("/validated", b"{bad", "application/json")[0] == 400
+        binary = b"one\x00two\r\n--UploadBoundaryExtra\r\nend"
+        def upload_body(data):
+            return b'--UploadBoundary\r\nContent-Disposition: form-data; name="attachment"; filename="../report.bin"\r\nContent-Type: application/octet-stream\r\n\r\n' + data + b'\r\n--UploadBoundary--\r\n'
+        status, body, headers = response("/upload", upload_body(binary), 'multipart/form-data; boundary="UploadBoundary"')
+        assert status == 200 and json.loads(body) == {"name": "report.bin", "size": len(binary)}
+        stored = project / "storage/uploads/attachment.bin"
+        assert stored.read_bytes() == binary
+        assert response("/upload", upload_body(b"x" * 4097), 'multipart/form-data; boundary="UploadBoundary"')[0] == 422
+        assert stored.read_bytes() == binary
+        assert response("/upload", upload_body(binary)[:-5], 'multipart/form-data; boundary="UploadBoundary"')[0] == 400
         status, body, headers = response("/api/v1/scalar/7/true")
         assert status == 200 and json.loads(body) == {"id": 7, "enabled": True}
         assert headers["X-Global"] == "yes" and headers["X-Route"] == "yes"

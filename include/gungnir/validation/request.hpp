@@ -14,10 +14,7 @@ public:
     virtual ~ValidatedRequest() = default;
 
     [[nodiscard]] Input validated() const {
-        return Validator::validate(
-            request_->all(),
-            rules()
-        );
+        return request_->validate(rules());
     }
 
     [[nodiscard]] const http::Request& request() const noexcept {

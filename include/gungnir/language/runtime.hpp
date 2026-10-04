@@ -73,15 +73,23 @@ inline bool password_needs_rehash(const String& encoded) {
     throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
 #endif
 }
-inline Json validate(Request& request, const Json& definitions) {
+inline validation::Rules validation_rules(const Json& definitions) {
     if (!definitions.is_object()) throw std::invalid_argument("Validation rules must be an object");
     validation::Rules rules;
     for (const auto& [field, expression] : definitions.as_object()) {
         if (!expression.is_string()) throw std::invalid_argument("Validation rule expressions must be strings");
         rules.add(field, expression.string());
     }
-    return request.validate_structured(rules);
+    return rules;
 }
+inline Json validate(Request& request, const Json& definitions) { return request.validate_structured(validation_rules(definitions)); }
+inline Json validate(Request& request, const Json& definitions, const validation::Engine& registry) { return request.validate_structured(validation_rules(definitions), registry); }
+inline validation::Report check(Request& request, const Json& definitions) { return validation::Report{request.check_structured(validation_rules(definitions))}; }
+inline validation::Report check(Request& request, const Json& definitions, const validation::Engine& registry) { return validation::Report{request.check_structured(validation_rules(definitions), registry)}; }
+inline Json validate_data(const Json& input, const Json& definitions) { return validation::Validator::validate(input, validation_rules(definitions)); }
+inline Json validate_data(const validation::Engine& registry, const Json& input, const Json& definitions) { return registry.validate(input, validation_rules(definitions)); }
+inline validation::Report check_data(const Json& input, const Json& definitions) { return validation::Report{validation::Validator::check(input, validation_rules(definitions))}; }
+inline validation::Report check_data(const validation::Engine& registry, const Json& input, const Json& definitions) { return validation::Report{registry.check(input, validation_rules(definitions))}; }
 template<class Resource> void authorize(Request& request,String ability,const Resource& resource) {
     auto authorization = request.services().resolve<auth::ResourceAuthorization>();
     authorization->authorize(request,ability,resource);

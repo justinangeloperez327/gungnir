@@ -102,7 +102,23 @@ See [Authentication](authentication.md).
 
 ## Uploaded files
 
-Multipart requests expose uploaded files through the request upload API. File validation should be applied before storing user-provided files.
+Multipart requests expose owning `UploadedFile` values. `file(name)` returns `UploadedFile?` when exactly one file matches; `hasFile(name)` tests whether any match. `files()` returns all uploads and `files(name)` returns matches in multipart order. The `[]` suffix is optional when retrieving a repeated field.
+
+```gnr
+const present = request.hasFile("avatar");
+const avatar = request.file("avatar");
+if (avatar != null) {
+    const metadata = {"name": avatar.name(), "type": avatar.contentType(),
+        "size": avatar.size(), "field": avatar.field()};
+}
+const photos = request.files("photos");
+```
+
+`bytes()` returns a binary-safe string. Uploads retain their bytes after the request ends or an action resumes from `await`. Client names lose directory components; names and Content-Type remain client metadata. Apply [file validation](validation.md#files) before storage and choose the storage path explicitly.
+
+Multipart text fields appear in `form()` and take precedence over query fields in `all()`/`structuredInput()`. Uploads are accessed separately; selected upload metadata appears in validation results. Repeated scalar text fields use the last value. File/text collisions are rejected. Repeated files use an array field such as `photos[]`; a single `file` rule rejects a group of multiple uploads.
+
+Malformed multipart bodies produce status 400. Parser defaults limit the body to 16 MiB, each file to 8 MiB, each text field to 1 MiB, part headers to 8 KiB, and parts to 128; exceeding a limit produces status 413. The server's body limit also applies. Native integrations can set `Request::multipart_limits(MultipartLimits)` before reading input.
 
 ## Bearer tokens
 

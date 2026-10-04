@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include <gungnir/http/middleware.hpp>
+#include <gungnir/http/uploads.hpp>
 #include <gungnir/session/session.hpp>
 
 namespace gungnir::http {
@@ -99,18 +100,5 @@ MiddlewareHandler csrf(
 // gungnir::session::Session.
 using Session =
     gungnir::session::Session;
-
-struct UploadedFile {
-    std::string name;
-    std::string filename;
-    std::string content_type;
-    std::string content;
-
-    [[nodiscard]]
-    std::size_t size()
-        const noexcept {
-        return content.size();
-    }
-};
 
 } // namespace gungnir::http

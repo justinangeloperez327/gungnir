@@ -273,6 +273,7 @@ add_library(gungnir
     src/http/json.cpp
     src/http/message.cpp
     src/http/request.cpp
+    src/http/uploads.cpp
     src/http/cookie.cpp
     src/http/response.cpp
     src/http/server.cpp
@@ -1155,7 +1156,8 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/language/formatter.hpp gungnir/language/lsp.hpp
             gungnir/language/module.hpp gungnir/language/dependency_graph.hpp
             gungnir/cli/project.hpp gungnir/cli/lsp.hpp
-            gungnir/routing/controller_binding.hpp)
+            gungnir/routing/controller_binding.hpp gungnir/http/uploads.hpp
+            gungnir/http/files.hpp gungnir/validation/validator.hpp gungnir/validation/definition.hpp)
         string(REPLACE "/" "_" unit "${header}")
         set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
         file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
@@ -1278,6 +1280,16 @@ if(GUNGNIR_BUILD_TESTS)
         target_compile_definitions(gungnir_structured_routing_test PRIVATE GUNGNIR_ROUTING_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/routing.gnr")
         target_compile_features(gungnir_structured_routing_test PRIVATE cxx_std_23)
         add_test(NAME gungnir.structured_routing COMMAND gungnir_structured_routing_test)
+        set(GUNGNIR_STRUCTURED_VALIDATION_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_validation_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_VALIDATION_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/validation.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_VALIDATION_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/validation.gnr VERBATIM)
+        add_executable(gungnir_structured_validation_test tests/structured_validation.cpp "${GUNGNIR_STRUCTURED_VALIDATION_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_VALIDATION_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_validation_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_validation_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_features(gungnir_structured_validation_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_validation COMMAND gungnir_structured_validation_test)
         set(GUNGNIR_STRUCTURED_SERVICES_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_services_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/services.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
@@ -1460,6 +1472,8 @@ if(GUNGNIR_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_service_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_routing_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_routing_examples.py" $<TARGET_FILE:gungnirc>)
+        add_test(NAME gungnir.docs_validation_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_validation_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_auth_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_auth_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_context_examples COMMAND ${Python3_EXECUTABLE}

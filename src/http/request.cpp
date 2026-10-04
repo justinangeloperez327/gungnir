@@ -7,6 +7,7 @@
 #include <gungnir/security/security.hpp>
 
 #include <gungnir/validation/validator.hpp>
+#include <gungnir/validation/exception.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -349,6 +350,7 @@ void Request::set_header(std::string name, std::string value) {
     body_parsed_ = false;
     cookies_parsed_ = false;
     form_.clear();
+    files_.clear();
     cookies_.clear();
     json_.reset();
 }
@@ -438,15 +440,33 @@ const Json& Request::json() const {
     return *json_;
 }
 
-const Request::Input& Request::form() const noexcept {
-    try {
-        parse_body_input();
-    } catch (...) {
-        form_.clear();
-        body_parsed_ = true;
-    }
-
+const Request::Input& Request::form() const {
+    parse_body_input();
     return form_;
+}
+
+const std::vector<UploadedFile>& Request::files() const {
+    parse_body_input(); return files_;
+}
+std::vector<UploadedFile> Request::files(std::string_view name) const {
+    auto key = [](std::string_view value) { return value.ends_with("[]") ? value.substr(0, value.size() - 2) : value; };
+    parse_body_input(); std::vector<UploadedFile> result;
+    for (const auto& file : files_) if (key(file.name) == key(name)) result.push_back(file);
+    return result;
+}
+std::optional<UploadedFile> Request::file(std::string_view name) const {
+    auto uploads = files(name);
+    if (uploads.size() != 1) return {};
+    return std::move(uploads.front());
+}
+bool Request::has_file(std::string_view name) const {
+    parse_body_input();
+    auto key = [](std::string_view value) { return value.ends_with("[]") ? value.substr(0, value.size() - 2) : value; };
+    return std::any_of(files_.begin(), files_.end(), [&](const auto& file) { return key(file.name) == key(name); });
+}
+void Request::multipart_limits(MultipartLimits limits) {
+    if (body_parsed_) throw std::logic_error("Multipart limits must be set before reading request input");
+    multipart_limits_ = limits;
 }
 
 bool Request::expects_json() const noexcept {
@@ -523,16 +543,26 @@ Json Request::structured_input() const {
     for (const auto& [name, value] : query_) values.insert_or_assign(name, Json{value});
     for (const auto& [name, value] : form_) values.insert_or_assign(name, Json{value});
     if (json_) {
-        if (!json_->is_object()) throw std::invalid_argument("Request input must be a JSON object");
+        if (!json_->is_object()) throw BadRequestException{"Request input must be a JSON object"};
         for (const auto& [name, value] : json_->as_object()) values.insert_or_assign(name, value);
     }
     return Json::object(std::move(values));
 }
 Json Request::validate_structured(const validation::Rules& rules) const {
-    return validation::Validator::validate(structured_input(), rules);
+    const auto input = structured_input();
+    return validation::Validator::validate(input, rules, {&files_, nullptr});
 }
 validation::StructuredResult Request::check_structured(const validation::Rules& rules) const {
-    return validation::Validator::check(structured_input(), rules);
+    const auto input = structured_input();
+    return validation::Validator::check(input, rules, {&files_, nullptr});
+}
+Json Request::validate_structured(const validation::Rules& rules, const validation::Engine& custom_rules) const {
+    const auto input = structured_input();
+    return validation::Validator::validate(input, rules, {&files_, &custom_rules});
+}
+validation::StructuredResult Request::check_structured(const validation::Rules& rules, const validation::Engine& custom_rules) const {
+    const auto input = structured_input();
+    return validation::Validator::check(input, rules, {&files_, &custom_rules});
 }
 
 Request::Input Request::all() const {
@@ -588,10 +618,9 @@ Request::Input Request::except(
 Request::Input Request::validate(
     const validation::Rules& rules
 ) const {
-    return validation::Validator::validate(
-        all(),
-        rules
-    );
+    auto result = check(rules);
+    if (!result.valid()) throw validation::ValidationException{std::move(result.errors)};
+    return std::move(result.values);
 }
 
 std::string_view Request::method_name() const noexcept {
@@ -614,6 +643,12 @@ Request::Input Request::except(const std::vector<std::string>& names) const {
 }
 
 validation::Result Request::check(const validation::Rules& rules) const {
+    if (media_type_is(header("content-type"), "multipart/form-data")) {
+        auto checked = check_structured(rules);
+        Input values;
+        for (const auto& [name, value] : checked.values.as_object()) values.emplace(name, value.string());
+        return {std::move(values), std::move(checked.errors)};
+    }
     return validation::Validator::check(all(), rules);
 }
 
@@ -646,17 +681,16 @@ void Request::parse_body_input() const {
     }
 
     form_.clear();
+    files_.clear();
     json_.reset();
 
     const auto content_type = header("content-type");
 
     if (media_type_is(content_type, "application/json")) {
-        if (!body_.empty()) {
-            try {
-                json_ = Json::parse(body_);
-            } catch (const std::invalid_argument&) {
-                throw BadRequestException{"Malformed JSON request body"};
-            }
+        try {
+            json_ = Json::parse(body_);
+        } catch (const std::invalid_argument&) {
+            throw BadRequestException{"Malformed JSON request body"};
         }
 
         body_parsed_ = true;
@@ -670,6 +704,10 @@ void Request::parse_body_input() const {
         )
     ) {
         form_ = parse_urlencoded(body_);
+    } else if (media_type_is(content_type, "multipart/form-data")) {
+        auto parsed = parse_multipart(content_type, body_, multipart_limits_);
+        form_ = std::move(parsed.fields);
+        files_ = std::move(parsed.files);
     }
     body_parsed_ = true;
 }
