@@ -44,12 +44,31 @@ Named routes can be used to avoid coupling redirects to hard-coded application p
 
 Use a no-content response for successful operations without a response body.
 
+```gnr
+return noContent();
+```
+
 ## Headers
 
 ```gnr
 return text("ok")
     .header("Cache-Control", "no-store");
 ```
+
+Headers, status, and body setters return a response for chaining. Use a mutable binding when modifying an existing response; getters do not modify it.
+
+```gnr
+let result = text("queued");
+result.status(202);
+result.header("X-Result", "accepted");
+const status = result.status();
+const body = result.body();
+const header = result.header("X-Result");
+const headers = result.headers();
+return result;
+```
+
+Header names are case insensitive. Header values reject CR/LF characters to prevent injected response headers. Response values and getter results remain valid after a temporary chain finishes.
 
 ## Cookies
 
@@ -76,6 +95,12 @@ Use `withoutCookie(name, path, options)` with the same path and domain as the or
 ## Downloads and streams
 
 Gungnir supports downloadable responses and streaming bodies for content that should not be buffered as a single response string.
+
+```gnr
+return download("name,total\nFreya,42\n", "report.csv", "text/csv");
+```
+
+`download(body, filename, contentType, status)` sends a buffered attachment. The content type defaults to `application/octet-stream` and the status defaults to 200. Use a streaming body for large or incrementally produced content.
 
 ## WebSockets
 
