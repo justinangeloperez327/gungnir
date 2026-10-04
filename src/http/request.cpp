@@ -284,6 +284,16 @@ bool Request::has_auth() const noexcept {
     return static_cast<bool>(auth_);
 }
 
+std::shared_ptr<session::Session> Request::shared_session() const {
+    if (!session_) throw std::logic_error("HTTP request is not attached to a session");
+    return session_;
+}
+
+std::optional<auth::Identity> Request::current_user() const {
+    const auto* identity = user();
+    return identity ? std::optional<auth::Identity>{*identity} : std::nullopt;
+}
+
 auth::Context& Request::auth() {
     if (!auth_) {
         throw std::logic_error(

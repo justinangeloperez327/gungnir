@@ -13,6 +13,8 @@
 
 #include <gungnir/core/types.hpp>
 #include <gungnir/model/value.hpp>
+
+namespace gungnir::auth { struct Identity; }
 #include <gungnir/model/metadata.hpp>
 
 namespace gungnir::http {
@@ -83,6 +85,7 @@ struct JsonObjectStorage {
 [[nodiscard]] Json make_json(Json&& value);
 [[nodiscard]] Json make_json(std::nullptr_t);
 [[nodiscard]] Json make_json(Boolean value);
+[[nodiscard]] Json make_json(const auth::Identity& value);
 
 template <std::signed_integral T>
 requires (!std::same_as<std::remove_cvref_t<T>, Boolean>)

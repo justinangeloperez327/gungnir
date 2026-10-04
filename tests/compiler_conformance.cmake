@@ -83,6 +83,19 @@ run_gungnirc("http.cpp" "${http}" --strict --no-line-directives)
 run_gungnirc("http.validated" "${http}" --dump-validated-ast --no-line-directives)
 run_gungnirc("http.ir" "${http}" --dump-cpp-ir --no-line-directives)
 
+set(context "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/request_context.gnr")
+run_gungnirc("context.cpp" "${context}" --strict --no-line-directives)
+run_gungnirc("context.validated" "${context}" --dump-validated-ast --no-line-directives)
+run_gungnirc("context.ir" "${context}" --dump-cpp-ir --no-line-directives)
+file(
+    SHA256
+    "${GUNGNIR_OUTPUT_DIR}/program-repeat.cpp"
+    second_program_hash
+)
+if(NOT first_program_hash STREQUAL second_program_hash)
+    message(FATAL_ERROR "structured compiler output is not deterministic")
+endif()
+
 file(
     SHA256
     "${GUNGNIR_OUTPUT_DIR}/program.cpp"
@@ -104,7 +117,7 @@ file(WRITE
     "program.cpp ${first_program_hash}\n"
 )
 
-foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir)
+foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir)
     file(SHA256 "${GUNGNIR_OUTPUT_DIR}/${file_name}" file_hash)
     file(APPEND
         "${GUNGNIR_OUTPUT_DIR}/manifest.txt"

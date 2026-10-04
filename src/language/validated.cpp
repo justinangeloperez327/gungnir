@@ -86,6 +86,7 @@ public:
         for (const auto& [name, cpp] : std::vector<std::pair<std::string,std::string>>{
             {"void","void"},{"int","gungnir::Int64"},{"uint64","gungnir::UInt64"},{"double","double"},{"decimal","double"},{"Decimal","gungnir::model::Decimal"},{"bool","bool"},{"string","gungnir::String"},
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
+            {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
             {"Callable","auto"},{"inferred","auto"}}) intern(name, cpp);
@@ -166,15 +167,25 @@ public:
         return syntax.optional ? optional(value) : value;
     }
     bool numeric(TypeId id) const { const auto& name = type(id).name; return !type(id).optional && (name == "int" || name == "uint64" || name == "double" || name == "decimal"); }
+    bool contains_session(TypeId id) const {
+        const auto& value = type(id);
+        return value.name == "Session" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_session(argument); });
+    }
+    bool contains_identity(TypeId id) const {
+        const auto& value = type(id);
+        return value.name == "AuthIdentity" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_identity(argument); });
+    }
     bool assignable(TypeId target, TypeId source) {
-        if (target == source || type(target).name == "Value") return true;
+        if (target == source) return true;
+        if (type(target).name == "Value") return !contains_session(source);
         const auto a = type(target), b = type(source);
         if (a.optional) return b.name == "null" || assignable(unoptional(target), b.optional ? unoptional(source) : source);
         if (b.optional) return false;
         if (a.name == "double" && b.name == "int") return true;
         if (a.name == "decimal" && (b.name == "int" || b.name == "uint64")) return true;
         if (a.name == "Decision" && b.name == "bool") return true;
-        if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable") return true;
+        if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable")
+            return !contains_session(source) && (!b.optional || b.name == "AuthIdentity");
         if (a.name == "List" && b.name == "List" && a.arguments.size() == 1 && b.arguments.size() == 1) return a.arguments[0] == b.arguments[0];
         return false;
     }
@@ -850,42 +861,48 @@ public:
             }
             if (callable_id == invalid_id && t.name == "Decimal" && (name == "string" || name == "toDouble")) { arity(0,0); return finish_builtin(type_id(name == "string" ? "string" : "double"), name == "string" ? "string" : "to_double"); }
             if (callable_id == invalid_id && t.name == "Request") {
+                if (name == "session") { arity(0,0); return finish_builtin(type_id("Session"), "shared_session"); }
+                if (name == "user") { arity(0,0); return finish_builtin(optional(type_id("AuthIdentity")), "current_user"); }
+                if (name == "authenticated" || name == "guest" || name == "hasAuth" || name == "hasSession") { arity(0,0); return finish_builtin(type_id("bool"), snake(name)); }
                 if (name == "structuredInput") { arity(0,0); return finish_builtin(type_id("Json"), "structured_input"); }
-                if (name == "json") { arity(0,0); return finish_builtin(type_id("Json"), name); }
                 if (name == "validate") { arity(1,1); return finish_builtin(type_id("Json"), "gungnir::language::runtime::validate", {type_id("Json")}); }
-                const auto input_map = intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")});
-                if (name == "query") { arity(0,1); return finish_builtin(count ? type_id("string") : input_map, name, {type_id("string")}); }
-                if (name == "all" || name == "headers" || name == "parameters" || name == "cookies" || name == "form") { arity(0,0); return finish_builtin(input_map, name); }
-                if (name == "only" || name == "except") { arity(1,1); return finish_builtin(input_map, name, {sequence("List",type_id("string"))}); }
-                if (name == "method") { arity(0,0); return finish_builtin(type_id("string"), "method_name"); }
-                static const std::unordered_set<std::string> keyed_strings{"header","parameter","input","cookie"};
-                if (keyed_strings.contains(name)) { arity(1,1); return finish_builtin(type_id("string"), name, {type_id("string")}); }
-                static const std::unordered_set<std::string> strings{"body","path","target","contentType","userAgent","host","authorization","bearerToken","clientIp"};
-                if (strings.contains(name)) { arity(0,0); return finish_builtin(type_id("string"), snake(name)); }
-                static const std::unordered_set<std::string> states{"cancelled","secure","hasServices","hasSession","hasAuth","authenticated","guest","expectsJson","isJson"};
-                if (states.contains(name)) { arity(0,0); return finish_builtin(type_id("bool"), snake(name)); }
-                if (name == "has" || name == "hasParameter" || name == "accepts") { arity(1,1); return finish_builtin(type_id("bool"), snake(name), {type_id("string")}); }
+                static const std::unordered_set<std::string> strings{"header","parameter","query","input","body","path","target"};
+                if (strings.contains(name)) { const auto count = name == "body" || name == "path" || name == "target" ? 0 : 1; arity(count,count); return finish_builtin(type_id("string"), name, {type_id("string")}); }
             }
-            if (callable_id == invalid_id && t.name == "Response") {
-                const bool mutation = (name == "header" && count == 2) ||
-                    ((name == "status" || name == "body") && count == 1);
-                if (mutation && receiver_expression != invalid_id) {
+            if (callable_id == invalid_id && t.name == "Session") {
+                if (name == "id") { arity(0,0); return finish_builtin(type_id("string"), name); }
+                if (name == "get" || name == "flashed" || name == "has") { arity(1,1); return finish_builtin(type_id(name == "has" ? "bool" : "string"), name, {type_id("string")}); }
+                if (name == "put" || name == "flash") { arity(2,2); return finish_builtin(type_id("void"), name, {type_id("string"),type_id("string")}); }
+                if (name == "forget") { arity(1,1); return finish_builtin(type_id("void"), name, {type_id("string")}); }
+                if (name == "clear" || name == "invalidate" || name == "regenerate") { arity(0,0); return finish_builtin(type_id("void"), name); }
+                if (name == "regenerated") { arity(0,0); return finish_builtin(type_id("bool"), name); }
+                if (name == "values") { arity(0,0); return finish_builtin(intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")}), name); }
+            }
+            if (callable_id == invalid_id && t.name == "AuthIdentity" && name == "role") { arity(1,1); return finish_builtin(type_id("bool"), name, {type_id("string")}); }
+            if (callable_id == invalid_id && t.name == "Response" && (name == "cookie" || name == "withoutCookie")) {
+                arity(name == "cookie" ? 2 : 1, 3);
+                if (receiver_expression != invalid_id) {
                     const auto kind = v.syntax_.expressions[receiver_expression].kind;
-                    if (kind == SyntaxExpressionKind::name || kind == SyntaxExpressionKind::member ||
-                        kind == SyntaxExpressionKind::subscript) writable(receiver_expression);
+                    if (kind == SyntaxExpressionKind::name || kind == SyntaxExpressionKind::member || kind == SyntaxExpressionKind::subscript)
+                        writable(receiver_expression);
                 }
-                if (name == "header") { arity(1,2); return finish_builtin(type_id(count == 1 ? "string" : "Response"), name, {type_id("string"),type_id("string")}); }
-                if (name == "status") { arity(0,1); return finish_builtin(type_id(count ? "Response" : "int"), name, {type_id("int")}); }
-                if (name == "body") { arity(0,1); return finish_builtin(type_id(count ? "Response" : "string"), name, {type_id("string")}); }
-                if (name == "headers") { arity(0,0); return finish_builtin(intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")}), name); }
-            }
-            if (callable_id == invalid_id && (t.name == "Json" || t.name == "Value" || t.name == "Data")) {
-                if (name == "string" || name == "dump") { arity(0,0); return finish_builtin(type_id("string"), name); }
-                if (name == "get") { arity(1,1); return finish_builtin(optional(type_id("Json")), "find", {type_id("string")}); }
-                if (name == "asArray") { arity(0,0); return finish_builtin(sequence("List",type_id("Json")), "as_array"); }
-                if (name == "asObject") { arity(0,0); return finish_builtin(intern("Map", "std::unordered_map<gungnir::String,gungnir::Json>", {type_id("string"),type_id("Json")}), "as_object"); }
-                static const std::unordered_set<std::string> states{"isNull","isBoolean","isInteger","isNumber","isString","isArray","isObject"};
-                if (states.contains(name)) { arity(0,0); return finish_builtin(type_id("bool"), snake(name)); }
+                const auto result = finish_builtin(type_id("Response"), "gungnir::language::runtime::response_" + snake(name), name == "cookie"
+                    ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("string"),type_id("Json")}
+                    : std::vector<std::optional<TypeId>>{type_id("string"),type_id("string"),type_id("Json")});
+                if (count == 3) {
+                    const auto& options = v.syntax_.expressions[e.operands[3]];
+                    const auto option_type = type(v.expressions_[e.operands[3]].type).name;
+                    if (option_type != "Json" && option_type != "Data" && option_type != "Value") report(options.origin, "Cookie options must be an object");
+                    if (options.kind == SyntaxExpressionKind::object) for (std::size_t i = 0; i < options.operands.size(); ++i) {
+                        const auto& key = options.argument_names[i];
+                        const auto actual = v.expressions_[options.operands[i]].type;
+                        const auto expected = key == "secure" || key == "httpOnly" ? type_id("bool") : key == "maxAge" ? type_id("int") : type_id("string");
+                        if (key != "path" && key != "domain" && key != "maxAge" && key != "secure" && key != "httpOnly" && key != "sameSite") report(options.origin, "Unknown cookie option '" + key + "'");
+                        else if (!assignable(expected, actual) && !(key == "domain" && type(actual).name == "null")) report(options.origin, "Cookie option type mismatch");
+                    }
+                }
+                v.symbols_[info.symbol].receives_receiver = true;
+                return result;
             }
             const auto owner = owner_of(receiver);
             const bool model = owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
