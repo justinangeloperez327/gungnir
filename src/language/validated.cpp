@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <regex>
 #include <set>
 #include <stdexcept>
 #include <unordered_map>
@@ -89,7 +90,7 @@ public:
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
-            {"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
+            {"Route","gungnir::Route"},{"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
             {"Callable","auto"},{"inferred","auto"}}) intern(name, cpp);
         declarations.emplace("native:auth", symbol({ResolvedSymbolKind::builtin,"auth",
@@ -137,6 +138,7 @@ public:
     }
     TypeId resolve(const TypeSyntax& syntax) {
         std::string name = syntax.name;
+        if (name == "Route") { report(syntax.origin,"Route is a static API, not a value type", "GNR2320"); return type_id("Value"); }
         if (name == "integer" || name == "int64" || name == "Integer" || name == "Int64") name = "int";
         if (name == "boolean" || name == "Boolean") name = "bool";
         if (name == "String") name = "string";
@@ -697,6 +699,7 @@ public:
         if (e.kind == SyntaxExpressionKind::literal) return set(type_id(e.literal_type));
         if (e.kind == SyntaxExpressionKind::name) {
             const auto symbol_id = visible(e.text, e.origin); if (symbol_id == invalid_id) return set(type_id("Value"));
+            if (v.symbols_[symbol_id].type == type_id("Route")) report(e.origin,"Route is a static API, not a value", "GNR2320");
             const auto& value = v.symbols_[symbol_id]; return set(value.kind == ResolvedSymbolKind::callable ? type_id("Callable") : narrowed.contains(symbol_id) ? unoptional(value.type) : value.type, symbol_id);
         }
         if (e.kind == SyntaxExpressionKind::member) {
@@ -846,7 +849,14 @@ public:
             name = callee.text; receiver_expression = callee.operands[0];
             const auto& prefix = v.syntax_.expressions[receiver_expression];
             if (callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name) { callable_id = visible(prefix.text + "::" + name, callee.origin, false); if (callable_id != invalid_id) v.expressions_[receiver_expression] = {type_id("Callable"), builtin(prefix.text,prefix.text,type_id("Callable"))}; }
-            if (callable_id == invalid_id) { receiver = expression(receiver_expression); if (type(receiver).optional || callee.literal_type == "?.") report(callee.origin,"Optional method calls require an explicit null guard"); callable_id = member(unoptional(receiver), name, callee.origin, false); }
+            if (callable_id == invalid_id) {
+                if (callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name && prefix.text == "Route") {
+                    receiver = type_id("Route");
+                    v.expressions_[receiver_expression] = {receiver,visible("Route",prefix.origin)};
+                } else receiver = expression(receiver_expression);
+                if (type(receiver).optional || callee.literal_type == "?.") report(callee.origin,"Optional method calls require an explicit null guard");
+                callable_id = member(unoptional(receiver), name, callee.origin, false);
+            }
         } else { report(callee.origin, "Expression is not callable"); }
         const auto count = e.operands.size() - 1;
         std::vector<TypeId> argument_types;
@@ -886,6 +896,33 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Route") {
+                if (callee.literal_type != "::") report(callee.origin,"Route helpers require static calls", "GNR2320");
+                if (name == "has") { arity(1,1); return finish_builtin(type_id("bool"), "gungnir::language::runtime::route_has", {type_id("string")}); }
+                if (name == "url") {
+                    arity(1,2);
+                    const auto result = finish_builtin(type_id("string"), "gungnir::language::runtime::route_url", {type_id("string"),type_id("Json")});
+                    if (count == 2) {
+                        const auto& params = v.syntax_.expressions[e.operands[2]];
+                        const auto& container = type(v.expressions_[e.operands[2]].type);
+                        if (container.optional || (container.name != "Json" && container.name != "Data" && container.name != "Map"))
+                            report(params.origin,"URL parameters require an object", "GNR2320");
+                        if (container.name == "Map" && !container.arguments.empty()) {
+                            const auto value = container.arguments.back(); const auto& item = type(value);
+                            if (item.optional || (item.name != "string" && !numeric(value) && item.name != "bool"))
+                                report(params.origin,"URL parameters require scalar values", "GNR2320");
+                        }
+                        if (params.kind == SyntaxExpressionKind::object) for (auto value : params.operands) {
+                            const auto& item = type(v.expressions_[value].type);
+                            if (item.optional || (item.name != "string" && !numeric(v.expressions_[value].type) && item.name != "bool"))
+                                report(v.syntax_.expressions[value].origin,"URL parameters require scalar values", "GNR2320");
+                        }
+                    }
+                    return result;
+                }
+                report(callee.origin,"Route declarations belong at module scope", "GNR2320");
+                return finish_builtin(type_id("void"), "gungnir::Route::" + name);
+            }
             if (t.name == "Cache" || t.name == "Storage" || t.name == "StorageDisk") {
                 if (callee.literal_type == "::") report(callee.origin,"Service methods require an instance");
                 if (t.name == "Cache") {
@@ -2145,6 +2182,180 @@ public:
         };
         for (auto module : v.module_order_) for (auto d : v.syntax_.modules[module].declarations) visit(d);
     }
+    void mark_route_expression(SyntaxId id) {
+        const auto& value = v.syntax_.expressions[id];
+        v.expressions_[id].type = value.kind == SyntaxExpressionKind::literal ? type_id(value.literal_type) : type_id("void");
+        for (auto operand : value.operands) mark_route_expression(operand);
+    }
+    std::string route_reference(SyntaxId id) const {
+        const auto& value = v.syntax_.expressions[id];
+        if (value.kind == SyntaxExpressionKind::name) return value.text;
+        if (value.kind == SyntaxExpressionKind::member && value.literal_type == "::") {
+            const auto prefix = route_reference(value.operands.front());
+            if (!prefix.empty()) return prefix + "::" + value.text;
+        }
+        return {};
+    }
+    SymbolId route_type(std::string name, const Origin& origin, DeclarationKind kind) {
+        auto found = visible(name,origin,false);
+        // Unique project controllers and middleware remain usable in route
+        // files without imports. Explicit imports resolve duplicate names.
+        if (found == invalid_id && name.find("::") == std::string::npos) {
+            for (std::size_t i = 0; i < v.syntax_.declarations.size(); ++i) {
+                const auto& declaration = v.syntax_.declarations[i];
+                if (declaration.name != name || declaration.kind != kind) continue;
+                if (found != invalid_id) { report(origin,"Ambiguous route type '" + name + "'; import its module", "GNR2320"); return invalid_id; }
+                found = v.declarations_[i].symbol;
+            }
+        }
+        if (found == invalid_id || !declaration_ids.contains(found) || v.syntax_.declarations[declaration_ids.at(found)].kind != kind) {
+            report(origin,"Route target must reference a declared " + std::string{kind == DeclarationKind::controller ? "controller" : "middleware"}, "GNR2320");
+            return invalid_id;
+        }
+        return found;
+    }
+    std::string route_string(SyntaxId id) {
+        mark_route_expression(id);
+        const auto& value = v.syntax_.expressions[id];
+        if (value.kind != SyntaxExpressionKind::literal || value.literal_type != "string") {
+            report(value.origin,"Route options require string literals", "GNR2320"); return {};
+        }
+        if (std::any_of(value.text.begin(),value.text.end(),[](unsigned char c){return c < 32 || c == 127;}))
+            report(value.origin,"Route strings cannot contain control characters", "GNR2320");
+        return value.text;
+    }
+    static std::string route_path(std::string prefix, std::string path) {
+        while (prefix.ends_with('/')) prefix.pop_back();
+        if (path == "/" && !prefix.empty()) return prefix;
+        return prefix + (!prefix.empty() && !path.empty() && !path.starts_with('/') ? "/" : "") + path;
+    }
+    void routing_contracts() {
+        struct Attributes { std::string prefix, name; std::vector<RouteMiddlewareResolution> middleware; };
+        std::unordered_set<std::string> names;
+        bool fallback = false;
+        const auto arity = [&](const Origin& origin, const auto& args, std::size_t count) {
+            for (auto id : args) mark_route_expression(id);
+            if (args.size() != count) { report(origin,"Incorrect route argument count", "GNR2320"); return false; }
+            return true;
+        };
+        const auto middleware = [&](const RouteModifierSyntax& option) -> RouteMiddlewareResolution {
+            if (option.middleware_type) {
+                if (option.middleware_type->optional || !option.middleware_type->arguments.empty())
+                    report(option.origin,"Route middleware uses a non-optional declared middleware type", "GNR2320");
+                return {route_type(option.middleware_type->name,option.origin,DeclarationKind::middleware),{}};
+            }
+            if (!arity(option.origin,option.arguments,1)) return {};
+            const auto id = option.arguments.front(); const auto& value = v.syntax_.expressions[id];
+            if (value.kind == SyntaxExpressionKind::literal && value.literal_type == "string") {
+                auto alias = route_string(id);
+                if (alias.empty()) report(value.origin,"Middleware aliases cannot be empty", "GNR2320");
+                return {invalid_id,std::move(alias)};
+            }
+            auto target = route_type(route_reference(id),value.origin,DeclarationKind::middleware);
+            if (target != invalid_id) v.expressions_[id] = {v.symbols_[target].type,target};
+            return {target,{}};
+        };
+        std::function<void(const RouteSyntax&,Attributes,bool)> visit;
+        visit = [&](const RouteSyntax& syntax, Attributes inherited, bool nested) {
+            current_module = syntax.module;
+            RouteResolution route; route.origin = syntax.origin; route.module = syntax.module;
+            route.method = syntax.method; route.middleware = inherited.middleware;
+            std::string own_name;
+            const auto apply = [&](const RouteModifierSyntax& option) {
+                if (option.name == "middleware") {
+                    auto value = middleware(option);
+                    (syntax.group ? inherited.middleware : route.middleware).push_back(std::move(value));
+                } else if (option.name == "name") {
+                    if (arity(option.origin,option.arguments,1)) {
+                        auto name = route_string(option.arguments.front());
+                        if (name.empty()) report(option.origin,"Route names cannot be empty", "GNR2320");
+                        if (syntax.group) inherited.name += name; else own_name = std::move(name);
+                    }
+                } else if (option.name == "prefix" && syntax.group) {
+                    if (arity(option.origin,option.arguments,1)) {
+                        auto path = route_string(option.arguments.front());
+                        if (!path.empty() && !path.starts_with('/')) report(option.origin,"Route prefixes must start with '/'", "GNR2320");
+                        inherited.prefix = route_path(inherited.prefix,path);
+                    }
+                } else if (!syntax.group && (option.name == "where" || option.name == "whereNumber" || option.name == "whereUuid")) {
+                    if (arity(option.origin,option.arguments,option.name == "where" ? 2 : 1)) {
+                        auto parameter = route_string(option.arguments.front());
+                        auto pattern = option.name == "where" ? route_string(option.arguments[1]) : option.name == "whereNumber" ? "[0-9]+" : "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}";
+                        try { (void)std::regex{pattern}; } catch (const std::regex_error&) { report(option.origin,"Invalid route constraint expression", "GNR2320"); }
+                        route.constraints.push_back({std::move(parameter),std::move(pattern)});
+                    }
+                } else {
+                    for (auto id : option.arguments) mark_route_expression(id);
+                    report(option.origin,"Unsupported route modifier '" + option.name + "'", "GNR2320");
+                }
+            };
+            if (syntax.group) {
+                if (syntax.method != "prefix" && syntax.method != "name" && syntax.method != "middleware") {
+                    for (auto id : syntax.arguments) mark_route_expression(id);
+                    report(syntax.origin,"Route groups start with prefix, name or middleware", "GNR2320");
+                } else apply(RouteModifierSyntax{syntax.origin,syntax.method,syntax.arguments,{}});
+                for (const auto& option : syntax.modifiers) apply(option);
+                for (const auto& child : syntax.children) visit(child,inherited,true);
+                return;
+            }
+            static const std::unordered_set<std::string> methods{"get","post","put","patch","delete","options","head","fallback"};
+            if (!methods.contains(syntax.method)) report(syntax.origin,"Unsupported route method '" + syntax.method + "'", "GNR2320");
+            const bool is_fallback = syntax.method == "fallback";
+            if (is_fallback) {
+                if (nested || fallback) report(syntax.origin,"A project has one module-scope fallback route", "GNR2320");
+                fallback = true;
+            }
+            if (!arity(syntax.origin,syntax.arguments,is_fallback ? 1 : 2)) return;
+            if (!is_fallback) route.path = route_path(inherited.prefix,route_string(syntax.arguments[0]));
+            std::unordered_set<std::string> parameters;
+            if (!is_fallback) {
+                if (!route.path.starts_with('/') || route.path.find_first_of("?#") != std::string::npos)
+                    report(syntax.origin,"Route paths start with '/' and exclude query strings/fragments", "GNR2320");
+                std::size_t begin = 0;
+                while (begin < route.path.size()) {
+                    const auto end = route.path.find('/',begin); const auto part = route.path.substr(begin,end == std::string::npos ? end : end-begin);
+                    if (part.find_first_of("{}") != std::string::npos) {
+                        const auto parameter = part.size() > 2 ? part.substr(1,part.size()-2) : std::string{};
+                        if (!part.starts_with('{') || !part.ends_with('}') || !valid_identifier(parameter) || !parameters.insert(parameter).second)
+                            report(syntax.origin,"Route parameters must be unique named segments", "GNR2320");
+                    }
+                    if (end == std::string::npos) break; begin = end + 1;
+                }
+            }
+            for (const auto& option : syntax.modifiers) apply(option);
+            route.name = own_name.empty() ? "" : inherited.name + own_name;
+            if (!route.name.empty() && !names.insert(route.name).second) report(syntax.origin,"Duplicate route name '" + route.name + "'", "GNR2320");
+            if (is_fallback && (!route.name.empty() || !route.constraints.empty() || !route.middleware.empty())) report(syntax.origin,"Fallback routes use global middleware and do not have names or constraints", "GNR2320");
+            for (const auto& constraint : route.constraints) if (!parameters.contains(constraint.parameter)) report(syntax.origin,"Constraint references an unknown route parameter", "GNR2320");
+            const auto target = syntax.arguments.back(); const auto& action = v.syntax_.expressions[target];
+            if (action.kind != SyntaxExpressionKind::member || action.literal_type != "::") { report(action.origin,"Routes require Controller::action", "GNR2320"); return; }
+            route.controller = route_type(route_reference(action.operands.front()),action.origin,DeclarationKind::controller);
+            if (route.controller == invalid_id) return;
+            const auto found = members.find(std::to_string(route.controller) + ":" + action.text);
+            if (found == members.end() || v.symbols_[found->second].kind != ResolvedSymbolKind::callable || v.symbols_[found->second].visibility != Visibility::public_) { report(action.origin,"Route actions must reference public controller methods", "GNR2320"); return; }
+            route.action = found->second; const auto& callable = v.symbols_[route.action];
+            v.expressions_[target] = {type_id("Callable"),route.action};
+            v.expressions_[action.operands.front()] = {v.symbols_[route.controller].type,route.controller};
+            if (callable.type != type_id("Response")) report(action.origin,"Route actions return Response", "GNR2320");
+            std::size_t requests = 0;
+            for (std::size_t i = 0; i < callable.parameters.size(); ++i) {
+                const auto& parameter = type(callable.parameters[i]); const auto& name = callable.parameter_names[i];
+                if (parameter.name == "Request" && !parameter.optional) ++requests;
+                else {
+                    const auto owner = owner_of(callable.parameters[i]);
+                    const bool model = owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
+                    if (parameter.optional || (!model && parameter.name != "string" && !numeric(callable.parameters[i]) && parameter.name != "bool")) report(action.origin,"Route arguments require Request, scalar or model types", "GNR2320");
+                    if (!parameters.contains(name)) report(action.origin,"Action parameter '" + name + "' has no matching route segment", "GNR2320");
+                }
+                if (callable.defaults[i] != invalid_id) report(action.origin,"Route action parameters do not use default arguments", "GNR2320");
+                route.parameters.push_back(name);
+            }
+            if (requests > 1) report(action.origin,"Route actions accept at most one Request", "GNR2320");
+            v.routes_.push_back(std::move(route));
+        };
+        current_owner = invalid_id; scopes.clear();
+        for (auto module : v.module_order_) for (auto route : v.syntax_.modules[module].routes) visit(v.syntax_.routes[route],{},false);
+    }
     void bodies() {
         // Resolve contextual notification result types before other callables.
         std::vector<std::pair<std::size_t,std::size_t>> work;
@@ -2185,7 +2396,7 @@ public:
         for (std::size_t i = 0; i < v.expressions_.size(); ++i) if (v.expressions_[i].type == invalid_id) report(v.syntax_.expressions[i].origin,"Expression was not resolved", "GNR2299");
     }
     ValidationResult run() {
-        index(); if (diagnostics.empty()) declaration_dependencies(); if (diagnostics.empty()) bodies();
+        index(); if (diagnostics.empty()) declaration_dependencies(); if (diagnostics.empty()) routing_contracts(); if (diagnostics.empty()) bodies();
         if (!diagnostics.empty()) return {std::nullopt,std::move(diagnostics)};
         return {std::move(v),{}};
     }

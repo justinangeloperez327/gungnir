@@ -16,6 +16,7 @@ on:
       - "tests/docs_context_examples.py"
       - "tests/docs_auth_examples.py"
       - "tests/docs_service_examples.py"
+      - "tests/docs_routing_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -37,6 +38,7 @@ on:
       - "tests/docs_context_examples.py"
       - "tests/docs_auth_examples.py"
       - "tests/docs_service_examples.py"
+      - "tests/docs_routing_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -96,6 +98,9 @@ jobs:
 
       - name: Validate public cache/storage examples
         run: python3 tests/docs_service_examples.py ./build-docs/gungnirc
+
+      - name: Validate public routing examples
+        run: python3 tests/docs_routing_examples.py ./build-docs/gungnirc
 
       - name: Emit canonical example C++
         run: >

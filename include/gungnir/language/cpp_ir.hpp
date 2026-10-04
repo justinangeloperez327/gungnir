@@ -64,7 +64,8 @@ enum class CppIrStatementKind {
     for_,
     for_in,
     break_,
-    continue_
+    continue_,
+    route_registration
 };
 
 struct CppIrStatement {
@@ -77,6 +78,21 @@ struct CppIrStatement {
     std::vector<CppIrId> body;
     std::vector<CppIrId> alternative;
     std::vector<CppIrId> parts;
+    CppIrId route{invalid_cpp_ir_id};
+};
+
+enum class CppIrRouteMethod { get, post, put, patch, delete_, options, head, fallback };
+enum class CppIrRouteBinding { request, scalar, model };
+struct CppIrRouteParameter { CppIrType type; std::string name; CppIrRouteBinding binding{CppIrRouteBinding::scalar}; };
+struct CppIrRouteMiddleware { CppIrType type; std::string alias; };
+struct CppIrRouteConstraint { std::string parameter, expression; };
+struct CppIrRoute {
+    CppIrRouteMethod method{CppIrRouteMethod::get};
+    std::string path, name, action;
+    CppIrType controller;
+    std::vector<CppIrRouteParameter> parameters;
+    std::vector<CppIrRouteMiddleware> middleware;
+    std::vector<CppIrRouteConstraint> constraints;
 };
 
 struct CppIrParameter {
@@ -127,6 +143,7 @@ struct CppIrProject {
     std::vector<CppIrStatement> statements;
     std::vector<CppIrFunction> functions;
     std::vector<CppIrUnit> units;
+    std::vector<CppIrRoute> routes;
 };
 
 class CppIrLowerer {

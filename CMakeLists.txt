@@ -1154,7 +1154,8 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/core/services.hpp gungnir/language/compiler.hpp
             gungnir/language/formatter.hpp gungnir/language/lsp.hpp
             gungnir/language/module.hpp gungnir/language/dependency_graph.hpp
-            gungnir/cli/project.hpp gungnir/cli/lsp.hpp)
+            gungnir/cli/project.hpp gungnir/cli/lsp.hpp
+            gungnir/routing/controller_binding.hpp)
         string(REPLACE "/" "_" unit "${header}")
         set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
         file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
@@ -1266,6 +1267,17 @@ if(GUNGNIR_BUILD_TESTS)
         target_link_libraries(gungnir_structured_request_context_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
         target_compile_features(gungnir_structured_request_context_test PRIVATE cxx_std_23)
         add_test(NAME gungnir.structured_request_context COMMAND gungnir_structured_request_context_test)
+        set(GUNGNIR_STRUCTURED_ROUTING_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_routing_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_ROUTING_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/routing.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_ROUTING_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/routing.gnr VERBATIM)
+        add_executable(gungnir_structured_routing_test tests/structured_routing.cpp "${GUNGNIR_STRUCTURED_ROUTING_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_ROUTING_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_routing_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_routing_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_definitions(gungnir_structured_routing_test PRIVATE GUNGNIR_ROUTING_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/routing.gnr")
+        target_compile_features(gungnir_structured_routing_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_routing COMMAND gungnir_structured_routing_test)
         set(GUNGNIR_STRUCTURED_SERVICES_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_services_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/services.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
@@ -1446,6 +1458,8 @@ if(GUNGNIR_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_http_examples.py $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_service_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_service_examples.py" $<TARGET_FILE:gungnirc>)
+        add_test(NAME gungnir.docs_routing_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_routing_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_auth_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_auth_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_context_examples COMMAND ${Python3_EXECUTABLE}

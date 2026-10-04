@@ -75,12 +75,28 @@ struct DeclarationSyntax {
     std::vector<RelationshipSyntax> relationships;
 };
 struct ImportSyntax { Origin origin; std::string module, alias; };
-struct ModuleSyntax { Origin origin; std::string name; std::vector<ImportSyntax> imports; std::vector<SyntaxId> declarations; };
+struct RouteModifierSyntax {
+    Origin origin;
+    std::string name;
+    std::vector<SyntaxId> arguments;
+    std::optional<TypeSyntax> middleware_type;
+};
+struct RouteSyntax {
+    Origin origin;
+    std::size_t module{0};
+    std::string method;
+    std::vector<SyntaxId> arguments;
+    std::vector<RouteModifierSyntax> modifiers;
+    bool group{false};
+    std::vector<RouteSyntax> children;
+};
+struct ModuleSyntax { Origin origin; std::string name; std::vector<ImportSyntax> imports; std::vector<SyntaxId> declarations; std::vector<SyntaxId> routes; };
 struct SyntaxProject {
     std::vector<ModuleSyntax> modules;
     std::vector<DeclarationSyntax> declarations;
     std::vector<SyntaxExpression> expressions;
     std::vector<SyntaxStatement> statements;
+    std::vector<RouteSyntax> routes;
 };
 struct SyntaxResult { SyntaxProject project; std::vector<Diagnostic> diagnostics; };
 class SyntaxParser {
@@ -137,6 +153,17 @@ struct RelationshipResolution {
     std::vector<std::string> keys;
 };
 struct DeclarationResolution { SymbolId symbol{invalid_id}; std::vector<SymbolId> fields; std::vector<CallableResolution> methods; std::vector<RelationshipResolution> relationships; };
+struct RouteMiddlewareResolution { SymbolId type{invalid_id}; std::string alias; };
+struct RouteConstraintResolution { std::string parameter, expression; };
+struct RouteResolution {
+    Origin origin;
+    std::size_t module{0};
+    std::string method, path, name;
+    SymbolId controller{invalid_id}, action{invalid_id};
+    std::vector<std::string> parameters;
+    std::vector<RouteMiddlewareResolution> middleware;
+    std::vector<RouteConstraintResolution> constraints;
+};
 class ValidatedProject {
 public:
     ValidatedProject(const ValidatedProject&) = default;
@@ -151,6 +178,7 @@ public:
     [[nodiscard]] const std::vector<DeclarationResolution>& declarations() const noexcept { return declarations_; }
     [[nodiscard]] const std::vector<std::size_t>& declaration_order() const noexcept { return declaration_order_; }
     [[nodiscard]] const std::vector<std::size_t>& module_order() const noexcept { return module_order_; }
+    [[nodiscard]] const std::vector<RouteResolution>& routes() const noexcept { return routes_; }
 private:
     ValidatedProject() = default;
     friend class ProgramValidator;
@@ -161,6 +189,7 @@ private:
     std::vector<ExpressionResolution> expressions_;
     std::vector<SymbolId> bindings_;
     std::vector<DeclarationResolution> declarations_;
+    std::vector<RouteResolution> routes_;
     std::vector<std::size_t> module_order_, declaration_order_;
 };
 struct ValidationResult { std::optional<ValidatedProject> project; std::vector<Diagnostic> diagnostics; };

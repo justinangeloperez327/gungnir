@@ -1,0 +1,111 @@
+controller RoutingTrace {
+    string steps = "";
+    int calls = 0;
+    void append(string value) { steps += value; }
+    void reset() { steps = ""; }
+    int action() { calls += 1; return calls; }
+    string value() { return steps; }
+}
+middleware RoutingGlobal {
+    inject RoutingTrace trace;
+    async Response handle(Request request, Next next) {
+        trace.append("global-before|");
+        let response = await next(request);
+        trace.append("global-after|");
+        response.header("X-Global-Trace", trace.value());
+        return response;
+    }
+}
+middleware RoutingOuter {
+    inject RoutingTrace trace;
+    async Response handle(Request request, Next next) {
+        trace.append("outer-before|");
+        let response = await next(request);
+        trace.append("outer-after|");
+        response.header("X-Route-Trace", trace.value());
+        return response;
+    }
+}
+middleware RoutingInner {
+    inject RoutingTrace trace;
+    async Response handle(Request request, Next next) {
+        trace.append("inner-before|");
+        const response = await next(request);
+        trace.append("inner-after|");
+        return response;
+    }
+}
+middleware RoutingLeaf {
+    inject RoutingTrace trace;
+    async Response handle(Request request, Next next) {
+        trace.append("leaf-before|");
+        const response = await next(request);
+        trace.append("leaf-after|");
+        return response;
+    }
+}
+model RoutingProject {
+    table = "routing_projects";
+    fillable = ["name", "secret"];
+    hidden = ["secret"];
+    softDeletes = true;
+    string name;
+    string secret;
+}
+model RoutingDocument {
+    table = "routing_documents";
+    connection = "archive";
+    primaryKey = "slug";
+    incrementing = false;
+    timestamps = false;
+    fillable = ["slug", "body"];
+    string slug;
+    string body;
+}
+async function int routingCheckpoint() { return 1; }
+function RoutingProject createRoutingProject(string name) { return RoutingProject::create({ name: name, secret: "private" }); }
+function bool deleteRoutingProject(int id) { let project = RoutingProject::findOrFail(id); return project.remove(); }
+function RoutingDocument createRoutingDocument(string slug) { return RoutingDocument::create({ slug: slug, body: "archive" }); }
+controller RoutingController {
+    inject RoutingTrace trace;
+    index() { trace.action(); return text("home"); }
+    verb(Request request) { trace.action(); return text(request.method()); }
+    scalar(Request request, int id, bool enabled, uint64 wide, double fraction) {
+        trace.action();
+        return json({ id: id, enabled: enabled, wide: wide, fraction: fraction, path: request.path() });
+    }
+    echo(string value) { trace.action(); return text(value); }
+    ordered(Request request, int id) { trace.append("action|"); return json({ id: id, path: request.path() }); }
+    async project(RoutingProject project) {
+        trace.action();
+        const checkpoint = await routingCheckpoint();
+        return json({ project: project, checkpoint: checkpoint });
+    }
+    document(RoutingDocument document, Request request) { trace.action(); return json(document); }
+    url(int id) { return text(Route::url("api.v1.project", { project: id })); }
+    echoUrl(string value) { return text(Route::url("echo", { value: value })); }
+    known() { return json(Route::has("api.v1.project") && !Route::has("unknown")); }
+    fallback(Request request) { return text("fallback", 404); }
+}
+Route::get("/", RoutingController::index).name("home");
+Route::post("/verb", RoutingController::verb);
+Route::put("/verb", RoutingController::verb);
+Route::patch("/verb", RoutingController::verb);
+Route::delete("/verb", RoutingController::verb);
+Route::options("/verb", RoutingController::verb);
+Route::head("/verb", RoutingController::verb);
+Route::get("/scalar/{enabled}/{wide}/{id}/{fraction}", RoutingController::scalar);
+Route::get("/echo/{value}", RoutingController::echo).name("echo");
+Route::get("/uuid/{value}", RoutingController::echo).whereUuid("value");
+Route::get("/letters/{value}", RoutingController::echo).where("value", "[a-z]+");
+Route::prefix("/api").name("api.").middleware(RoutingOuter).group(() => {
+    Route::prefix("/v1").name("v1.").middleware("inside").group(() => {
+        Route::get("/ordered/{id}", RoutingController::ordered).middleware<RoutingLeaf>().whereNumber("id").name("ordered");
+        Route::get("/projects/{project}", RoutingController::project).name("project");
+        Route::get("/documents/{document}", RoutingController::document).name("document");
+    });
+});
+Route::get("/url/{id}", RoutingController::url);
+Route::get("/echo-url/{value}", RoutingController::echoUrl);
+Route::get("/known", RoutingController::known);
+Route::fallback(RoutingController::fallback);

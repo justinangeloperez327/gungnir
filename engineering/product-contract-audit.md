@@ -3,6 +3,10 @@
 Baseline: `8033cf6837f9cdc55ab5dfb5f805076f015dde67` (merged PRs #173 and #174).
 This is an engineering record; public guides remain the product specification.
 
+Follow-up acceptance evidence is indexed in [engineering audits](README.md).
+The [routing audit](routing-contract-audit.md) closes the original canonical route
+and model-binding gap; the classifications below describe this audit's baseline.
+
 ## Evidence and classification
 
 **Complete** requires documented behavior through the canonical language, generated

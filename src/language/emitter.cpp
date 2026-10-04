@@ -142,6 +142,24 @@ public:
             return prefix + "break;\n";
         case CppIrStatementKind::continue_:
             return prefix + "continue;\n";
+        case CppIrStatementKind::route_registration: {
+            const auto& route = project_.routes.at(node.route);
+            auto handler = "gungnir::routing::bind_controller<" + route.controller.spelling + ">(app.container(),&" + route.controller.spelling + "::" + route.action + ",{";
+            for (std::size_t i = 0; i < route.parameters.size(); ++i) {
+                if (i) handler += ',';
+                handler += quote(route.parameters[i].name);
+            }
+            handler += "})";
+            if (route.method == CppIrRouteMethod::fallback) return prefix + "app.router().fallback(" + handler + ");\n";
+            static const char* methods[]{"get","post","put","patch","delete_","options","head"};
+            std::string result = prefix + "{\nauto gnr_route = app.router().add(gungnir::http::Method::" + methods[static_cast<std::size_t>(route.method)] + "," + quote(route.path) + "," + handler + ");\n";
+            if (!route.name.empty()) result += "gnr_route.name(" + quote(route.name) + ");\n";
+            for (const auto& middleware : route.middleware) {
+                result += middleware.type.valid() ? "gnr_route.middleware(gungnir::http::make_middleware<" + middleware.type.spelling + ">(app.container()));\n" : "gnr_route.middleware(" + quote(middleware.alias) + ");\n";
+            }
+            for (const auto& constraint : route.constraints) result += "gnr_route.where(" + quote(constraint.parameter) + "," + quote(constraint.expression) + ");\n";
+            return result + "}\n";
+        }
         }
 
         throw std::logic_error(

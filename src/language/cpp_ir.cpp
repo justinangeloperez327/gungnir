@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -560,6 +561,38 @@ class CppIrLoweringRenderer {
         }
     }
 
+    void lower_routes(CppIrProject& ir) {
+        for (auto module : p.module_order()) {
+            if (s.modules[module].routes.empty()) continue;
+            CppIrFunction function;
+            function.module = s.modules[module].name; function.name = "gnr_register_routes";
+            function.result = {"void"}; function.source = ir_source(s.modules[module].origin); function.line_directive = lines;
+            function.parameters.push_back({{"gungnir::Application"},"app",true});
+            for (const auto& route : p.routes()) {
+                if (route.module != module) continue;
+                CppIrRoute node; node.path = route.path; node.name = route.name;
+                node.controller = {symbol(route.controller).cpp_name}; node.action = symbol(route.action).cpp_name;
+                static const std::unordered_map<std::string,CppIrRouteMethod> methods{
+                    {"get",CppIrRouteMethod::get},{"post",CppIrRouteMethod::post},{"put",CppIrRouteMethod::put},{"patch",CppIrRouteMethod::patch},
+                    {"delete",CppIrRouteMethod::delete_},{"options",CppIrRouteMethod::options},{"head",CppIrRouteMethod::head},{"fallback",CppIrRouteMethod::fallback}};
+                node.method = methods.at(route.method);
+                const auto& action = symbol(route.action);
+                for (std::size_t i = 0; i < route.parameters.size(); ++i) {
+                    const auto parameter = action.parameters[i];
+                    bool model = false;
+                    for (std::size_t d = 0; d < s.declarations.size(); ++d)
+                        model |= s.declarations[d].kind == DeclarationKind::model && symbol(p.declarations()[d].symbol).type == parameter;
+                    node.parameters.push_back({{type(parameter)},route.parameters[i],p.types()[parameter].name == "Request" ? CppIrRouteBinding::request : model ? CppIrRouteBinding::model : CppIrRouteBinding::scalar});
+                }
+                for (const auto& middleware : route.middleware) node.middleware.push_back({{middleware.type == invalid_id ? "" : symbol(middleware.type).cpp_name},middleware.alias});
+                for (const auto& constraint : route.constraints) node.constraints.push_back({constraint.parameter,constraint.expression});
+                CppIrStatement statement; statement.kind = CppIrStatementKind::route_registration; statement.source = ir_source(route.origin); statement.route = ir.routes.size();
+                ir.routes.push_back(std::move(node)); function.body.push_back(ir.statements.size()); ir.statements.push_back(std::move(statement));
+            }
+            const auto function_id = ir.functions.size(); ir.functions.push_back(std::move(function));
+            for (auto& unit : ir.units) if (unit.module == s.modules[module].name) unit.functions.push_back(function_id);
+        }
+    }
     std::string result(const CallableSyntax& method, const CallableResolution& resolved) const { auto value = type(symbol(resolved.symbol).type); return method.asynchronous ? "gungnir::Task<" + value + ">" : value; }
     std::string params(const CallableSyntax& method,const CallableResolution& resolved,bool defaults = false) {
         std::string result; const auto& fn = symbol(resolved.symbol);
@@ -573,6 +606,7 @@ public:
     CppIrLoweringRenderer(const ValidatedProject& project,bool emit_lines) : p(project),s(project.syntax()),lines(emit_lines) { for (std::size_t d = 0; d < s.declarations.size(); ++d) if (s.declarations[d].kind == DeclarationKind::model) for (auto f : p.declarations()[d].fields) model_fields.insert(f); }
     void lower_structural_functions(CppIrProject& ir) {
         lower_functions(ir);
+        lower_routes(ir);
     }
     std::string wrap_module(
         std::size_t module,
@@ -1634,6 +1668,16 @@ CppIrProject CppIrLowerer::lower(
         line_directives
     }.lower_structural_functions(result);
 
+    for (const auto& module : project.syntax().modules) {
+        if (module.routes.empty()) continue;
+        auto scope = module.name; std::string ns;
+        for (char c : scope) ns += c == '.' ? "::" : std::string{c};
+        const auto declaration = std::string{"void gnr_register_routes(gungnir::Application& app);\n"};
+        const auto spelling = scope.empty() ? declaration : "namespace gnr::" + ns + " {\n" + declaration + "}\n";
+        const CppIrDeclaration forward{CppIrDeclarationKind::function_forward,module.name,"gnr_register_routes",spelling};
+        result.interface_declarations.push_back(forward); result.header_declarations.push_back(forward);
+    }
+
     return result;
 }
 
@@ -1641,6 +1685,13 @@ std::string dump_cpp_ir(const CppIrProject& project) {
     std::ostringstream out;
 
     out << "cpp-ir structural\n";
+    for (std::size_t i = 0; i < project.routes.size(); ++i) {
+        const auto& route = project.routes[i];
+        out << "route " << i << ' ' << static_cast<int>(route.method) << ' ' << route.path << ' ' << route.name << ' ' << route.controller.spelling << "::" << route.action << '\n';
+        for (const auto& parameter : route.parameters) out << "  binding " << static_cast<int>(parameter.binding) << ' ' << parameter.name << ' ' << parameter.type.spelling << '\n';
+        for (const auto& middleware : route.middleware) out << "  middleware " << middleware.type.spelling << ' ' << middleware.alias << '\n';
+        for (const auto& constraint : route.constraints) out << "  constraint " << constraint.parameter << ' ' << constraint.expression << '\n';
+    }
 
     for (std::size_t i = 0; i < project.interface_declarations.size(); ++i) {
         const auto& declaration = project.interface_declarations[i];
