@@ -55,6 +55,24 @@ return text("ok")
 
 Responses can attach and expire cookies through the cookie APIs.
 
+```gnr
+return text("saved").cookie("theme", "silver", {
+    "path": "/",
+    "secure": true,
+    "httpOnly": true,
+    "sameSite": "Strict",
+    "maxAge": 300
+});
+```
+
+Cookie options also accept a `domain`. The defaults are path `/`, HTTP-only, `SameSite=Lax`, and a session lifetime. Set `secure` for HTTPS cookies. `SameSite=None` and `__Secure-` cookies require secure transport; `__Host-` cookies also require path `/` and no domain. Invalid names, values, domains, or attributes are rejected before the cookie is attached.
+
+```gnr
+return text("expired").withoutCookie("theme");
+```
+
+Use `withoutCookie(name, path, options)` with the same path and domain as the original cookie. Expiration sets a zero lifetime; secure cookie prefixes retain their secure requirement.
+
 ## Downloads and streams
 
 Gungnir supports downloadable responses and streaming bodies for content that should not be buffered as a single response string.

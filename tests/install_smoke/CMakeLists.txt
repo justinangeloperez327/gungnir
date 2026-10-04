@@ -40,3 +40,11 @@ target_link_libraries(
         gungnir::orm
         gungnir::language
 )
+
+if(DEFINED GUNGNIR_STRUCTURED_CONTEXT_GENERATED)
+    get_filename_component(context_generated_dir "${GUNGNIR_STRUCTURED_CONTEXT_GENERATED}" DIRECTORY)
+    add_executable(gungnir_installed_context ../structured_request_context.cpp)
+    target_include_directories(gungnir_installed_context PRIVATE "${context_generated_dir}")
+    target_compile_features(gungnir_installed_context PRIVATE cxx_std_23)
+    target_link_libraries(gungnir_installed_context PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+endif()
