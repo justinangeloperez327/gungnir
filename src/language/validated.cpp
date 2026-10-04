@@ -611,6 +611,7 @@ public:
     }
     TypeId call(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id]; const auto callee = v.syntax_.expressions[e.operands[0]];
+        info.argument_order.clear(); info.argument_conversions.clear();
         SymbolId callable_id = invalid_id; TypeId receiver = invalid_id; SyntaxId receiver_expression = invalid_id; std::string name;
         if (callee.kind == SyntaxExpressionKind::name) { name = callee.text; callable_id = visible(name, callee.origin, false); }
         else if (callee.kind == SyntaxExpressionKind::member) {
@@ -623,7 +624,15 @@ public:
         std::vector<TypeId> argument_types;
         auto arity = [&](std::size_t low, std::size_t high) { if (count < low || count > high) report(e.origin, "Incorrect argument count for '" + name + "'", "GNR2209"); };
         auto finish_builtin = [&](TypeId result, std::string cpp, std::vector<std::optional<TypeId>> contexts = {}) {
-            for (std::size_t i = 0; i < count; ++i) { argument_types.push_back(expression(e.operands[i + 1], i < contexts.size() ? contexts[i] : std::nullopt)); if (i < contexts.size() && contexts[i] && type(*contexts[i]).name != "Function" && !assignable(*contexts[i],argument_types.back())) report(e.origin,"Builtin argument type mismatch"); }
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto argument = e.operands[i + 1];
+                const auto context = i < contexts.size() ? contexts[i] : std::nullopt;
+                const auto cached = v.expressions_[argument].type;
+                argument_types.push_back(cached != invalid_id && (!context || *context == cached || type(*context).name != "Function")
+                    ? cached : expression(argument, context));
+                if (context && type(*context).name != "Function" && !assignable(*context, argument_types.back()))
+                    report(e.origin, "Builtin argument type mismatch");
+            }
             callable_id = builtin(name, std::move(cpp), result, argument_types);
             info.type = result; info.symbol = callable_id;
             v.expressions_[e.operands[0]] = {type_id("Callable"), callable_id};
@@ -639,6 +648,8 @@ public:
             callable_id = symbol(std::move(constructor));
         }
         if (callable_id == invalid_id && receiver == invalid_id) {
+            if (name == "noContent") { arity(0,0); return finish_builtin(type_id("Response"), "gungnir::language::runtime::no_content"); }
+            if (name == "download") { arity(2,4); return finish_builtin(type_id("Response"), "gungnir::language::runtime::download", {type_id("string"),type_id("string"),type_id("string"),type_id("int")}); }
             if (name == "text" || name == "html" || name == "json" || name == "view" || name == "redirect" || name == "response") { arity(1, name == "view" ? 3 : 2); return finish_builtin(type_id("Response"), "gungnir::language::runtime::" + name,
                 name == "view" ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("Json"),type_id("int")} : std::vector<std::optional<TypeId>>{name == "json" ? type_id("Json") : type_id("string"),type_id("int")}); }
             if (name == "exactDecimal") { arity(1,1); return finish_builtin(type_id("Decimal"), "gungnir::model::Decimal", {type_id("string")}); }
@@ -670,9 +681,41 @@ public:
             if (callable_id == invalid_id && t.name == "Decimal" && (name == "string" || name == "toDouble")) { arity(0,0); return finish_builtin(type_id(name == "string" ? "string" : "double"), name == "string" ? "string" : "to_double"); }
             if (callable_id == invalid_id && t.name == "Request") {
                 if (name == "structuredInput") { arity(0,0); return finish_builtin(type_id("Json"), "structured_input"); }
+                if (name == "json") { arity(0,0); return finish_builtin(type_id("Json"), name); }
                 if (name == "validate") { arity(1,1); return finish_builtin(type_id("Json"), "gungnir::language::runtime::validate", {type_id("Json")}); }
-                static const std::unordered_set<std::string> strings{"header","parameter","query","input","body","path","target"};
-                if (strings.contains(name)) { const auto count = name == "body" || name == "path" || name == "target" ? 0 : 1; arity(count,count); return finish_builtin(type_id("string"), name, {type_id("string")}); }
+                const auto input_map = intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")});
+                if (name == "query") { arity(0,1); return finish_builtin(count ? type_id("string") : input_map, name, {type_id("string")}); }
+                if (name == "all" || name == "headers" || name == "parameters" || name == "cookies" || name == "form") { arity(0,0); return finish_builtin(input_map, name); }
+                if (name == "only" || name == "except") { arity(1,1); return finish_builtin(input_map, name, {sequence("List",type_id("string"))}); }
+                if (name == "method") { arity(0,0); return finish_builtin(type_id("string"), "method_name"); }
+                static const std::unordered_set<std::string> keyed_strings{"header","parameter","input","cookie"};
+                if (keyed_strings.contains(name)) { arity(1,1); return finish_builtin(type_id("string"), name, {type_id("string")}); }
+                static const std::unordered_set<std::string> strings{"body","path","target","contentType","userAgent","host","authorization","bearerToken","clientIp"};
+                if (strings.contains(name)) { arity(0,0); return finish_builtin(type_id("string"), snake(name)); }
+                static const std::unordered_set<std::string> states{"cancelled","secure","hasServices","hasSession","hasAuth","authenticated","guest","expectsJson","isJson"};
+                if (states.contains(name)) { arity(0,0); return finish_builtin(type_id("bool"), snake(name)); }
+                if (name == "has" || name == "hasParameter" || name == "accepts") { arity(1,1); return finish_builtin(type_id("bool"), snake(name), {type_id("string")}); }
+            }
+            if (callable_id == invalid_id && t.name == "Response") {
+                const bool mutation = (name == "header" && count == 2) ||
+                    ((name == "status" || name == "body") && count == 1);
+                if (mutation && receiver_expression != invalid_id) {
+                    const auto kind = v.syntax_.expressions[receiver_expression].kind;
+                    if (kind == SyntaxExpressionKind::name || kind == SyntaxExpressionKind::member ||
+                        kind == SyntaxExpressionKind::subscript) writable(receiver_expression);
+                }
+                if (name == "header") { arity(1,2); return finish_builtin(type_id(count == 1 ? "string" : "Response"), name, {type_id("string"),type_id("string")}); }
+                if (name == "status") { arity(0,1); return finish_builtin(type_id(count ? "Response" : "int"), name, {type_id("int")}); }
+                if (name == "body") { arity(0,1); return finish_builtin(type_id(count ? "Response" : "string"), name, {type_id("string")}); }
+                if (name == "headers") { arity(0,0); return finish_builtin(intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")}), name); }
+            }
+            if (callable_id == invalid_id && (t.name == "Json" || t.name == "Value" || t.name == "Data")) {
+                if (name == "string" || name == "dump") { arity(0,0); return finish_builtin(type_id("string"), name); }
+                if (name == "get") { arity(1,1); return finish_builtin(optional(type_id("Json")), "find", {type_id("string")}); }
+                if (name == "asArray") { arity(0,0); return finish_builtin(sequence("List",type_id("Json")), "as_array"); }
+                if (name == "asObject") { arity(0,0); return finish_builtin(intern("Map", "std::unordered_map<gungnir::String,gungnir::Json>", {type_id("string"),type_id("Json")}), "as_object"); }
+                static const std::unordered_set<std::string> states{"isNull","isBoolean","isInteger","isNumber","isString","isArray","isObject"};
+                if (states.contains(name)) { arity(0,0); return finish_builtin(type_id("bool"), snake(name)); }
             }
             const auto owner = owner_of(receiver);
             const bool model = owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;

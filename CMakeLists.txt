@@ -1224,6 +1224,16 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(NAME gungnir.language COMMAND gungnir_language_test)
 
     if(GUNGNIR_BUILD_TOOLS)
+        set(GUNGNIR_STRUCTURED_HTTP_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_http_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_HTTP_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/http.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_HTTP_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/http.gnr VERBATIM)
+        add_executable(gungnir_structured_http_test tests/structured_http.cpp "${GUNGNIR_STRUCTURED_HTTP_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_HTTP_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_http_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_http_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_features(gungnir_structured_http_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_http COMMAND gungnir_structured_http_test)
         set(GUNGNIR_STRUCTURED_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/program.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_PROGRAM}"
@@ -1378,6 +1388,8 @@ if(GUNGNIR_BUILD_TESTS)
 
     if(GUNGNIR_BUILD_TOOLS)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME gungnir.docs_http_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_http_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.lsp_protocol COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/lsp_protocol.py $<TARGET_FILE:gungnir-cli>)
         add_test(
