@@ -34,6 +34,8 @@ std::vector<DocumentSymbol> LanguageServer::symbols(std::string_view file) const
         for (const auto& decl : parsed.project.declarations) {
             DocumentSymbol symbol{decl.name,decl.kind == DeclarationKind::function ? "function" : "declaration",decl.kind == DeclarationKind::function ? 12 : 5,decl.origin,selection(decl.origin,decl.name),{}};
             for (const auto& field : decl.fields) symbol.children.push_back({field.name,field.type.name,8,selection(field.origin,field.name),selection(field.origin,field.name),{}});
+            for (const auto& relation : decl.relationships)
+                symbol.children.push_back({relation.name,relation.kind,6,relation.origin,selection(relation.origin,relation.name),{}});
             if (decl.kind != DeclarationKind::function) for (const auto& method : decl.methods)
                 symbol.children.push_back({method.name,method.result.name,6,method.origin,selection(method.origin,method.name),{}});
             result.push_back(std::move(symbol));
@@ -47,6 +49,8 @@ std::optional<Origin> LanguageServer::definition(SymbolId id) const {
     for (std::size_t d=0;d<s.declarations.size();++d) {
         const auto& decl = s.declarations[d]; const auto& resolved = p.declarations()[d];
         if (resolved.symbol == id) return selection(decl.origin,decl.name);
+        for (std::size_t r=0;r<resolved.relationships.size();++r)
+            if (resolved.relationships[r].field == id) return selection(decl.relationships[r].origin,decl.relationships[r].name);
         for (std::size_t m=0;m<resolved.methods.size();++m) {
             if (resolved.methods[m].symbol == id) return selection(decl.methods[m].origin,decl.methods[m].name);
             for (std::size_t a=0;a<resolved.methods[m].parameters.size();++a)
@@ -135,6 +139,10 @@ std::vector<Completion> LanguageServer::completions(std::string_view file,std::s
             if (declaration.origin.file != file) continue;
             for (const auto& method : declaration.methods) if (offset >= method.origin.begin && offset <= method.origin.end) {
                 for (auto field : project.declarations()[d].fields) entries[project.symbols()[field].name] = {project.symbols()[field].name,detail(field),5};
+                for (const auto& relation : project.declarations()[d].relationships) {
+                    const auto field = relation.field;
+                    entries[project.symbols()[field].name] = {project.symbols()[field].name,detail(field),2};
+                }
                 locals(method.body);
             }
         }

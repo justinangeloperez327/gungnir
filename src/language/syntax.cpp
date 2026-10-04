@@ -334,6 +334,44 @@ public:
         finish(value.origin);
         return value;
     }
+    bool relationship(DeclarationSyntax& declaration, Visibility visibility) {
+        static const std::unordered_set<std::string> helpers{
+            "hasOne", "hasMany", "belongsTo", "belongsToMany",
+            "hasOneThrough", "hasManyThrough"
+        };
+        const auto start = at;
+        const bool asynchronous = take("async");
+        if (!peek().word() || peek(1).lexeme != "(" || peek(2).lexeme != ")" ||
+            peek(3).lexeme != "{" || peek(4).lexeme != "return" ||
+            !helpers.contains(peek(5).lexeme) || peek(6).lexeme != "<") {
+            at = start;
+            return false;
+        }
+        if (declaration.kind != DeclarationKind::model || asynchronous ||
+            visibility != Visibility::public_) {
+            error("Relationships require public synchronous model declarations", "GNR2310");
+        }
+        RelationshipSyntax value;
+        value.origin = origin();
+        value.name = name();
+        need("("); need(")"); need("{"); need("return");
+        value.kind = name();
+        need("<");
+        do { value.types.push_back(type()); } while (take(","));
+        need(">"); need("(");
+        if (!is(")")) do {
+            std::string argument;
+            if (peek().word() && peek(1).lexeme == ":") {
+                argument = name(); need(":");
+            }
+            value.argument_names.push_back(std::move(argument));
+            value.arguments.push_back(expression());
+        } while (take(",") && !is(")"));
+        need(")"); need(";"); need("}");
+        finish(value.origin);
+        declaration.relationships.push_back(std::move(value));
+        return true;
+    }
     void declaration() {
         const auto where = origin();
         take("export"); bool asynchronous = take("async");
@@ -361,6 +399,7 @@ public:
             }
             if (take("inject")) { FieldSyntax field{member_origin, {}, type(), true}; field.name = name(); field.visibility = member_visibility; need(";"); finish(field.origin); value.fields.push_back(std::move(field)); continue; }
             if (peek().word() && peek(1).lexeme == "=") { MetadataSyntax item{member_origin, name()}; need("="); item.value = expression(); need(";"); value.metadata.push_back(std::move(item)); continue; }
+            if (relationship(value, member_visibility)) continue;
             const auto saved = at;
             bool async = take("async");
             if (peek(1).lexeme == "(") { at = saved; value.methods.push_back(callable(value.kind, member_visibility, false)); continue; }

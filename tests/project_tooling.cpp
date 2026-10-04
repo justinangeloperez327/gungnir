@@ -76,6 +76,15 @@ int main() {
     const auto completions=lsp.completions("scope.gnr",scope.find("return"));
     assert(std::any_of(completions.begin(),completions.end(),[](const auto& item){return item.label=="local";}));
     assert(std::none_of(completions.begin(),completions.end(),[](const auto& item){return item.label=="hidden";}));
+    const std::string relations="model Post {} model User { posts() { return hasMany<Post>(); } int total(User user) { return user.posts().count(); } }";
+    lsp.update({{"relations.gnr","",relations}});
+    assert(lsp.diagnostics().empty());
+    const auto relation_info=lsp.symbol_at("relations.gnr",relations.find("user.posts")+5);
+    assert(relation_info && relation_info->definition.begin==relations.find("posts()"));
+    const auto relation_symbols=lsp.symbols("relations.gnr");
+    assert(std::any_of(relation_symbols[1].children.begin(),relation_symbols[1].children.end(),[](const auto& item){return item.name=="posts";}));
+    const auto relation_completions=lsp.completions("relations.gnr",relations.find("return user"));
+    assert(std::any_of(relation_completions.begin(),relation_completions.end(),[](const auto& item){return item.label=="posts";}));
     lsp.update({{"math.gnr","math","function int add() { return unknown; }"}});
     assert(!lsp.diagnostics().empty() && lsp.symbols("math.gnr").size()==1);
 }
