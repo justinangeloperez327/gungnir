@@ -1,0 +1,73 @@
+function string optionalName(Json payload) {
+    const name = payload.get("name");
+    if (name == null) { return "missing"; }
+    return name.string();
+}
+
+function int arraySize(Request request) { return request.json().asArray().size(); }
+function Map<string, Json> objectValues(Request request) { return request.json().asObject(); }
+function Map<string, string> selectedInput(Request request, List<string> names) { return request.only(names); }
+function string responseBody() { return text("first").body("second").body(); }
+function int responseStatus() { return text("first").status(202).status(); }
+function string responseHeader() { return text("first").header("X-Result", "kept").header("X-Result"); }
+function Map<string, string> responseHeaders() { return text("first").header("X-Result", "kept").headers(); }
+function Response copiedResponse(Response source) {
+    let result = source;
+    result.header("X-Copy", "yes");
+    return result;
+}
+function Response nestedResponse() { return copiedResponse(text("first").header("X-Nested", "yes")); }
+function Response selectedResponse(bool selected) {
+    return (selected ? text("yes") : text("no")).header("X-Selected", "yes");
+}
+function string jsonDump(Json payload) { return payload.dump(); }
+function bool jsonKinds(Json payload) {
+    return payload.isObject() && payload["enabled"].isBoolean()
+        && payload["count"].isInteger() && payload["items"].isArray()
+        && payload["missing"].isNull() && payload["name"].isString()
+        && payload["count"].isNumber();
+}
+
+controller HttpApi {
+    echo(Request request) {
+        return json(request.json(), 201)
+            .header("Cache-Control", "no-store")
+            .header("X-Generated", "yes");
+    }
+    metadata(Request request) {
+        return json({
+            "method": request.method(), "target": request.target(), "path": request.path(),
+            "query": request.query(), "input": request.input("name"), "all": request.all(),
+            "only": request.only(["name"]), "except": request.except(["name"]),
+            "headers": request.headers(), "parameters": request.parameters(),
+            "id": request.parameter("id"), "hasId": request.hasParameter("id"),
+            "hasName": request.has("name"), "search": request.query("search"),
+            "cookies": request.cookies(), "cookie": request.cookie("theme"),
+            "contentType": request.contentType(), "agent": request.userAgent(), "host": request.host(),
+            "clientIp": request.clientIp(), "secure": request.secure(),
+            "authenticated": request.authenticated(), "guest": request.guest(),
+            "hasAuth": request.hasAuth(), "hasSession": request.hasSession(),
+            "hasServices": request.hasServices(), "cancelled": request.cancelled(),
+            "isJson": request.isJson(), "expectsJson": request.expectsJson(),
+            "acceptsJson": request.accepts("application/json"), "bearer": request.bearerToken()
+        });
+    }
+    formInput(Request request) { return json(request.form()); }
+    validateInput(Request request) { return json(request.validate({"enabled": "required|boolean"})); }
+    empty() { return noContent().header("X-Generated", "yes"); }
+    file() { return download("report", "report.txt", "text/plain"); }
+}
+
+middleware EnsureActiveUser {
+    async handle(Request request, Next next) {
+        if (!request.authenticated()) { return redirect("/login"); }
+        return await next(request);
+    }
+}
+
+middleware AddResponseHeader {
+    async handle(Request request, Next next) {
+        let result = await next(request);
+        return result.header("X-Middleware", "generated");
+    }
+}

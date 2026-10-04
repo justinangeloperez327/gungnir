@@ -9,6 +9,11 @@
 
 namespace gungnir::http {
 
+std::optional<Json> Json::find(std::string_view key) const {
+    const auto* value = get(key);
+    return value ? std::optional<Json>{*value} : std::nullopt;
+}
+
 bool Json::operator==(const Json& other) const {
     if (storage_.index() != other.storage_.index()) return false;
     if (is_array()) return as_array() == other.as_array();

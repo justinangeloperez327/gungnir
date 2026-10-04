@@ -88,6 +88,10 @@ inline Response html(String body, int status = 200) { return Response::html(std:
 template<class T> Response json(T&& value, int status = 200) { return Response::json(std::forward<T>(value),status); }
 inline Response redirect(String location, int status = 302) { return Response::redirect(std::move(location),status); }
 inline Response response(String body, int status = 200) { return Response{status,std::move(body)}; }
+inline Response no_content() { return Response::no_content(); }
+inline Response download(String body, String filename, String content_type = "application/octet-stream", int status = 200) {
+    return Response::download(std::move(body), std::move(filename), std::move(content_type), status);
+}
 inline view::Value view_value(const Json& value) {
     if (value.is_null()) return nullptr;
     if (value.is_array()) { std::vector<view::Value> items; for (const auto& item : value.as_array()) items.push_back(view_value(item)); return view::Value::array(std::move(items)); }

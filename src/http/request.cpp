@@ -1,4 +1,5 @@
 #include <gungnir/http/request.hpp>
+#include <gungnir/http/errors.hpp>
 
 #include <gungnir/auth/context.hpp>
 #include <gungnir/core/container.hpp>
@@ -421,7 +422,7 @@ const Json& Request::json() const {
     parse_body_input();
 
     if (!json_) {
-        throw std::logic_error("Request body is not JSON");
+        throw BadRequestException{"Request body is not JSON"};
     }
 
     return *json_;
@@ -583,6 +584,25 @@ Request::Input Request::validate(
     );
 }
 
+std::string_view Request::method_name() const noexcept {
+    return to_string(method_);
+}
+
+Request::Input Request::only(const std::vector<std::string>& names) const {
+    const auto values = all();
+    Input selected;
+    for (const auto& name : names)
+        if (const auto found = values.find(name); found != values.end())
+            selected.emplace(found->first, found->second);
+    return selected;
+}
+
+Request::Input Request::except(const std::vector<std::string>& names) const {
+    auto values = all();
+    for (const auto& name : names) values.erase(name);
+    return values;
+}
+
 validation::Result Request::check(const validation::Rules& rules) const {
     return validation::Validator::check(all(), rules);
 }
@@ -622,7 +642,11 @@ void Request::parse_body_input() const {
 
     if (media_type_is(content_type, "application/json")) {
         if (!body_.empty()) {
-            json_ = Json::parse(body_);
+            try {
+                json_ = Json::parse(body_);
+            } catch (const std::invalid_argument&) {
+                throw BadRequestException{"Malformed JSON request body"};
+            }
         }
 
         body_parsed_ = true;

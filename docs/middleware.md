@@ -22,6 +22,15 @@ Middleware receives the request and a `Next` continuation. Calling `next` passes
 
 Code before `next` runs before downstream middleware and the route handler. Code after the awaited continuation can inspect or modify the response.
 
+```gnr
+middleware AddResponseHeader {
+    async handle(Request request, Next next) {
+        let result = await next(request);
+        return result.header("X-Application", "Gungnir");
+    }
+}
+```
+
 ## Registration
 
 Middleware can be registered as:

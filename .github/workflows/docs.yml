@@ -12,6 +12,7 @@ on:
       - "examples/**"
       - "tools/check_docs.py"
       - "tests/docs_orm_examples.py"
+      - "tests/docs_http_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -29,6 +30,7 @@ on:
       - "examples/**"
       - "tools/check_docs.py"
       - "tests/docs_orm_examples.py"
+      - "tests/docs_http_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -75,6 +77,10 @@ jobs:
 
       - name: Validate public model and ORM examples
         run: python3 tests/docs_orm_examples.py ./build-docs/gungnirc
+
+      - name: Validate public HTTP examples
+        # Guide fragments use the same strict semantic path as application code.
+        run: python3 tests/docs_http_examples.py ./build-docs/gungnirc
 
       - name: Emit canonical example C++
         run: >
