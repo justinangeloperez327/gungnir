@@ -1260,6 +1260,18 @@ int Project::run(
     return execute({executable.string()},root_);
 }
 
+int Project::background(String command, bool once, bool release) const {
+    if (!structured()) throw std::logic_error("Background commands require profile=structured");
+    if (command != "queue:work" && command != "schedule:run" && command != "schedule:work") throw std::invalid_argument("Unknown background command");
+    if (once && command != "queue:work") throw std::invalid_argument("--once is supported only by queue:work");
+    (void)assemble();
+    if (const int configured = configure_generated(root_, release)) return configured;
+    if (const int built = build_generated(root_, release, "background")) return built;
+    std::vector<String> arguments{generated_executable(root_, "background", release).string(), command};
+    if (once) arguments.push_back("--once");
+    return execute(arguments, root_);
+}
+
 int Project::migrate(
     String command,
     bool release

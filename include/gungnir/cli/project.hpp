@@ -59,6 +59,7 @@ public:
 
     int build(bool release = false) const;
     int run(bool release = false) const;
+    int background(String command, bool once = false, bool release = false) const;
     int migrate(
         String command = "migrate",
         bool release = false

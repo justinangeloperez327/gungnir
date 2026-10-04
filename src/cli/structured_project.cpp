@@ -46,6 +46,7 @@ inline void configure(gungnir::Application& app) {
     gungnir::ServiceOptions services;
     services.cache = std::make_shared<gungnir::cache::MemoryStore>();
     services.queue = std::make_shared<gungnir::queue::MemoryDriver>();
+    services.scheduler_locks = std::make_shared<gungnir::scheduler::MemoryLockStore>();
     services.mail = std::make_shared<gungnir::mail::MemoryTransport>();
     services.database_notifications = !app.config().string("database.default").empty();
     services.storage = std::make_shared<gungnir::storage::Manager>();
@@ -55,7 +56,7 @@ inline void configure(gungnir::Application& app) {
 }
 inline void boot(gungnir::Application&) {
     // Services and generated listeners, policies, and jobs are registered.
-    // Add schedules here. Workers and schedulers are started explicitly by your app.
+    // Configure native integrations here; define .gnr schedules in routes/console.gnr.
 }
 }
 )cpp";
@@ -142,7 +143,7 @@ add_library(program STATIC generated/program.cpp
 target_compile_features(program PUBLIC cxx_std_23)
 target_include_directories(program PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(program PUBLIC gungnir::gungnir gungnir::orm)
-foreach(adapter postgresql mysql sqlserver)
+foreach(adapter postgresql mysql sqlserver redis)
     if(TARGET gungnir::${adapter})
         target_link_libraries(program PUBLIC gungnir::${adapter})
         string(TOUPPER "${adapter}" macro)
@@ -151,20 +152,26 @@ foreach(adapter postgresql mysql sqlserver)
 endforeach()
 add_executable(app generated/app.cpp)
 add_executable(migrations generated/migrations.cpp)
+add_executable(background generated/background.cpp)
 target_link_libraries(app PRIVATE program)
 target_link_libraries(migrations PRIVATE program)
+target_link_libraries(background PRIVATE program)
 )cmake";
     outputs[root_ / ".gungnir/CMakeLists.txt"] = cmake;
     std::map<std::string,std::size_t> counts;
     for (const auto& decl : syntax.declarations) if (decl.kind != language::DeclarationKind::function) ++counts[decl.name];
-    std::string aliases, registrations, factories, middleware;
+    std::string aliases, registrations, factories, middleware, schedules;
     std::vector<std::pair<std::string,std::string>> migration_types;
     for (std::size_t d = 0; d < syntax.declarations.size(); ++d) {
         const auto& decl = syntax.declarations[d];
         const auto& resolved = project.declarations()[d];
         const auto& qualified = project.symbols()[resolved.symbol].cpp_name;
         using Kind = language::DeclarationKind;
-        if (decl.kind == Kind::function) continue;
+        if (decl.kind == Kind::function) {
+            if (syntax.modules[decl.module].name == "routes.console" && decl.name == "schedule")
+                schedules = qualified + "(*app.container().resolve<gungnir::scheduler::Service>());\n";
+            continue;
+        }
         if (counts[decl.name] == 1) {
             aliases += "using " + decl.name + " = " + qualified + ";\n";
         }
@@ -210,7 +217,7 @@ inline void configure(gungnir::Application& app) {
     gungnir::database::register_sqlserver(app.database_drivers());
 #endif
     bootstrap::configure(app);
-)cpp" + factories + middleware + "app.on_boot([](gungnir::Application& app) {\n" + registrations + "bootstrap::boot(app);\n});\n}\n}\n";
+)cpp" + factories + middleware + "app.on_boot([](gungnir::Application& app) {\n" + registrations + "bootstrap::boot(app);\n" + schedules + "});\n}\n}\n";
     outputs[generated / "bootstrap.hpp"] = bootstrap;
     std::string app = "#include \"bootstrap.hpp\"\n#include <iostream>\nint main() { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";
     for (auto module : project.module_order()) {
@@ -251,6 +258,34 @@ return 0;
 } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; } }
 )cpp";
     outputs[generated / "migrations.cpp"] = migration;
+    outputs[generated / "background.cpp"] = R"cpp(#include "bootstrap.hpp"
+#include <gungnir/production/signal_watcher.hpp>
+#include <iostream>
+int main(int argc, char** argv) {
+    try {
+        auto app = gungnir::Application::create();
+        gungnir_generated::configure(app);
+        auto context = app.activate();
+        struct Shutdown { gungnir::Application& app; ~Shutdown() { app.shutdown(); } } shutdown{app};
+        gungnir::CancellationSource cancellation;
+        gungnir::production::SignalWatcher signals{[&](int) { cancellation.cancel(); }};
+        app.boot();
+        const std::string command = argc > 1 ? argv[1] : "";
+        if (command == "queue:work") {
+            auto worker = app.container().resolve<gungnir::queue::Worker>();
+            if (argc > 2 && std::string{argv[2]} == "--once")
+                std::cout << (worker->run_one() ? 1 : 0) << " job(s) processed\n";
+            else worker->run(cancellation.token());
+        } else if (command == "schedule:run") {
+            std::cout << app.container().resolve<gungnir::scheduler::Scheduler>()->run_due() << " task(s) executed\n";
+        } else if (command == "schedule:work") {
+            (void)app.container().resolve<gungnir::scheduler::Scheduler>()->run({}, cancellation.token());
+        } else throw std::invalid_argument("Unknown background command: " + command);
+        return 0;
+    } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+}
+)cpp";
+
     // Validate the entire snapshot before changing any generated file. Unchanged
     // outputs retain timestamps across CLI invocations; obsolete units are no
     // longer listed in CMake, so deleted/renamed modules cannot stay linked.

@@ -71,7 +71,7 @@ public:
         std::chrono::milliseconds interval,
         Task::Action action
     ) {
-        validate_name(name);
+        ensure_not_running();
 
         if (
             interval <=
@@ -82,6 +82,8 @@ public:
             );
         }
 
+        if (!action) throw std::invalid_argument("Scheduled task requires an action");
+        validate_name(name);
         tasks_.emplace_back(
             std::move(name),
             interval,
@@ -96,13 +98,13 @@ public:
         std::string expression,
         Task::Action action
     ) {
+        ensure_not_running();
+        CronExpression cron{std::move(expression)};
+        if (!action) throw std::invalid_argument("Scheduled task requires an action");
         validate_name(name);
-
         tasks_.emplace_back(
             std::move(name),
-            CronExpression{
-                std::move(expression)
-            },
+            std::move(cron),
             std::move(action),
             *timezone_
         );

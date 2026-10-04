@@ -1157,7 +1157,8 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/language/module.hpp gungnir/language/dependency_graph.hpp
             gungnir/cli/project.hpp gungnir/cli/lsp.hpp
             gungnir/routing/controller_binding.hpp gungnir/http/uploads.hpp
-            gungnir/http/files.hpp gungnir/validation/validator.hpp gungnir/validation/definition.hpp)
+            gungnir/http/files.hpp gungnir/validation/validator.hpp gungnir/validation/definition.hpp
+            gungnir/events/service.hpp gungnir/queue/service.hpp gungnir/scheduler/service.hpp)
         string(REPLACE "/" "_" unit "${header}")
         set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
         file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
@@ -1290,6 +1291,16 @@ if(GUNGNIR_BUILD_TESTS)
         target_link_libraries(gungnir_structured_validation_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
         target_compile_features(gungnir_structured_validation_test PRIVATE cxx_std_23)
         add_test(NAME gungnir.structured_validation COMMAND gungnir_structured_validation_test)
+        set(GUNGNIR_STRUCTURED_BACKGROUND_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_background_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_BACKGROUND_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/background.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_BACKGROUND_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/background.gnr VERBATIM)
+        add_executable(gungnir_structured_background_test tests/structured_background.cpp "${GUNGNIR_STRUCTURED_BACKGROUND_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_BACKGROUND_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_background_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_background_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_features(gungnir_structured_background_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_background COMMAND gungnir_structured_background_test)
         set(GUNGNIR_STRUCTURED_SERVICES_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_services_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/services.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
@@ -1474,6 +1485,8 @@ if(GUNGNIR_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_routing_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_validation_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_validation_examples.py" $<TARGET_FILE:gungnirc>)
+        add_test(NAME gungnir.docs_background_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_background_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_auth_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_auth_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_context_examples COMMAND ${Python3_EXECUTABLE}
@@ -2420,6 +2433,11 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 gungnir_redis_integration_test
         )
+        if(GUNGNIR_BUILD_TOOLS)
+            add_test(NAME gungnir.background_redis COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/background_redis.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
+            set_tests_properties(gungnir.background_redis PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+        endif()
     endif()
 endif()
 

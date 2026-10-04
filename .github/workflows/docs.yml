@@ -18,6 +18,7 @@ on:
       - "tests/docs_service_examples.py"
       - "tests/docs_routing_examples.py"
       - "tests/docs_validation_examples.py"
+      - "tests/docs_background_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -41,6 +42,7 @@ on:
       - "tests/docs_service_examples.py"
       - "tests/docs_routing_examples.py"
       - "tests/docs_validation_examples.py"
+      - "tests/docs_background_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -120,3 +122,6 @@ jobs:
           -Ibuild-docs/generated/include
           -c hello-example.cpp
           -o hello-example.o
+
+      - name: Validate public background examples
+        run: python3 tests/docs_background_examples.py ./build-docs/gungnirc

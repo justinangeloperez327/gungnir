@@ -1,6 +1,9 @@
 #include <gungnir/language/compiler.hpp>
 #include <gungnir/validation/definition.hpp>
 #include <algorithm>
+#include <charconv>
+#include <limits>
+#include <gungnir/scheduler/cron.hpp>
 #include <cctype>
 #include <functional>
 #include <regex>
@@ -89,6 +92,7 @@ public:
             {"void","void"},{"int","gungnir::Int64"},{"uint64","gungnir::UInt64"},{"double","double"},{"decimal","double"},{"Decimal","gungnir::model::Decimal"},{"bool","bool"},{"string","gungnir::String"},
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
+            {"Events","gungnir::events::Service"},{"Queue","gungnir::queue::Service"},{"Scheduler","gungnir::scheduler::Service"},{"ScheduledTask","gungnir::scheduler::Entry"},
             {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
             {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
@@ -182,7 +186,7 @@ public:
     }
     bool contains_service(TypeId id) const {
         const auto& value = type(id);
-        return value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" ||
+        return value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" ||
             std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_service(argument); });
     }
     bool contains_callable(TypeId id) const {
@@ -213,6 +217,13 @@ public:
             return v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
         // Explicit native extensions retain responsibility for their codec.
         return std::any_of(options.native_types.begin(),options.native_types.end(),[&](const auto& native) { return native.name == value.name; });
+    }
+    bool job_payload_type(TypeId id) {
+        const auto value = type(id);
+        if (value.name == "List" && value.arguments.size() == 1) return job_payload_type(value.arguments[0]);
+        if (value.name == "Map" && value.arguments.size() == 2) return job_payload_type(value.arguments[1]);
+        if (value.name == "Collection") return false;
+        return json_compatible(id);
     }
     bool assignable(TypeId target, TypeId source) {
         if (target == source) return true;
@@ -287,6 +298,9 @@ public:
         if (owner != invalid_id) {
             const auto found = members.find(std::to_string(owner) + ":" + name);
             if (found != members.end()) {
+                if (owner != current_owner && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::job &&
+                    (v.symbols_[found->second].kind == ResolvedSymbolKind::injection || v.symbols_[found->second].kind == ResolvedSymbolKind::callable))
+                    report(origin, "Job services and handlers are available only during worker execution", "GNR2340");
                 if (v.symbols_[found->second].visibility != Visibility::public_ && owner != current_owner) report(origin, "Member is not public: " + name, "GNR2205");
                 return found->second;
             }
@@ -641,6 +655,8 @@ public:
             auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
             for (const auto& field : declaration.fields) {
                 const auto field_type = resolve(field.type);
+                if (declaration.kind == DeclarationKind::job && !field.injection && !job_payload_type(field_type))
+                    report(field.origin,"Job payload fields require serializable data with a reconstruction codec", "GNR2340");
                 if (contains_service(field_type) && !field.injection)
                     report(field.origin,"Application services are injected fields; store their data explicitly");
                 if (contains_service(field_type) && declaration.kind == DeclarationKind::model)
@@ -704,6 +720,7 @@ public:
             if (v.symbols_[symbol_id].type == type_id("Route")) report(e.origin,"Route is a static API, not a value", "GNR2320");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && v.symbols_[symbol_id].name == "Validator") report(e.origin,"Construct a validation registry with Validator::make()", "GNR2330");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "UploadedFile" || v.symbols_[symbol_id].name == "ValidationResult")) report(e.origin,"Obtain upload and validation-result values through their request or validation APIs", "GNR2330");
+            if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "Events" || v.symbols_[symbol_id].name == "Queue" || v.symbols_[symbol_id].name == "Scheduler" || v.symbols_[symbol_id].name == "ScheduledTask")) report(e.origin,"Obtain background services through injection or application bootstrap", "GNR2340");
             const auto& value = v.symbols_[symbol_id]; return set(value.kind == ResolvedSymbolKind::callable ? type_id("Callable") : narrowed.contains(symbol_id) ? unoptional(value.type) : value.type, symbol_id);
         }
         if (e.kind == SyntaxExpressionKind::member) {
@@ -807,6 +824,38 @@ public:
         if (symbol != invalid_id && v.symbols_[symbol].immutable) report(expression.origin, "Cannot modify an immutable binding", "GNR2208");
         if (expression.kind == SyntaxExpressionKind::name && symbol != invalid_id) narrowed.erase(symbol);
         if (expression.kind == SyntaxExpressionKind::subscript) writable(expression.operands[0]);
+    }
+    std::optional<long long> integer_constant(SyntaxId id) const {
+        const auto& value = v.syntax_.expressions[id];
+        std::string text = value.text;
+        if (value.kind == SyntaxExpressionKind::unary && value.text == "-" && value.operands.size() == 1) {
+            const auto& operand = v.syntax_.expressions[value.operands[0]];
+            if (operand.kind != SyntaxExpressionKind::literal || operand.literal_type != "int") return std::nullopt;
+            text = "-" + operand.text;
+        } else if (value.kind != SyntaxExpressionKind::literal || value.literal_type != "int") return std::nullopt;
+        if (text.ends_with("LL")) text.resize(text.size()-2);
+        long long result{}; const auto parsed = std::from_chars(text.data(), text.data()+text.size(), result);
+        return parsed.ec == std::errc{} && parsed.ptr == text.data()+text.size() ? std::optional{result} : std::nullopt;
+    }
+    bool background_declaration(TypeId id, DeclarationKind kind) {
+        const auto owner = owner_of(id);
+        return !type(id).optional && owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == kind;
+    }
+    void schedule_action(SyntaxId id) {
+        const auto& value = v.expressions_[id]; const auto& signature = type(value.type);
+        if (background_declaration(value.type, DeclarationKind::job)) return;
+        bool valid = signature.name == "Function" && signature.arguments == std::vector<TypeId>{type_id("void")};
+        if (signature.name == "Callable" && value.symbol != invalid_id && v.syntax_.expressions[id].kind == SyntaxExpressionKind::name) {
+            const auto* callable = &v.symbols_[value.symbol];
+            if (callable->kind == ResolvedSymbolKind::declaration && declaration_ids.contains(value.symbol) && v.syntax_.declarations[declaration_ids.at(value.symbol)].kind == DeclarationKind::function)
+                callable = &v.symbols_[v.declarations_[declaration_ids.at(value.symbol)].methods.front().symbol];
+            valid = callable->kind == ResolvedSymbolKind::callable && callable->parameters.empty() && !callable->asynchronous && callable->type == type_id("void");
+        }
+        for (auto capture : value.captures) {
+            const auto& captured = type(v.symbols_[capture].type);
+            if (captured.name == "Scheduler" || captured.name == "ScheduledTask") report(v.syntax_.expressions[id].origin,"Schedule callbacks cannot capture their scheduler or task handle", "GNR2340");
+        }
+        if (!valid) report(v.syntax_.expressions[id].origin, "Schedules require a job or a synchronous void callback with no parameters", "GNR2340");
     }
     TypeId lambda(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id];
@@ -914,12 +963,15 @@ public:
         };
         if (callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::declaration) {
             const auto owner = callable_id; const auto& declaration = v.syntax_.declarations[declaration_ids.at(owner)];
-            if (std::any_of(declaration.fields.begin(),declaration.fields.end(),[](const auto& field){return field.injection;})) report(e.origin,"Declarations with injected services use the native make(container, ...) factory");
+            if (declaration.kind != DeclarationKind::job && std::any_of(declaration.fields.begin(),declaration.fields.end(),[](const auto& field){return field.injection;})) report(e.origin,"Declarations with injected services use the native make(container, ...) factory");
             ResolvedSymbol constructor{ResolvedSymbolKind::callable, declaration.name, v.symbols_[owner].cpp_name, v.symbols_[owner].type, owner};
             for (auto field : v.declarations_[declaration_ids.at(owner)].fields) if (v.symbols_[field].kind == ResolvedSymbolKind::field) { constructor.parameters.push_back(v.symbols_[field].type); constructor.parameter_names.push_back(v.symbols_[field].name); auto original = std::find_if(declaration.fields.begin(),declaration.fields.end(),[&](const auto& f){return f.name == v.symbols_[field].name;}); constructor.defaults.push_back(original == declaration.fields.end() || original->initializer == invalid_id || v.syntax_.expressions[original->initializer].kind != SyntaxExpressionKind::literal ? invalid_id : original->initializer); }
             if (declaration.kind == DeclarationKind::model) { if (count) report(e.origin, "Models use ORM creation rather than data constructors"); constructor.parameters.clear(); constructor.parameter_names.clear(); constructor.defaults.clear(); }
             callable_id = symbol(std::move(constructor));
         }
+        if (receiver == invalid_id && callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::builtin &&
+            (name == "Events" || name == "Queue" || name == "Scheduler" || name == "ScheduledTask"))
+            report(e.origin,"Background services cannot be constructed in application source", "GNR2340");
         if (callable_id == invalid_id && receiver == invalid_id) {
             if (name == "noContent") { arity(0,0); return finish_builtin(type_id("Response"), "gungnir::language::runtime::no_content"); }
             if (name == "download") { arity(2,4); return finish_builtin(type_id("Response"), "gungnir::language::runtime::download", {type_id("string"),type_id("string"),type_id("string"),type_id("int")}); }
@@ -931,6 +983,45 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Events" || t.name == "Queue" || t.name == "Scheduler" || t.name == "ScheduledTask") {
+                if (callee.literal_type == "::") report(callee.origin,"Background service methods require an instance", "GNR2340");
+                auto positive = [&](std::size_t index, bool zero = false) {
+                    if (count <= index) return;
+                    if (auto value = integer_constant(e.operands[index+1]); value && *value < (zero ? 0 : 1)) report(e.origin,"Background duration and attempt literals are out of range", "GNR2340");
+                };
+                if (t.name == "Events" && (name == "dispatch" || name == "dispatchAsync")) {
+                    arity(1,1); const auto result = finish_builtin(type_id("void"), name == "dispatchAsync" ? "dispatch_async" : "dispatch");
+                    if (count && !background_declaration(argument_types[0], DeclarationKind::event)) report(e.origin,"Dispatch requires a non-optional event", "GNR2340");
+                    v.symbols_[info.symbol].asynchronous = name == "dispatchAsync"; return result;
+                }
+                if (t.name == "Queue") {
+                    if (name == "dispatch" || name == "later") {
+                        const bool delayed = name == "later"; arity(delayed ? 2 : 1, delayed ? 4 : 3);
+                        const auto result = finish_builtin(type_id("string"),name, delayed ? std::vector<std::optional<TypeId>>{std::nullopt,type_id("int"),type_id("int"),type_id("bool")} : std::vector<std::optional<TypeId>>{std::nullopt,type_id("int"),type_id("bool")});
+                        if (count && !background_declaration(argument_types[0], DeclarationKind::job)) report(e.origin,"Queue dispatch requires a non-optional job", "GNR2340");
+                        if (delayed) positive(1,true);
+                        positive(delayed ? 2 : 1);
+                        if (count > (delayed ? 2u : 1u)) if (auto attempts = integer_constant(e.operands[delayed ? 3 : 2]); attempts && *attempts > std::numeric_limits<unsigned>::max()) report(e.origin,"Job attempts exceed the driver range", "GNR2340");
+                        return result;
+                    }
+                    if (name == "failed") { arity(0,0); return finish_builtin(type_id("Json"),name); }
+                    if (name == "retry" || name == "forget") { arity(1,1); return finish_builtin(type_id("bool"),name,{type_id("string")}); }
+                }
+                if (t.name == "Scheduler" && (name == "every" || name == "cron" || name == "hourly" || name == "daily" || name == "weekly" || name == "monthly")) {
+                    const bool explicit_period = name == "every" || name == "cron"; arity(explicit_period ? 3 : 2, explicit_period ? 3 : 2);
+                    const auto callback = intern("Function","auto",{type_id("void")});
+                    const auto result = finish_builtin(type_id("ScheduledTask"), name, explicit_period ? std::vector<std::optional<TypeId>>{type_id("string"),type_id(name == "every" ? "int" : "string"),callback} : std::vector<std::optional<TypeId>>{type_id("string"),callback});
+                    if (count == (explicit_period ? 3u : 2u)) schedule_action(e.operands.back());
+                    if (name == "every") positive(1);
+                    if (count) { const auto& label = v.syntax_.expressions[e.operands[1]]; if (label.kind == SyntaxExpressionKind::literal && label.literal_type == "string" && label.text.empty()) report(label.origin,"Scheduled task name must not be empty", "GNR2340"); }
+                    if (name == "cron" && count >= 2) { const auto& cron = v.syntax_.expressions[e.operands[2]]; if (cron.kind == SyntaxExpressionKind::literal && cron.literal_type == "string") try { scheduler::CronExpression checked{cron.text}; } catch (const std::exception& error) { report(cron.origin,error.what(),"GNR2340"); } }
+                    return result;
+                }
+                if (t.name == "ScheduledTask") {
+                    if (name == "timezone") { arity(1,1); return finish_builtin(type_id("ScheduledTask"),name,{type_id("string")}); }
+                    if (name == "withoutOverlapping" || name == "onOneServer") { arity(0,1); positive(0); return finish_builtin(type_id("ScheduledTask"),name,{type_id("int")}); }
+                }
+            }
             if (t.name == "Validator") {
                 const auto& prefix = v.syntax_.expressions[receiver_expression];
                 const bool static_api = callee.literal_type == "::" && prefix.kind == SyntaxExpressionKind::name && prefix.text == "Validator";
@@ -1980,6 +2071,14 @@ public:
             };
 
         for (const auto& metadata : declaration.metadata) {
+            if (declaration.kind == DeclarationKind::listener && metadata.name == "priority") {
+                if (!metadata_names.insert(metadata.name).second) report(metadata.origin,"Duplicate listener priority", "GNR2308");
+                if (std::any_of(declaration.fields.begin(),declaration.fields.end(),[](const auto& field){return field.name == "priority";}) || std::any_of(declaration.methods.begin(),declaration.methods.end(),[](const auto& method){return method.name == "priority";})) report(metadata.origin,"Listener priority metadata conflicts with a member", "GNR2308");
+                const auto priority = integer_constant(metadata.value);
+                if (!priority || *priority < std::numeric_limits<int>::min() || *priority > std::numeric_limits<int>::max()) report(metadata.origin,"Listener priority requires an integer literal in the native int range", "GNR2308");
+                expression(metadata.value); continue;
+            }
+
             if (
                 declaration.kind != DeclarationKind::model ||
                 !metadata_allowed.contains(metadata.name)
@@ -2467,6 +2566,14 @@ public:
         for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
             current_module = v.syntax_.declarations[d].module; current_owner = v.declarations_[d].symbol; scopes.clear(); scopes.emplace_back(); async_context = false; loops = 0; contracts(d);
             for (std::size_t f = 0; f < v.syntax_.declarations[d].fields.size(); ++f) { const auto& field = v.syntax_.declarations[d].fields[f]; if (field.initializer != invalid_id && !assignable(v.symbols_[v.declarations_[d].fields[f]].type, expression(field.initializer))) report(field.origin,"Field initializer type mismatch"); }
+        }
+        for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
+            const auto& declaration = v.syntax_.declarations[d];
+            if (v.syntax_.modules[declaration.module].name != "routes.console" || declaration.name != "schedule") continue;
+            if (declaration.kind != DeclarationKind::function || declaration.methods.size() != 1) { report(declaration.origin,"routes.console schedule must be a function", "GNR2340"); continue; }
+            const auto& method = declaration.methods[0]; const auto& resolved = v.symbols_[v.declarations_[d].methods[0].symbol];
+            if (resolved.type != type_id("void") || method.asynchronous || resolved.parameters != std::vector<TypeId>{type_id("Scheduler")} || method.parameters[0].default_value != invalid_id)
+                report(declaration.origin,"Use function void schedule(Scheduler schedule) in routes/console.gnr", "GNR2340");
         }
         for (std::size_t i = 0; i < v.expressions_.size(); ++i) if (v.syntax_.expressions[i].kind == SyntaxExpressionKind::call && v.expressions_[i].symbol != invalid_id && v.symbols_[v.expressions_[i].symbol].asynchronous && !awaited_calls.contains(i)) report(v.syntax_.expressions[i].origin,"Async calls require await", "GNR2216");
         // Every reachable expression must have a resolved type. Unreachable

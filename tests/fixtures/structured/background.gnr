@@ -1,0 +1,44 @@
+event Pulse { int id; }
+event Completed { string key; }
+listener First {
+    priority = 20;
+    inject Cache cache;
+    handle(Pulse event) { cache.put('order', [event.id, 20]); }
+}
+listener Second {
+    priority = -10;
+    inject Cache cache;
+    handle(Pulse event) { cache.put('last', event.id); }
+}
+listener AsyncRecord {
+    inject Events events;
+    async handle(Completed event) { await events.dispatchAsync(Pulse(7)); }
+}
+job RecordJob {
+    inject Cache cache;
+    string key;
+    int value;
+    handle() { cache.put(key, value); }
+}
+job AsyncJob {
+    inject Events events;
+    string key;
+    async handle() { await events.dispatchAsync(Completed(key)); }
+}
+function void emit(Events events, int id) { events.dispatch(Pulse(id)); }
+async function void emitAsync(Events events, string key) { await events.dispatchAsync(Completed(key)); }
+function string enqueue(Queue queue, string key, int value, int attempts, bool afterCommit) { return queue.dispatch(RecordJob(key, value), attempts, afterCommit); }
+function string enqueueLater(Queue queue, int delay) { return queue.later(RecordJob('delayed', 42), delay, 3); }
+function Json failures(Queue queue) { return queue.failed(); }
+function bool retryJob(Queue queue, string id) { return queue.retry(id); }
+function bool forgetJob(Queue queue, string id) { return queue.forget(id); }
+function ScheduledTask periodic(Scheduler schedule, int interval) { return schedule.every('record', interval, RecordJob('scheduled', 9)).withoutOverlapping(10000).onOneServer(10000); }
+function ScheduledTask calendar(Scheduler schedule, Cache cache) { return schedule.cron('calendar', '0 0 * * *', () => { cache.put('calendar', 1); }).timezone('UTC'); }
+function void namedAction() {}
+function void namedSchedule(Scheduler schedule) { schedule.hourly('hourly', namedAction); schedule.daily('daily', RecordJob('daily', 1)); schedule.weekly('weekly', namedAction); schedule.monthly('monthly', namedAction); }
+controller BackgroundController {
+    inject Events events;
+    inject Queue queue;
+    send(int id) { emit(events, id); return text(queue.dispatch(RecordJob('controller', id))); }
+    async sendAsync() { await emitAsync(events, 'controller'); return noContent(); }
+}

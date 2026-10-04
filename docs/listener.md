@@ -1,37 +1,30 @@
 # Listeners
 
-Listeners react to application events.
-
-## Defining a listener
+A listener has a public `handle` method that accepts exactly one non-optional event. Import the event's module when it is declared in another file.
 
 ```gnr
-listener SendWelcomeEmail {
+listener RecordRegistration {
+    priority = 20;
+    inject Cache cache;
     handle(UserRegistered event) {
-        // React to the event.
+        cache.put('registered.email', event.email);
     }
 }
 ```
 
-A listener's `handle` method receives exactly the event type it handles.
+Services are injected during application boot. `priority` is an integer literal in the native `int` range; it defaults to zero. Higher values run first, and negative values run later. Applications discover and register generated listeners automatically.
 
-## Async listeners
+Listeners may dispatch other events. Use async dispatch for async listeners, and await all async calls.
 
 ```gnr
-listener SyncCustomerProfile {
+event RegistrationRecorded { int user_id; }
+listener PublishRegistration {
+    priority = -10;
+    inject Events events;
     async handle(UserRegistered event) {
-        await profiles.sync(event.user_id);
+        await events.dispatchAsync(RegistrationRecorded(event.user_id));
     }
 }
 ```
 
-Async listeners are executed through asynchronous event dispatch.
-
-## Dependency injection
-
-Listeners can use application services through the container, allowing event handling logic to remain testable and separated from the event producer.
-
-## Priority
-
-Listener registration can assign priority when deterministic ordering between listeners is required.
-
-Events are in-process application messaging. Use [Queues and Jobs](queues.md) when work requires persistence, retries, or execution outside the request lifecycle.
+A handler returns `void`. Exceptions propagate to the event producer. Shutdown releases listener registrations, including listeners that inject `Events`. For persistence and retries, dispatch a [job](queues.md).

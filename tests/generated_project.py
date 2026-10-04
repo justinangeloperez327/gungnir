@@ -41,6 +41,10 @@ model User {
 }
 ''')
 (project / "app/models/Post.gnr").write_text('model Post { int user_id; string title; }\n')
+(project / "app/jobs/WriteJob.gnr").write_text("job WriteJob { inject Storage storage; string key; handle() { storage.put(key, 'job done'); } }\n")
+(project / "app/listeners/RecordListener.gnr").write_text("import app.events.Created;\nlistener RecordListener { priority = 20; inject Storage storage; handle(Created event) { if (event.id == 9) { storage.put('event.txt', 'event done'); } } }\n")
+(project / "app/controllers/BackgroundController.gnr").write_text("import app.events.Created;\nimport app.jobs.WriteJob;\ncontroller BackgroundController { inject Events events; inject Queue queue; send() { events.dispatch(Created(9)); return text(queue.dispatch(WriteJob('http-job.txt'))); } }\n")
+(project / "routes/console.gnr").write_text("import app.jobs.WriteJob;\nfunction void schedule(Scheduler schedule) { schedule.every('write', 60000, WriteJob('scheduled-job.txt')); }\n")
 # Exercise import ordering and injection in a real application.
 home = project / "app/controllers/HomeController.gnr"
 home.write_text("import app.controllers.ExtraController;\ncontroller HomeController { inject ExtraController extra; index() { return extra.index(); } }\n")
@@ -50,6 +54,7 @@ routes = project / "routes/web.gnr"
 routes.write_text('''Route::get("/", HomeController::index).name("home");
 Route::post("/validated", ProjectValidationController::store);
 Route::post("/upload", ProjectValidationController::upload);
+Route::get("/background", BackgroundController::send);
 Route::prefix("/api").name("api.").middleware("PassMiddleware").group(() => {
     Route::prefix("/v1").name("v1.").middleware(RouteMiddleware).group(() => {
         Route::get("/users/{user}", RouteController::show).name("users.show").whereNumber("user");
@@ -113,6 +118,7 @@ bootstrap.write_text(bootstrap.read_text().replace("// Add service bindings, mid
     auto dispatcher = app.container().resolve<gungnir::queue::Dispatcher>();
     dispatcher->dispatch(PingJob{});
     if (!app.container().resolve<gungnir::queue::Worker>()->run_one()) throw std::logic_error("job not registered");
+    app.container().resolve<gungnir::queue::Service>()->dispatch(WriteJob{"worker-job.txt"});
     User user;
     user.id = 7;
     if (!app.container().resolve<gungnir::auth::ResourceAuthorization>()->inspect("view", user, user).allowed) throw std::logic_error("policy not registered");
@@ -130,6 +136,18 @@ run("build")
 generated = project / ".gungnir/generated"
 header = generated / "program.hpp"
 unit = generated / "app.controllers.ExtraController.cpp"
+assert "1 job(s) processed" in run("queue:work", "--once")
+assert (project / "storage/worker-job.txt").read_text() == "job done"
+assert "1 task(s) executed" in run("schedule:run")
+run("schedule:work", "--once", expect=1)
+# Reserved entry signatures fail before touching the generated snapshot.
+console = project / "routes/console.gnr"
+console_source = console.read_text()
+background_snapshot = {p: p.read_bytes() for p in generated.rglob("*") if p.is_file()}
+console.write_text("function int schedule(Scheduler schedule) { return 1; }\n")
+assert "GNR2340" in run("build", expect=1)
+assert background_snapshot == {p: p.read_bytes() for p in generated.rglob("*") if p.is_file()}
+console.write_text(console_source)
 header_time, unit_time = header.stat().st_mtime_ns, unit.stat().st_mtime_ns
 build = project / ".gungnir/build"
 objects = {p: p.stat().st_mtime_ns for p in build.rglob("*") if p.suffix in (".o", ".obj")}
@@ -217,6 +235,8 @@ with (project / "dev.log").open("w") as log:
         process = subprocess.Popen([cli, "dev"], cwd=project, env=env, stdout=log, stderr=log)
     try:
         wait_response("first", process)
+        assert response("/background")[0] == 200
+        assert (project / "storage/event.txt").read_text() == "event done"
         payload = {"code": "GNR", "profile": {"email": "a@example.test", "admin": True}, "secret": "omit"}
         status, body, headers = response("/validated", json.dumps(payload).encode(), "application/json")
         assert status == 200 and json.loads(body) == {"code": "GNR", "profile": {"email": "a@example.test"}}
@@ -270,6 +290,15 @@ with (project / "dev.log").open("w") as log:
     finally:
         if process.poll() is None:
             stop(process)
+if os.name != "nt":
+    for command in ("queue:work", "schedule:work"):
+        background = build / "background"
+        with (project / "background.log").open("w") as log:
+            process = subprocess.Popen([str(background), command], cwd=project, env=env, stdout=log, stderr=log)
+            time.sleep(0.2)
+            assert process.poll() is None, (project / "background.log").read_text()
+            process.send_signal(signal.SIGTERM)
+            assert process.wait(timeout=10) == 0, (project / "background.log").read_text()
 # Failed compilation and bad flags must be observable by CI callers.
 extra.write_text("controller ExtraController { index() { return missing; } }\n")
 run("build", expect=1)
