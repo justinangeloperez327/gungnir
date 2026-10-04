@@ -75,6 +75,11 @@ The documentation defines the Gungnir developer experience: how applications are
 - [Production Resilience](production-resilience.md)
 - [Security Hardening](security-hardening.md)
 
+## Compatibility and upgrades
+
+- [Stability](stability.md)
+- [Upgrading](upgrading.md)
+
 ## Compiler and contributor reference
 
 These documents explain how Gungnir itself works. Application developers do not need them for ordinary framework use.
@@ -91,3 +96,7 @@ These documents explain how Gungnir itself works. Application developers do not 
 - [Framework Semantic Contracts](framework-semantics.md)
 - [Runtime Correctness](runtime-correctness.md)
 - [Database and ORM Correctness](database-correctness.md)
+
+- [Development Status](development-status.md)
+- [Framework Completeness Audit](framework-completeness-audit.md)
+- [Request Context Contract Audit](../engineering/request-context-contract-audit.md)
