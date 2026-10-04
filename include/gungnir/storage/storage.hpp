@@ -3,3 +3,4 @@
 #include <gungnir/storage/error.hpp>
 #include <gungnir/storage/local_disk.hpp>
 #include <gungnir/storage/manager.hpp>
+#include <gungnir/storage/service.hpp>

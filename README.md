@@ -197,6 +197,7 @@ The `docs/design/` directory contains intended architecture and future-facing de
 
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
+- [Engineering Contract Audits](engineering/README.md)
 - [Support](SUPPORT.md)
 - [Security Policy](SECURITY.md)
 - [License](LICENSE)

@@ -19,6 +19,7 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#include <winternl.h>
 #else
 #include <dirent.h>
 #include <fcntl.h>
@@ -699,6 +700,26 @@ void rename_handle(
     std::wstring_view destination_name,
     bool replace
 ) {
+    // Use the native rename service to preserve the checked destination
+    // directory handle without resolving a destination pathname again.
+    using SetInformation = NTSTATUS (NTAPI*)(
+        HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS
+    );
+    using StatusError = ULONG (NTAPI*)(NTSTATUS);
+    static const auto module = GetModuleHandleW(L"ntdll.dll");
+    static const auto set_information = module ? reinterpret_cast<SetInformation>(
+        GetProcAddress(module, "NtSetInformationFile")
+    ) : nullptr;
+    static const auto status_error = module ? reinterpret_cast<StatusError>(
+        GetProcAddress(module, "RtlNtStatusToDosError")
+    ) : nullptr;
+    if (!set_information || !status_error) {
+        throw Error{"Windows handle-based storage renames are unavailable"};
+    }
+    if (destination_name.size() >
+        (std::numeric_limits<ULONG>::max() - sizeof(FILE_RENAME_INFO)) / sizeof(wchar_t)) {
+        throw Error{"Storage destination filename is too long"};
+    }
     const auto bytes =
         destination_name.size() *
         sizeof(wchar_t);
@@ -732,20 +753,19 @@ void rename_handle(
         bytes
     );
 
-    if (
-        !SetFileInformationByHandle(
-            source,
-            FileRenameInfo,
-            info,
-            static_cast<DWORD>(
-                buffer.size()
-            )
-        )
-    ) {
+    IO_STATUS_BLOCK completion{};
+    // FileRenameInformation is class 10. winternl.h exposes only a subset
+    // of FILE_INFORMATION_CLASS; its documented native layout matches
+    // FILE_RENAME_INFO for this operation.
+    const auto status = set_information(
+        source, &completion, info, static_cast<ULONG>(buffer.size()),
+        static_cast<FILE_INFORMATION_CLASS>(10)
+    );
+    if (status < 0) {
         throw Error{
             windows_error(
                 "Unable to move storage object",
-                GetLastError()
+                status_error(status)
             )
         };
     }

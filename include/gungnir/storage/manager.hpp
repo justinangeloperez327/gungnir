@@ -23,14 +23,16 @@ public:
         return *this;
     }
 
-    [[nodiscard]] Disk& disk(std::string_view name = {}) const {
+    [[nodiscard]] std::shared_ptr<Disk> shared_disk(std::string_view name = {}) const {
         const auto selected = name.empty() ? default_ : std::string{name};
         const auto found = disks_.find(selected);
         if (found == disks_.end() || !found->second) {
             throw std::logic_error("Gungnir storage disk is not configured: " + selected);
         }
-        return *found->second;
+        return found->second;
     }
+
+    [[nodiscard]] Disk& disk(std::string_view name = {}) const { return *shared_disk(name); }
 
 private:
     std::string default_{"local"};

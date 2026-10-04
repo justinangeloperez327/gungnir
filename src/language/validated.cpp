@@ -87,6 +87,7 @@ public:
             {"void","void"},{"int","gungnir::Int64"},{"uint64","gungnir::UInt64"},{"double","double"},{"decimal","double"},{"Decimal","gungnir::model::Decimal"},{"bool","bool"},{"string","gungnir::String"},
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
+            {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
             {"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
@@ -175,6 +176,16 @@ public:
         return value.name == "Authentication" || value.name == "Password" ||
             std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_auth_api(argument); });
     }
+    bool contains_service(TypeId id) const {
+        const auto& value = type(id);
+        return value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" ||
+            std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_service(argument); });
+    }
+    bool contains_callable(TypeId id) const {
+        const auto& value = type(id);
+        return value.name == "Callable" || value.name == "Function" ||
+            std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_callable(argument); });
+    }
     bool contains_session(TypeId id) const {
         const auto& value = type(id);
         return value.name == "Session" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_session(argument); });
@@ -183,13 +194,29 @@ public:
         const auto& value = type(id);
         return value.name == "AuthIdentity" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_identity(argument); });
     }
+    bool json_compatible(TypeId id) {
+        const auto value = type(id);
+        static const std::unordered_set<std::string> scalars{
+            "null","bool","int","uint64","double","decimal","Decimal","string","Json","Data","Value","AuthIdentity"
+        };
+        if (scalars.contains(value.name)) return true;
+        if ((value.name == "List" || value.name == "Collection") && value.arguments.size() == 1)
+            return json_compatible(value.arguments.front());
+        if (value.name == "Map" && value.arguments.size() == 2)
+            return json_compatible(value.arguments.back());
+        const auto owner = owner_of(id);
+        if (owner != invalid_id)
+            return v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
+        // Explicit native extensions retain responsibility for their codec.
+        return std::any_of(options.native_types.begin(),options.native_types.end(),[&](const auto& native) { return native.name == value.name; });
+    }
     bool assignable(TypeId target, TypeId source) {
         if (target == source) return true;
-        if (type(target).name == "Value") return !contains_session(source) && !contains_auth_api(source);
+        if (type(target).name == "Value") return json_compatible(source);
         const auto a = type(target), b = type(source);
         if (a.optional) return b.name == "null" || assignable(unoptional(target), b.optional ? unoptional(source) : source);
         if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable")
-            return !contains_session(source) && !contains_auth_api(source) && (!b.optional || b.name == "AuthIdentity");
+            return json_compatible(source);
         if (b.optional) return false;
         if (a.name == "double" && b.name == "int") return true;
         if (a.name == "decimal" && (b.name == "int" || b.name == "uint64")) return true;
@@ -610,6 +637,10 @@ public:
             auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
             for (const auto& field : declaration.fields) {
                 const auto field_type = resolve(field.type);
+                if (contains_service(field_type) && !field.injection)
+                    report(field.origin,"Application services are injected fields; store their data explicitly");
+                if (contains_service(field_type) && declaration.kind == DeclarationKind::model)
+                    report(field.origin,"Application services cannot be stored in model fields");
                 if (contains_auth_api(field_type)) report(field.origin,"Authentication APIs cannot be declaration fields");
                 if (contains_session(field_type) || contains_identity(field_type))
                     report(field.origin, "Request context types cannot be declaration fields; store their data explicitly");
@@ -693,12 +724,12 @@ public:
         }
         if (e.kind == SyntaxExpressionKind::list) {
             TypeId element = expected && !type(*expected).arguments.empty() ? type(*expected).arguments[0] : invalid_id;
-            for (auto argument : e.operands) { const auto item = expression(argument, element == invalid_id ? std::nullopt : std::optional{element}); if (element == invalid_id) element = item; else if (!assignable(element, item)) { if (contains_session(element) || contains_session(item)) report(e.origin, "Session handles cannot be mixed with serialized values"); if (contains_auth_api(element) || contains_auth_api(item)) report(e.origin,"Authentication APIs cannot be mixed with serialized values"); element = type_id("Value"); } }
+            for (auto argument : e.operands) { const auto item = expression(argument, element == invalid_id ? std::nullopt : std::optional{element}); if (element == invalid_id) element = item; else if (!assignable(element, item)) { if (contains_session(element) || contains_session(item)) report(e.origin, "Session handles cannot be mixed with serialized values"); else if (contains_auth_api(element) || contains_auth_api(item)) report(e.origin,"Authentication APIs cannot be mixed with serialized values"); else if (contains_service(element) || contains_service(item)) report(e.origin,"Application services cannot be mixed with serialized values"); else if (!json_compatible(element) || !json_compatible(item)) report(e.origin,"Opaque values cannot be mixed with serialized values"); element = type_id("Value"); } }
             return set(sequence("List", element == invalid_id ? type_id("Value") : element));
         }
         if (e.kind == SyntaxExpressionKind::object) {
             std::unordered_set<std::string> keys;
-            for (std::size_t i = 0; i < e.operands.size(); ++i) { if (!keys.insert(e.argument_names[i]).second) report(e.origin, "Duplicate object key '" + e.argument_names[i] + "'"); const auto item = expression(e.operands[i]); if (contains_session(item)) report(e.origin, "Session handles cannot be serialized; use session values explicitly"); if (contains_auth_api(item)) report(e.origin,"Authentication APIs cannot be serialized"); }
+            for (std::size_t i = 0; i < e.operands.size(); ++i) { if (!keys.insert(e.argument_names[i]).second) report(e.origin, "Duplicate object key '" + e.argument_names[i] + "'"); const auto item = expression(e.operands[i]); if (contains_session(item)) report(e.origin, "Session handles cannot be serialized; use session values explicitly"); else if (contains_auth_api(item)) report(e.origin,"Authentication APIs cannot be serialized"); else if (contains_service(item)) report(e.origin,"Application services cannot be serialized"); else if (!json_compatible(item)) report(e.origin,"Object values must be JSON-compatible data"); }
             return set(type_id("Json"));
         }
         if (e.kind == SyntaxExpressionKind::lambda) return lambda(id, expected);
@@ -855,6 +886,43 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Cache" || t.name == "Storage" || t.name == "StorageDisk") {
+                if (callee.literal_type == "::") report(callee.origin,"Service methods require an instance");
+                if (t.name == "Cache") {
+                    if (name == "get" || name == "has" || name == "forget") {
+                        arity(1,1); return finish_builtin(name == "get" ? optional(type_id("Json")) : type_id("bool"), name, {type_id("string")});
+                    }
+                    if (name == "put") { arity(2,3); return finish_builtin(type_id("void"), name, {type_id("string"),type_id("Json"),type_id("int")}); }
+                    if (name == "flush") { arity(0,0); return finish_builtin(type_id("void"), name); }
+                    if (name == "remember") {
+                        arity(3,3);
+                        const auto result = finish_builtin(type_id("Json"), name, {type_id("string"),type_id("int"),intern("Function","auto",{type_id("Json")})});
+                        if (count == 3) {
+                            const auto& factory = v.expressions_[e.operands[3]];
+                            const auto& signature = type(factory.type);
+                            bool valid = signature.name == "Function" && signature.arguments.size() == 1 && assignable(type_id("Json"),signature.arguments.back());
+                            if (signature.name == "Callable" && factory.symbol != invalid_id && v.syntax_.expressions[e.operands[3]].kind == SyntaxExpressionKind::name) {
+                                const auto* callable = &v.symbols_[factory.symbol];
+                                if (callable->kind == ResolvedSymbolKind::declaration && declaration_ids.contains(factory.symbol)) {
+                                    const auto declaration = declaration_ids.at(factory.symbol);
+                                    if (v.syntax_.declarations[declaration].kind == DeclarationKind::function)
+                                        callable = &v.symbols_[v.declarations_[declaration].methods.front().symbol];
+                                }
+                                valid = callable->kind == ResolvedSymbolKind::callable && callable->parameters.empty() && !callable->asynchronous && assignable(type_id("Json"),callable->type);
+                            }
+                            if (!valid) report(v.syntax_.expressions[e.operands[3]].origin,"Cache factory must be a synchronous callable with no parameters and a JSON-compatible result");
+                        }
+                        return result;
+                    }
+                } else {
+                    if (t.name == "Storage" && name == "disk") { arity(0,1); return finish_builtin(type_id("StorageDisk"), name, {type_id("string")}); }
+                    if (name == "get" || name == "exists" || name == "remove" || name == "size") {
+                        arity(1,1); return finish_builtin(name == "get" ? optional(type_id("string")) : type_id(name == "size" ? "uint64" : "bool"), name, {type_id("string")});
+                    }
+                    if (name == "put" || name == "copy" || name == "move") { arity(2,2); return finish_builtin(type_id(name == "put" ? "void" : "bool"), name, {type_id("string"),type_id("string")}); }
+                    if (name == "files") { arity(0,1); return finish_builtin(sequence("List",type_id("string")), name, {type_id("string")}); }
+                }
+            }
             if (t.name == "Authentication") {
                 if (name == "attempt") {
                     arity(2,3);

@@ -4,8 +4,10 @@
 #include <algorithm>
 
 #include <charconv>
+#include <cmath>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -455,6 +457,12 @@ private:
             ) {
                 return Json{integer};
             }
+            if (!token.empty() && token.front() != '-') {
+                UInt64 unsigned_integer = 0;
+                const auto unsigned_result = std::from_chars(token.data(), token.data() + token.size(), unsigned_integer);
+                if (unsigned_result.ec == std::errc{} && unsigned_result.ptr == token.data() + token.size())
+                    return Json{unsigned_integer};
+            }
         }
 
         Double number = 0.0;
@@ -489,7 +497,13 @@ String dump_json(const Json& value) {
         return "\"" + escape_string(value.string()) + "\"";
     }
 
-    if (value.is_boolean() || value.is_number()) {
+    if (value.is_number() && !value.is_integer()) {
+        auto number = value.string();
+        if (number.find_first_of(".eE") == String::npos) number += ".0";
+        return number;
+    }
+
+    if (value.is_boolean() || value.is_integer()) {
         return value.string();
     }
 
@@ -536,7 +550,9 @@ Json::Json(std::nullptr_t) noexcept : storage_(nullptr) {}
 Json::Json(Boolean value) : storage_(value) {}
 Json::Json(Int64 value) : storage_(value) {}
 Json::Json(UInt64 value) : storage_(value) {}
-Json::Json(Double value) : storage_(value) {}
+Json::Json(Double value) : storage_(value) {
+    if (!std::isfinite(value)) throw std::invalid_argument("JSON numbers must be finite");
+}
 Json::Json(String value) : storage_(std::move(value)) {}
 Json::Json(std::string_view value) : storage_(String{value}) {}
 Json::Json(const char* value) : storage_(String{value ? value : ""}) {}
@@ -657,6 +673,7 @@ String Json::string() const {
 
     if (const auto* value = std::get_if<Double>(&storage_)) {
         std::ostringstream output;
+        output.imbue(std::locale::classic());
         output
             << std::setprecision(
                 std::numeric_limits<Double>::max_digits10

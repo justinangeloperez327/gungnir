@@ -76,6 +76,7 @@ template<class Resource> void authorize(Request& request,String ability,const Re
 }
 template<class T> auto hold_receiver(T& value) { return std::ref(value); }
 template<class T> auto hold_receiver(T&& value) { return std::forward<T>(value); }
+template<class T> auto hold_callable(T&& value) { return std::forward<T>(value); }
 template<class T> T& receiver(std::reference_wrapper<T>& value) { return value.get(); }
 template<class T> T& receiver(T& value) { return value; }
 template<auto Member, class Parent> auto relationship_query(const Parent& parent) {

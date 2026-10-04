@@ -112,13 +112,7 @@ template <std::floating_point T>
 [[nodiscard]] inline Json make_json(const model::Decimal& value) { return Json{value.string()}; }
 
 template <typename T>
-[[nodiscard]] Json make_json(const std::optional<T>& value) {
-    if (!value) {
-        return Json{nullptr};
-    }
-
-    return make_json(*value);
-}
+[[nodiscard]] Json make_json(const std::optional<T>& value);
 
 template <typename T>
 concept JsonModel = requires(const T& value) {
@@ -171,6 +165,15 @@ template <JsonMap T>
 
 template <JsonRange T>
 [[nodiscard]] Json make_json(const T& value);
+
+template <typename T>
+[[nodiscard]] Json make_json(const std::optional<T>& value) {
+    if (!value) {
+        return Json{nullptr};
+    }
+
+    return make_json(*value);
+}
 
 template <JsonMap T>
 [[nodiscard]] Json make_json(const T& value) {

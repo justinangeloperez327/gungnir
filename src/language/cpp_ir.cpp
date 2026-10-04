@@ -100,7 +100,13 @@ class CppIrLoweringRenderer {
             // expressions, before named arguments are reordered for the call.
             std::string tuple = "std::tuple{";
             if (!receiver.empty()) tuple += "gungnir::language::runtime::hold_receiver(" + receiver + ")";
-            for (std::size_t i = 1; i < e.operands.size(); ++i) { if (tuple.back() != '{') tuple += ','; tuple += child(i); }
+            for (std::size_t i = 1; i < e.operands.size(); ++i) {
+                if (tuple.back() != '{') tuple += ',';
+                auto value = child(i);
+                if (p.types()[p.expressions()[e.operands[i]].type].name == "Callable")
+                    value = "gungnir::language::runtime::hold_callable(" + value + ")";
+                tuple += value;
+            }
             tuple += '}';
             std::string arguments = receiver_argument ? "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" : "";
             TypeId orm_model = invalid_id;
@@ -131,7 +137,7 @@ class CppIrLoweringRenderer {
                 }
             }
             auto invocation = target + "(" + arguments + ")";
-            if (!callable.asynchronous && p.types()[r.type].name == "string") invocation = "gungnir::String(" + invocation + ")";
+            if (!callable.asynchronous && p.types()[r.type].name == "string" && !p.types()[r.type].optional) invocation = "gungnir::String(" + invocation + ")";
             // Queries and loaded values must outlive temporary receivers.
             // Schema definitions refer to objects owned by the enclosing
             // Table callback; preserve those references for chained modifiers.

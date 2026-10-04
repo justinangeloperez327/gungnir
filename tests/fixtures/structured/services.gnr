@@ -1,0 +1,88 @@
+controller ReportSource {
+    int calls = 0;
+    int next() { calls += 1; return calls; }
+}
+
+function Json namedSummary() { return {"kind": "named", "ratio": 3.0}; }
+function Cache retainCache(Cache cache) { return cache; }
+function Storage retainStorage(Storage storage) { return storage; }
+function StorageDisk retainDisk(Storage storage, string name) { return storage.disk(name); }
+function void cacheLifetime(Cache cache, int seconds) { cache.put("lifetime", {"value": 1}, seconds); }
+function Json cacheUnsigned(Cache cache, uint64 value) {
+    cache.put("unsigned", value);
+    return cache.get("unsigned") ?? {};
+}
+function Json cacheFloating(Cache cache, double value) {
+    cache.put("floating", value);
+    return cache.get("floating") ?? {};
+}
+function Json cacheOptional(Cache cache, string? value) {
+    cache.put("optional", value);
+    return cache.get("optional") ?? {};
+}
+model CachedProfile { fillable = ["name", "secret"]; hidden = ["secret"]; }
+function Json cacheProfile(Cache cache, CachedProfile profile) {
+    cache.put("profile", profile);
+    return cache.get("profile") ?? {};
+}
+function Json cacheOptionalProfile(Cache cache, CachedProfile? profile) {
+    cache.put("optional-profile", profile);
+    return cache.get("optional-profile") ?? {};
+}
+function Json cacheNested(Cache cache, Map<string, List<int?>>? value) {
+    cache.put("nested-optionals", value);
+    return cache.get("nested-optionals") ?? {};
+}
+
+controller ServiceController {
+    inject Cache cache;
+    inject Storage storage;
+    inject ReportSource reports;
+
+    store(Request request) { cache.put("payload", request.json(), 300); return noContent(); }
+    show(Request request) {
+        const value = cache.get("payload");
+        if (value != null) { return json(value); }
+        return noContent();
+    }
+    remember(Request request) {
+        const summary = cache.remember("summary", 300, () => {
+            cache.put("nested", [1, 2], 300);
+            return {"count": reports.next(), "ratio": 3.0};
+        });
+        return json(summary);
+    }
+    named(Request request) { return json(cache.remember("named", 300, namedSummary)); }
+    nullValue(Request request) { cache.put("null", null); return json(cache.has("null")); }
+    expired(Request request) { cache.put("zero", {"value": 1}, 0); return json(cache.has("zero")); }
+    forget(Request request) { return json(cache.forget("payload")); }
+    clear(Request request) { cache.flush(); return noContent(); }
+    fileStore(Request request) {
+        storage.put("report.bin", request.body());
+        return json({"exists": storage.exists("report.bin"), "size": storage.size("report.bin"), "files": storage.files()});
+    }
+    fileShow(Request request) { return text(storage.get("report.bin") ?? "missing"); }
+    archive(Request request) {
+        const disk = storage.disk("archive");
+        disk.put("monthly.csv", request.body());
+        return text(storage.disk("archive").get("monthly.csv") ?? "missing");
+    }
+    fileOperations(Request request) {
+        const copied = storage.copy("report.bin", "copy.bin");
+        const moved = storage.move("copy.bin", "moved.bin");
+        const size = storage.size("moved.bin");
+        const removed = storage.remove("moved.bin");
+        return json({"copied": copied, "moved": moved, "size": size, "removed": removed,
+            "source": storage.exists("report.bin"), "missing": storage.get("moved.bin")});
+    }
+}
+
+middleware CacheTrace {
+    inject Cache cache;
+    async handle(Request request, Next next) {
+        const before = cache.get("summary");
+        let result = await next(request);
+        cache.put("middleware", {"before": before != null, "after": cache.has("summary")});
+        return result.header("X-Cache", cache.has("summary") ? "warm" : "cold");
+    }
+}
