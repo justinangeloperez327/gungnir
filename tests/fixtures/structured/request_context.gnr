@@ -1,0 +1,66 @@
+model Account {
+    table = "accounts";
+    fillable = ["name"];
+    hidden = ["secret"];
+    string name;
+    string secret;
+}
+
+policy AccountPolicy {
+    view(Account actor, Account resource) { return actor.id == resource.id; }
+}
+
+function Session captureSession(Request request) { return request.session(); }
+function void writeCaptured(Session current, string value) { current.put("locale", value); }
+function AuthIdentity? identitySnapshot(Request request) { return request.user(); }
+function string sessionId(Request request) { return request.session().id(); }
+
+controller ContextAccount {
+    write(Request request) {
+        const current = request.session();
+        current.put("locale", "en");
+        current.flash("notice", "Saved");
+        return text("saved").cookie("theme", "silver", {"httpOnly": true, "sameSite": "Strict"});
+    }
+    read(Request request) {
+        return json({"locale": request.session().get("locale"),
+            "present": request.session().has("locale"),
+            "notice": request.session().flashed("notice"),
+            "values": request.session().values(), "id": request.session().id()});
+    }
+    forget(Request request) { request.session().forget("locale"); return text("forgotten"); }
+    clear(Request request) { request.session().clear(); return text("cleared"); }
+    rotate(Request request) { request.session().regenerate(); return text(request.session().id()); }
+    invalidate(Request request) { request.session().invalidate(); return text("invalidated"); }
+    user(Request request) {
+        const current = request.user();
+        if (current == null) { return text("guest", 401); }
+        return json({"id": current.id, "name": current.attributes["name"], "editor": current.role("editor")});
+    }
+    snapshot(Request request) { return json(request.user()); }
+    nestedSnapshot(Request request) { return json({"user": request.user()}); }
+    protectedAccount(Request request, Account account) {
+        authorize(request, "view", account);
+        return json(account);
+    }
+    expire() { return text("expired").withoutCookie("theme"); }
+    expireDomain() { return text("expired").withoutCookie("preference", "/", {"domain": "example.test", "secure": true}); }
+    expireHost() { return text("expired").withoutCookie("__Host-preference"); }
+    secureCookie() {
+        return text("secure").cookie("__Host-preference", "en", {"secure": true, "maxAge": 300});
+    }
+    sameSiteCookie() {
+        return text("secure").cookie("cross-site", "en", {"secure": true, "sameSite": "None", "domain": null});
+    }
+    dynamicCookie(Json options) { return text("dynamic").cookie("preference", "en", options); }
+}
+
+middleware RequireContextUser {
+    async handle(Request request, Next next) {
+        if (!request.authenticated()) { return redirect("/login"); }
+        const current = request.session();
+        current.put("visited", "true");
+        let result = await next(request);
+        return result.cookie("visited", "yes");
+    }
+}

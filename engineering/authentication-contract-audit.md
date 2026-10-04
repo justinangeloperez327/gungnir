@@ -1,8 +1,8 @@
 # Canonical authentication contract audit
 
-Baseline: `60caaf946a3445590a21c76c7b31d037382bba7f` on `main`, containing merged
-PRs #175 and #176. This batch is independent of the unmerged session/identity
-work in PR #177.
+Baseline: `261a262c4bc964f0b8c916287d6583fdb6a2fd4c` on `main`, containing merged
+PRs #175, #176 and #177. Authentication is integrated with the canonical session
+handles and identity snapshots.
 
 ## Proven contract gap
 
@@ -42,6 +42,20 @@ middleware. The password backend requires `GUNGNIR_WITH_PASSWORD=ON`; the
 installed config finds OpenSSL Crypto independently of TLS. Feature-disabled
 generated consumers receive an explicit runtime configuration error.
 
+## Integrated merge repair
+
+The #177 merge resolution removed existing request/response/JSON validator
+bindings, identity member and context-field restrictions, and session receiver
+lowering. Its Documentation, CI and Compiler Conformance jobs failed on the
+generated HTTP contract and public HTTP fragments at `d85cdd7d14af8015a40fd602666aaa661df2e4a7`.
+This batch restores the combined contracts, preserves ORM receiver ownership,
+and composes session and authentication serialization restrictions.
+
+The snapshot script also compared `first_program_hash` before initialization.
+The two generated outputs had identical SHA256 hashes. Removing that premature
+duplicate comparison retains the initialized comparison and the full
+GCC/Clang/MSVC output matrix.
+
 ## Acceptance evidence
 
 `tests/fixtures/structured/authentication.gnr` supplies login/logout controllers,
@@ -50,17 +64,21 @@ routes requests through them and checks validation errors, unknown accounts,
 wrong passwords, successful login, session fixation protection, final-response
 cookie effects, salted hashes, digest-only token storage, token rotation/replay
 rejection, logout revocation, disabled identity resolution and provider ownership.
+Canonical session writes persist after successful credential login. Guarded
+identity reads and owned JSON snapshots agree after login and remember recall;
+logout clears the identity and session data without exposing password material.
 Invalid calls must agree in emission and validation-only diagnostics and spans.
 The guide gate checks login/logout and password examples. Compiler CI compares
 authentication C++, validated AST and IR across GCC, Clang and MSVC; primary CI
 runs the password-enabled generated and installed consumers.
 
 Local GCC 13 Debug verification with SQLite and password hashing enabled, TLS
-disabled: **all 90 CTest checks pass** on the combined ORM/HTTP/authentication
+disabled: **all 92 CTest checks pass** on the combined ORM/HTTP/context/authentication
 branch, including installed CLI generators, migrations, live HTTP and dev
-restart. One damaged local routing executable was relinked before its successful
-rerun. Native public, generated ORM, HTTP and authentication consumers build and
-run against the installed package, which discovers OpenSSL Crypto independently.
+restart. Damaged local build artifacts were rebuilt before testing; the snapshot
+check passes after the merge repair described above. Native public, generated
+ORM, HTTP, context and authentication consumers are verified against the installed
+package, which discovers OpenSSL Crypto independently.
 **Three public credential/password examples pass
 strict validation**. Documentation/development checks and workflow YAML parsing
 pass. Scope regressions reject absent/mismatched middleware and calls after
@@ -69,8 +87,8 @@ and feature-disabled results are recorded in the PR after verification.
 
 ## Remaining product requirements
 
-PR #177 separately supplies owned identity snapshots and typed policy actor
-acceptance. This independent batch does not establish the integrated full
+Merged PR #177 supplies owned identity snapshots and typed policy actor
+acceptance. This batch does not establish the full
 application acceptance gate, a persistent remember-store adapter, active password
 backend execution on every platform, complete route assembly, uploads, other
 application services or live database/Redis matrices. The product matrix in PR

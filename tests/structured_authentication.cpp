@@ -169,7 +169,16 @@ int main() {
     assert(login.header("Location") == "/welcome");
     const auto signed_session = session_cookie(login);
     assert(signed_session != original && !authenticated(send(app.router(), "/status", original)));
-    assert(authenticated(send(app.router(), "/status", signed_session)));
+    const auto signed_status = send(app.router(), "/status", signed_session);
+    assert(authenticated(signed_status));
+    const auto signed_data = Json::parse(signed_status.body());
+    assert(signed_data.get("userId")->string() == "7");
+    assert(signed_data.get("loginState")->string() == "authenticated");
+    const auto* snapshot = signed_data.get("user");
+    assert(snapshot->get("id")->string() == "7");
+    assert(snapshot->get("roles")->as_array().front().string() == "editor");
+    assert(snapshot->get("attributes")->get("name")->string() == "Freya");
+    assert(snapshot->dump().find("password") == std::string::npos);
     assert(authenticated(send(app.router(), "/capture", signed_session)));
     assert(retained && retained->authenticated() && !retained->auth().active_guard());
     bool finished = false;
@@ -183,6 +192,7 @@ int main() {
     assert(tokens->last_digest == auth::Password::token_digest(remembered.value));
     const auto recalled = send(app.router(), "/status", "gungnir_remember=" + remembered.value);
     assert(authenticated(recalled));
+    assert(Json::parse(recalled.body()).get("userId")->string() == "7");
     const auto replacement = cookie(recalled, "gungnir_remember");
     assert(replacement.value != remembered.value && replacement.value.size() == 64);
     const auto replay = send(app.router(), "/status", "gungnir_remember=" + remembered.value);
@@ -191,7 +201,10 @@ int main() {
     const auto logout = send(app.router(), "/logout", recalled_session + "; gungnir_remember=" + replacement.value);
     assert(logout.header("Location") == "/login");
     assert(session_cookie(logout) != recalled_session && cookie(logout, "gungnir_remember").max_age->count() == 0);
-    assert(!authenticated(send(app.router(), "/status", recalled_session)));
+    const auto logged_out = send(app.router(), "/status", recalled_session);
+    assert(!authenticated(logged_out));
+    assert(Json::parse(logged_out.body()).get("user")->is_null());
+    assert(Json::parse(logged_out.body()).get("loginState")->string().empty());
     assert(!authenticated(send(app.router(), "/status", "gungnir_remember=" + replacement.value)));
     const auto ordinary = send(app.router(), "/login", {}, "email=freya%40example.test&password=correct-password");
     assert(cookie(ordinary, "gungnir_remember").max_age->count() == 0);

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <gungnir/core/cancellation.hpp>
+#include <gungnir/auth/auth.hpp>
 #include <gungnir/http/json.hpp>
 #include <gungnir/http/method.hpp>
 #include <gungnir/http/request_stream.hpp>
@@ -73,6 +74,7 @@ public:
     [[nodiscard]] bool has_session() const noexcept;
     [[nodiscard]] session::Session& session();
     [[nodiscard]] const session::Session& session() const;
+    [[nodiscard]] std::shared_ptr<session::Session> shared_session() const;
 
     [[nodiscard]] bool has_auth() const noexcept;
     [[nodiscard]] auth::Context& auth();
@@ -80,6 +82,7 @@ public:
     [[nodiscard]] bool authenticated() const noexcept;
     [[nodiscard]] bool guest() const noexcept;
     [[nodiscard]] const auth::Identity* user() const noexcept;
+    [[nodiscard]] std::optional<auth::Identity> current_user() const;
 
     void set_header(std::string name, std::string value);
     [[nodiscard]] std::string_view header(

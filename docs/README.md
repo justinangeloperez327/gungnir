@@ -99,7 +99,6 @@ These documents explain how Gungnir itself works. Application developers do not 
 
 - [Development Status](development-status.md)
 - [Framework Completeness Audit](framework-completeness-audit.md)
-- [Source-backed Product Contract Audit](../engineering/product-contract-audit.md)
+- [Request Context Contract Audit](../engineering/request-context-contract-audit.md)
 
-- [HTTP Contract Audit](../engineering/http-contract-audit.md)
 - [Authentication Contract Audit](../engineering/authentication-contract-audit.md)

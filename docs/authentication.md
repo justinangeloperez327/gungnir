@@ -73,6 +73,19 @@ const user = request.user();
 
 Applications can also test whether the request is authenticated or a guest.
 
+`user()` returns an owned `AuthIdentity?` snapshot. Guard a missing identity before accessing `id`, public `attributes`, or `role`:
+
+```gnr
+const user = request.user();
+if (user != null) {
+    const id = user.id;
+    const editor = user.role("editor");
+    const name = user.attributes["name"];
+}
+```
+
+Identity providers define the public attributes and resolve identities from user models. Password hashes remain in credential providers. JSON serialization includes the identity identifier, sorted roles, and public attributes. Snapshots remain valid after the request finishes; they do not modify the request's authentication context. Policies resolve the identity to their declared actor model through the configured actor resolver.
+
 ## Logout
 
 Logout clears authenticated state, rotates or invalidates the session as appropriate, and revokes remember-me credentials associated with the session.

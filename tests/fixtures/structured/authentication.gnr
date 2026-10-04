@@ -11,10 +11,17 @@ controller LoginController {
         if (!auth.attempt(request, credentials, request.input("remember") == "1")) {
             return redirect("/login");
         }
+        request.session().put("login-state", "authenticated");
         return redirect("/dashboard");
     }
     logout(Request request) { auth.logout(request); return redirect("/login"); }
-    status(Request request) { return json({"authenticated": request.authenticated(), "guest": request.guest()}); }
+    status(Request request) {
+        const identity = request.user();
+        let id = "";
+        if (identity != null) { id = identity.id; }
+        return json({"authenticated": request.authenticated(), "guest": request.guest(),
+            "userId": id, "user": identity, "loginState": request.session().get("login-state")});
+    }
     dynamicCredentials(Request request, Json credentials) { return json(auth.attempt(request, credentials)); }
     literalCredentials(Request request) {
         return json(auth.attempt(request, {"email": "freya@example.test", "password": "correct-password"}));
