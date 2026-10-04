@@ -81,13 +81,14 @@ class CppIrLoweringRenderer {
             if (callable.owner != invalid_id && (symbol(callable.owner).kind == ResolvedSymbolKind::local || symbol(callable.owner).kind == ResolvedSymbolKind::parameter)) target = access(callable.owner);
             bool receiver_argument = false;
             if (callee.kind == SyntaxExpressionKind::member) {
-                const auto rr = p.expressions()[callee.operands[0]]; const auto& sr = s.expressions[callee.operands[0]];
+                const auto receiver_id = r.receiver_expression == invalid_id ? callee.operands[0] : r.receiver_expression;
+                const auto rr = p.expressions()[receiver_id]; const auto& sr = s.expressions[receiver_id];
                 const bool is_static = sr.kind == SyntaxExpressionKind::name && rr.symbol != invalid_id && (symbol(rr.symbol).kind == ResolvedSymbolKind::declaration || symbol(rr.symbol).kind == ResolvedSymbolKind::builtin);
                 const bool injection = rr.symbol != invalid_id && symbol(rr.symbol).kind == ResolvedSymbolKind::injection;
                 if (!target.starts_with("gungnir::") && !target.starts_with("::")) {
                     if (is_static) target = expr(callee.operands[0]) + "::" + target;
-                    else { receiver = expr(callee.operands[0]); target = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" + std::string(injection ? "->" : ".") + target; }
-                } else if (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate")) { receiver = expr(callee.operands[0]); receiver_argument = true; }
+                    else { receiver = expr(receiver_id); target = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" + std::string(injection ? "->" : ".") + target; }
+                } else if (callable.receives_receiver || (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate"))) { receiver = expr(receiver_id); receiver_argument = true; }
             }
             // Braced tuple construction fixes evaluation order, including await
             // expressions, before named arguments are reordered for the call.
@@ -96,6 +97,14 @@ class CppIrLoweringRenderer {
             for (std::size_t i = 1; i < e.operands.size(); ++i) { if (tuple.back() != '{') tuple += ','; tuple += child(i); }
             tuple += '}';
             std::string arguments = receiver_argument ? "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" : "";
+            TypeId orm_model = invalid_id;
+            if (callable.kind == ResolvedSymbolKind::builtin && callee.kind == SyntaxExpressionKind::member) {
+                const auto receiver_type = p.expressions()[callee.operands[0]].type;
+                if (p.types()[receiver_type].name == "Query" || p.types()[receiver_type].name == "Collection") orm_model = p.types()[receiver_type].arguments[0];
+                else for (std::size_t d = 0; d < s.declarations.size(); ++d)
+                    if (s.declarations[d].kind == DeclarationKind::model && symbol(p.declarations()[d].symbol).type == receiver_type)
+                        orm_model = receiver_type;
+            }
             for (std::size_t i = 0; i < r.argument_order.size(); ++i) {
                 const auto index = r.argument_order[i];
                 if (index == invalid_id && callable.defaults[i] == invalid_id-1) continue;
@@ -103,7 +112,15 @@ class CppIrLoweringRenderer {
                 if (index == invalid_id) arguments += expr(callable.defaults[i]);
                 else {
                     auto value = convert("std::get<" + std::to_string(index + (receiver.empty() ? 0 : 1)) + ">(gnr_values)",r.argument_conversions[i],p.expressions()[e.operands[index+1]].type);
-                    if ((callable.name == "create" || callable.name == "update") && callee.kind == SyntaxExpressionKind::member && p.types()[p.expressions()[e.operands[index+1]].type].name == "Json") value = "gungnir::language::runtime::attributes(" + value + ")";
+                    if (orm_model != invalid_id) {
+                        if ((callable.name == "create" || callable.name == "update") && p.types()[p.expressions()[e.operands[index+1]].type].name == "Json")
+                            value = "gungnir::language::runtime::attributes<" + type(orm_model) + ">(" + value + ")";
+                        if (callable.name == "orderBy" && i == 1) value = "gungnir::language::runtime::sort_direction(" + value + ")";
+                        if ((callable.name == "where" || callable.name == "orWhere") && r.argument_order.size() == 3 && i == 1) value = "gungnir::language::runtime::comparison(" + value + ")";
+                        if ((callable.name == "whereIn" || callable.name == "whereNotIn") && i == 1) value = "gungnir::language::runtime::attribute_values(" + value + ")";
+                        if (callable.name == "paginate" || callable.name == "limit" || callable.name == "offset" || callable.name == "take" || callable.name == "skip" || callable.name == "at" || callable.name == "chunk") value = "gungnir::language::runtime::query_size(" + value + (callable.name == "paginate" || callable.name == "chunk" ? ", true" : "") + ")";
+                        if (((callable.name == "where" || callable.name == "orWhere") && i == r.argument_order.size()-1) || ((callable.name == "find" || callable.name == "findOrFail") && !callable.receives_receiver)) value = "gungnir::model::to_value(" + value + ")";
+                    }
                     arguments += value;
                 }
             }
@@ -761,6 +778,16 @@ public:
         }
 
         block << "public:\n";
+
+        for (const auto& relation : resolution.relationships) {
+            const auto& field = symbol(relation.field);
+            block << type(field.type) << ' ' << field.cpp_name << '{';
+            for (std::size_t k = 0; k < relation.keys.size(); ++k) {
+                if (k) block << ',';
+                block << quote(relation.keys[k]);
+            }
+            block << "};\n";
+        }
 
         if (
             declaration.kind ==
@@ -1489,9 +1516,13 @@ public:
                 << "),";
         }
 
-        block
-            << "}; inline static constexpr auto "
-               "relations = std::tuple{}; }; }\n";
+        block << "}; inline static constexpr auto relations = std::tuple{";
+        for (const auto& relation : p.declarations()[id].relationships) {
+            const auto& field = symbol(relation.field);
+            block << "relation(" << quote(field.name) << ",&" << qualified
+                  << "::" << field.cpp_name << "),";
+        }
+        block << "}; }; }\n";
 
         return CppIrDeclaration{
             CppIrDeclarationKind::model_metadata,
