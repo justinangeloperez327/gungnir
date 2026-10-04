@@ -31,12 +31,15 @@ int main() {
     const auto main=project.assemble();
     const auto route_file=root/"routes/web.gnr";
     auto generated_app=read(main);
-    assert(generated_app.find("gungnir::Route::get<HomeController>")!=std::string::npos);
-    assert(generated_app.find("&HomeController::index")!=std::string::npos);
+    assert(generated_app.find("::gnr::routes::web::gnr_register_routes(app)")!=std::string::npos);
+    assert(std::filesystem::is_regular_file(root/".gungnir/generated/routes.web.cpp"));
     write(route_file,"Route::get(\"/\", HomeController::index).middleware(SampleMiddleware);\n");
     (void)project.assemble();
-    generated_app=read(main);
-    assert(generated_app.find(".middleware<SampleMiddleware>()")!=std::string::npos);
+    const auto route_project=Compiler{}.compile_files(root,{root/"app/controllers/HomeController.gnr",root/"app/middleware/SampleMiddleware.gnr",route_file});
+    assert(route_project.success() && route_project.validated->routes().size()==1);
+    const auto& middleware=route_project.validated->routes().front().middleware;
+    assert(middleware.size()==1 && middleware.front().type!=invalid_id && middleware.front().alias.empty());
+    assert(route_project.validated->symbols()[middleware.front().type].name=="SampleMiddleware");
     write(route_file,"Route::get(path, HomeController::index);\n");
     bool invalid_route_rejected=false;
     try {(void)project.assemble();} catch(const std::runtime_error&) {invalid_route_rejected=true;}

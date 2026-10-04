@@ -372,7 +372,40 @@ public:
         declaration.relationships.push_back(std::move(value));
         return true;
     }
+    std::vector<SyntaxId> route_arguments() {
+        std::vector<SyntaxId> values;
+        need("(");
+        if (!is(")")) do { values.push_back(expression()); } while (take(","));
+        need(")");
+        return values;
+    }
+    RouteSyntax route() {
+        NestingGuard guard{*this};
+        RouteSyntax value; value.origin = origin();
+        need("Route"); need("::"); value.method = name();
+        value.arguments = route_arguments();
+        while (take(".")) {
+            RouteModifierSyntax modifier; modifier.origin = origin(); modifier.name = name();
+            if (modifier.name == "group") {
+                if (value.group) error("A route group has one callback", "GNR2320");
+                need("("); need("("); need(")"); need("=>"); need("{");
+                while (!is("}") && !end()) value.children.push_back(route());
+                need("}"); need(")"); value.group = true;
+                if (is(".")) error("group() must finish the route group", "GNR2320");
+            } else {
+                if (modifier.name == "middleware" && take("<")) {
+                    modifier.middleware_type = type(); need(">"); need("("); need(")");
+                } else modifier.arguments = route_arguments();
+                finish(modifier.origin); value.modifiers.push_back(std::move(modifier));
+            }
+        }
+        need(";"); finish(value.origin); return value;
+    }
     void declaration() {
+        if (is("Route")) {
+            result.project.modules[0].routes.push_back(result.project.routes.size());
+            result.project.routes.push_back(route()); return;
+        }
         const auto where = origin();
         take("export"); bool asynchronous = take("async");
         if (take("function")) {

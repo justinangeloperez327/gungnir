@@ -8,4 +8,4 @@ The public product manual is in [docs](../docs/README.md).
 - [Request-context contracts](request-context-contract-audit.md)
 - [Authentication contracts](authentication-contract-audit.md)
 - [Cache and storage contracts](services-contract-audit.md)
-
+- [Routing and model-binding contracts](routing-contract-audit.md)

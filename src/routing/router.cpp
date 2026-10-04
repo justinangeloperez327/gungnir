@@ -29,6 +29,40 @@ std::vector<std::string_view> split(std::string_view path) {
     return result;
 }
 
+std::optional<std::string> decode_parameter(std::string_view value) {
+    std::string result; result.reserve(value.size());
+    const auto hex = [](unsigned char c) -> int {
+        if (c >= '0' && c <= '9') return c-'0';
+        if (c >= 'a' && c <= 'f') return c-'a'+10;
+        if (c >= 'A' && c <= 'F') return c-'A'+10;
+        return -1;
+    };
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        unsigned char c = value[i];
+        if (c == '%') {
+            if (i+2 >= value.size()) return {};
+            const auto high = hex(value[i+1]), low = hex(value[i+2]);
+            if (high < 0 || low < 0) return {};
+            c = static_cast<unsigned char>((high << 4) | low); i += 2;
+        }
+        if (c < 32 || c == 127) return {};
+        result += static_cast<char>(c);
+    }
+    return result;
+}
+
+std::string encode_parameter(std::string_view value) {
+    if (value.empty()) throw std::invalid_argument("Named route parameters cannot be empty");
+    static constexpr char hex[] = "0123456789ABCDEF";
+    std::string result;
+    for (unsigned char c : value) {
+        if (c < 32 || c == 127) throw std::invalid_argument("Named route parameters cannot contain control characters");
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~') result += static_cast<char>(c);
+        else { result += '%'; result += hex[c >> 4]; result += hex[c & 15]; }
+    }
+    return result;
+}
+
 bool match(const RouteEntry& route, std::string_view actual, http::Request::Parameters& parameters) {
     const auto expected = split(route.path);
     const auto found = split(actual);
@@ -38,9 +72,11 @@ bool match(const RouteEntry& route, std::string_view actual, http::Request::Para
         if (segment.size() >= 3 && segment.front() == '{' && segment.back() == '}') {
             const std::string name{segment.substr(1, segment.size() - 2)};
             if (name.empty()) return false;
+            auto value = decode_parameter(found[i]);
+            if (!value) return false;
             if (const auto constraint = route.constraints.find(name); constraint != route.constraints.end() &&
-                !std::regex_match(found[i].begin(), found[i].end(), constraint->second)) return false;
-            parameters.insert_or_assign(name, std::string{found[i]});
+                !std::regex_match(value->begin(), value->end(), constraint->second)) return false;
+            parameters.insert_or_assign(name, std::move(*value));
         } else if (segment != found[i]) return false;
     }
     return true;
@@ -139,9 +175,18 @@ void Router::set_constraint(std::size_t i,std::string p,std::string e){if(i>=imp
 
 std::string Router::url(std::string_view name,const std::unordered_map<std::string,std::string>& parameters) const {
     for(const auto& route:impl_->routes) if(route.name==name){
-        auto result=route.path;
-        for(const auto& [key,value]:parameters){const auto token="{"+key+"}";if(auto pos=result.find(token);pos!=std::string::npos)result.replace(pos,token.size(),value);}
-        if(result.find('{')!=std::string::npos)throw std::invalid_argument("Missing named route parameter");
+        std::string result;
+        for (std::size_t begin = 0; begin < route.path.size();) {
+            const auto opening = route.path.find('{',begin);
+            if (opening == std::string::npos) { result += route.path.substr(begin); break; }
+            result += route.path.substr(begin,opening-begin);
+            const auto closing = route.path.find('}',opening+1);
+            if (closing == std::string::npos) throw std::invalid_argument("Invalid named route parameter");
+            const auto key = route.path.substr(opening+1,closing-opening-1);
+            const auto value = parameters.find(key);
+            if (value == parameters.end()) throw std::invalid_argument("Missing named route parameter");
+            result += encode_parameter(value->second); begin = closing+1;
+        }
         return result;
     }
     throw std::out_of_range("Unknown named route: "+std::string{name});

@@ -181,11 +181,23 @@ void append(SyntaxProject& target, SyntaxProject source) {
     const auto m = target.modules.size(), d = target.declarations.size(), e = target.expressions.size(), s = target.statements.size();
     auto expression = [&](SyntaxId& id) { if (id != invalid_id) id += e; };
     auto statements = [&](auto& ids) { for (auto& id : ids) id += s; };
-    for (auto& module : source.modules) for (auto& id : module.declarations) id += d;
+    const auto r = target.routes.size();
+    for (auto& module : source.modules) {
+        for (auto& id : module.declarations) id += d;
+        for (auto& id : module.routes) id += r;
+    }
+    const auto remap_route = [&](auto&& self, RouteSyntax& route) -> void {
+        route.module += m;
+        for (auto& id : route.arguments) expression(id);
+        for (auto& modifier : route.modifiers) for (auto& id : modifier.arguments) expression(id);
+        for (auto& child : route.children) self(self, child);
+    };
+    for (auto& route : source.routes) remap_route(remap_route, route);
     for (auto& declaration : source.declarations) {
         declaration.module += m;
         for (auto& field : declaration.fields) expression(field.initializer);
         for (auto& metadata : declaration.metadata) expression(metadata.value);
+        for (auto& relation : declaration.relationships) for (auto& argument : relation.arguments) expression(argument);
         for (auto& callable : declaration.methods) { statements(callable.body); for (auto& parameter : callable.parameters) expression(parameter.default_value); }
     }
     for (auto& node : source.expressions) { for (auto& id : node.operands) expression(id); statements(node.body); for (auto& parameter : node.parameters) expression(parameter.default_value); }
@@ -194,6 +206,7 @@ void append(SyntaxProject& target, SyntaxProject source) {
     target.declarations.insert(target.declarations.end(),std::make_move_iterator(source.declarations.begin()),std::make_move_iterator(source.declarations.end()));
     target.expressions.insert(target.expressions.end(),std::make_move_iterator(source.expressions.begin()),std::make_move_iterator(source.expressions.end()));
     target.statements.insert(target.statements.end(),std::make_move_iterator(source.statements.begin()),std::make_move_iterator(source.statements.end()));
+    target.routes.insert(target.routes.end(),std::make_move_iterator(source.routes.begin()),std::make_move_iterator(source.routes.end()));
 }
 }
 CompilationResult Compiler::compile_sources(std::vector<SourceFile> files, const CompilerOptions& options) const {
@@ -244,6 +257,12 @@ std::string dump_validated(const ValidatedProject& project) {
     for (auto id : project.module_order()) out << "module " << project.syntax().modules[id].name << '\n';
     for (std::size_t i = 0; i < project.symbols().size(); ++i) { const auto& symbol = project.symbols()[i]; out << "symbol " << i << ' ' << symbol.cpp_name << " : " << project.types()[symbol.type].name << '\n'; }
     for (std::size_t i = 0; i < project.expressions().size(); ++i) out << "expression " << i << " : " << project.types()[project.expressions()[i].type].name << '\n';
+    for (const auto& route : project.routes()) {
+        out << "route " << project.syntax().modules[route.module].name << ' ' << route.method << ' ' << route.path << ' ' << route.name << ' ' << project.symbols()[route.controller].cpp_name << "::" << project.symbols()[route.action].cpp_name << '\n';
+        for (const auto& parameter : route.parameters) out << "  parameter " << parameter << '\n';
+        for (const auto& middleware : route.middleware) out << "  middleware " << (middleware.type == invalid_id ? middleware.alias : project.symbols()[middleware.type].cpp_name) << '\n';
+        for (const auto& constraint : route.constraints) out << "  constraint " << constraint.parameter << ' ' << constraint.expression << '\n';
+    }
     return out.str();
 }
 }

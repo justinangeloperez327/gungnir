@@ -1,9 +1,6 @@
 #include <gungnir/cli/project.hpp>
 #include <gungnir/language/compiler.hpp>
-#include <gungnir/language/semantic.hpp>
 #include <gungnir/language/module.hpp>
-#include <gungnir/language/lexer.hpp>
-#include <gungnir/language/parser.hpp>
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
@@ -27,79 +24,13 @@ void write(const std::filesystem::path& path,const std::string& content) {
     if (!out) throw std::runtime_error("Unable to write " + path.string());
 }
 std::string quote(const std::string& value) { std::ostringstream out; out << std::quoted(value); return out.str(); }
-std::vector<std::filesystem::path> files(const std::filesystem::path& root) {
-    std::vector<std::filesystem::path> result;
-    if (std::filesystem::is_directory(root)) for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
-        if (entry.is_regular_file() && entry.path().extension() == ".gnr") result.push_back(entry.path());
-    std::sort(result.begin(),result.end()); return result;
-}
 void check(const std::vector<language::Diagnostic>& diagnostics) {
     std::string message;
     for (const auto& d : diagnostics) if (d.level == language::DiagnosticLevel::error)
         message += d.location.file + ":" + std::to_string(d.location.line) + ":" + std::to_string(d.location.column) + " [" + d.code + "]: " + d.message + "\n";
     if (!message.empty()) throw std::runtime_error(message);
 }
-std::string route_method_name(language::RouteMethodKind method) {
-    using Method = language::RouteMethodKind;
-    switch (method) {
-    case Method::get: return "get";
-    case Method::post: return "post";
-    case Method::put: return "put";
-    case Method::patch: return "patch";
-    case Method::remove: return "remove";
-    case Method::options: return "options";
-    case Method::head: return "head";
-    }
-    throw std::logic_error("Unknown route method");
-}
-std::string compile_routes(
-    const std::filesystem::path& path,
-    const language::SemanticIndex& index
-) {
-    const auto source = read(path);
-    std::vector<language::Diagnostic> diagnostics;
-    const auto tokens = language::Lexer{source}.tokenize(
-        &diagnostics,
-        path.generic_string()
-    );
-    language::Parser parser{tokens,path.generic_string()};
-    auto parsed = parser.parse();
-    diagnostics.insert(
-        diagnostics.end(),
-        parsed.diagnostics.begin(),
-        parsed.diagnostics.end()
-    );
-    const auto semantic = language::SemanticAnalyzer{}.analyze(
-        parsed.program,
-        path.generic_string(),
-        &index
-    );
-    diagnostics.insert(diagnostics.end(),semantic.begin(),semantic.end());
-    check(diagnostics);
 
-    std::string output;
-    for (const auto& node : parsed.program.nodes) {
-        const auto* route = std::get_if<language::RouteDeclaration>(&node);
-        if (!route) continue;
-        if (!route->literal_uri) {
-            check({language::Diagnostic{
-                language::DiagnosticLevel::error,
-                {path.generic_string(),route->route_span.line,route->route_span.column},
-                "Route URI must be one string literal",
-                "GNR1302",
-                "Use Route::get(\"/path\", Controller::action)."
-            }});
-        }
-        output += "gungnir::Route::" + route_method_name(route->method) +
-            "<" + route->controller_name + ">(" +
-            quote(route->uri) + ",&" + route->controller_name + "::" +
-            route->action_name + ")";
-        if (route->has_middleware)
-            output += ".middleware<" + route->middleware_type + ">()";
-        output += ";\n";
-    }
-    return output;
-}
 }
 std::string bootstrap_template() {
     return R"cpp(#pragma once
@@ -181,7 +112,7 @@ std::filesystem::path Project::assemble_structured() const {
     std::vector<std::filesystem::path> sources;
     for (auto it = std::filesystem::recursive_directory_iterator(root_); it != std::filesystem::recursive_directory_iterator{}; ++it) {
         const auto name = it->path().filename().string();
-        if (it->is_directory() && (name == ".git" || name == ".gungnir" || name == "build" || name == "vendor" || name == "routes" || name == "storage")) { it.disable_recursion_pending(); continue; }
+        if (it->is_directory() && (name == ".git" || name == ".gungnir" || name == "build" || name == "vendor" || name == "storage")) { it.disable_recursion_pending(); continue; }
         if (it->is_regular_file() && it->path().extension() == ".gnr") sources.push_back(it->path());
     }
     const auto result = language::Compiler{}.compile_files(root_,sources);
@@ -224,7 +155,6 @@ target_link_libraries(app PRIVATE program)
 target_link_libraries(migrations PRIVATE program)
 )cmake";
     outputs[root_ / ".gungnir/CMakeLists.txt"] = cmake;
-    language::SemanticIndex index; index.closed_world = true;
     std::map<std::string,std::size_t> counts;
     for (const auto& decl : syntax.declarations) if (decl.kind != language::DeclarationKind::function) ++counts[decl.name];
     std::string aliases, registrations, factories, middleware;
@@ -237,20 +167,6 @@ target_link_libraries(migrations PRIVATE program)
         if (decl.kind == Kind::function) continue;
         if (counts[decl.name] == 1) {
             aliases += "using " + decl.name + " = " + qualified + ";\n";
-            auto base = language::FrameworkBaseKind::event;
-            if (decl.kind == Kind::controller) base = language::FrameworkBaseKind::controller;
-            if (decl.kind == Kind::model) base = language::FrameworkBaseKind::model;
-            if (decl.kind == Kind::middleware) base = language::FrameworkBaseKind::middleware;
-            if (decl.kind == Kind::migration) base = language::FrameworkBaseKind::migration;
-            index.types[decl.name] = base;
-            index.declaration_sources[decl.name].insert(decl.origin.file);
-            for (const auto& method : decl.methods) if (method.visibility == language::Visibility::public_) {
-                index.actions[decl.name].insert(method.name);
-                language::SemanticIndex::MethodSignature signature;
-                for (const auto& parameter : method.parameters) signature.parameters.push_back(parameter.type.name);
-                signature.return_type = method.result.name;
-                index.methods[decl.name + "::" + method.name].push_back(std::move(signature));
-            }
         }
         if (decl.kind == Kind::controller || decl.kind == Kind::middleware || decl.kind == Kind::listener || decl.kind == Kind::policy) {
             factories += "if (!app.container().has<" + qualified + ">()) app.bind<" + qualified + ">([](gungnir::Container& c) { return construct<" + qualified + ">(c); });\n";
@@ -297,8 +213,12 @@ inline void configure(gungnir::Application& app) {
 )cpp" + factories + middleware + "app.on_boot([](gungnir::Application& app) {\n" + registrations + "bootstrap::boot(app);\n});\n}\n}\n";
     outputs[generated / "bootstrap.hpp"] = bootstrap;
     std::string app = "#include \"bootstrap.hpp\"\n#include <iostream>\nint main() { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";
-    for (const auto& path : files(root_ / "routes"))
-        app += compile_routes(path,index) + "\n";
+    for (auto module : project.module_order()) {
+        if (syntax.modules[module].routes.empty()) continue;
+        std::string scope;
+        for (char c : syntax.modules[module].name) scope += c == '.' ? "::" : std::string{c};
+        app += (scope.empty() ? "::" : "::gnr::" + scope + "::") + "gnr_register_routes(app);\n";
+    }
     app += "app.run();\nreturn 0;\n} catch (const std::exception& e) { std::cerr << e.what() << '\\n'; return 1; } }\n";
     outputs[generated / "app.cpp"] = app;
     std::string migration = "#include \"bootstrap.hpp\"\n#include <gungnir/migration/runner.hpp>\n#include <iostream>\nint main(int argc,char** argv) { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";

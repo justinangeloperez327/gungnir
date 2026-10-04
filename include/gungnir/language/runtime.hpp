@@ -8,11 +8,23 @@
 #include <charconv>
 #include <gungnir/auth/resource_authorization.hpp>
 #include <gungnir/http/errors.hpp>
+#include <gungnir/routing/controller_binding.hpp>
 #include <condition_variable>
 #include <mutex>
 #include <stdexcept>
 #include <vector>
 namespace gungnir::language::runtime {
+inline bool route_has(const String& name) { return routing::detail::route_router().has(name); }
+inline String route_url(const String& name, const Json& parameters = Json::object({})) {
+    if (!parameters.is_object()) throw std::invalid_argument("URL parameters must be an object");
+    std::unordered_map<String,String> values;
+    for (const auto& [key,value] : parameters.as_object()) {
+        if (value.is_string()) values.emplace(key,value.string());
+        else if (value.is_number() || value.is_boolean()) values.emplace(key,value.dump());
+        else throw std::invalid_argument("URL parameters require scalar values");
+    }
+    return routing::detail::route_router().url(name,values);
+}
 struct Authentication {};
 inline constexpr Authentication authentication_api{};
 inline bool auth_attempt(Request& request, const Json& credentials, bool remember = false) {

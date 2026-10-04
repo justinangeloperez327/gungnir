@@ -276,6 +276,23 @@ private:
             };
 
         switch (statement.kind) {
+        case CppIrStatementKind::route_registration:
+            if (coroutine) error("C++ IR route registration appears in a coroutine");
+            if (statement.route >= project_.routes.size()) error("invalid C++ IR route id");
+            else {
+                const auto& route = project_.routes[statement.route];
+                if (!route.controller.valid() || route.action.empty()) error("C++ IR route has no controller action");
+                if (route.method < CppIrRouteMethod::get || route.method > CppIrRouteMethod::fallback) error("invalid C++ IR route method");
+                if (route.method != CppIrRouteMethod::fallback && !route.path.starts_with('/')) error("C++ IR route has no absolute path");
+                for (const auto& parameter : route.parameters) {
+                    if (!parameter.type.valid() || parameter.name.empty()) error("C++ IR route binding has no type or name");
+                    if (parameter.binding < CppIrRouteBinding::request || parameter.binding > CppIrRouteBinding::model) error("invalid C++ IR route binding kind");
+                    if (parameter.binding == CppIrRouteBinding::request && parameter.type.spelling != "gungnir::Request") error("C++ IR request binding has the wrong type");
+                }
+                for (const auto& middleware : route.middleware) if (middleware.type.valid() == !middleware.alias.empty()) error("C++ IR route middleware needs one type or alias");
+                if (route.method == CppIrRouteMethod::fallback && (!route.path.empty() || !route.name.empty() || !route.middleware.empty() || !route.constraints.empty())) error("C++ IR fallback has route-only options");
+            }
+            break;
         case CppIrStatementKind::binding:
             if (statement.name.empty()) {
                 error(
