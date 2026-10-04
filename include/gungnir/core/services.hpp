@@ -9,6 +9,7 @@
 #include <gungnir/notifications/adapters.hpp>
 #include <gungnir/storage/manager.hpp>
 #include <gungnir/auth/resource_authorization.hpp>
+#include <gungnir/auth/login.hpp>
 
 namespace gungnir {
 struct ServiceOptions {
@@ -18,6 +19,7 @@ struct ServiceOptions {
     mail::Address sender;
     std::shared_ptr<storage::Manager> storage;
     bool database_notifications{false};
+    std::shared_ptr<auth::SessionGuard> authentication;
 };
 // Explicit adapters are registered during application bootstrap. No network
 // clients or worker threads are started merely by constructing an application.
@@ -28,6 +30,8 @@ public:
         auto& container = app.container();
         container.instance<events::Dispatcher>(std::make_shared<events::Dispatcher>());
         container.instance<auth::ResourceAuthorization>(std::make_shared<auth::ResourceAuthorization>());
+        if (options_.authentication)
+            container.instance<auth::SessionGuard>(options_.authentication);
         auto notifications = std::make_shared<notifications::Manager>();
         if (options_.cache) {
             container.instance<cache::Store>(options_.cache);

@@ -102,3 +102,4 @@ These documents explain how Gungnir itself works. Application developers do not 
 - [Source-backed Product Contract Audit](../engineering/product-contract-audit.md)
 
 - [HTTP Contract Audit](../engineering/http-contract-audit.md)
+- [Authentication Contract Audit](../engineering/authentication-contract-audit.md)

@@ -69,6 +69,14 @@ public:
         this->login(request, response, account->identity, remember);
         return true;
     }
+    bool attempt(http::Request& request, std::string_view login,
+        std::string_view password, bool remember = false) const {
+        require_context(request);
+        http::Response response;
+        const bool result = attempt(request, response, login, password, remember);
+        stage(request, response);
+        return result;
+    }
     void login(http::Request& request, http::Response& response, Identity identity, bool remember = false) const {
         if (!request.has_session()) throw std::logic_error("Login requires session middleware");
         if (identity.id.empty()) throw std::invalid_argument("Login identity cannot be empty");
@@ -94,6 +102,13 @@ public:
         login(request, response, *identity, true);
         return true;
     }
+    bool recall(http::Request& request) const {
+        require_context(request);
+        http::Response response;
+        const bool result = recall(request, response);
+        stage(request, response);
+        return result;
+    }
     void logout(http::Request& request, http::Response& response) const {
         if (!request.has_session()) throw std::logic_error("Logout requires session middleware");
         revoke(request);
@@ -101,7 +116,43 @@ public:
         if (request.has_auth()) request.auth().logout();
         expire(response);
     }
+    void logout(http::Request& request) const {
+        require_context(request);
+        http::Response response;
+        logout(request, response);
+        stage(request, response);
+    }
+    static http::MiddlewareHandler middleware(std::shared_ptr<SessionGuard> current) {
+        if (!current) throw std::invalid_argument("Session guard middleware requires a guard");
+#ifdef GUNGNIR_WITH_PASSWORD
+        return [current = std::move(current)](http::Request& request, http::Next next) -> Task<http::Response> {
+            if (!request.has_session() || !request.has_auth())
+                throw std::logic_error("Session guard requires session and authentication middleware");
+            const auto context = request.auth_;
+            context->begin_guard(current.get());
+            struct Finish {
+                std::shared_ptr<Context> context;
+                ~Finish() { context->end_guard(); }
+            } finish{context};
+            (void)current->recall(request);
+            auto response = co_await next(request);
+            for (auto& cookie : context->take_cookies()) response.cookie(std::move(cookie));
+            co_return response;
+        };
+#else
+        throw std::logic_error("Session guard middleware requires GUNGNIR_WITH_PASSWORD");
+#endif
+    }
 private:
+    void require_context(const http::Request& request) const {
+        if (!request.has_session() || !request.has_auth())
+            throw std::logic_error("Session guard requires session and authentication middleware");
+        if (request.auth().active_guard() != this)
+            throw std::logic_error("Session guard requires its configured guard middleware");
+    }
+    static void stage(http::Request& request, const http::Response& response) {
+        for (const auto& cookie : response.cookies()) request.auth().stage_cookie(cookie);
+    }
     void revoke(http::Request& request) const {
         if (remember_) {
             const auto digest = request.session().get("_gungnir_remember_digest");
@@ -126,4 +177,10 @@ private:
     std::shared_ptr<RememberStore> remember_;
     LoginOptions options_;
 };
+
+// Run after session and AuthenticateSession middleware. The shared owner keeps
+// the configured providers and token store alive across suspended requests.
+inline http::MiddlewareHandler guard(std::shared_ptr<SessionGuard> current) {
+    return SessionGuard::middleware(std::move(current));
+}
 }

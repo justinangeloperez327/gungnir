@@ -3,10 +3,14 @@
 #include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include <gungnir/auth/auth.hpp>
+#include <gungnir/http/cookie.hpp>
 
 namespace gungnir::auth {
+
+class SessionGuard;
 
 class Context {
 public:
@@ -82,9 +86,33 @@ public:
         dirty_ = false;
     }
 
+    void stage_cookie(http::Cookie cookie) {
+        if (!active_guard_) throw std::logic_error("Cookie staging requires guard middleware");
+        (void)http::serialize_cookie(cookie);
+        cookies_.push_back(std::move(cookie));
+    }
+
+    void begin_guard(const SessionGuard* owner) {
+        if (!owner || active_guard_) throw std::logic_error("Guard middleware must be installed once per request");
+        active_guard_ = owner;
+    }
+
+    void end_guard() noexcept {
+        cookies_.clear();
+        active_guard_ = nullptr;
+    }
+
+    [[nodiscard]] const SessionGuard* active_guard() const noexcept { return active_guard_; }
+
+    [[nodiscard]] std::vector<http::Cookie> take_cookies() {
+        return std::exchange(cookies_, {});
+    }
+
 private:
     std::optional<Identity> identity_;
     bool dirty_{false};
+    std::vector<http::Cookie> cookies_;
+    const SessionGuard* active_guard_{nullptr};
 };
 
 } // namespace gungnir::auth

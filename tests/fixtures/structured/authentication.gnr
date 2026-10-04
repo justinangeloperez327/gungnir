@@ -1,0 +1,31 @@
+function string hashPassword(string plain) { return Password::hash(plain); }
+function bool checkPassword(string plain, string encoded) { return Password::verify(plain, encoded); }
+function bool rehashPassword(string encoded) { return Password::needsRehash(encoded); }
+
+controller LoginController {
+    store(Request request) {
+        const credentials = request.validate({
+            "email": "required|email",
+            "password": "required|string"
+        });
+        if (!auth.attempt(request, credentials, request.input("remember") == "1")) {
+            return redirect("/login");
+        }
+        return redirect("/dashboard");
+    }
+    logout(Request request) { auth.logout(request); return redirect("/login"); }
+    status(Request request) { return json({"authenticated": request.authenticated(), "guest": request.guest()}); }
+    dynamicCredentials(Request request, Json credentials) { return json(auth.attempt(request, credentials)); }
+    literalCredentials(Request request) {
+        return json(auth.attempt(request, {"email": "freya@example.test", "password": "correct-password"}));
+    }
+}
+
+middleware AuthenticationTrace {
+    async handle(Request request, Next next) {
+        const wasGuest = request.guest();
+        let result = await next(request);
+        if (wasGuest && request.authenticated()) { return redirect("/welcome"); }
+        return result;
+    }
+}

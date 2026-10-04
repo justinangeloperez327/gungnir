@@ -7,11 +7,60 @@
 #include <gungnir/queue/worker.hpp>
 #include <charconv>
 #include <gungnir/auth/resource_authorization.hpp>
+#include <gungnir/http/errors.hpp>
 #include <condition_variable>
 #include <mutex>
 #include <stdexcept>
 #include <vector>
 namespace gungnir::language::runtime {
+struct Authentication {};
+inline constexpr Authentication authentication_api{};
+inline bool auth_attempt(Request& request, const Json& credentials, bool remember = false) {
+#ifdef GUNGNIR_WITH_PASSWORD
+    if (!credentials.is_object()) throw http::BadRequestException("Credentials must be an object");
+    const auto* email = credentials.get("email");
+    const auto* password = credentials.get("password");
+    if (!email || !email->is_string() || !password || !password->is_string())
+        throw http::BadRequestException("Credentials require email and password strings");
+    auto guard = request.services().resolve<gungnir::auth::SessionGuard>();
+    return guard->attempt(request, email->string(), password->string(), remember);
+#else
+    (void)request; (void)credentials; (void)remember;
+    throw std::logic_error("Authentication requires GUNGNIR_WITH_PASSWORD");
+#endif
+}
+inline void auth_logout(Request& request) {
+#ifdef GUNGNIR_WITH_PASSWORD
+    request.services().resolve<gungnir::auth::SessionGuard>()->logout(request);
+#else
+    (void)request;
+    throw std::logic_error("Authentication requires GUNGNIR_WITH_PASSWORD");
+#endif
+}
+inline String password_hash(const String& password) {
+#ifdef GUNGNIR_WITH_PASSWORD
+    return gungnir::auth::Password::hash(password);
+#else
+    (void)password;
+    throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
+#endif
+}
+inline bool password_verify(const String& password, const String& encoded) {
+#ifdef GUNGNIR_WITH_PASSWORD
+    return gungnir::auth::Password::verify(password, encoded);
+#else
+    (void)password; (void)encoded;
+    throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
+#endif
+}
+inline bool password_needs_rehash(const String& encoded) {
+#ifdef GUNGNIR_WITH_PASSWORD
+    return gungnir::auth::Password::needs_rehash(encoded);
+#else
+    (void)encoded;
+    throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
+#endif
+}
 inline Json validate(Request& request, const Json& definitions) {
     if (!definitions.is_object()) throw std::invalid_argument("Validation rules must be an object");
     validation::Rules rules;

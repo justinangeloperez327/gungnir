@@ -22,12 +22,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libsqlite3-dev
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libsqlite3-dev libssl-dev
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DGUNGNIR_WITH_SQLITE=ON
+          -DGUNGNIR_WITH_PASSWORD=ON
       - name: Build validation targets
         run: >
           cmake --build build --parallel 2 --target
@@ -39,6 +40,7 @@ jobs:
           gungnir_compiler_correctness_test gungnir_compiler_stability_test
           gungnir_compiler_robustness_test gungnir_structured_generated_test
           gungnir_structured_http_test
+          gungnir_structured_authentication_test
           gungnir_language_test
           gungnir_runtime_safety_test gungnir_timer_runtime_test
           gungnir_http_reactor_test gungnir_http_server_test
@@ -58,7 +60,7 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|language|cli|docs_orm_examples|docs_http_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
+          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_authentication|docs_auth_examples|structured_http|language|cli|docs_orm_examples|docs_http_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
       - name: Build and run generated ORM against the installed package
         run: |
           cmake --install build --prefix "$RUNNER_TEMP/gungnir-orm"
@@ -80,6 +82,16 @@ jobs:
           cmake --build build/install-http --parallel 2
           ./build/install-http/gungnir_install_smoke
           ./build/install-http/gungnir_installed_http
+      - name: Build and run generated authentication against installed package
+        run: |
+          cmake --install build --prefix "$PWD/build/install"
+          cmake -S tests/install_smoke -B build/install-authentication -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="$PWD/build/install" \
+            -DGUNGNIR_STRUCTURED_AUTH_GENERATED="$PWD/build/generated/structured_authentication_program.cpp"
+          cmake --build build/install-authentication --parallel 2
+          ./build/install-authentication/gungnir_install_smoke
+          ./build/install-authentication/gungnir_installed_authentication
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja
