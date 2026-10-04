@@ -73,6 +73,11 @@ run_gungnirc(
     --no-line-directives
 )
 
+set(http "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/http.gnr")
+run_gungnirc("http.cpp" "${http}" --strict --no-line-directives)
+run_gungnirc("http.validated" "${http}" --dump-validated-ast --no-line-directives)
+run_gungnirc("http.ir" "${http}" --dump-cpp-ir --no-line-directives)
+
 file(
     SHA256
     "${GUNGNIR_OUTPUT_DIR}/program.cpp"
@@ -94,7 +99,7 @@ file(WRITE
     "program.cpp ${first_program_hash}\n"
 )
 
-foreach(file_name IN ITEMS program.validated program.ir modules.cpp)
+foreach(file_name IN ITEMS program.validated program.ir modules.cpp http.cpp http.validated http.ir)
     file(SHA256 "${GUNGNIR_OUTPUT_DIR}/${file_name}" file_hash)
     file(APPEND
         "${GUNGNIR_OUTPUT_DIR}/manifest.txt"

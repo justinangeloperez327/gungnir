@@ -11,6 +11,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "tools/check_docs.py"
+      - "tests/docs_http_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -27,6 +28,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "tools/check_docs.py"
+      - "tests/docs_http_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -70,6 +72,10 @@ jobs:
           ./build-docs/gungnirc
           examples/hello/app/controllers/HomeController.gnr
           --check
+
+      - name: Validate public HTTP examples
+        # Guide fragments use the same strict semantic path as application code.
+        run: python3 tests/docs_http_examples.py ./build-docs/gungnirc
 
       - name: Emit canonical example C++
         run: >

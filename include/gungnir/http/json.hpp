@@ -60,6 +60,7 @@ public:
     [[nodiscard]] const Array& as_array() const;
     [[nodiscard]] const Object& as_object() const;
     [[nodiscard]] const Json* get(std::string_view key) const noexcept;
+    [[nodiscard]] std::optional<Json> find(std::string_view key) const;
 
     [[nodiscard]] String string() const;
     [[nodiscard]] String dump() const;

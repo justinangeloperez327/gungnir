@@ -109,7 +109,14 @@ class CppIrLoweringRenderer {
             }
             auto invocation = target + "(" + arguments + ")";
             if (!callable.asynchronous && p.types()[r.type].name == "string") invocation = "gungnir::String(" + invocation + ")";
-            return "([&](auto&& gnr_values) -> decltype(auto) { return " + invocation + "; }(" + tuple + "))";
+            // Queries and loaded values must outlive temporary receivers.
+            // Schema definitions refer to objects owned by the enclosing
+            // Table callback; preserve those references for chained modifiers.
+            const auto& result_name = p.types()[r.type].name;
+            const bool schema_reference = result_name == "ColumnDefinition" ||
+                result_name == "IndexDefinition" || result_name == "ForeignKeyDefinition";
+            const auto result_type = callable.asynchronous || schema_reference ? "decltype(auto)" : type(r.type);
+            return "([&](auto&& gnr_values) -> " + result_type + " { return " + invocation + "; }(" + tuple + "))";
         }
         }
         return {};

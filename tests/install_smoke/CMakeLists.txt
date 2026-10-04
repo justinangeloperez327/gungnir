@@ -40,3 +40,11 @@ target_link_libraries(
         gungnir::orm
         gungnir::language
 )
+
+if(DEFINED GUNGNIR_STRUCTURED_HTTP_GENERATED)
+    get_filename_component(http_generated_dir "${GUNGNIR_STRUCTURED_HTTP_GENERATED}" DIRECTORY)
+    add_executable(gungnir_installed_http ../structured_http.cpp)
+    target_include_directories(gungnir_installed_http PRIVATE "${http_generated_dir}")
+    target_compile_features(gungnir_installed_http PRIVATE cxx_std_23)
+    target_link_libraries(gungnir_installed_http PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+endif()

@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include <gungnir/core/cancellation.hpp>
 #include <gungnir/http/json.hpp>
@@ -51,6 +52,7 @@ public:
     );
 
     [[nodiscard]] Method method() const noexcept;
+    [[nodiscard]] std::string_view method_name() const noexcept;
     [[nodiscard]] std::string_view target() const noexcept;
     [[nodiscard]] std::string_view path() const noexcept;
     [[nodiscard]] std::string_view body() const noexcept;
@@ -129,6 +131,8 @@ public:
     [[nodiscard]] Input except(
         std::initializer_list<std::string_view> names
     ) const;
+    [[nodiscard]] Input only(const std::vector<std::string>& names) const;
+    [[nodiscard]] Input except(const std::vector<std::string>& names) const;
 
     [[nodiscard]] Input validate(
         const validation::Rules& rules

@@ -9,6 +9,11 @@
 
 namespace gungnir::http {
 
+std::optional<Json> Json::find(std::string_view key) const {
+    const auto* value = get(key);
+    return value ? std::optional<Json>{*value} : std::nullopt;
+}
+
 namespace {
 
 String escape_string(std::string_view value) {
