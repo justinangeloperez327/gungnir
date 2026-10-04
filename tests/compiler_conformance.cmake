@@ -13,6 +13,7 @@ file(MAKE_DIRECTORY "${GUNGNIR_OUTPUT_DIR}")
 
 set(program "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/program.gnr")
 set(modules "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/modules")
+set(orm "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/orm.gnr")
 
 function(run_gungnirc output)
     execute_process(
@@ -73,16 +74,33 @@ run_gungnirc(
     --no-line-directives
 )
 
-file(
-    SHA256
-    "${GUNGNIR_OUTPUT_DIR}/program.cpp"
-    first_program_hash
-)
+run_gungnirc("orm.cpp" "${orm}" --strict --no-line-directives)
+run_gungnirc("orm.validated" "${orm}" --dump-validated-ast --no-line-directives)
+run_gungnirc("orm.ir" "${orm}" --dump-cpp-ir --no-line-directives)
+
+set(http "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/http.gnr")
+run_gungnirc("http.cpp" "${http}" --strict --no-line-directives)
+run_gungnirc("http.validated" "${http}" --dump-validated-ast --no-line-directives)
+run_gungnirc("http.ir" "${http}" --dump-cpp-ir --no-line-directives)
 
 set(context "${GUNGNIR_SOURCE_DIR}/tests/fixtures/structured/request_context.gnr")
 run_gungnirc("context.cpp" "${context}" --strict --no-line-directives)
 run_gungnirc("context.validated" "${context}" --dump-validated-ast --no-line-directives)
 run_gungnirc("context.ir" "${context}" --dump-cpp-ir --no-line-directives)
+file(
+    SHA256
+    "${GUNGNIR_OUTPUT_DIR}/program-repeat.cpp"
+    second_program_hash
+)
+if(NOT first_program_hash STREQUAL second_program_hash)
+    message(FATAL_ERROR "structured compiler output is not deterministic")
+endif()
+
+file(
+    SHA256
+    "${GUNGNIR_OUTPUT_DIR}/program.cpp"
+    first_program_hash
+)
 file(
     SHA256
     "${GUNGNIR_OUTPUT_DIR}/program-repeat.cpp"
@@ -99,7 +117,7 @@ file(WRITE
     "program.cpp ${first_program_hash}\n"
 )
 
-foreach(file_name IN ITEMS program.validated program.ir modules.cpp context.cpp context.validated context.ir)
+foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir)
     file(SHA256 "${GUNGNIR_OUTPUT_DIR}/${file_name}" file_hash)
     file(APPEND
         "${GUNGNIR_OUTPUT_DIR}/manifest.txt"
