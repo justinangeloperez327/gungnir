@@ -61,7 +61,10 @@ Task<void> dispatch(Router& router, Request& request, std::optional<Response>& r
     result = co_await router.dispatch(request);
 }
 Response send(Router& router, String path, String body = {}, bool json_body = false) {
-    Request request{body.empty() ? http::Method::get : http::Method::post, std::move(path), std::move(body)};
+    const auto method = body.empty() ? http::Method::get : http::Method::post;
+    const auto bytes = body.size();
+    Request request{method, std::move(path), std::move(body)};
+    CHECK(request.method() == method && request.body().size() == bytes);
     request.set_header("Content-Type", json_body ? "application/json" : "application/octet-stream");
     std::optional<Response> result;
     language::runtime::wait(dispatch(router, request, result));
@@ -132,7 +135,10 @@ void exercise_services() {
     CHECK(send(app.router(), "/cache").status() == 204);
     const String payload = R"({"integer":42,"floating":3.0,"flag":false,"null":null,"list":[1,"two"],"object":{"label":"value"}})";
     CHECK(send(app.router(), "/cache", payload, true).status() == 204);
+    CHECK(controller->cache->has("payload"));
+    CHECK(*controller->cache->get("payload") == Json::parse(payload));
     const auto response = send(app.router(), "/cache");
+    CHECK(response.status() == 200 && !response.body().empty());
     CHECK(Json::parse(response.body()) == Json::parse(payload));
     CHECK(Json::parse(response.body()).get("floating")->is_number());
     CHECK(!Json::parse(response.body()).get("floating")->is_integer());
