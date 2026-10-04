@@ -18,6 +18,7 @@
 using namespace gungnir;
 #define CHECK(...) do { if (!(__VA_ARGS__)) { std::cerr << __FILE__ << ":" << __LINE__ << ": failed check: " << #__VA_ARGS__ << std::endl; std::exit(EXIT_FAILURE); } } while (false)
 namespace {
+void stage(std::string_view name) { std::cerr << "services: " << name << std::endl; }
 void reject(std::string_view body, std::string_view code = "GNR2201") {
     const auto source = "controller Invalid { inject Cache cache; inject Storage storage; index(Request request) { " + String{body} + " } }";
     const auto emitted = language::Compiler{}.compile(source, "services-invalid.gnr");
@@ -68,7 +69,8 @@ Response send(Router& router, String path, String body = {}, bool json_body = fa
 }
 }
 
-int main() {
+void exercise_services() {
+    stage("validation");
     reject("return json(cache.get());", "GNR2209");
     reject("cache.put(1, {}); return noContent();");
     reject("cache.put(\"k\", {}, true); return noContent();");
@@ -97,6 +99,7 @@ int main() {
         "async function Json factory() { return {}; } controller Invalid { inject Cache cache; index(Request request) { return json(cache.remember(\"k\", 300, factory)); } }", "async-factory.gnr");
     CHECK(!async_factory.success() && async_factory.code.empty());
 
+    stage("bootstrap");
     Files files;
     auto store = std::make_shared<Store>();
     auto local = std::make_shared<storage::LocalDisk>(files.root / "local");
@@ -125,6 +128,7 @@ int main() {
     app.router().get("/file", [controller](Request& r) { return controller->fileShow(r); });
     app.router().post("/archive", [controller](Request& r) { return controller->archive(r); });
     app.router().get("/operations", [controller](Request& r) { return controller->fileOperations(r); });
+    stage("cache requests");
     CHECK(send(app.router(), "/cache").status() == 204);
     const String payload = R"({"integer":42,"floating":3.0,"flag":false,"null":null,"list":[1,"two"],"object":{"label":"value"}})";
     CHECK(send(app.router(), "/cache", payload, true).status() == 204);
@@ -144,6 +148,7 @@ int main() {
     CHECK(!controller->cache->get("missing"));
     CHECK(send(app.router(), "/expired").body() == "false");
     CHECK(send(app.router(), "/forget").body() == "true" && send(app.router(), "/forget").body() == "false");
+    stage("cache values");
     cacheLifetime(*controller->cache, 300);
     CHECK(store->last_ttl && store->last_ttl->count() == 300);
     const auto writes = store->puts;
@@ -180,6 +185,7 @@ int main() {
     const std::unordered_map<String,std::vector<std::optional<Int64>>> nested{{"items", {Int64{1},std::nullopt}}};
     CHECK(cacheNested(*controller->cache, nested) == Json::parse(R"({"items":[1,null]})"));
     CHECK(cacheNested(*controller->cache, std::nullopt).is_null());
+    stage("cache error paths");
     bool failed_factory = false;
     try { (void)controller->cache->remember("failure", 300, []() -> Json { throw std::runtime_error("factory failed"); }); }
     catch (const std::runtime_error&) { failed_factory = true; }
@@ -189,6 +195,7 @@ int main() {
     try { (void)controller->cache->get("broken"); } catch (const std::invalid_argument& error) { malformed = String{error.what()}.find("secret-not-json") == String::npos; }
     CHECK(malformed);
 
+    stage("file requests");
     const String binary{"a\0b", 3};
     const auto stored_file = Json::parse(send(app.router(), "/file", binary).body());
     CHECK(stored_file.get("exists")->dump() == "true" && stored_file.get("size")->string() == "3");
@@ -199,6 +206,7 @@ int main() {
     CHECK(operations.get("copied")->dump() == "true" && operations.get("moved")->dump() == "true");
     CHECK(operations.get("removed")->dump() == "true" && operations.get("missing")->is_null());
     CHECK(operations.get("source")->dump() == "true" && operations.get("size")->string() == "3");
+    stage("selected disk ownership");
     auto selected = retainDisk(*controller->storage, "archive");
     std::weak_ptr<storage::Disk> old_disk = archive;
     manager->add("archive", std::make_shared<storage::LocalDisk>(files.root / "replacement"));
@@ -216,6 +224,7 @@ int main() {
     CHECK(unknown_disk);
     CHECK(send(app.router(), "/clear").status() == 204 && !controller->cache->has("summary"));
 
+    stage("service ownership");
     std::optional<cache::Values> kept_cache;
     std::optional<storage::Service> kept_storage;
     std::optional<storage::FileStore> kept_disk;
@@ -237,8 +246,23 @@ int main() {
     kept_storage.reset();
     CHECK(kept_disk->get("owned.bin") == binary);
     kept_cache.reset(); CHECK(adapter.expired());
+    stage("configuration errors");
     bool missing_binding = false;
     Application unconfigured; unconfigured.provider<ServicesProvider>(); unconfigured.boot();
     try { (void)ServiceController::make(unconfigured.container()); } catch (const std::logic_error&) { missing_binding = true; }
     CHECK(missing_binding);
+    stage("complete");
+}
+
+int main() {
+    try {
+        exercise_services();
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << "Unhandled service test exception: " << error.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "Unhandled non-standard service test exception" << std::endl;
+        return 1;
+    }
 }
