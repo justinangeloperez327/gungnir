@@ -55,8 +55,15 @@ struct CallableSyntax {
     std::vector<ParameterSyntax> parameters;
     std::vector<SyntaxId> body;
 };
-struct FieldSyntax { Origin origin; std::string name; TypeSyntax type; bool injection{false}; SyntaxId initializer{invalid_id}; Visibility visibility{Visibility::public_}; };
+struct FieldSyntax { Origin origin; std::string name; TypeSyntax type; bool injection{false}; SyntaxId initializer{invalid_id}; Visibility visibility{Visibility::public_}; bool inferred_type{false}; };
 struct MetadataSyntax { Origin origin; std::string name; SyntaxId value{invalid_id}; };
+struct RelationshipSyntax {
+    Origin origin;
+    std::string name, kind;
+    std::vector<TypeSyntax> types;
+    std::vector<SyntaxId> arguments;
+    std::vector<std::string> argument_names;
+};
 struct DeclarationSyntax {
     Origin origin;
     DeclarationKind kind{DeclarationKind::function};
@@ -65,6 +72,7 @@ struct DeclarationSyntax {
     std::vector<FieldSyntax> fields;
     std::vector<MetadataSyntax> metadata;
     std::vector<CallableSyntax> methods;
+    std::vector<RelationshipSyntax> relationships;
 };
 struct ImportSyntax { Origin origin; std::string module, alias; };
 struct ModuleSyntax { Origin origin; std::string name; std::vector<ImportSyntax> imports; std::vector<SyntaxId> declarations; };
@@ -108,6 +116,7 @@ struct ResolvedSymbol {
     std::vector<TypeId> parameters;
     std::vector<std::string> parameter_names;
     std::vector<SyntaxId> defaults;
+    bool receives_receiver{false};
 };
 struct ExpressionResolution {
     TypeId type{invalid_id};
@@ -117,9 +126,17 @@ struct ExpressionResolution {
     std::vector<TypeId> argument_conversions;
     std::vector<SymbolId> captures;
     std::vector<SymbolId> parameters;
+    // Free framework helpers may receive the enclosing model rather than
+    // the relationship field that appeared in the source call.
+    SyntaxId receiver_expression{invalid_id};
 };
 struct CallableResolution { SymbolId symbol{invalid_id}; std::vector<SymbolId> parameters; bool all_paths_return{false}; };
-struct DeclarationResolution { SymbolId symbol{invalid_id}; std::vector<SymbolId> fields; std::vector<CallableResolution> methods; };
+struct RelationshipResolution {
+    SymbolId field{invalid_id};
+    TypeId related{invalid_id}, through{invalid_id};
+    std::vector<std::string> keys;
+};
+struct DeclarationResolution { SymbolId symbol{invalid_id}; std::vector<SymbolId> fields; std::vector<CallableResolution> methods; std::vector<RelationshipResolution> relationships; };
 class ValidatedProject {
 public:
     ValidatedProject(const ValidatedProject&) = default;

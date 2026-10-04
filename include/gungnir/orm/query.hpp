@@ -61,6 +61,11 @@ public:
         return *this;
     }
 
+    Query& select(const std::vector<String>& columns) {
+        plan_.columns = columns;
+        return *this;
+    }
+
     Query& add_select(String column) {
         plan_.columns.push_back(std::move(column));
         return *this;
@@ -396,6 +401,11 @@ public:
         for (const auto& relation : relations) {
             with(relation);
         }
+        return *this;
+    }
+
+    Query& with(const std::vector<String>& relations) {
+        for (const auto& relation : relations) with(relation);
         return *this;
     }
 
