@@ -14,6 +14,13 @@ std::optional<Json> Json::find(std::string_view key) const {
     return value ? std::optional<Json>{*value} : std::nullopt;
 }
 
+bool Json::operator==(const Json& other) const {
+    if (storage_.index() != other.storage_.index()) return false;
+    if (is_array()) return as_array() == other.as_array();
+    if (is_object()) return as_object() == other.as_object();
+    return storage_ == other.storage_;
+}
+
 namespace {
 
 String escape_string(std::string_view value) {
