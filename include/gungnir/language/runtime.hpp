@@ -1,6 +1,7 @@
 #pragma once
 #include <gungnir/gungnir.hpp>
 #include <gungnir/language/spec.hpp>
+#include <gungnir/orm/orm.hpp>
 #include <gungnir/core/services.hpp>
 #include <gungnir/queue/job.hpp>
 #include <gungnir/queue/worker.hpp>
@@ -28,6 +29,59 @@ template<class T> auto hold_receiver(T& value) { return std::ref(value); }
 template<class T> auto hold_receiver(T&& value) { return std::forward<T>(value); }
 template<class T> T& receiver(std::reference_wrapper<T>& value) { return value.get(); }
 template<class T> T& receiver(T& value) { return value; }
+template<auto Member, class Parent> auto relationship_query(const Parent& parent) {
+    return orm::relation_query(parent, parent.*Member);
+}
+template<class Relation> auto relationship_value(const Relation& relation) {
+    using Related = typename Relation::related_type;
+    const auto value = relation.value();
+    return value ? std::optional<Related>{*value} : std::nullopt;
+}
+template<class Range> auto attribute_values(const Range& values) {
+    std::vector<model::AttributeValue> result;
+    result.reserve(values.size());
+    for (const auto& value : values) result.push_back(model::to_value(value));
+    return result;
+}
+template<auto Member, class Parent, class Keys> std::size_t relationship_attach(Parent& parent, const Keys& keys) {
+    if constexpr (!std::same_as<Keys, String> && requires { keys.begin(); keys.end(); })
+        return orm::attach(parent, parent.*Member, attribute_values(keys));
+    else return orm::attach(parent, parent.*Member, model::to_value(keys));
+}
+template<auto Member, class Parent> std::size_t relationship_detach(Parent& parent) {
+    return orm::detach(parent, parent.*Member);
+}
+template<auto Member, class Parent, class Keys> std::size_t relationship_detach(Parent& parent, const Keys& keys) {
+    if constexpr (!std::same_as<Keys, String> && requires { keys.begin(); keys.end(); })
+        return orm::detach(parent, parent.*Member, attribute_values(keys));
+    else return orm::detach(parent, parent.*Member, model::to_value(keys));
+}
+template<class Model, class Key> auto query_find(orm::Query<Model> query, const Key& key) {
+    return query.where_key(model::to_value(key)).first();
+}
+template<class Model, class Key> auto query_find_or_fail(orm::Query<Model> query, const Key& key) {
+    return query.where_key(model::to_value(key)).first_or_fail();
+}
+inline orm::SortDirection sort_direction(std::string_view direction) {
+    if (direction == "asc") return orm::SortDirection::asc;
+    if (direction == "desc") return orm::SortDirection::desc;
+    throw std::invalid_argument("Order direction must be asc or desc");
+}
+inline orm::Comparison comparison(std::string_view value) {
+    if (value == "=" || value == "==") return orm::Comparison::equal;
+    if (value == "!=" || value == "<>") return orm::Comparison::not_equal;
+    if (value == "<") return orm::Comparison::less_than;
+    if (value == "<=") return orm::Comparison::less_or_equal;
+    if (value == ">") return orm::Comparison::greater_than;
+    if (value == ">=") return orm::Comparison::greater_or_equal;
+    if (value == "like") return orm::Comparison::like;
+    throw std::invalid_argument("Unsupported ORM comparison");
+}
+inline std::size_t query_size(Int64 value, bool positive = false) {
+    if (value < 0 || (positive && value == 0) || !std::in_range<std::size_t>(value))
+        throw std::invalid_argument("Query size is out of range");
+    return static_cast<std::size_t>(value);
+}
 inline Json lookup(const Json& object, std::string_view key) { const auto* value = object.get(key); if (!value) throw std::out_of_range("Missing JSON key: " + String{key}); return *value; }
 inline Response text(String body, int status = 200) { return Response::text(std::move(body),status); }
 inline Response html(String body, int status = 200) { return Response::html(std::move(body),status); }
@@ -79,6 +133,28 @@ inline model::AttributeMap attributes(const Json& value) {
         else if (item.is_number()) result[key] = decode<double>(item);
         else if (item.is_string()) result[key] = item.string();
         else throw std::invalid_argument("Nested model attributes require an explicit cast");
+    }
+    return result;
+}
+template<class Model> model::AttributeMap attributes(const Json& value) {
+    if (!value.is_object()) throw std::invalid_argument("Model attributes must be an object");
+    model::AttributeMap result;
+    for (const auto& [key, item] : value.as_object()) {
+        bool structured = false, nullable = false;
+        model::for_each_attribute<Model>([&](const auto& descriptor) {
+            if (descriptor.name != key) return;
+            using Field = std::remove_cvref_t<decltype(std::declval<Model>().*descriptor.member)>;
+            using Value = typename Field::value_type;
+            if constexpr (model::is_optional_v<Value>) {
+                structured = std::same_as<typename model::is_optional<Value>::value_type, Json>;
+                nullable = true;
+            } else structured = std::same_as<Value, Json>;
+        });
+        if (structured && !(nullable && item.is_null())) result[key] = item.dump();
+        else {
+            auto scalar = attributes(Json::object({{key, item}}));
+            result.emplace(key, std::move(scalar.at(key)));
+        }
     }
     return result;
 }
