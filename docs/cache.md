@@ -1,33 +1,74 @@
 # Cache
 
-Gungnir's cache service stores reusable values outside the primary database path.
+Inject `Cache` into a controller, middleware or handler to use the configured cache repository. Cache stores JSON-compatible values, including scalars, arrays, objects and visible model data. Service handles and callbacks are not cache values.
 
 ## Basic operations
 
-The cache API supports retrieving, storing, checking, forgetting, and flushing cached values.
+```gnr
+controller SummaryController {
+    inject Cache cache;
+
+    store(Request request) {
+        const summary = request.json();
+        cache.put("dashboard:summary", summary, 300);
+        return noContent();
+    }
+
+    index(Request request) {
+        const summary = cache.get("dashboard:summary");
+        if (summary != null) { return json(summary); }
+        return noContent();
+    }
+}
+```
+
+`get` returns `Json?`: a missing entry is absent. A stored JSON null is still an entry, so `has` returns true for it. Returned values own their data. Optional values are encoded as their value or JSON null, and model visibility rules apply before storage.
 
 ```gnr
-cache.put("dashboard:summary", summary, 300);
-const summary = cache.get("dashboard:summary");
+function void clearSummary(Cache cache) {
+    cache.forget("dashboard:summary");
+    cache.flush();
+}
 ```
+
+`forget` returns whether an entry was removed. `flush` removes entries in the configured store.
 
 ## Remember
 
-Use `remember` to compute a value only when the cache entry is absent:
+`remember` retrieves an existing entry or invokes a synchronous factory with no parameters, stores its JSON-compatible result, and returns it:
 
 ```gnr
-const summary = cache.remember("dashboard:summary", 300, () => {
-    return reports.summary();
-});
+controller ReportController {
+    inject Cache cache;
+
+    index(Request request) {
+        const summary = cache.remember("dashboard:summary", 300, () => {
+            return {"count": 42, "ratio": 3.0};
+        });
+        return json(summary);
+    }
+}
 ```
 
-## Stores
+The factory can capture injected services and call declared functions. A factory failure does not store its result. Concurrent misses may each invoke the factory.
 
-Gungnir provides an in-memory store for local development/tests and Redis-backed caching for shared deployments.
+## Stores and configuration
+
+Register cache and other adapters in the native application bootstrap before resolving generated controllers:
+
+```cpp
+Application app;
+app.provider<ServicesProvider>(ServiceOptions{
+    .cache = std::make_shared<cache::MemoryStore>()
+});
+app.boot();
+```
+
+Gungnir provides an in-memory store for development and tests and Redis-backed caching for shared deployments. `ServicesProvider` binds the canonical `Cache` service and retains its configured adapter. Native clients sharing its keys use JSON encoding for values; the native string repository remains available for direct use.
 
 ## Expiration
 
-Cache entries can use explicit lifetimes. Applications should choose cache keys and lifetimes based on the consistency requirements of the underlying data.
+Lifetimes are whole seconds. Omitting the lifetime in `put` stores without an expiration. Zero expires immediately; negative or unrepresentable lifetimes are rejected before writing. Applications choose keys and lifetimes according to the consistency requirements of the data.
 
 ## Locks
 

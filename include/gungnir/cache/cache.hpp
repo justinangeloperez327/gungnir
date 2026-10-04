@@ -4,3 +4,4 @@
 #include <gungnir/cache/repository.hpp>
 #include <gungnir/cache/redis_store.hpp>
 #include <gungnir/cache/store.hpp>
+#include <gungnir/cache/values.hpp>

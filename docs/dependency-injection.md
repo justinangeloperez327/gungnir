@@ -6,12 +6,13 @@ Native Application provides `bind`, `singleton`, `scoped`, `instance` and `resol
 Register dependencies before resolving the controller. Request-scoped dependencies should be resolved through request services.
 
 ## Scope
-General automatic constructor discovery and every target declaration's injection rules are not established by controller injection support. Keep native registrations explicit, and do not retain request-scoped services past their scope lifetime.
+Register dependency factories and adapters explicitly. Generated controllers retain the owners of injected dependencies through awaited calls. Resolve request-scoped dependencies through the request service container and release them with their request scope. Application services such as `Cache` and `Storage` are configured through `ServicesProvider`.
 
 
 
 - [include/gungnir/core/application.hpp](../include/gungnir/core/application.hpp)
 - [include/gungnir/core/container.hpp](../include/gungnir/core/container.hpp)
-- [src/language/controller_lowering.cpp](../src/language/controller_lowering.cpp)
+- [Canonical validation](../src/language/validated.cpp)
+- [Structural C++ IR](../src/language/cpp_ir.cpp)
 
 See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/dependency-injection.md).

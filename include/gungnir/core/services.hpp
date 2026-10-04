@@ -1,6 +1,7 @@
 #pragma once
 #include <gungnir/core/application.hpp>
 #include <gungnir/cache/repository.hpp>
+#include <gungnir/cache/values.hpp>
 #include <gungnir/queue/dispatcher.hpp>
 #include <gungnir/queue/worker.hpp>
 #include <gungnir/scheduler/scheduler.hpp>
@@ -8,6 +9,7 @@
 #include <gungnir/events/dispatcher.hpp>
 #include <gungnir/notifications/adapters.hpp>
 #include <gungnir/storage/manager.hpp>
+#include <gungnir/storage/service.hpp>
 #include <gungnir/auth/resource_authorization.hpp>
 #include <gungnir/auth/login.hpp>
 
@@ -38,7 +40,9 @@ public:
             // Aliasing owners preserve adapter lifetimes beyond the provider.
             struct RepositoryOwner { std::shared_ptr<cache::Store> store; cache::Repository repository; explicit RepositoryOwner(std::shared_ptr<cache::Store> store) : store(std::move(store)), repository(*this->store) {} };
             auto owner = std::make_shared<RepositoryOwner>(options_.cache);
-            container.instance<cache::Repository>(std::shared_ptr<cache::Repository>{owner,&owner->repository});
+            auto repository = std::shared_ptr<cache::Repository>{owner,&owner->repository};
+            container.instance<cache::Repository>(repository);
+            container.instance<cache::Values>(std::make_shared<cache::Values>(std::move(repository)));
         }
         if (options_.queue) {
             container.instance<queue::Driver>(options_.queue);
@@ -59,7 +63,10 @@ public:
         }
         if (options_.database_notifications) notifications->channel("database",std::make_shared<notifications::DatabaseChannel>());
         container.instance<notifications::Manager>(std::move(notifications));
-        if (options_.storage) container.instance<storage::Manager>(options_.storage);
+        if (options_.storage) {
+            container.instance<storage::Manager>(options_.storage);
+            container.instance<storage::Service>(std::make_shared<storage::Service>(options_.storage));
+        }
     }
 private:
     ServiceOptions options_;
