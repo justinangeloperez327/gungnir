@@ -11,6 +11,8 @@
 
 #include <gungnir/core/types.hpp>
 
+namespace gungnir::http { class Json; }
+
 namespace gungnir::model {
 
 using AttributeValue = std::variant<
@@ -50,6 +52,9 @@ template <typename T>
         }
 
         return T{value_cast<Inner>(value)};
+    } else if constexpr (std::same_as<T, http::Json>) {
+        if (const auto* found = std::get_if<String>(&value)) return T::parse(*found);
+        if (std::holds_alternative<std::nullptr_t>(value) || std::holds_alternative<std::monostate>(value)) return T{nullptr};
     } else if constexpr (std::same_as<T, Decimal>) {
         if (const auto* found = std::get_if<Decimal>(&value)) return *found;
         if (const auto* found = std::get_if<String>(&value)) return Decimal{*found};
@@ -130,6 +135,10 @@ template <typename T>
         }
 
         return to_value(*value);
+    } else if constexpr (std::same_as<T, http::Json>) {
+        return value.dump();
+    } else if constexpr (std::same_as<T, std::nullptr_t> || std::same_as<T, std::monostate>) {
+        return value;
     } else if constexpr (std::same_as<T, String> || std::same_as<T, Decimal>) {
         return value;
     } else if constexpr (std::same_as<T, Boolean>) {
