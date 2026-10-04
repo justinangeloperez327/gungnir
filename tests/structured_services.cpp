@@ -201,9 +201,15 @@ void exercise_services() {
     try { (void)controller->cache->get("broken"); } catch (const std::invalid_argument& error) { malformed = String{error.what()}.find("secret-not-json") == String::npos; }
     CHECK(malformed);
 
-    stage("file requests");
+    stage("direct file action and replacement");
     const String binary{"a\0b", 3};
-    const auto stored_file = Json::parse(send(app.router(), "/file", binary).body());
+    Request direct{http::Method::post, "/file", binary};
+    CHECK(controller->fileStore(direct).status() == 200);
+    CHECK(controller->fileStore(direct).status() == 200);
+    stage("file requests");
+    const auto file_response = send(app.router(), "/file", binary);
+    CHECK(file_response.status() == 200);
+    const auto stored_file = Json::parse(file_response.body());
     CHECK(stored_file.get("exists")->dump() == "true" && stored_file.get("size")->string() == "3");
     CHECK(stored_file.get("files")->as_array().front().string() == "report.bin");
     CHECK(send(app.router(), "/file").body() == binary);
