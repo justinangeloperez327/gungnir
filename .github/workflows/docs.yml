@@ -11,6 +11,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "tools/check_docs.py"
+      - "tests/docs_orm_examples.py"
       - "tests/docs_http_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
@@ -28,6 +29,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "tools/check_docs.py"
+      - "tests/docs_orm_examples.py"
       - "tests/docs_http_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
@@ -72,6 +74,9 @@ jobs:
           ./build-docs/gungnirc
           examples/hello/app/controllers/HomeController.gnr
           --check
+
+      - name: Validate public model and ORM examples
+        run: python3 tests/docs_orm_examples.py ./build-docs/gungnirc
 
       - name: Validate public HTTP examples
         # Guide fragments use the same strict semantic path as application code.
