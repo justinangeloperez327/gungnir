@@ -2,6 +2,7 @@
 #include <gungnir/auth/auth.hpp>
 
 #include <algorithm>
+
 #include <charconv>
 #include <iomanip>
 #include <limits>
@@ -16,6 +17,18 @@ Json make_json(const auth::Identity& value) {
     std::sort(roles.begin(), roles.end());
     return Json::object({{"id", Json{value.id}},
         {"roles", make_json(roles)}, {"attributes", make_json(value.attributes)}});
+}
+
+std::optional<Json> Json::find(std::string_view key) const {
+    const auto* value = get(key);
+    return value ? std::optional<Json>{*value} : std::nullopt;
+}
+
+bool Json::operator==(const Json& other) const {
+    if (storage_.index() != other.storage_.index()) return false;
+    if (is_array()) return as_array() == other.as_array();
+    if (is_object()) return as_object() == other.as_object();
+    return storage_ == other.storage_;
 }
 
 namespace {
