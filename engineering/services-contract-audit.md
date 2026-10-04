@@ -4,6 +4,9 @@ Baseline: `d467cd8e5cd33ae38887e2cd3f8b2f0e46ede268`, the verified head of
 authentication PR #178. That head integrates main
 `261a262c4bc964f0b8c916287d6583fdb6a2fd4c` and preserves the combined ORM,
 HTTP and request-context contracts. This batch depends on those repairs.
+PR #178 has since merged as main commit
+`13a53045776ed919ae791bb6f84e52dd559a6452` with the same verified tree; this
+branch integrates that main commit.
 
 ## Proven contract gap
 
@@ -53,6 +56,26 @@ left-to-right argument evaluation. Optional string results are returned as owned
 optionals rather than incorrectly converted to plain strings. Existing receiver
 ownership, schema-reference and asynchronous result rules are retained.
 
+## Windows disk rename repair
+
+The generated service fixture exposed Windows error 87 in the local disk's
+directory-relative `SetFileInformationByHandle` rename. The disk now calls
+`NtSetInformationFile` with `FileRenameInformation` through the loaded system
+module. It retains the verified destination-directory handle, replacement
+semantics and existing path/reparse checks. Failure codes are converted to
+Windows errors; no destination-path retry is introduced.
+
+The Windows SDK declares the native call's types in `winternl.h`, but exposes
+only a subset of the information-class enum. Class 10 and the relative-name
+layout are defined by Microsoft's
+[native file information API](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntsetinformationfile)
+and
+[rename structure](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information).
+The generated fixture writes the same binary file twice directly before
+exercising routed default/named disk operations, making replacement failures
+visible before HTTP exception sanitization. Its request helper also preserves
+the method and body before transferring body ownership.
+
 ## Acceptance evidence
 
 `tests/fixtures/structured/services.gnr` and `tests/structured_services.cpp`
@@ -86,4 +109,3 @@ full application acceptance gate still need independent evidence. Existing
 native cancellation and adapter behavior is preserved, but this fixture does not
 establish those additional language contracts or live backend/platform matrices.
 The baseline product matrix remains the record of wider requirements.
-
