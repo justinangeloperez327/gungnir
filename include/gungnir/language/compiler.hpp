@@ -108,6 +108,7 @@ struct ResolvedSymbol {
     std::vector<TypeId> parameters;
     std::vector<std::string> parameter_names;
     std::vector<SyntaxId> defaults;
+    bool receives_receiver{false};
 };
 struct ExpressionResolution {
     TypeId type{invalid_id};

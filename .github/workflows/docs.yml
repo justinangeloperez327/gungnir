@@ -11,6 +11,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "tools/check_docs.py"
+      - "tests/docs_context_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -27,6 +28,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "tools/check_docs.py"
+      - "tests/docs_context_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -70,6 +72,9 @@ jobs:
           ./build-docs/gungnirc
           examples/hello/app/controllers/HomeController.gnr
           --check
+
+      - name: Validate public request-context examples
+        run: python3 tests/docs_context_examples.py ./build-docs/gungnirc
 
       - name: Emit canonical example C++
         run: >

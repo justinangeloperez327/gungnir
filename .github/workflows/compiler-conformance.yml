@@ -10,6 +10,7 @@ on:
       - "tests/compiler_*.cpp"
       - "tests/compiler_*.cmake"
       - "tests/structured_generated.cpp"
+      - "tests/structured_request_context.cpp"
       - "tests/fixtures/structured/**"
       - ".github/workflows/compiler-conformance.yml"
   push:
@@ -23,6 +24,7 @@ on:
       - "tests/compiler_*.cpp"
       - "tests/compiler_*.cmake"
       - "tests/structured_generated.cpp"
+      - "tests/structured_request_context.cpp"
       - "tests/fixtures/structured/**"
       - ".github/workflows/compiler-conformance.yml"
 
@@ -70,12 +72,13 @@ jobs:
           gungnir_compiler_stability_test
           gungnir_compiler_robustness_test
           gungnir_structured_generated_test
+          gungnir_structured_request_context_test
           gungnirc
 
       - name: Run compiler conformance tests
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
+          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_request_context|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$'
 
       - name: Produce deterministic compiler snapshot
         run: >
@@ -114,13 +117,14 @@ jobs:
           gungnir_compiler_stability_test
           gungnir_compiler_robustness_test
           gungnir_structured_generated_test
+          gungnir_structured_request_context_test
           gungnirc
 
       - name: Run compiler conformance tests
         run: >
           ctest --test-dir build --build-config Release
           --output-on-failure --no-tests=error
-          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$"
+          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_request_context|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot)$"
 
       - name: Produce deterministic compiler snapshot
         shell: pwsh
@@ -151,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for file in program.cpp program.validated program.ir modules.cpp; do
+          for file in program.cpp program.validated program.ir modules.cpp context.cpp context.validated context.ir; do
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-Clang/$file"
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-MSVC/$file"
           done

@@ -1,5 +1,7 @@
 #include <gungnir/http/json.hpp>
+#include <gungnir/auth/auth.hpp>
 
+#include <algorithm>
 #include <charconv>
 #include <iomanip>
 #include <limits>
@@ -8,6 +10,13 @@
 #include <string>
 
 namespace gungnir::http {
+
+Json make_json(const auth::Identity& value) {
+    std::vector<String> roles{value.roles.begin(), value.roles.end()};
+    std::sort(roles.begin(), roles.end());
+    return Json::object({{"id", Json{value.id}},
+        {"roles", make_json(roles)}, {"attributes", make_json(value.attributes)}});
+}
 
 namespace {
 

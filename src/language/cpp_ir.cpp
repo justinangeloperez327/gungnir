@@ -86,8 +86,14 @@ class CppIrLoweringRenderer {
                 const bool injection = rr.symbol != invalid_id && symbol(rr.symbol).kind == ResolvedSymbolKind::injection;
                 if (!target.starts_with("gungnir::") && !target.starts_with("::")) {
                     if (is_static) target = expr(callee.operands[0]) + "::" + target;
-                    else { receiver = expr(callee.operands[0]); target = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))" + std::string(injection ? "->" : ".") + target; }
-                } else if (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate")) { receiver = expr(callee.operands[0]); receiver_argument = true; }
+                    else {
+                        receiver = expr(callee.operands[0]);
+                        const auto base = "gungnir::language::runtime::receiver(std::get<0>(gnr_values))";
+                        target = (p.types()[rr.type].name == "Session"
+                            ? "gungnir::language::runtime::session_receiver(" + std::string{base} + ")."
+                            : std::string{base} + (injection ? "->" : ".")) + target;
+                    }
+                } else if (callable.receives_receiver || (target.starts_with("gungnir::language::runtime::") && (callable.name == "map" || callable.name == "filter" || callable.name == "each" || callable.name == "validate"))) { receiver = expr(callee.operands[0]); receiver_argument = true; }
             }
             // Braced tuple construction fixes evaluation order, including await
             // expressions, before named arguments are reordered for the call.
@@ -109,7 +115,13 @@ class CppIrLoweringRenderer {
             }
             auto invocation = target + "(" + arguments + ")";
             if (!callable.asynchronous && p.types()[r.type].name == "string") invocation = "gungnir::String(" + invocation + ")";
-            return "([&](auto&& gnr_values) -> decltype(auto) { return " + invocation + "; }(" + tuple + "))";
+            // Call results own their value when receivers are temporary.
+            // Schema definitions are owned by the enclosing Table callback.
+            const auto& result_name = p.types()[r.type].name;
+            const bool schema_reference = result_name == "ColumnDefinition" ||
+                result_name == "IndexDefinition" || result_name == "ForeignKeyDefinition";
+            const auto result_type = callable.asynchronous || schema_reference ? "decltype(auto)" : type(r.type);
+            return "([&](auto&& gnr_values) -> " + result_type + " { return " + invocation + "; }(" + tuple + "))";
         }
         }
         return {};

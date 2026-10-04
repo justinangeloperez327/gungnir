@@ -28,6 +28,10 @@ template<class T> auto hold_receiver(T& value) { return std::ref(value); }
 template<class T> auto hold_receiver(T&& value) { return std::forward<T>(value); }
 template<class T> T& receiver(std::reference_wrapper<T>& value) { return value.get(); }
 template<class T> T& receiver(T& value) { return value; }
+inline session::Session& session_receiver(const std::shared_ptr<session::Session>& value) {
+    if (!value) throw std::logic_error("Session handle is empty");
+    return *value;
+}
 inline Json lookup(const Json& object, std::string_view key) { const auto* value = object.get(key); if (!value) throw std::out_of_range("Missing JSON key: " + String{key}); return *value; }
 inline Response text(String body, int status = 200) { return Response::text(std::move(body),status); }
 inline Response html(String body, int status = 200) { return Response::html(std::move(body),status); }
@@ -65,6 +69,37 @@ template<class T> T decode(const Json& value) {
     else { T result; for (const auto& item : value.as_array()) result.push_back(decode<typename T::value_type>(item)); return result; }
 }
 template<class T> T required(const Json& value, std::string_view key) { const auto* item = value.get(key); if (!item) throw std::invalid_argument("Missing job payload field: " + String{key}); return decode<T>(*item); }
+inline Response& response_cookie(Response& response, String name, String value,
+    const Json& options = Json::object({})) {
+    if (!options.is_object()) throw std::invalid_argument("Cookie options must be an object");
+    http::Cookie cookie{.name=std::move(name), .value=std::move(value)};
+    for (const auto& [key, option] : options.as_object()) {
+        if (key == "path") cookie.path = decode<String>(option);
+        else if (key == "domain") cookie.domain = option.is_null() ? std::nullopt : std::optional{decode<String>(option)};
+        else if (key == "maxAge") cookie.max_age = std::chrono::seconds{decode<Int64>(option)};
+        else if (key == "secure") cookie.secure = decode<bool>(option);
+        else if (key == "httpOnly") cookie.http_only = decode<bool>(option);
+        else if (key == "sameSite") {
+            const auto site = decode<String>(option);
+            if (site == "Lax") cookie.same_site = http::SameSite::lax;
+            else if (site == "Strict") cookie.same_site = http::SameSite::strict;
+            else if (site == "None") cookie.same_site = http::SameSite::none;
+            else throw std::invalid_argument("Invalid cookie sameSite option");
+        } else throw std::invalid_argument("Unknown cookie option");
+    }
+    (void)http::serialize_cookie(cookie);
+    return response.cookie(std::move(cookie));
+}
+inline Response& response_without_cookie(Response& response, String name, String path = "/",
+    const Json& options = Json::object({})) {
+    if (!options.is_object()) throw std::invalid_argument("Cookie options must be an object");
+    auto values = options.as_object();
+    values.insert_or_assign("path", Json{std::move(path)});
+    values.insert_or_assign("maxAge", Json{Int64{0}});
+    if (!values.contains("secure") && (name.starts_with("__Secure-") || name.starts_with("__Host-")))
+        values.emplace("secure", Json{true});
+    return response_cookie(response, std::move(name), "", Json::object(std::move(values)));
+}
 inline model::AttributeMap attributes(const Json& value) {
     if (!value.is_object()) throw std::invalid_argument("Model attributes must be an object");
     model::AttributeMap result;

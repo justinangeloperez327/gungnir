@@ -86,6 +86,7 @@ public:
         for (const auto& [name, cpp] : std::vector<std::pair<std::string,std::string>>{
             {"void","void"},{"int","gungnir::Int64"},{"uint64","gungnir::UInt64"},{"double","double"},{"decimal","double"},{"Decimal","gungnir::model::Decimal"},{"bool","bool"},{"string","gungnir::String"},
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
+            {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
             {"Callable","auto"},{"inferred","auto"}}) intern(name, cpp);
@@ -160,15 +161,25 @@ public:
         return syntax.optional ? optional(value) : value;
     }
     bool numeric(TypeId id) const { const auto& name = type(id).name; return !type(id).optional && (name == "int" || name == "uint64" || name == "double" || name == "decimal"); }
+    bool contains_session(TypeId id) const {
+        const auto& value = type(id);
+        return value.name == "Session" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_session(argument); });
+    }
+    bool contains_identity(TypeId id) const {
+        const auto& value = type(id);
+        return value.name == "AuthIdentity" || std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_identity(argument); });
+    }
     bool assignable(TypeId target, TypeId source) {
-        if (target == source || type(target).name == "Value") return true;
+        if (target == source) return true;
+        if (type(target).name == "Value") return !contains_session(source);
         const auto a = type(target), b = type(source);
         if (a.optional) return b.name == "null" || assignable(unoptional(target), b.optional ? unoptional(source) : source);
+        if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable")
+            return !contains_session(source) && (!b.optional || b.name == "AuthIdentity");
         if (b.optional) return false;
         if (a.name == "double" && b.name == "int") return true;
         if (a.name == "decimal" && (b.name == "int" || b.name == "uint64")) return true;
         if (a.name == "Decision" && b.name == "bool") return true;
-        if ((a.name == "Json" || a.name == "Data") && b.name != "void" && b.name != "Callable") return true;
         if (a.name == "List" && b.name == "List" && a.arguments.size() == 1 && b.arguments.size() == 1) return a.arguments[0] == b.arguments[0];
         return false;
     }
@@ -223,6 +234,10 @@ public:
         return invalid_id;
     }
     SymbolId member(TypeId receiver, std::string name, const Origin& origin, bool diagnose = true) {
+        if (type(receiver).name == "AuthIdentity" && (name == "id" || name == "attributes")) {
+            const auto result = name == "id" ? type_id("string") : intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")});
+            return symbol({ResolvedSymbolKind::field,name,name,result,invalid_id,true});
+        }
         const auto owner = owner_of(receiver);
         if (owner != invalid_id) {
             const auto found = members.find(std::to_string(owner) + ":" + name);
@@ -432,6 +447,9 @@ public:
                 }
             }
             for (const auto& field : declaration.fields) {
+                const auto field_type = resolve(field.type);
+                if (contains_session(field_type) || contains_identity(field_type))
+                    report(field.origin, "Request context types cannot be declaration fields; store their data explicitly");
                 if (resolve(field.type) == type_id("void")) report(field.origin,"Fields cannot have type void");
                 if (!valid_identifier(field.name)) report(field.origin,"Field name is not a valid native identifier");
                 const auto id = symbol({field.injection ? ResolvedSymbolKind::injection : ResolvedSymbolKind::field, field.name, field.name, resolve(field.type), current_owner,
@@ -496,12 +514,12 @@ public:
         }
         if (e.kind == SyntaxExpressionKind::list) {
             TypeId element = expected && !type(*expected).arguments.empty() ? type(*expected).arguments[0] : invalid_id;
-            for (auto argument : e.operands) { const auto item = expression(argument, element == invalid_id ? std::nullopt : std::optional{element}); if (element == invalid_id) element = item; else if (!assignable(element, item)) element = type_id("Value"); }
+            for (auto argument : e.operands) { const auto item = expression(argument, element == invalid_id ? std::nullopt : std::optional{element}); if (element == invalid_id) element = item; else if (!assignable(element, item)) { if (contains_session(element) || contains_session(item)) report(e.origin, "Session handles cannot be mixed with serialized values"); element = type_id("Value"); } }
             return set(sequence("List", element == invalid_id ? type_id("Value") : element));
         }
         if (e.kind == SyntaxExpressionKind::object) {
             std::unordered_set<std::string> keys;
-            for (std::size_t i = 0; i < e.operands.size(); ++i) { if (!keys.insert(e.argument_names[i]).second) report(e.origin, "Duplicate object key '" + e.argument_names[i] + "'"); expression(e.operands[i]); }
+            for (std::size_t i = 0; i < e.operands.size(); ++i) { if (!keys.insert(e.argument_names[i]).second) report(e.origin, "Duplicate object key '" + e.argument_names[i] + "'"); if (contains_session(expression(e.operands[i]))) report(e.origin, "Session handles cannot be serialized; use session values explicitly"); }
             return set(type_id("Json"));
         }
         if (e.kind == SyntaxExpressionKind::lambda) return lambda(id, expected);
@@ -611,6 +629,7 @@ public:
     }
     TypeId call(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id]; const auto callee = v.syntax_.expressions[e.operands[0]];
+        info.argument_order.clear(); info.argument_conversions.clear();
         SymbolId callable_id = invalid_id; TypeId receiver = invalid_id; SyntaxId receiver_expression = invalid_id; std::string name;
         if (callee.kind == SyntaxExpressionKind::name) { name = callee.text; callable_id = visible(name, callee.origin, false); }
         else if (callee.kind == SyntaxExpressionKind::member) {
@@ -623,7 +642,15 @@ public:
         std::vector<TypeId> argument_types;
         auto arity = [&](std::size_t low, std::size_t high) { if (count < low || count > high) report(e.origin, "Incorrect argument count for '" + name + "'", "GNR2209"); };
         auto finish_builtin = [&](TypeId result, std::string cpp, std::vector<std::optional<TypeId>> contexts = {}) {
-            for (std::size_t i = 0; i < count; ++i) { argument_types.push_back(expression(e.operands[i + 1], i < contexts.size() ? contexts[i] : std::nullopt)); if (i < contexts.size() && contexts[i] && type(*contexts[i]).name != "Function" && !assignable(*contexts[i],argument_types.back())) report(e.origin,"Builtin argument type mismatch"); }
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto argument = e.operands[i + 1];
+                const auto context = i < contexts.size() ? contexts[i] : std::nullopt;
+                const auto cached = v.expressions_[argument].type;
+                argument_types.push_back(cached != invalid_id && (!context || *context == cached || type(*context).name != "Function")
+                    ? cached : expression(argument, context));
+                if (context && type(*context).name != "Function" && !assignable(*context, argument_types.back()))
+                    report(e.origin, "Builtin argument type mismatch");
+            }
             callable_id = builtin(name, std::move(cpp), result, argument_types);
             info.type = result; info.symbol = callable_id;
             v.expressions_[e.operands[0]] = {type_id("Callable"), callable_id};
@@ -669,10 +696,48 @@ public:
             }
             if (callable_id == invalid_id && t.name == "Decimal" && (name == "string" || name == "toDouble")) { arity(0,0); return finish_builtin(type_id(name == "string" ? "string" : "double"), name == "string" ? "string" : "to_double"); }
             if (callable_id == invalid_id && t.name == "Request") {
+                if (name == "session") { arity(0,0); return finish_builtin(type_id("Session"), "shared_session"); }
+                if (name == "user") { arity(0,0); return finish_builtin(optional(type_id("AuthIdentity")), "current_user"); }
+                if (name == "authenticated" || name == "guest" || name == "hasAuth" || name == "hasSession") { arity(0,0); return finish_builtin(type_id("bool"), snake(name)); }
                 if (name == "structuredInput") { arity(0,0); return finish_builtin(type_id("Json"), "structured_input"); }
                 if (name == "validate") { arity(1,1); return finish_builtin(type_id("Json"), "gungnir::language::runtime::validate", {type_id("Json")}); }
                 static const std::unordered_set<std::string> strings{"header","parameter","query","input","body","path","target"};
                 if (strings.contains(name)) { const auto count = name == "body" || name == "path" || name == "target" ? 0 : 1; arity(count,count); return finish_builtin(type_id("string"), name, {type_id("string")}); }
+            }
+            if (callable_id == invalid_id && t.name == "Session") {
+                if (name == "id") { arity(0,0); return finish_builtin(type_id("string"), name); }
+                if (name == "get" || name == "flashed" || name == "has") { arity(1,1); return finish_builtin(type_id(name == "has" ? "bool" : "string"), name, {type_id("string")}); }
+                if (name == "put" || name == "flash") { arity(2,2); return finish_builtin(type_id("void"), name, {type_id("string"),type_id("string")}); }
+                if (name == "forget") { arity(1,1); return finish_builtin(type_id("void"), name, {type_id("string")}); }
+                if (name == "clear" || name == "invalidate" || name == "regenerate") { arity(0,0); return finish_builtin(type_id("void"), name); }
+                if (name == "regenerated") { arity(0,0); return finish_builtin(type_id("bool"), name); }
+                if (name == "values") { arity(0,0); return finish_builtin(intern("Map", "std::unordered_map<gungnir::String,gungnir::String>", {type_id("string"),type_id("string")}), name); }
+            }
+            if (callable_id == invalid_id && t.name == "AuthIdentity" && name == "role") { arity(1,1); return finish_builtin(type_id("bool"), name, {type_id("string")}); }
+            if (callable_id == invalid_id && t.name == "Response" && (name == "cookie" || name == "withoutCookie")) {
+                arity(name == "cookie" ? 2 : 1, 3);
+                if (receiver_expression != invalid_id) {
+                    const auto kind = v.syntax_.expressions[receiver_expression].kind;
+                    if (kind == SyntaxExpressionKind::name || kind == SyntaxExpressionKind::member || kind == SyntaxExpressionKind::subscript)
+                        writable(receiver_expression);
+                }
+                const auto result = finish_builtin(type_id("Response"), "gungnir::language::runtime::response_" + snake(name), name == "cookie"
+                    ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("string"),type_id("Json")}
+                    : std::vector<std::optional<TypeId>>{type_id("string"),type_id("string"),type_id("Json")});
+                if (count == 3) {
+                    const auto& options = v.syntax_.expressions[e.operands[3]];
+                    const auto option_type = type(v.expressions_[e.operands[3]].type).name;
+                    if (option_type != "Json" && option_type != "Data" && option_type != "Value") report(options.origin, "Cookie options must be an object");
+                    if (options.kind == SyntaxExpressionKind::object) for (std::size_t i = 0; i < options.operands.size(); ++i) {
+                        const auto& key = options.argument_names[i];
+                        const auto actual = v.expressions_[options.operands[i]].type;
+                        const auto expected = key == "secure" || key == "httpOnly" ? type_id("bool") : key == "maxAge" ? type_id("int") : type_id("string");
+                        if (key != "path" && key != "domain" && key != "maxAge" && key != "secure" && key != "httpOnly" && key != "sameSite") report(options.origin, "Unknown cookie option '" + key + "'");
+                        else if (!assignable(expected, actual) && !(key == "domain" && type(actual).name == "null")) report(options.origin, "Cookie option type mismatch");
+                    }
+                }
+                v.symbols_[info.symbol].receives_receiver = true;
+                return result;
             }
             const auto owner = owner_of(receiver);
             const bool model = owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
