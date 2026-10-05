@@ -40,6 +40,17 @@ public:
         }
     }
 
+    [[nodiscard]] bool has_channel(std::string_view name) const {
+        const auto found = channels_.find(std::string{name});
+        return found != channels_.end() && found->second != nullptr;
+    }
+    void send_on(std::string_view name, std::string_view recipient, const Notification& notification) const {
+        const auto found = channels_.find(std::string{name});
+        if (found == channels_.end() || found->second == nullptr)
+            throw std::logic_error("Gungnir notification channel is not configured: " + std::string{name});
+        found->second->send(recipient, notification);
+    }
+
 private:
     std::unordered_map<std::string, Channel*> channels_;
     std::vector<std::shared_ptr<Channel>> owners_;

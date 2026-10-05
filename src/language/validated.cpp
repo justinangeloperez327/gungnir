@@ -93,6 +93,7 @@ public:
             {"null","std::nullptr_t"},{"Value","gungnir::Json"},{"Json","gungnir::Json"},{"Data","gungnir::Json"},{"Response","gungnir::Response"},{"Request","gungnir::Request"},
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Events","gungnir::events::Service"},{"Queue","gungnir::queue::Service"},{"Scheduler","gungnir::scheduler::Service"},{"ScheduledTask","gungnir::scheduler::Entry"},
+            {"Mail","gungnir::mail::Service"},{"PendingMail","gungnir::mail::Pending"},{"Notifications","gungnir::notifications::Service"},
             {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
             {"Config","gungnir::config::Service"},{"Logger","gungnir::logging::Service"},{"Telemetry","gungnir::observability::Service"},{"Span","gungnir::observability::Span"},
             {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
@@ -187,7 +188,7 @@ public:
     }
     bool contains_service(TypeId id) const {
         const auto& value = type(id);
-        return value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" || value.name == "Config" || value.name == "Logger" || value.name == "Telemetry" || value.name == "Span" ||
+        return value.name == "Mail" || value.name == "PendingMail" || value.name == "Notifications" || value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" || value.name == "Config" || value.name == "Logger" || value.name == "Telemetry" || value.name == "Span" ||
             std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_service(argument); });
     }
     bool contains_callable(TypeId id) const {
@@ -656,6 +657,8 @@ public:
             auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
             for (const auto& field : declaration.fields) {
                 const auto field_type = resolve(field.type);
+                if (type(field_type).name == "PendingMail")
+                    report(field.origin,"Pending mail is obtained through Mail.to and cannot be a declaration field", "GNR2360");
                 if (declaration.kind == DeclarationKind::job && !field.injection && !job_payload_type(field_type))
                     report(field.origin,"Job payload fields require serializable data with a reconstruction codec", "GNR2340");
                 if (contains_service(field_type) && !field.injection)
@@ -723,6 +726,7 @@ public:
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "UploadedFile" || v.symbols_[symbol_id].name == "ValidationResult")) report(e.origin,"Obtain upload and validation-result values through their request or validation APIs", "GNR2330");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "Events" || v.symbols_[symbol_id].name == "Queue" || v.symbols_[symbol_id].name == "Scheduler" || v.symbols_[symbol_id].name == "ScheduledTask")) report(e.origin,"Obtain background services through injection or application bootstrap", "GNR2340");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "Config" || v.symbols_[symbol_id].name == "Logger" || v.symbols_[symbol_id].name == "Telemetry" || v.symbols_[symbol_id].name == "Span")) report(e.origin,"Obtain application services through injection and spans through Telemetry", "GNR2350");
+            if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "Mail" || v.symbols_[symbol_id].name == "PendingMail" || v.symbols_[symbol_id].name == "Notifications")) report(e.origin,"Obtain delivery services through injection and pending mail through Mail.to", "GNR2360");
             const auto& value = v.symbols_[symbol_id]; return set(value.kind == ResolvedSymbolKind::callable ? type_id("Callable") : narrowed.contains(symbol_id) ? unoptional(value.type) : value.type, symbol_id);
         }
         if (e.kind == SyntaxExpressionKind::member) {
@@ -1007,6 +1011,44 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Mail" || t.name == "PendingMail" || t.name == "Notifications") {
+                if (callee.literal_type == "::") report(callee.origin,"Delivery service methods require an instance", "GNR2360");
+                if ((t.name == "Mail" && name == "to") || (t.name == "PendingMail" && (name == "to" || name == "from" || name == "cc" || name == "bcc" || name == "replyTo"))) {
+                    arity(1,2); return finish_builtin(type_id("PendingMail"), name, {type_id("string"),type_id("string")});
+                }
+                if (t.name == "PendingMail" && name == "attach") {
+                    arity(2,3); return finish_builtin(type_id("PendingMail"), name, {type_id("string"),type_id("string"),type_id("string")});
+                }
+                if ((t.name == "PendingMail" || t.name == "Notifications") && (name == "send" || name == "queue")) {
+                    const bool notification = t.name == "Notifications";
+                    const bool queued = name == "queue";
+                    const std::size_t source_index = notification ? 1 : 0;
+                    const std::size_t required = source_index + 1;
+                    arity(required, queued ? required + 2 : required);
+                    const auto result = finish_builtin(type_id(queued ? "string" : "void"), name,
+                        notification ? std::vector<std::optional<TypeId>>{std::nullopt,std::nullopt,type_id("int"),type_id("bool")} : std::vector<std::optional<TypeId>>{std::nullopt,type_id("int"),type_id("bool")});
+                    if (count > source_index) {
+                        const auto source_type = argument_types[source_index];
+                        if (!background_declaration(source_type, notification ? DeclarationKind::notification : DeclarationKind::mail))
+                            report(v.syntax_.expressions[e.operands[source_index+1]].origin, notification ? "Delivery requires a non-optional notification" : "Delivery requires a non-optional mail declaration", "GNR2360");
+                        else if (notification && count > 0) {
+                            const auto owner = owner_of(source_type);
+                            const auto declaration_id = declaration_ids.at(owner);
+                            const auto& syntax = v.syntax_.declarations[declaration_id];
+                            const auto via = std::find_if(syntax.methods.begin(),syntax.methods.end(),[](const auto& method) { return method.name == "via"; });
+                            if (via != syntax.methods.end()) {
+                                const auto index = static_cast<std::size_t>(via - syntax.methods.begin());
+                                const auto& parameters = v.symbols_[v.declarations_[declaration_id].methods[index].symbol].parameters;
+                                if (parameters.size() != 1 || argument_types[0] != parameters[0])
+                                    report(v.syntax_.expressions[e.operands[1]].origin,"Recipient must match the notification's non-optional model type", "GNR2360");
+                            }
+                        }
+                    }
+                    if (queued && count > required) if (auto attempts = integer_constant(e.operands[required+1]); attempts && (*attempts <= 0 || *attempts > std::numeric_limits<unsigned>::max()))
+                        report(e.origin,"Delivery attempts are out of range", "GNR2360");
+                    return result;
+                }
+            }
             if (t.name == "Config" || t.name == "Logger" || t.name == "Telemetry" || t.name == "Span") {
                 if (callee.literal_type == "::") report(callee.origin,"Application service methods require an instance", "GNR2350");
                 auto fields = [&](std::size_t index) {

@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.25)
 
 project(gungnir_install_smoke LANGUAGES CXX)
 
+if(DEFINED GUNGNIR_STRUCTURED_DELIVERY_GENERATED)
+    get_filename_component(delivery_generated_dir "${GUNGNIR_STRUCTURED_DELIVERY_GENERATED}" DIRECTORY)
+    add_executable(gungnir_installed_delivery ../structured_delivery.cpp)
+    target_include_directories(gungnir_installed_delivery PRIVATE "${delivery_generated_dir}")
+    target_compile_features(gungnir_installed_delivery PRIVATE cxx_std_23)
+    target_link_libraries(gungnir_installed_delivery PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+endif()
+
 find_package(Gungnir CONFIG REQUIRED)
 
 if(DEFINED GUNGNIR_STRUCTURED_APPLICATION_GENERATED)

@@ -1159,6 +1159,7 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/routing/controller_binding.hpp gungnir/http/uploads.hpp
             gungnir/http/files.hpp gungnir/validation/validator.hpp gungnir/validation/definition.hpp
             gungnir/events/service.hpp gungnir/queue/service.hpp gungnir/scheduler/service.hpp
+            gungnir/mail/delivery.hpp gungnir/mail/service.hpp gungnir/notifications/service.hpp
             gungnir/config/service.hpp gungnir/logging/service.hpp
             gungnir/observability/service.hpp gungnir/auth/redis_remember_store.hpp)
         string(REPLACE "/" "_" unit "${header}")
@@ -1313,6 +1314,16 @@ if(GUNGNIR_BUILD_TESTS)
         target_link_libraries(gungnir_structured_application_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
         target_compile_features(gungnir_structured_application_test PRIVATE cxx_std_23)
         add_test(NAME gungnir.structured_application COMMAND gungnir_structured_application_test)
+        set(GUNGNIR_STRUCTURED_DELIVERY_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_delivery_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_DELIVERY_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/delivery.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_DELIVERY_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/delivery.gnr VERBATIM)
+        add_executable(gungnir_structured_delivery_test tests/structured_delivery.cpp "${GUNGNIR_STRUCTURED_DELIVERY_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_DELIVERY_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_delivery_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_delivery_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_features(gungnir_structured_delivery_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.structured_delivery COMMAND gungnir_structured_delivery_test)
         set(GUNGNIR_STRUCTURED_SERVICES_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_services_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/services.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_SERVICES_PROGRAM}"
@@ -1499,6 +1510,8 @@ if(GUNGNIR_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_validation_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_background_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_background_examples.py" $<TARGET_FILE:gungnirc>)
+        add_test(NAME gungnir.docs_delivery_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_delivery_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_application_examples COMMAND ${Python3_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_application_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_auth_examples COMMAND ${Python3_EXECUTABLE}
@@ -2451,6 +2464,11 @@ if(GUNGNIR_BUILD_TESTS)
             add_test(NAME gungnir.background_redis COMMAND ${Python3_EXECUTABLE}
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/background_redis.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
             set_tests_properties(gungnir.background_redis PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+            if(GUNGNIR_WITH_SMTP AND GUNGNIR_WITH_SQLITE)
+                add_test(NAME gungnir.delivery_redis COMMAND ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/delivery_redis.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
+                set_tests_properties(gungnir.delivery_redis PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+            endif()
             if(GUNGNIR_WITH_PASSWORD AND GUNGNIR_WITH_SQLITE)
                 add_test(NAME gungnir.application_redis COMMAND ${Python3_EXECUTABLE}
                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/application_redis.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)

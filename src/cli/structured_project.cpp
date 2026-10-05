@@ -143,7 +143,7 @@ add_library(program STATIC generated/program.cpp
 target_compile_features(program PUBLIC cxx_std_23)
 target_include_directories(program PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(program PUBLIC gungnir::gungnir gungnir::orm)
-foreach(adapter postgresql mysql sqlserver redis)
+foreach(adapter postgresql mysql sqlserver redis smtp)
     if(TARGET gungnir::${adapter})
         target_link_libraries(program PUBLIC gungnir::${adapter})
         string(TOUPPER "${adapter}" macro)
