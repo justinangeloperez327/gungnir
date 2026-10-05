@@ -46,6 +46,10 @@ if(GUNGNIR_APPLICATION_SDK)
     set(GUNGNIR_SDK_LIBRARY_DIR "${CMAKE_INSTALL_LIBDIR}/gungnir/vendor")
     install(FILES "${gungnir_sqlite_library}" "${gungnir_crypto_library}" DESTINATION "${GUNGNIR_SDK_LIBRARY_DIR}")
     install(FILES "${SQLite3_INCLUDE_DIR}/sqlite3.h" "${SQLite3_INCLUDE_DIR}/sqlite3ext.h" DESTINATION "${GUNGNIR_SDK_INCLUDE_DIR}")
+    # vcpkg's sqlite3.h includes this generated companion header. Native SDK
+    # consumers must receive it alongside the public SQLite headers.
+    install(FILES "${SQLite3_INCLUDE_DIR}/sqlite3-vcpkg-config.h"
+        DESTINATION "${GUNGNIR_SDK_INCLUDE_DIR}" OPTIONAL)
     install(DIRECTORY "${OPENSSL_INCLUDE_DIR}/openssl" DESTINATION "${GUNGNIR_SDK_INCLUDE_DIR}")
     # Debian/Ubuntu split generated configuration headers into a multiarch
     # include directory. Install them explicitly so consumers need no host

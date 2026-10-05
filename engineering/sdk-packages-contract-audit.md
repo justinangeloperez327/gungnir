@@ -49,7 +49,7 @@ its CLI's automatic prefix discovery, and verifies:
 - accurate profile/capability metadata and bundled notices;
 - bundled dependency resolution while CMake OpenSSL/SQLite discovery is disabled;
 - imported archive paths refer to the relocated SDK;
-- native SQLite/OpenSSL headers compile and link, including Linux multiarch configuration headers;
+- native SQLite/OpenSSL headers compile and link, including vcpkg's SQLite companion header and Linux multiarch OpenSSL configuration headers;
 - ordinary `.gnr` models, migrations and controllers build without generated C++ repair;
 - migrations apply once, status matches, and rollback removes the table;
 - SQLite persists a salted scrypt hash; serialized models hide the password;

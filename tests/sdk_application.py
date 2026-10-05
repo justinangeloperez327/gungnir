@@ -69,6 +69,9 @@ with tempfile.TemporaryDirectory(prefix="gungnir-sdk-application-") as temporary
             assert (sdk / f"share/gungnir/licenses/{notice}.txt").stat().st_size > 0
         for header in ("opensslconf.h", "configuration.h"):
             assert (sdk / f"include/gungnir/vendor/openssl/{header}").is_file()
+        sqlite_header = sdk / "include/gungnir/vendor/sqlite3.h"
+        if "sqlite3-vcpkg-config.h" in sqlite_header.read_text():
+            assert (sqlite_header.parent / "sqlite3-vcpkg-config.h").is_file(), "SDK is missing SQLite's vcpkg configuration header"
         probe = root / "probe"
         probe.mkdir()
         (probe / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.25)
