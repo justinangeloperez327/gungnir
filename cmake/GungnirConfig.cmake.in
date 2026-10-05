@@ -8,19 +8,25 @@ set(Gungnir_VERSION_MINOR "@PROJECT_VERSION_MINOR@")
 set(Gungnir_VERSION_PATCH "@PROJECT_VERSION_PATCH@")
 set(Gungnir_NATIVE_API_CONTRACT "1.0")
 set(Gungnir_NATIVE_ABI_EPOCH "1")
+set(Gungnir_SDK_PROFILE "@GUNGNIR_SDK_PROFILE@")
+set(Gungnir_WITH_SQLITE "@GUNGNIR_WITH_SQLITE@")
+set(Gungnir_WITH_PASSWORD "@GUNGNIR_WITH_PASSWORD@")
+set(Gungnir_BUNDLED_APPLICATION_DEPENDENCIES "@GUNGNIR_APPLICATION_SDK@")
 
 include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+if("@GUNGNIR_APPLICATION_SDK@" STREQUAL "ON")
+    include("${CMAKE_CURRENT_LIST_DIR}/GungnirApplicationDependencies.cmake")
+endif()
 if("@GUNGNIR_WITH_S3@" STREQUAL "ON")
     find_dependency(CURL 7.75)
 endif()
-if("@GUNGNIR_WITH_SQLITE@" STREQUAL "ON")
+if("@GUNGNIR_WITH_SQLITE@" STREQUAL "ON" AND NOT "@GUNGNIR_APPLICATION_SDK@" STREQUAL "ON")
     find_dependency(SQLite3)
 endif()
-if("@GUNGNIR_WITH_PASSWORD@" STREQUAL "ON")
-    find_dependency(OpenSSL 3.0)
+if("@GUNGNIR_WITH_PASSWORD@" STREQUAL "ON" AND NOT "@GUNGNIR_APPLICATION_SDK@" STREQUAL "ON" AND NOT "@GUNGNIR_WITH_TLS@" STREQUAL "ON")
+    find_dependency(OpenSSL 3.0 COMPONENTS Crypto)
 endif()
-
-find_dependency(Threads)
 
 if("@GUNGNIR_WITH_MYSQL@" STREQUAL "ON")
     list(
@@ -60,11 +66,7 @@ if(
 endif()
 
 if("@GUNGNIR_WITH_TLS@" STREQUAL "ON")
-    find_dependency(OpenSSL 3.0)
-endif()
-
-if("@GUNGNIR_WITH_PASSWORD@" STREQUAL "ON" AND NOT "@GUNGNIR_WITH_TLS@" STREQUAL "ON")
-    find_dependency(OpenSSL 3.0 COMPONENTS Crypto)
+    find_dependency(OpenSSL 3.0 COMPONENTS Crypto SSL)
 endif()
 
 if("@GUNGNIR_WITH_HTTP2@" STREQUAL "ON")

@@ -46,6 +46,12 @@ All structured `.gnr` modules are compiled except `.gungnir`, `.git`, `build`, `
 
 `GUNGNIR_CMAKE_PREFIX` supplies an installed package prefix. CMake must be available on `PATH`. On MSVC, generated applications use the dynamic runtime expected by the installed Gungnir package in development builds, so `gungnir build`, `gungnir run`, and `gungnir dev` remain link-compatible with release-installed framework libraries. Builds retain unchanged generated files and native objects; see [modules](modules.md).
 
+The installed CLI also discovers its adjacent SDK automatically. Use the
+[application SDK](sdk-packages.md) for SQLite and password authentication.
+Password API calls in validated `.gnr` sources add a package capability check
+before native compilation; an unavailable backend reports how to select or build
+the required SDK.
+
 ## Development watcher
 
 `dev` watches source, native headers, bootstrap, `.env`, configuration, and views. It polls at 200 ms and waits for a stable snapshot before rebuilding. A failed build leaves the last healthy application running. A successful build replaces it with a new executable. Ctrl-C stops and reaps the application. This is a process restart; in-memory state is lost. Generated output, storage, and vendor/build directories are excluded.

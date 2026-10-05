@@ -7,6 +7,8 @@ on:
       - "cmake/**"
       - "include/gungnir/language/spec.hpp"
       - "tests/release_smoke.py"
+      - "tests/sdk_application.py"
+      - "src/cli/**"
       - "tools/wait_release_checks.py"
       - ".github/workflows/release.yml"
   push:
@@ -84,7 +86,11 @@ jobs:
     if: needs.identity.outputs.enabled == 'true'
     env:
       RELEASE_TAG: ${{ needs.identity.outputs.tag }}
-    name: Package · Linux x86_64
+    name: Package · Linux x86_64 · ${{ matrix.profile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [core, application]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -134,7 +140,7 @@ jobs:
           fi
 
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsqlite3-dev libssl-dev
 
       - name: Configure
         run: >
@@ -142,6 +148,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DGUNGNIR_BUILD_TESTS=OFF
           -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_APPLICATION_SDK=${{ matrix.profile == 'application' && 'ON' || 'OFF' }}
 
       - name: Build
         run: cmake --build build --parallel 2
@@ -152,6 +159,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           package="gungnir-v${version}-linux-x86_64"
+          if [[ "${{ matrix.profile }}" == application ]]; then package+="-application"; fi
           prefix="$GITHUB_WORKSPACE/dist/$package"
 
           cmake --install build --prefix "$prefix"
@@ -172,6 +180,7 @@ jobs:
 
           ./install-smoke-build/gungnir_install_smoke
           python3 tests/release_smoke.py "$GUNGNIR_PREFIX"
+          python3 tests/sdk_application.py "$GUNGNIR_PREFIX"
 
           actual_version="$("$GUNGNIR_PREFIX/bin/gungnir" --version)"
           release_version="${RELEASE_TAG#v}"
@@ -208,7 +217,7 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-linux-x86_64
+          name: release-linux-x86_64-${{ matrix.profile }}
           path: ${{ env.GUNGNIR_PACKAGE }}.tar.gz
           if-no-files-found: error
           retention-days: 7
@@ -218,9 +227,13 @@ jobs:
     if: needs.identity.outputs.enabled == 'true'
     env:
       RELEASE_TAG: ${{ needs.identity.outputs.tag }}
-    name: Package · Windows x86_64
+    name: Package · Windows x86_64 · ${{ matrix.profile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [core, application]
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -250,11 +263,19 @@ jobs:
               throw "Refusing to publish: source release channel is not stable."
           }
 
+      - name: Build static application dependencies
+        if: matrix.profile == 'application'
+        shell: pwsh
+        run: ./cmake/windows/BuildApplicationDependencies.ps1 -WorkDir "$env:RUNNER_TEMP/gungnir-application-deps"
+
       - name: Configure
         run: >
           cmake -S . -B build -A x64
           -DGUNGNIR_BUILD_TESTS=OFF
           -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_APPLICATION_SDK=${{ matrix.profile == 'application' && 'ON' || 'OFF' }}
+          "-DCMAKE_PREFIX_PATH=${{ env.GUNGNIR_APPLICATION_DEPS }}"
+          "-DOPENSSL_ROOT_DIR=${{ env.GUNGNIR_APPLICATION_DEPS }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel 2
@@ -264,6 +285,7 @@ jobs:
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
           $package = "gungnir-v$version-windows-x86_64"
+          if ('${{ matrix.profile }}' -eq 'application') { $package += '-application' }
           $prefix = Join-Path $env:GITHUB_WORKSPACE "dist\$package"
 
           cmake --install build --config Release --prefix "$prefix"
@@ -283,6 +305,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Installed package consumer failed" }
           python tests/release_smoke.py "$env:GUNGNIR_PREFIX"
           if ($LASTEXITCODE -ne 0) { throw "Installed application smoke failed" }
+          python tests/sdk_application.py "$env:GUNGNIR_PREFIX"
+          if ($LASTEXITCODE -ne 0) { throw "Installed database/auth application smoke failed" }
 
           $actualVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnir.exe" --version).Trim()
           $releaseVersion = $env:RELEASE_TAG.Substring(1)
@@ -325,7 +349,7 @@ jobs:
       - name: Upload portable Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-windows-x86_64
+          name: release-windows-x86_64-${{ matrix.profile }}
           path: ${{ env.GUNGNIR_PACKAGE }}.zip
           if-no-files-found: error
           retention-days: 7
@@ -339,6 +363,7 @@ jobs:
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
           $package = "gungnir-v$version-windows-x86_64-setup"
+          if ('${{ matrix.profile }}' -eq 'application') { $package = "gungnir-v$version-windows-x86_64-application-setup" }
 
           cpack `
             --config build/CPackConfig.cmake `
@@ -461,6 +486,9 @@ jobs:
                   Pop-Location
               }
 
+              python tests/sdk_application.py "$installDir"
+              if ($LASTEXITCODE -ne 0) { throw "Windows installer database/auth application failed" }
+
               $uninstaller = Join-Path $installDir "Uninstall Gungnir.exe"
               if (-not (Test-Path $uninstaller)) {
                   throw "Gungnir uninstaller was not found"
@@ -492,7 +520,7 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-windows-installer
+          name: release-windows-installer-${{ matrix.profile }}
           path: installer/${{ env.GUNGNIR_INSTALLER }}
           if-no-files-found: error
           retention-days: 7

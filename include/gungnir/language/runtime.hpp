@@ -38,7 +38,7 @@ inline bool auth_attempt(Request& request, const Json& credentials, bool remembe
     return guard->attempt(request, email->string(), password->string(), remember);
 #else
     (void)request; (void)credentials; (void)remember;
-    throw std::logic_error("Authentication requires GUNGNIR_WITH_PASSWORD");
+    throw std::logic_error("Authentication requires the Gungnir application SDK or a framework build with GUNGNIR_WITH_PASSWORD=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.");
 #endif
 }
 inline void auth_logout(Request& request) {
@@ -46,7 +46,7 @@ inline void auth_logout(Request& request) {
     request.services().resolve<gungnir::auth::SessionGuard>()->logout(request);
 #else
     (void)request;
-    throw std::logic_error("Authentication requires GUNGNIR_WITH_PASSWORD");
+    throw std::logic_error("Authentication requires the Gungnir application SDK or a framework build with GUNGNIR_WITH_PASSWORD=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.");
 #endif
 }
 inline String password_hash(const String& password) {
@@ -54,7 +54,7 @@ inline String password_hash(const String& password) {
     return gungnir::auth::Password::hash(password);
 #else
     (void)password;
-    throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
+    throw std::logic_error("Password hashing requires the Gungnir application SDK or a framework build with GUNGNIR_WITH_PASSWORD=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.");
 #endif
 }
 inline bool password_verify(const String& password, const String& encoded) {
@@ -62,7 +62,7 @@ inline bool password_verify(const String& password, const String& encoded) {
     return gungnir::auth::Password::verify(password, encoded);
 #else
     (void)password; (void)encoded;
-    throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
+    throw std::logic_error("Password hashing requires the Gungnir application SDK or a framework build with GUNGNIR_WITH_PASSWORD=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.");
 #endif
 }
 inline bool password_needs_rehash(const String& encoded) {
@@ -70,7 +70,7 @@ inline bool password_needs_rehash(const String& encoded) {
     return gungnir::auth::Password::needs_rehash(encoded);
 #else
     (void)encoded;
-    throw std::logic_error("Password hashing requires GUNGNIR_WITH_PASSWORD");
+    throw std::logic_error("Password hashing requires the Gungnir application SDK or a framework build with GUNGNIR_WITH_PASSWORD=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.");
 #endif
 }
 inline validation::Rules validation_rules(const Json& definitions) {

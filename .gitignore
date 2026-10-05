@@ -1,5 +1,7 @@
 /build/
 /build-*/
+/.gungnir-dependencies/
+/sdk-application/
 /.cache/
 .gungnir/
 compile_commands.json

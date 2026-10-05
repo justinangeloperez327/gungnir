@@ -151,7 +151,7 @@ public:
             co_return response;
         };
 #else
-        throw std::logic_error("Session guard middleware requires GUNGNIR_WITH_PASSWORD");
+        throw std::logic_error("Session guard middleware requires the Gungnir application SDK or a framework build with GUNGNIR_WITH_PASSWORD=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.");
 #endif
     }
 private:

@@ -131,8 +131,16 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 endif()
 find_package(Gungnir CONFIG REQUIRED)
-add_library(program STATIC generated/program.cpp
 )cmake";
+    const bool requires_password = std::any_of(project.symbols().begin(), project.symbols().end(), [](const auto& symbol) {
+        return symbol.cpp_name.starts_with("gungnir::language::runtime::password_") ||
+            symbol.cpp_name == "gungnir::language::runtime::auth_attempt";
+    });
+    if (requires_password) cmake += R"cmake(if(NOT Gungnir_WITH_PASSWORD)
+    message(FATAL_ERROR "This application uses password authentication, but the selected Gungnir SDK has no password backend. Install the application SDK, or rebuild/install Gungnir with GUNGNIR_WITH_PASSWORD=ON; set GUNGNIR_CMAKE_PREFIX to that SDK and rebuild. See docs/sdk-packages.md.")
+endif()
+)cmake";
+    cmake += "add_library(program STATIC generated/program.cpp\n";
     outputs[generated / "program.cpp"] = "#include \"program.hpp\"\n";
     for (const auto& unit : emitted.units) {
         const auto filename = unit.module + ".cpp";

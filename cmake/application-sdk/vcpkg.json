@@ -1,0 +1,9 @@
+{
+  "name": "gungnir-application-sdk-dependencies",
+  "version-string": "1",
+  "builtin-baseline": "19780d9cdf84d0944cf9a318666703b89ab6629c",
+  "dependencies": [
+    { "name": "openssl", "default-features": false },
+    { "name": "sqlite3", "default-features": false }
+  ]
+}

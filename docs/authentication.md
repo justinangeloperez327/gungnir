@@ -38,7 +38,8 @@ so compare a submitted remember choice explicitly.
 ## Guard configuration
 
 Build Gungnir with `GUNGNIR_WITH_PASSWORD=ON` to enable the OpenSSL Crypto password
-backend. Register one shared `SessionGuard` in `ServiceOptions.authentication`.
+backend, or install the [application SDK](sdk-packages.md), which includes it.
+Register one shared `SessionGuard` in `ServiceOptions.authentication`.
 Install session middleware, identity-restoration middleware, and guard middleware
 in that order:
 
