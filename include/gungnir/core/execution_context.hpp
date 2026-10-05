@@ -14,6 +14,8 @@ namespace gungnir::routing { class Router; }
 namespace gungnir::http { class MiddlewareRegistry; }
 namespace gungnir::database { class Connection; class Manager; }
 namespace gungnir::observability {
+class Tracer;
+class Meter;
 struct TraceContext {
     std::string trace_id;
     std::string span_id;
@@ -34,6 +36,8 @@ struct ExecutionContext {
     std::shared_ptr<view::Engine> view;
     std::shared_ptr<database::Connection> database;
     observability::TraceContext trace;
+    std::shared_ptr<observability::Tracer> tracer;
+    std::shared_ptr<observability::Meter> meter;
 };
 using ContextHandle = std::shared_ptr<ExecutionContext>;
 inline thread_local ContextHandle active_context = std::make_shared<ExecutionContext>();
@@ -61,6 +65,8 @@ inline ContextHandle capture_execution_context() {
         if (!result->view) result->view = application->view;
         if (!result->database) result->database = application->database;
         if (!result->trace.valid()) result->trace = application->trace;
+        if (!result->tracer) result->tracer = application->tracer;
+        if (!result->meter) result->meter = application->meter;
     }
     return result;
 }

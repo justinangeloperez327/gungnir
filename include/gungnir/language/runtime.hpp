@@ -171,8 +171,23 @@ inline view::Value view_value(const Json& value) {
     if (value.is_array()) { std::vector<view::Value> items; for (const auto& item : value.as_array()) items.push_back(view_value(item)); return view::Value::array(std::move(items)); }
     if (value.is_object()) { std::unordered_map<String,view::Value> items; for (const auto& [key,item] : value.as_object()) items.emplace(key,view_value(item)); return view::Value::object(std::move(items)); }
     if (value.is_boolean()) return value.string() == "true";
-    if (value.is_integer()) return static_cast<Int64>(std::stoll(value.string()));
-    if (value.is_number()) return std::stod(value.string());
+    if (value.is_integer()) {
+        const auto text = value.string();
+        if (!text.empty() && text.front() == '-') {
+            Int64 number{}; const auto parsed = std::from_chars(text.data(), text.data() + text.size(), number);
+            if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) throw std::invalid_argument("Invalid view integer");
+            return number;
+        }
+        UInt64 number{}; const auto parsed = std::from_chars(text.data(), text.data() + text.size(), number);
+        if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) throw std::invalid_argument("Invalid view integer");
+        return number;
+    }
+    if (value.is_number()) {
+        const auto text = value.string(); Double number{};
+        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), number);
+        if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) throw std::invalid_argument("Invalid view number");
+        return number;
+    }
     return value.string();
 }
 inline Response view(String name, const Json& data = Json::object({}), int status = 200) {

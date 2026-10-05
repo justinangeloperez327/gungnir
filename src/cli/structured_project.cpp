@@ -176,7 +176,7 @@ target_link_libraries(background PRIVATE program)
             aliases += "using " + decl.name + " = " + qualified + ";\n";
         }
         if (decl.kind == Kind::controller || decl.kind == Kind::middleware || decl.kind == Kind::listener || decl.kind == Kind::policy) {
-            factories += "if (!app.container().has<" + qualified + ">()) app.bind<" + qualified + ">([](gungnir::Container& c) { return construct<" + qualified + ">(c); });\n";
+            factories += "if (!app.container().has<" + qualified + ">()) app.bind<" + qualified + ">([](gungnir::Container& c, gungnir::ServiceScope* scope) { return construct<" + qualified + ">(c,scope); });\n";
         }
         if (decl.kind == Kind::middleware && counts[decl.name] == 1) middleware += "app.middleware_alias<" + qualified + ">(" + quote(decl.name) + ");\n";
         if (decl.kind == Kind::job) registrations += "gungnir::register_job<" + qualified + ">(app);\n";
@@ -201,7 +201,10 @@ target_link_libraries(background PRIVATE program)
     if (std::filesystem::exists(root_ / "bootstrap/app.hpp")) bootstrap += "#include <bootstrap/app.hpp>\n";
     else bootstrap += "namespace bootstrap { inline void configure(gungnir::Application& app) { app.provider<gungnir::ServicesProvider>(); } inline void boot(gungnir::Application&) {} }\n";
     bootstrap += R"cpp(namespace gungnir_generated {
-template<class T> std::shared_ptr<T> construct(gungnir::Container& c) {
+template<class T> std::shared_ptr<T> construct(gungnir::Container& c, gungnir::ServiceScope* scope) {
+    if (scope) {
+        if constexpr (requires { T::make(*scope); }) return T::make(*scope);
+    }
     if constexpr (requires { T::make(c); }) return T::make(c);
     else if constexpr (std::default_initializable<T>) return std::make_shared<T>();
     else throw std::logic_error("Register a factory in bootstrap::configure for declarations requiring constructor values");
@@ -219,14 +222,14 @@ inline void configure(gungnir::Application& app) {
     bootstrap::configure(app);
 )cpp" + factories + middleware + "app.on_boot([](gungnir::Application& app) {\n" + registrations + "bootstrap::boot(app);\n" + schedules + "});\n}\n}\n";
     outputs[generated / "bootstrap.hpp"] = bootstrap;
-    std::string app = "#include \"bootstrap.hpp\"\n#include <iostream>\nint main() { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";
+    std::string app = "#include \"bootstrap.hpp\"\n#include <gungnir/production/signal_watcher.hpp>\n#include <iostream>\nint main() { try {\nauto app = gungnir::Application::create();\ngungnir::CancellationSource cancellation;\ngungnir::production::SignalWatcher signals{[&](int) { cancellation.cancel(); }};\ngungnir_generated::configure(app);\n";
     for (auto module : project.module_order()) {
         if (syntax.modules[module].routes.empty()) continue;
         std::string scope;
         for (char c : syntax.modules[module].name) scope += c == '.' ? "::" : std::string{c};
         app += (scope.empty() ? "::" : "::gnr::" + scope + "::") + "gnr_register_routes(app);\n";
     }
-    app += "app.run();\nreturn 0;\n} catch (const std::exception& e) { std::cerr << e.what() << '\\n'; return 1; } }\n";
+    app += "app.run(cancellation.token());\napp.shutdown();\nreturn 0;\n} catch (const std::exception& e) { std::cerr << e.what() << '\\n'; return 1; } }\n";
     outputs[generated / "app.cpp"] = app;
     std::string migration = "#include \"bootstrap.hpp\"\n#include <gungnir/migration/runner.hpp>\n#include <iostream>\nint main(int argc,char** argv) { try {\nauto app = gungnir::Application::create();\ngungnir_generated::configure(app);\n";
     std::string entries;

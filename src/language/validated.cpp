@@ -94,6 +94,7 @@ public:
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Events","gungnir::events::Service"},{"Queue","gungnir::queue::Service"},{"Scheduler","gungnir::scheduler::Service"},{"ScheduledTask","gungnir::scheduler::Entry"},
             {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
+            {"Config","gungnir::config::Service"},{"Logger","gungnir::logging::Service"},{"Telemetry","gungnir::observability::Service"},{"Span","gungnir::observability::Span"},
             {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
             {"Route","gungnir::Route"},{"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
@@ -186,7 +187,7 @@ public:
     }
     bool contains_service(TypeId id) const {
         const auto& value = type(id);
-        return value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" ||
+        return value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" || value.name == "Config" || value.name == "Logger" || value.name == "Telemetry" || value.name == "Span" ||
             std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_service(argument); });
     }
     bool contains_callable(TypeId id) const {
@@ -721,6 +722,7 @@ public:
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && v.symbols_[symbol_id].name == "Validator") report(e.origin,"Construct a validation registry with Validator::make()", "GNR2330");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "UploadedFile" || v.symbols_[symbol_id].name == "ValidationResult")) report(e.origin,"Obtain upload and validation-result values through their request or validation APIs", "GNR2330");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "Events" || v.symbols_[symbol_id].name == "Queue" || v.symbols_[symbol_id].name == "Scheduler" || v.symbols_[symbol_id].name == "ScheduledTask")) report(e.origin,"Obtain background services through injection or application bootstrap", "GNR2340");
+            if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "Config" || v.symbols_[symbol_id].name == "Logger" || v.symbols_[symbol_id].name == "Telemetry" || v.symbols_[symbol_id].name == "Span")) report(e.origin,"Obtain application services through injection and spans through Telemetry", "GNR2350");
             const auto& value = v.symbols_[symbol_id]; return set(value.kind == ResolvedSymbolKind::callable ? type_id("Callable") : narrowed.contains(symbol_id) ? unoptional(value.type) : value.type, symbol_id);
         }
         if (e.kind == SyntaxExpressionKind::member) {
@@ -972,17 +974,79 @@ public:
         if (receiver == invalid_id && callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::builtin &&
             (name == "Events" || name == "Queue" || name == "Scheduler" || name == "ScheduledTask"))
             report(e.origin,"Background services cannot be constructed in application source", "GNR2340");
+        if (receiver == invalid_id && callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::builtin &&
+            (name == "Config" || name == "Logger" || name == "Telemetry" || name == "Span"))
+            report(e.origin,"Application services and spans cannot be constructed in application source", "GNR2350");
         if (callable_id == invalid_id && receiver == invalid_id) {
             if (name == "noContent") { arity(0,0); return finish_builtin(type_id("Response"), "gungnir::language::runtime::no_content"); }
             if (name == "download") { arity(2,4); return finish_builtin(type_id("Response"), "gungnir::language::runtime::download", {type_id("string"),type_id("string"),type_id("string"),type_id("int")}); }
-            if (name == "text" || name == "html" || name == "json" || name == "view" || name == "redirect" || name == "response") { arity(1, name == "view" ? 3 : 2); return finish_builtin(type_id("Response"), "gungnir::language::runtime::" + name,
-                name == "view" ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("Json"),type_id("int")} : std::vector<std::optional<TypeId>>{name == "json" ? type_id("Json") : type_id("string"),type_id("int")}); }
+            if (name == "text" || name == "html" || name == "json" || name == "view" || name == "redirect" || name == "response") {
+                arity(1, name == "view" ? 3 : 2);
+                const auto result = finish_builtin(type_id("Response"), "gungnir::language::runtime::" + name,
+                    name == "view" ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("Json"),type_id("int")} : std::vector<std::optional<TypeId>>{name == "json" ? type_id("Json") : type_id("string"),type_id("int")});
+                if (name == "view" && count > 1) {
+                    const auto& data = v.syntax_.expressions[e.operands[2]];
+                    const auto actual = type(v.expressions_[e.operands[2]].type).name;
+                    if (data.kind == SyntaxExpressionKind::list || (actual != "Json" && actual != "Data" && actual != "Value")) report(data.origin,"View data must be an object", "GNR2350");
+                }
+                return result;
+            }
             if (name == "exactDecimal") { arity(1,1); return finish_builtin(type_id("Decimal"), "gungnir::model::Decimal", {type_id("string")}); }
-            if (name == "authorize") { arity(3,3); return finish_builtin(type_id("void"), "gungnir::language::runtime::authorize", {type_id("Request"),type_id("string"),std::nullopt}); }
+            if (name == "authorize") {
+                arity(3,3); const auto result = finish_builtin(type_id("void"), "gungnir::language::runtime::authorize", {type_id("Request"),type_id("string"),std::nullopt});
+                if (count == 3) {
+                    const auto resource = v.expressions_[e.operands[3]].type;
+                    const auto owner = owner_of(resource);
+                    const bool model = !type(resource).optional && owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
+                    const bool native = !type(resource).optional && std::any_of(options.native_types.begin(), options.native_types.end(), [&](const auto& value) { return value.name == type(resource).name; });
+                    if (!model && !native) report(v.syntax_.expressions[e.operands[3]].origin,"Authorization requires a model resource or an explicit native resource type", "GNR2350");
+                }
+                return result;
+            }
             if (name == "allow" || name == "deny") { arity(0, name == "allow" ? 0 : 1); return finish_builtin(type_id("Decision"), "gungnir::auth::Decision::" + name, {type_id("string")}); }
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Config" || t.name == "Logger" || t.name == "Telemetry" || t.name == "Span") {
+                if (callee.literal_type == "::") report(callee.origin,"Application service methods require an instance", "GNR2350");
+                auto fields = [&](std::size_t index) {
+                    if (count <= index) return;
+                    const auto& data = v.syntax_.expressions[e.operands[index + 1]];
+                    const auto actual = type(v.expressions_[e.operands[index + 1]].type).name;
+                    if (data.kind == SyntaxExpressionKind::list || (actual != "Json" && actual != "Data" && actual != "Value")) report(data.origin,"Observability attributes must be an object", "GNR2350");
+                    if (data.kind == SyntaxExpressionKind::object) for (const auto item : data.operands) {
+                        const auto value = type(v.expressions_[item].type).name;
+                        if (value != "string" && value != "bool" && value != "int" && value != "uint64" && value != "double" && value != "decimal" && value != "null" && value != "Json" && value != "Data" && value != "Value") report(v.syntax_.expressions[item].origin,"Observability attributes require scalar values", "GNR2350");
+                        if (v.syntax_.expressions[item].kind == SyntaxExpressionKind::object || v.syntax_.expressions[item].kind == SyntaxExpressionKind::list) report(v.syntax_.expressions[item].origin,"Observability attributes require scalar values", "GNR2350");
+                    }
+                };
+                if (t.name == "Config") {
+                    if (name == "has" || name == "get") { arity(1,1); return finish_builtin(name == "has" ? type_id("bool") : optional(type_id("Json")), name, {type_id("string")}); }
+                    if (name == "string" || name == "integer" || name == "boolean" || name == "number") {
+                        arity(1,2); const auto result = type_id(name == "integer" ? "int" : name == "boolean" ? "bool" : name == "number" ? "double" : "string");
+                        return finish_builtin(result, name, {type_id("string"), result});
+                    }
+                }
+                if (t.name == "Logger" && (name == "debug" || name == "info" || name == "warning" || name == "error")) {
+                    arity(1,2); const auto result = finish_builtin(type_id("void"), name, {type_id("string"),type_id("Json")}); fields(1); return result;
+                }
+                if (t.name == "Telemetry" && (name == "span" || name == "counter" || name == "gauge" || name == "histogram")) {
+                    arity(name == "gauge" || name == "histogram" ? 2 : 1, name == "span" ? 2 : 3);
+                    const auto result = finish_builtin(type_id(name == "span" ? "Span" : "void"), name, name == "span" ? std::vector<std::optional<TypeId>>{type_id("string"),type_id("Json")} : std::vector<std::optional<TypeId>>{type_id("string"),type_id("double"),type_id("Json")});
+                    fields(name == "span" ? 1 : 2);
+                    if (count && v.syntax_.expressions[e.operands[1]].kind == SyntaxExpressionKind::literal && v.syntax_.expressions[e.operands[1]].text.empty()) report(e.origin,"Telemetry names cannot be empty", "GNR2350");
+                    if ((name == "counter" || name == "histogram") && count > 1) if (auto value = integer_constant(e.operands[2]); value && *value < 0) report(e.origin,"Telemetry value is out of range", "GNR2350");
+                    return result;
+                }
+                if (t.name == "Span") {
+                    if (name == "valid") { arity(0,0); return finish_builtin(type_id("bool"), name); }
+                    if (name == "attribute" || name == "error" || name == "end" || name == "traceId" || name == "spanId") {
+                        arity(name == "attribute" ? 2 : name == "error" ? 1 : 0, name == "attribute" ? 2 : name == "error" ? 1 : 0);
+                        const auto result = finish_builtin(type_id(name == "traceId" || name == "spanId" ? "string" : name == "end" ? "void" : "Span"), "gungnir::observability::" + std::string{name == "traceId" ? "span_trace_id" : name == "spanId" ? "span_id" : "span_" + name}, {type_id("string"),type_id("string")});
+                        v.symbols_[info.symbol].receives_receiver = true; return result;
+                    }
+                }
+            }
             if (t.name == "Events" || t.name == "Queue" || t.name == "Scheduler" || t.name == "ScheduledTask") {
                 if (callee.literal_type == "::") report(callee.origin,"Background service methods require an instance", "GNR2340");
                 auto positive = [&](std::size_t index, bool zero = false) {

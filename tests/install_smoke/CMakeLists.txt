@@ -4,6 +4,14 @@ project(gungnir_install_smoke LANGUAGES CXX)
 
 find_package(Gungnir CONFIG REQUIRED)
 
+if(DEFINED GUNGNIR_STRUCTURED_APPLICATION_GENERATED)
+    get_filename_component(application_generated_dir "${GUNGNIR_STRUCTURED_APPLICATION_GENERATED}" DIRECTORY)
+    add_executable(gungnir_installed_application ../structured_application.cpp)
+    target_include_directories(gungnir_installed_application PRIVATE "${application_generated_dir}")
+    target_compile_features(gungnir_installed_application PRIVATE cxx_std_23)
+    target_link_libraries(gungnir_installed_application PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+endif()
+
 if(NOT Gungnir_RELEASE_VERSION STREQUAL "development")
     message(
         FATAL_ERROR

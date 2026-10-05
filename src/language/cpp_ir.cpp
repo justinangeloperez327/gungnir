@@ -923,9 +923,9 @@ public:
             )
         ) {
             block
-                << "static std::shared_ptr<"
+                << "template<class Resolver> requires (std::same_as<Resolver,gungnir::Container> || std::same_as<Resolver,gungnir::ServiceScope>) static std::shared_ptr<"
                 << declaration.name
-                << "> make(gungnir::Container& container";
+                << "> make(Resolver& container";
 
             for (auto field_id : resolution.fields) {
                 const auto& field = symbol(field_id);
@@ -959,7 +959,7 @@ public:
                     ResolvedSymbolKind::injection
                 ) {
                     block
-                        << "container.resolve<"
+                        << "container.template resolve<"
                         << type(field.type)
                         << ">()";
                 } else {
@@ -1294,6 +1294,20 @@ public:
                 << declaration.name
                 << "> policy) {\n";
 
+            std::vector<TypeId> actor_types;
+            for (const auto& method : resolution.methods) {
+                const auto& function = symbol(method.symbol);
+                if (function.parameters.size() != 2) continue;
+                const auto actor = function.parameters.front();
+                if (std::find(actor_types.begin(), actor_types.end(), actor) != actor_types.end()) continue;
+                for (std::size_t d = 0; d < s.declarations.size(); ++d) {
+                    if (s.declarations[d].kind == DeclarationKind::model && symbol(p.declarations()[d].symbol).type == actor) {
+                        block << "authorization.model_actor<" << type(actor) << ">();\n";
+                        actor_types.push_back(actor); break;
+                    }
+                }
+            }
+
             for (
                 std::size_t method_id = 0;
                 method_id <
@@ -1445,13 +1459,14 @@ public:
                 }
             );
 
+            if (injectable) block << "template<class Resolver> requires (std::same_as<Resolver,gungnir::Container> || std::same_as<Resolver,gungnir::ServiceScope>) ";
             block
                 << "static "
                 << declaration.name
                 << " from_payload(std::string_view text"
                 << (
                     injectable
-                        ? ", gungnir::Container& container"
+                        ? ", Resolver& container"
                         : ""
                 )
                 << ") { auto value = "
@@ -1473,7 +1488,7 @@ public:
                     ResolvedSymbolKind::injection
                 ) {
                     block
-                        << "container.resolve<"
+                        << "container.template resolve<"
                         << type(field.type)
                         << ">()";
                 } else {
@@ -1509,8 +1524,9 @@ public:
                    "event_name},["
                 << (injectable ? "&container" : "")
                 << "](std::string_view payload) { "
-                   "auto job = from_payload(payload"
-                << (injectable ? ",container" : "")
+                << (injectable ? "auto scope = container.scope(); " : "")
+                << "auto job = from_payload(payload"
+                << (injectable ? ",scope" : "")
                 << "); "
                 << (
                     it->asynchronous
@@ -1530,8 +1546,8 @@ public:
                        "payload) { auto container = "
                        "owner.lock(); if (!container) throw "
                        "std::logic_error(\"Job application "
-                       "is no longer available\"); auto job "
-                       "= from_payload(payload,*container); "
+                       "is no longer available\"); auto scope = container->scope(); auto job "
+                       "= from_payload(payload,scope); "
                     << (
                         it->asynchronous
                             ? "gungnir::language::runtime::"

@@ -5,6 +5,7 @@
 #include <utility>
 
 #include <gungnir/database/runtime.hpp>
+#include <gungnir/config/service.hpp>
 #include <gungnir/http/server.hpp>
 #include <gungnir/routing/route.hpp>
 #include <gungnir/view/runtime.hpp>
@@ -258,6 +259,8 @@ Application::Application()
     impl_->container->instance<
         config::Repository
     >(impl_->config);
+
+    impl_->container->instance<config::Service>(std::make_shared<config::Service>(impl_->config));
 
     impl_->container->instance<
         config::Environment
@@ -645,6 +648,10 @@ Application::http_runtime()
 }
 
 void Application::run() {
+    run(CancellationToken{});
+}
+
+void Application::run(CancellationToken cancellation) {
     const auto configured_port =
         impl_->config->integer(
             "server.port",
@@ -672,7 +679,8 @@ void Application::run() {
         impl_->config->string(
             "server.host",
             "127.0.0.1"
-        )
+        ),
+        std::move(cancellation)
     );
 }
 

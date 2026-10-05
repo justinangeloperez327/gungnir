@@ -505,6 +505,7 @@ private:
 [[nodiscard]]
 inline std::shared_ptr<Tracer>
 global_tracer() {
+    if (auto tracer = gungnir::detail::active_context->tracer) return tracer;
     std::lock_guard lock{
         detail::
             global_tracer_mutex()
@@ -540,4 +541,3 @@ inline void set_global_tracer(
 }
 
 } // namespace gungnir::observability
-

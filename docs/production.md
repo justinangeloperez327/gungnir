@@ -13,6 +13,12 @@ Register required dependency checks, configure HTTP limits/timeouts, choose TLS 
 
 ## Shutdown contract
 
+Generated HTTP and background executables handle signals through native
+cancellation. The HTTP executable drains the listener and calls application
+shutdown, including configured tracing and metric exporter cleanup. Native
+applications can pass a `CancellationToken` to `Application::run` or
+`Application::listen` when using their own process supervision.
+
 `Supervisor::shutdown()` is bounded by its configured supervisor timeout and returns the names of runtimes that still report running. For HTTP, `Application::is_running()` now covers the complete active/draining listen lifecycle rather than only listener admission.
 
 The HTTP server's own `shutdown_timeout` bounds network draining. These are distinct controls:

@@ -23,7 +23,9 @@ public:
 
     void log(Level level, std::string message, Context context = {}) const {
         Record record{.level=level, .message=std::move(message), .context=std::move(context)};
-        for (const auto& sink : sinks_) sink->write(record);
+        for (const auto& sink : sinks_) {
+            try { sink->write(record); } catch (...) {}
+        }
     }
 
     void info(std::string message, Context context = {}) const { log(Level::info, std::move(message), std::move(context)); }

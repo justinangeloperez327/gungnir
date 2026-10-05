@@ -42,6 +42,7 @@ The documentation defines the Gungnir developer experience: how applications are
 ## Application services
 
 - [Dependency Injection](dependency-injection.md)
+- [Configuration](configuration.md)
 - [Application Lifecycle](application-lifecycle.md)
 - [Sessions](session.md)
 - [Events](event.md)

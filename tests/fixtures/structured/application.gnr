@@ -1,0 +1,76 @@
+model ApplicationActor {
+    table = "application_users";
+    timestamps = false;
+    fillable = ["name", "password"];
+    hidden = ["password"];
+    string name;
+    string password;
+}
+model ApplicationProject {
+    table = "application_projects";
+    timestamps = false;
+    int owner_id;
+    string title;
+}
+policy ApplicationPolicy {
+    inject Config config;
+    view(ApplicationActor actor, ApplicationProject project) {
+        return config.boolean("permissions.view", true) && actor.id == project.owner_id
+            ? allow() : deny("Project access denied");
+    }
+}
+controller ApplicationController {
+    inject Config config;
+    inject Logger logger;
+    inject Telemetry telemetry;
+    show(Request request, ApplicationProject project) {
+        authorize(request, "view", project);
+        const span = telemetry.span("project.view", {"project_id": project.id});
+        span.attribute("password", "private-value");
+        logger.info("Project viewed", {"project_id": project.id, "authorization": request.header("Authorization")});
+        telemetry.counter("project.views", 1, {"result": "allowed"});
+        telemetry.gauge("project.current", project.id);
+        telemetry.histogram("project.render", 0.5);
+        span.end();
+        return view("projects/show", {"project": project, "app": config.string("app.name")});
+    }
+    configuration() {
+        const missing = config.get("absent");
+        const stored = config.get("stored.null");
+        return json({"name": config.string("app.name"), "limit": config.integer("app.limit", 10),
+            "enabled": config.boolean("app.enabled", false), "ratio": config.number("app.ratio", 0.5),
+            "present": config.has("stored.null"), "missing": missing, "stored": stored});
+    }
+    scope() { return json(config.integer("scope.id")); }
+    dynamicView(Json data) { return view("numbers", data); }
+    namedView(string name) { return view(name); }
+}
+middleware ApplicationMiddleware {
+    inject Config config;
+    inject Logger logger;
+    async handle(Request request, Next next) {
+        const label = config.string("app.name");
+        const scope = config.integer("scope.id");
+        let response = await next(request);
+        logger.debug("Request finished", {"request_id": request.header("X-Request-ID")});
+        response.header("X-Application", label);
+        response.header("X-Scope", json(scope).body());
+        return response;
+    }
+}
+job ApplicationJob {
+    inject Config config;
+    inject Storage storage;
+    string path;
+    handle() { storage.put(path, json(config.integer("scope.id")).body()); }
+}
+function Response renderApplicationModels(List<ApplicationActor> users, string unsafe, uint64 large, double fraction) {
+    return view("users/index", {"users": users, "unsafe": unsafe, "trusted": "<b>trusted</b>",
+        "large": large, "fraction": fraction, "empty": [], "missing": null}, 201);
+}
+function Config retainConfiguration(Config config) { return config; }
+function Response renderApplicationView(Json values) { return view("numbers", values); }
+
+Route::get("/configuration", ApplicationController::configuration);
+Route::get("/scope", ApplicationController::scope);
+Route::get("/projects/{project}", ApplicationController::show);
