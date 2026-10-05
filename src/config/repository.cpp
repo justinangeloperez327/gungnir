@@ -1,6 +1,8 @@
 #include <gungnir/config/repository.hpp>
 
 #include <charconv>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -165,6 +167,10 @@ Int64 Repository::integer(
         const auto* number =
             std::get_if<Double>(&*value)
     ) {
+        if (!std::isfinite(*number) ||
+            *number < static_cast<Double>(std::numeric_limits<Int64>::min()) ||
+            *number >= -static_cast<Double>(std::numeric_limits<Int64>::min()))
+            throw std::invalid_argument("Configuration integer is out of range");
         return static_cast<Int64>(*number);
     }
 
@@ -264,6 +270,7 @@ Double Repository::number(
         const auto* number =
             std::get_if<Double>(&*value)
     ) {
+        if (!std::isfinite(*number)) throw std::invalid_argument("Configuration number must be finite");
         return *number;
     }
 
@@ -289,7 +296,7 @@ Double Repository::number(
         if (
             result.ec == std::errc{} &&
             result.ptr ==
-                text->data() + text->size()
+                text->data() + text->size() && std::isfinite(parsed)
         ) {
             return parsed;
         }

@@ -19,6 +19,7 @@ on:
       - "tests/docs_routing_examples.py"
       - "tests/docs_validation_examples.py"
       - "tests/docs_background_examples.py"
+      - "tests/docs_application_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -43,6 +44,7 @@ on:
       - "tests/docs_routing_examples.py"
       - "tests/docs_validation_examples.py"
       - "tests/docs_background_examples.py"
+      - "tests/docs_application_examples.py"
       - "include/gungnir/language/**"
       - "src/language/**"
       - "CMakeLists.txt"
@@ -125,3 +127,6 @@ jobs:
 
       - name: Validate public background examples
         run: python3 tests/docs_background_examples.py ./build-docs/gungnirc
+
+      - name: Validate public application-service examples
+        run: python3 tests/docs_application_examples.py ./build-docs/gungnirc

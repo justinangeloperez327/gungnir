@@ -6,6 +6,7 @@
 #include <gungnir/http/request.hpp>
 #include <type_traits>
 #include <typeindex>
+#include <gungnir/orm/executor.hpp>
 namespace gungnir::auth {
 // Explicit actor/resource types prevent policy registration from erasing the
 // resource contract or accidentally casting an unrelated authenticated user.
@@ -20,6 +21,13 @@ class ResourceAuthorization {
     std::unordered_map<std::string,std::unordered_map<TypePair,Binding,TypePairHash>> bindings_;
     std::unordered_map<std::type_index,std::function<std::shared_ptr<void>(const Identity&)>> actors_;
 public:
+    // Default model actors use the owning application's ordinary ORM scope.
+    // An explicitly registered identity mapping always takes precedence.
+    template<class Actor> ResourceAuthorization& model_actor() {
+        if (!actors_.contains(typeid(Actor)))
+            actor<Actor>([](const Identity& identity) { return Actor::find(model::AttributeValue{identity.id}); });
+        return *this;
+    }
     template<class Actor,class Resolver> ResourceAuthorization& actor(Resolver resolver) {
         actors_.insert_or_assign(typeid(Actor),[resolver=std::move(resolver)](const Identity& identity) -> std::shared_ptr<void> {
             auto actor = resolver(identity);

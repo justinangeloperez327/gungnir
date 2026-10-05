@@ -208,6 +208,7 @@ public:
     http_runtime() const noexcept;
 
     void run();
+    void run(CancellationToken cancellation);
 
     void listen(
         std::uint16_t port = 8000,

@@ -14,6 +14,9 @@
 #include <gungnir/storage/service.hpp>
 #include <gungnir/auth/resource_authorization.hpp>
 #include <gungnir/auth/login.hpp>
+#include <gungnir/config/service.hpp>
+#include <gungnir/logging/service.hpp>
+#include <gungnir/observability/service.hpp>
 
 namespace gungnir {
 struct ServiceOptions {
@@ -26,6 +29,9 @@ struct ServiceOptions {
     std::shared_ptr<auth::SessionGuard> authentication;
     std::shared_ptr<scheduler::LockStore> scheduler_locks;
     queue::WorkerOptions worker_options;
+    std::shared_ptr<logging::Logger> logger;
+    std::shared_ptr<observability::Tracer> tracer;
+    std::shared_ptr<observability::Meter> meter;
 };
 // Explicit adapters are registered during application bootstrap. No network
 // clients or worker threads are started merely by constructing an application.
@@ -34,6 +40,24 @@ public:
     explicit ServicesProvider(ServiceOptions options = {}) : options_(std::move(options)) {}
     void register_services(Application& app) override {
         auto& container = app.container();
+        auto logger = options_.logger ? options_.logger : std::make_shared<logging::Logger>();
+        auto tracer = options_.tracer ? options_.tracer : observability::global_tracer();
+        auto meter = options_.meter ? options_.meter : observability::global_meter();
+        container.instance<logging::Logger>(logger);
+        container.instance<logging::Service>(std::make_shared<logging::Service>(std::move(logger)));
+        container.instance<observability::Tracer>(tracer);
+        container.instance<observability::Meter>(meter);
+        container.instance<observability::Service>(std::make_shared<observability::Service>(tracer, meter));
+        app.execution_context()->tracer = options_.tracer;
+        app.execution_context()->meter = options_.meter;
+        const auto cleanup = [](const auto& exporter) {
+            std::exception_ptr failure;
+            try { exporter->flush(); } catch (...) { failure = std::current_exception(); }
+            try { exporter->shutdown(); } catch (...) { if (!failure) failure = std::current_exception(); }
+            if (failure) std::rethrow_exception(failure);
+        };
+        if (options_.tracer) app.on_shutdown([tracer,cleanup](Application&) { cleanup(tracer); });
+        if (options_.meter) app.on_shutdown([meter,cleanup](Application&) { cleanup(meter); });
         auto events = std::make_shared<events::Dispatcher>();
         container.instance<events::Dispatcher>(events);
         container.instance<events::Service>(std::make_shared<events::Service>(events));

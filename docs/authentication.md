@@ -84,7 +84,7 @@ if (user != null) {
 }
 ```
 
-Identity providers define the public attributes and resolve identities from user models. Password hashes remain in credential providers. JSON serialization includes the identity identifier, sorted roles, and public attributes. Snapshots remain valid after the request finishes; they do not modify the request's authentication context. Policies resolve the identity to their declared actor model through the configured actor resolver.
+Identity providers define public attributes and resolve identities from user models. Password hashes remain in credential providers. JSON serialization includes the identity identifier, sorted roles, and public attributes. Snapshots remain valid after the request finishes and do not modify authentication state. Model policies default to looking up the actor by identity id; applications can register a different mapping.
 
 ## Logout
 
@@ -114,7 +114,43 @@ the stored hash; do not hash again and compare the two randomly salted strings.
 
 ## Remember me
 
-Session guards can issue remember tokens. Tokens are stored as digests, rotated when consumed, and revoked on logout. Production applications should use a persistent remember-token store.
+Tokens are stored as digests, rotated when consumed, and revoked on logout.
+`MemoryRememberStore` is process-local. Use `RedisRememberStore` with Redis 6.2
+or later for persistent, atomic recall across application instances. Build with
+`GUNGNIR_WITH_REDIS=ON` and link `gungnir::redis`; generated applications link
+available Redis adapters.
+
+Configure persistent sessions and remember tokens together in `bootstrap/app.hpp`:
+
+```cpp
+#include <gungnir/auth/redis_remember_store.hpp>
+#include <gungnir/session/redis_store.hpp>
+
+gungnir::session::RedisSessionSettings sessions;
+sessions.redis.host = "redis.internal";
+sessions.redis.prefix = "myapp:session:";
+auto session_store = std::make_shared<gungnir::session::RedisStore>(sessions);
+
+gungnir::auth::RedisRememberSettings tokens;
+tokens.client.nodes = {{"redis.internal", 6379}};
+tokens.prefix = "myapp:remember:";
+auto remember_store = std::make_shared<gungnir::auth::RedisRememberStore>(tokens);
+```
+
+Pass these stores to the guard and middleware configuration above. The remember
+store uses the existing Redis client's credentials, timeouts, TLS, and topology
+options. Load deployment secrets in native bootstrap and use application-specific
+key prefixes. Session and remember cookies default to Secure and HttpOnly.
+Configure HTTPS, SameSite, proxy trust, and CSRF protection for the deployment.
+
+Remember records contain the public identity id, keyed by the token digest, with
+an absolute expiry. Recall atomically consumes the record before rotating it;
+replay cannot authenticate a second process. Logout revokes the associated token
+and invalidates that session. A new token must persist before login installs
+authenticated state. Store failures propagate through application error handling.
+
+Register each store's `ping()` method with required readiness checks. Persistence
+across server restarts also depends on Redis retention and durability settings.
 
 ## Authentication middleware
 

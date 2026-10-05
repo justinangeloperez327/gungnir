@@ -326,6 +326,7 @@ global_meter_storage() {
 [[nodiscard]]
 inline std::shared_ptr<Meter>
 global_meter() {
+    if (auto meter = gungnir::detail::active_context->meter) return meter;
     std::lock_guard lock{
         detail::
             global_meter_mutex()

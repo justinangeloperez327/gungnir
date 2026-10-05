@@ -128,6 +128,7 @@ String Value::string() const {
 
     if (const auto* value = std::get_if<Double>(&storage_)) {
         std::ostringstream output;
+        output.imbue(std::locale::classic());
         output << *value;
         return output.str();
     }

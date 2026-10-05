@@ -4,6 +4,16 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+### Application services
+
+- connected typed Config, Logger, Telemetry and Span APIs to native application services;
+- preserved request scopes in generated factories and created a fresh scope for each injected job execution;
+- resolved model policy actors through the owning ORM while preserving explicit identity mappings;
+- added persistent Redis remember tokens with atomic consumption, expiry and revocation;
+- verified installed views, hidden model fields, bound authorization and shared authentication across independent server processes;
+- isolated application tracing/metrics exporters, added facade redaction, and connected generated HTTP shutdown to cancellation and exporter cleanup;
+- documented and validated the public application-service examples.
+
 ### Development consistency reset
 
 - removed the premature 1.0 release-candidate positioning;

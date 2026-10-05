@@ -11,3 +11,4 @@ The public product manual is in [docs](../docs/README.md).
 - [Routing and model-binding contracts](routing-contract-audit.md)
 - [Validation and upload contracts](validation-contract-audit.md)
 - [Events, queues and scheduling contracts](background-contract-audit.md)
+- [Views, authorization, configuration, DI and observability](application-contract-audit.md)

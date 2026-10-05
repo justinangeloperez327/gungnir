@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <gungnir/cache/redis_store.hpp>
+#include <gungnir/auth/redis_remember_store.hpp>
 #include <gungnir/cache/repository.hpp>
 #include <gungnir/queue/redis_driver.hpp>
 #include <gungnir/queue/worker.hpp>
@@ -78,6 +79,33 @@ int main() {
     assert(store.ping());
 
     outside.flush();
+
+    // Separate clients exercise the persistent RememberStore contract, including
+    // atomic consume, expiry, revocation and application namespace isolation.
+    auth::RedisRememberSettings remember_settings;
+    remember_settings.client.nodes={{env("GUNGNIR_REDIS_HOST","127.0.0.1"),redis_port()}};
+    remember_settings.client.database=15;
+    remember_settings.prefix="gungnir:remember:test:";
+    auth::RedisRememberStore remember{remember_settings}, other_remember{remember_settings};
+    assert(remember.ping());
+    const auto digest=security::random_token();
+    remember.put(digest,"42",std::chrono::system_clock::now()+std::chrono::seconds{10});
+    std::atomic<int> recalled{};
+    std::thread one{[&] {if (remember.consume(digest)==std::optional<std::string>{"42"}) ++recalled;}};
+    std::thread two{[&] {if (other_remember.consume(digest)==std::optional<std::string>{"42"}) ++recalled;}};
+    one.join(); two.join(); assert(recalled==1 && !remember.consume(digest));
+    remember.put(digest,"42",std::chrono::system_clock::now()+std::chrono::milliseconds{100});
+    std::this_thread::sleep_for(std::chrono::milliseconds{150}); assert(!other_remember.consume(digest));
+    remember.put(digest,"42",std::chrono::system_clock::now()-std::chrono::seconds{1});
+    assert(!remember.consume(digest));
+    remember.put(digest,"42",std::chrono::system_clock::now()+std::chrono::seconds{10});
+    remember_settings.prefix="gungnir:remember:isolated:";
+    auth::RedisRememberStore isolated{remember_settings}; assert(!isolated.consume(digest));
+    other_remember.revoke(digest); assert(!remember.consume(digest));
+    bool raw_rejected=false;
+    try {remember.put("raw-browser-credential","42",std::chrono::system_clock::now()+std::chrono::seconds{10});}
+    catch (const std::invalid_argument&) {raw_rejected=true;}
+    assert(raw_rejected);
 
     cache::Repository cache{
         store

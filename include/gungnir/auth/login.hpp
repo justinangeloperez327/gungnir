@@ -58,6 +58,7 @@ public:
         : credentials_(std::move(credentials)), identities_(std::move(identities)), remember_(std::move(remember)), options_(std::move(options)) {
         if (!credentials_ || !identities_ || options_.remember_for.count() <= 0)
             throw std::invalid_argument("SessionGuard requires identity providers and a positive remember lifetime");
+        (void)http::serialize_cookie(http::Cookie{.name=options_.remember_cookie, .value="", .secure=options_.secure});
     }
     bool attempt(http::Request& request, http::Response& response, std::string_view login,
         std::string_view password, bool remember = false) const {
@@ -81,13 +82,23 @@ public:
         if (!request.has_session()) throw std::logic_error("Login requires session middleware");
         if (identity.id.empty()) throw std::invalid_argument("Login identity cannot be empty");
         if (remember && !remember_) throw std::logic_error("Remember login requires a token store");
+        std::string token, digest;
+        if (remember) {
+            const auto now = std::chrono::system_clock::now();
+            if (options_.remember_for > std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::time_point::max() - now))
+                throw std::invalid_argument("Remember lifetime is out of range");
+            token = security::random_token(); digest = Password::token_digest(token);
+            // A persistent-store failure must happen before authenticated state
+            // is installed in the request or session.
+            remember_->put(digest, identity.id, now + options_.remember_for);
+        }
         revoke(request);
         request.session().regenerate();
         request.session().put(options_.session.key, identity.id);
         request.session().forget("_gungnir_csrf_token");
         if (!request.has_auth()) request.attach_auth(std::make_shared<Context>());
         request.auth().login(identity);
-        if (remember) issue(request, response, identity.id);
+        if (remember) issue(request, response, std::move(token), std::move(digest));
         else expire(response);
     }
     bool recall(http::Request& request, http::Response& response) const {
@@ -162,10 +173,7 @@ private:
         }
         request.session().forget("_gungnir_remember_digest");
     }
-    void issue(http::Request& request, http::Response& response, const std::string& identity) const {
-        auto token = security::random_token();
-        auto digest = Password::token_digest(token);
-        remember_->put(digest, identity, std::chrono::system_clock::now() + options_.remember_for);
+    void issue(http::Request& request, http::Response& response, std::string token, std::string digest) const {
         request.session().put("_gungnir_remember_digest", std::move(digest));
         response.cookie(http::Cookie{.name = options_.remember_cookie, .value = std::move(token), .max_age = options_.remember_for, .secure = options_.secure});
     }

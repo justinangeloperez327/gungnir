@@ -8,7 +8,12 @@ Gungnir hardens the HTTP trust boundary: ambiguous HTTP/1 request framing is rej
 Configure the trusted proxy boundary, host validation, CORS, rate limits, session cookies and body/header limits for the actual application. Enforce authorization at the operation boundary. See [Security Hardening](security-hardening.md) for the tested Gungnir contract.
 
 ## Scope
-These mechanisms do not establish a blanket security audit. Raw view output bypasses escaping; model view conversion does not promise hidden-field filtering; session authentication needs application credential verification. Validate all trust boundaries with the selected runtime configuration.
+Raw view output bypasses escaping. Models passed through the canonical view API
+respect `hidden` and `visible`, including nested model lists. Session guards
+verify passwords through the configured credential provider; persistent sessions
+and remember tokens require explicitly configured stores. Enforce resource
+policies at the operation boundary and configure deployment trust boundaries.
+See [Authentication](authentication.md), [Policies](policy.md), and [Views](view.md).
 
 
 
