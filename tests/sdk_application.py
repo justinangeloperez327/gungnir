@@ -174,6 +174,14 @@ inline void boot(gungnir::Application&) {}
             reservation.bind(("127.0.0.1", 0))
             port = reservation.getsockname()[1]
         source(".env", f"APP_HOST=127.0.0.1\nAPP_PORT={port}\nDB_CONNECTION=sqlite\nDB_DATABASE=app.sqlite\n")
+        # An explicit/automatically selected SDK must replace a valid cached
+        # locator from an earlier SDK, as when upgrading a core application.
+        stale_sdk = root / "previous SDK"
+        stale_sdk.mkdir()
+        (stale_sdk / "GungnirConfig.cmake").write_text('message(FATAL_ERROR "The previous cached SDK was selected")\n')
+        cached_build = project / ".gungnir/build"
+        cached_build.mkdir(parents=True, exist_ok=True)
+        (cached_build / "CMakeCache.txt").write_text(f"Gungnir_DIR:PATH={stale_sdk.as_posix()}\n")
         run("build", "--release")
         assert "1 migration(s) applied" in run("migrate", "--release")
         assert "0 migration(s) applied" in run("migrate", "--release")

@@ -895,6 +895,9 @@ std::vector<String> configure_arguments(
     };
 
     if (const char* prefix = std::getenv("GUNGNIR_CMAKE_PREFIX")) {
+        // A selected SDK must replace the package locator cached by a
+        // previous build, including recovery from a missing capability.
+        arguments.push_back("-UGungnir_DIR");
         arguments.push_back(
             "-DCMAKE_PREFIX_PATH=" +
             String{prefix}
