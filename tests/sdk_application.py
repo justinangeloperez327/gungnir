@@ -3,6 +3,7 @@
 Uses the installed CLI and ordinary bootstrap configuration. No generated C++
 is patched, and bundled dependencies are tested with package discovery disabled.
 """
+from contextlib import closing
 from http.cookies import SimpleCookie
 import http.client
 import json
@@ -243,14 +244,14 @@ inline void boot(gungnir::Application&) {}
             login()
 
         serve(first_start)
-        with sqlite3.connect(project / "app.sqlite") as database:
+        with closing(sqlite3.connect(project / "app.sqlite")) as database:
             hashed = database.execute("SELECT password FROM sdk_users").fetchone()[0]
             assert hashed.startswith("scrypt$") and "correct-password" not in hashed, hashed
         # Authentication after a new process uses the persisted SQLite hash.
         # Sessions intentionally use the ordinary development memory store.
         serve(login)
         assert "1 migration(s) rolled back" in run("migrate:rollback", "--release")
-        with sqlite3.connect(project / "app.sqlite") as database:
+        with closing(sqlite3.connect(project / "app.sqlite")) as database:
             assert database.execute("SELECT name FROM sqlite_master WHERE name='sdk_users'").fetchone() is None
 
 print("Application SDK: relocated bundled dependencies, migrations, stored passwords, login/logout and restart passed" if application
