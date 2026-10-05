@@ -1,8 +1,6 @@
 # Events
 
-Events represent facts that have occurred in the application and allow independent parts of the system to react without tightly coupling the producer to every consumer.
-
-## Defining an event
+Events are immutable typed facts delivered to listeners in the current process.
 
 ```gnr
 event UserRegistered {
@@ -11,18 +9,28 @@ event UserRegistered {
 }
 ```
 
-Events are immutable typed data declarations.
+Inject `Events` into the producer. Generated applications register listeners during boot, before serving requests.
 
-## Dispatching events
+```gnr
+controller RegistrationController {
+    inject Events events;
+    store(int id, string email) {
+        events.dispatch(UserRegistered(id, email));
+        return noContent();
+    }
+}
+```
 
-Application services dispatch an event through the event dispatcher. Registered listeners for that event type are invoked according to their priority and sync/async contract.
+`dispatch` invokes synchronous listeners in descending priority order. Equal priorities retain registration order. If any listener is async, synchronous dispatch fails before invoking any listener; use awaited dispatch instead.
 
-## Event names
+```gnr
+controller AsyncRegistrationController {
+    inject Events events;
+    async store(int id, string email) {
+        await events.dispatchAsync(UserRegistered(id, email));
+        return noContent();
+    }
+}
+```
 
-Generated events have stable qualified names derived from their module and declaration.
-
-## Async dispatch
-
-Asynchronous listeners can be awaited through asynchronous dispatch. Synchronous dispatch is reserved for synchronous listeners.
-
-For background work that must survive the current process or be retried, use [Queues and Jobs](queues.md) rather than treating in-process events as a durable queue.
+Async dispatch awaits listeners sequentially and retains the event through suspension. A listener failure stops dispatch and propagates to the caller. Event names derive from their module and declaration. Events provide no persistence or retry policy; use [queued jobs](queues.md) for background work.

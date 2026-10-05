@@ -1,51 +1,61 @@
 # Queues and Jobs
 
-Queues move work outside the immediate request path. Jobs are typed units of work that can be serialized, dispatched, retried, and executed by workers.
-
-## Defining a job
+Jobs carry immutable data to a worker. Injected services are excluded from the payload and resolved in the worker's application when it reconstructs the job.
 
 ```gnr
 job GenerateReport {
+    inject Storage storage;
     int report_id;
-
     handle() {
-        // Generate the report.
+        storage.put('reports/latest.txt', 'Report ready');
     }
 }
 ```
 
-Job fields form the serialized payload.
+Payload fields must have a reconstruction codec: JSON values, scalar data, lists, maps and models are supported. Use lists for payload sequences, and store identifiers instead of request/response handles, events or query collections.
 
-## Dependency injection
+Construct a job with its data fields, then inject `Queue` to dispatch it. The producer's job object has no resolved services; call its handler through a worker.
 
-Jobs can inject services required by their handler. Services are resolved by the worker when the payload is reconstructed.
+```gnr
+controller ReportController {
+    inject Queue queue;
+    store(int id) {
+        const jobId = queue.dispatch(GenerateReport(id), 3);
+        return json({jobId: jobId}, 202);
+    }
+    later(int id) {
+        return text(queue.later(GenerateReport(id), 5000, 3));
+    }
+}
+```
 
-## Dispatching
+`dispatch(job, attempts = 1, afterCommit = true)` returns the job ID. `later(job, delayMilliseconds, attempts = 1, afterCommit = true)` delays availability; zero dispatches immediately. Attempts must be positive and fit the native unsigned range. Delays must be non-negative and fit the native clock.
 
-Jobs are dispatched through the queue dispatcher. Applications choose the configured queue connection/driver.
+After-commit dispatch publishes only when the active database transaction commits. A rollback discards the pending publication. A delayed job's delay begins when it is published. Pass `false` as the final argument for immediate publication inside a transaction. This applies to the active Gungnir database connection, not an external transaction or a transactional outbox.
 
-## After-commit dispatch
+Run a worker from the project directory:
 
-Database-dependent jobs can be published after the active transaction commits so workers do not observe data that later rolls back.
+```sh
+gungnir queue:work
+gungnir queue:work --once
+gungnir queue:work --release
+```
 
-## Workers
+`--once` reserves and processes at most one available job, then exits, including when the queue is empty. Generated applications register all job handlers during boot. Continuous workers finish the current handler and stop on SIGINT/SIGTERM; handlers must cooperate with cancellation for prompt shutdown.
 
-Workers reserve jobs from a queue, reconstruct the typed job, execute `handle`, and apply retry/failure policy.
+The generated bootstrap uses an in-memory queue for development. Its contents are process-local: a separate worker cannot consume jobs from an HTTP process's memory queue. Configure the same Redis queue in both processes in `bootstrap/app.hpp` for persistent shared workers. Set `ServiceOptions.worker_options` there for idle sleep, retry backoff, lease renewal, job count and runtime limits. Choose reservation and renewal settings suitable for the longest handler.
 
-## Retries
+Failures retry up to the configured attempt count. Handlers must tolerate duplicate execution; delivery is not exactly-once. Inspect or retry failures through the configured driver:
 
-Jobs must be designed for retry-safe execution. Queue delivery should not be treated as exactly-once execution.
+```gnr
+controller FailedJobsController {
+    inject Queue queue;
+    index() { return json(queue.failed()); }
+    retry(string id) { return json(queue.retry(id)); }
+    forget(string id) { return json(queue.forget(id)); }
+}
+```
 
-## Drivers
+Failure listings contain ID, name, attempts and maximum attempts, excluding payload data. `retry` resets attempts and returns the failed job to the queue; `forget` removes its failure record. Protect these administrative routes with authentication and authorization.
 
-Gungnir provides an in-memory queue for development/testing and Redis-backed queues for persistent shared workers.
-
-## Cancellation and shutdown
-
-Workers support controlled stop requests and cancellation-aware execution so applications can shut down without abandoning process state unnecessarily.
-
-## Scheduling jobs
-
-The scheduler can dispatch queued jobs on a recurring schedule.
-
-See [Scheduler](scheduler.md).
+The [scheduler](scheduler.md) can publish jobs on a recurring schedule.

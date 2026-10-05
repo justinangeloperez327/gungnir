@@ -91,6 +91,8 @@ void help() {
     std::cout << "Gungnir " << version << "\n\n"
         "  gungnir new <name> [path]\n"
         "  gungnir build|run [--release]\n"
+        "  gungnir queue:work [--once] [--release]\n"
+        "  gungnir schedule:run|schedule:work [--release]\n"
         "  gungnir dev\n"
         "  gungnir lsp\n"
         "  gungnir make:model|controller|middleware|migration|request|job|event|mail <name>\n"
@@ -133,6 +135,16 @@ int main(int argc,char** argv) {
             std::cout << "Created " << std::filesystem::relative(created,project.root()).generic_string() << '\n'; return 0;
         }
         if(command=="dev") { if(argc!=2) throw std::invalid_argument("Usage: gungnir dev"); return project.dev(); }
+        if(command=="queue:work" || command=="schedule:run" || command=="schedule:work") {
+            bool once=false, release=false;
+            for (int i=2;i<argc;++i) {
+                const std::string option=argv[i];
+                if(option=="--release" && !release) release=true;
+                else if(option=="--once" && !once && command=="queue:work") once=true;
+                else throw std::invalid_argument("Unsupported or duplicate background option: " + option);
+            }
+            return project.background(command,once,release);
+        }
         if(argc>3 || (argc==3 && std::string{argv[2]}!="--release")) throw std::invalid_argument("Only --release is supported for this command");
         const bool release=argc==3;
         if(command=="build") return project.build(release);

@@ -896,6 +896,22 @@ public:
             block << " {}\n";
         }
 
+        if (declaration.kind == DeclarationKind::job && std::any_of(resolution.fields.begin(),resolution.fields.end(),[&](auto field_id){return symbol(field_id).kind == ResolvedSymbolKind::injection;})) {
+            block << declaration.name << '('; bool comma = false;
+            for (auto field_id : resolution.fields) if (symbol(field_id).kind != ResolvedSymbolKind::injection) {
+                if (comma) block << ',';
+                comma = true; block << type(symbol(field_id).type) << " gnr_" << symbol(field_id).name;
+            }
+            block << ") : " << declaration.name << '('; comma = false;
+            for (auto field_id : resolution.fields) {
+                if (comma) block << ',';
+                comma = true;
+                if (symbol(field_id).kind == ResolvedSymbolKind::injection) block << "nullptr";
+                else block << "std::move(gnr_" << symbol(field_id).name << ')';
+            }
+            block << ") {}\n";
+        }
+
         if (
             std::any_of(
                 resolution.fields.begin(),
@@ -1237,7 +1253,9 @@ public:
                    "gungnir::events::Dispatcher& "
                    "dispatcher, std::shared_ptr<"
                 << declaration.name
-                << "> listener, int priority = 0) { "
+                << "> listener, int priority = "
+                << (std::any_of(declaration.metadata.begin(),declaration.metadata.end(),[](const auto& value){return value.name == "priority";}) ? "" + declaration.name + "::priority" : "0")
+                << ") { "
                    "(void)dispatcher."
                 << (
                     it->asynchronous

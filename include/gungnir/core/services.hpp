@@ -6,7 +6,9 @@
 #include <gungnir/queue/worker.hpp>
 #include <gungnir/scheduler/scheduler.hpp>
 #include <gungnir/mail/transport.hpp>
-#include <gungnir/events/dispatcher.hpp>
+#include <gungnir/events/service.hpp>
+#include <gungnir/queue/service.hpp>
+#include <gungnir/scheduler/service.hpp>
 #include <gungnir/notifications/adapters.hpp>
 #include <gungnir/storage/manager.hpp>
 #include <gungnir/storage/service.hpp>
@@ -22,6 +24,8 @@ struct ServiceOptions {
     std::shared_ptr<storage::Manager> storage;
     bool database_notifications{false};
     std::shared_ptr<auth::SessionGuard> authentication;
+    std::shared_ptr<scheduler::LockStore> scheduler_locks;
+    queue::WorkerOptions worker_options;
 };
 // Explicit adapters are registered during application bootstrap. No network
 // clients or worker threads are started merely by constructing an application.
@@ -30,7 +34,14 @@ public:
     explicit ServicesProvider(ServiceOptions options = {}) : options_(std::move(options)) {}
     void register_services(Application& app) override {
         auto& container = app.container();
-        container.instance<events::Dispatcher>(std::make_shared<events::Dispatcher>());
+        auto events = std::make_shared<events::Dispatcher>();
+        container.instance<events::Dispatcher>(events);
+        container.instance<events::Service>(std::make_shared<events::Service>(events));
+        // Listeners may themselves inject Events. Release registrations during
+        // shutdown to break the dispatcher -> listener -> dispatcher cycle.
+        app.on_shutdown([owner = std::weak_ptr<events::Dispatcher>{events}](Application&) {
+            if (auto dispatcher = owner.lock()) dispatcher->clear();
+        });
         container.instance<auth::ResourceAuthorization>(std::make_shared<auth::ResourceAuthorization>());
         if (options_.authentication)
             container.instance<auth::SessionGuard>(options_.authentication);
@@ -46,14 +57,20 @@ public:
         }
         if (options_.queue) {
             container.instance<queue::Driver>(options_.queue);
-            container.instance<queue::Dispatcher>(std::make_shared<queue::Dispatcher>(options_.queue));
-            struct WorkerOwner { std::shared_ptr<queue::Driver> driver; queue::Worker worker; explicit WorkerOwner(std::shared_ptr<queue::Driver> driver) : driver(std::move(driver)), worker(*this->driver) {} };
-            auto owner = std::make_shared<WorkerOwner>(options_.queue);
+            auto dispatcher = std::make_shared<queue::Dispatcher>(options_.queue);
+            container.instance<queue::Dispatcher>(dispatcher);
+            container.instance<queue::Service>(std::make_shared<queue::Service>(dispatcher, options_.queue));
+            struct WorkerOwner { std::shared_ptr<queue::Driver> driver; queue::Worker worker; WorkerOwner(std::shared_ptr<queue::Driver> driver, queue::WorkerOptions options) : driver(std::move(driver)), worker(*this->driver, std::move(options)) {} };
+            auto owner = std::make_shared<WorkerOwner>(options_.queue, options_.worker_options);
             container.instance<queue::Worker>(std::shared_ptr<queue::Worker>{owner,&owner->worker});
         }
-        struct SchedulerOwner { scheduler::SystemClock clock; scheduler::Scheduler scheduler{clock}; };
+        struct SchedulerOwner { std::shared_ptr<scheduler::LockStore> locks; scheduler::SystemClock clock; scheduler::Scheduler scheduler{clock}; };
         auto schedule = std::make_shared<SchedulerOwner>();
-        container.instance<scheduler::Scheduler>(std::shared_ptr<scheduler::Scheduler>{schedule,&schedule->scheduler});
+        schedule->locks = options_.scheduler_locks;
+        auto native_schedule = std::shared_ptr<scheduler::Scheduler>{schedule,&schedule->scheduler};
+        container.instance<scheduler::Scheduler>(native_schedule);
+        container.instance<scheduler::Service>(std::make_shared<scheduler::Service>(native_schedule,
+            options_.queue ? container.resolve<queue::Dispatcher>() : nullptr, options_.scheduler_locks));
         if (options_.mail) {
             container.instance<mail::Transport>(options_.mail);
             struct MailerOwner { std::shared_ptr<mail::Transport> transport; mail::Mailer mailer; explicit MailerOwner(std::shared_ptr<mail::Transport> transport) : transport(std::move(transport)), mailer(*this->transport) {} };

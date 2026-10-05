@@ -44,6 +44,7 @@ jobs:
           gungnir_structured_services_test
           gungnir_structured_routing_test
           gungnir_structured_validation_test
+          gungnir_structured_background_test
           gungnir_structured_request_context_test
           gungnir_language_test
           gungnir_runtime_safety_test gungnir_timer_runtime_test
@@ -64,7 +65,7 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|docs_service_examples|docs_routing_examples|docs_validation_examples|docs_auth_examples|structured_request_context|language|cli|docs_orm_examples|docs_http_examples|docs_context_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
+          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|docs_background_examples|docs_service_examples|docs_routing_examples|docs_validation_examples|docs_auth_examples|structured_request_context|language|cli|docs_orm_examples|docs_http_examples|docs_context_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
       - name: Build and run generated ORM against the installed package
         run: |
           cmake --install build --prefix "$RUNNER_TEMP/gungnir-orm"
@@ -136,6 +137,16 @@ jobs:
           cmake --build build/install-validation --parallel 2
           ./build/install-validation/gungnir_install_smoke
           ./build/install-validation/gungnir_installed_validation
+      - name: Build and run generated background against installed package
+        run: |
+          cmake --install build --prefix "$PWD/build/install"
+          cmake -S tests/install_smoke -B build/install-background -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_PREFIX_PATH="$PWD/build/install" \
+            -DGUNGNIR_STRUCTURED_BACKGROUND_GENERATED="$PWD/build/generated/structured_background_program.cpp"
+          cmake --build build/install-background --parallel 2
+          ./build/install-background/gungnir_install_smoke
+          ./build/install-background/gungnir_installed_background
       - name: Configure sanitizer fuzz build
         run: >
           cmake -S . -B build-fuzz -G Ninja
@@ -244,7 +255,6 @@ jobs:
 
   redis:
     name: Integration · Redis
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       redis:
@@ -263,18 +273,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Install hiredis
-        run: sudo apt-get update && sudo apt-get install -y libhiredis-dev
+        run: sudo apt-get update && sudo apt-get install -y libhiredis-dev ninja-build
       - name: Configure
         run: >
-          cmake -S . -B build
+          cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
-          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
           -DGUNGNIR_WITH_REDIS=ON
           -DGUNGNIR_REDIS_INTEGRATION_TESTS=ON
       - name: Build adapter test
-        run: cmake --build build --target gungnir_redis_integration_test --parallel
+        run: cmake --build build --target gungnir_redis_integration_test gungnir-orm gungnir-cli gungnirc --parallel 2
       - name: Test adapter
-        run: ctest --test-dir build --no-tests=error -R "^gungnir.redis$" --output-on-failure
+        run: ctest --test-dir build --no-tests=error -R '^gungnir\.(redis|background_redis)$' --output-on-failure
 
   tls:
     name: Integration · TLS

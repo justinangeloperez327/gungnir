@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -91,6 +92,13 @@ public:
         const TimeZone& timezone
     ) noexcept {
         timezone_ = &timezone;
+        return *this;
+    }
+
+    Task& timezone(std::shared_ptr<const TimeZone> timezone) {
+        if (!timezone) throw std::invalid_argument("Task timezone requires an owner");
+        timezone_owner_ = std::move(timezone);
+        timezone_ = timezone_owner_.get();
         return *this;
     }
 
@@ -537,6 +545,7 @@ private:
     > cron_;
     Action action_;
     Clock::TimePoint last_run_{};
+    std::shared_ptr<const TimeZone> timezone_owner_;
     const TimeZone* timezone_{
         &UtcTimeZone::instance()
     };
