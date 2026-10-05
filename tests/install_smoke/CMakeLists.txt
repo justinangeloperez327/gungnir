@@ -12,24 +12,24 @@ if(DEFINED GUNGNIR_STRUCTURED_APPLICATION_GENERATED)
     target_link_libraries(gungnir_installed_application PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
 endif()
 
-if(NOT Gungnir_RELEASE_VERSION STREQUAL "development")
+if(NOT Gungnir_RELEASE_VERSION STREQUAL "1.0.0")
     message(
         FATAL_ERROR
-        "Installed Gungnir release identity is not development"
+        "Installed Gungnir release identity is not the v1 release contract"
     )
 endif()
 
-if(NOT Gungnir_NATIVE_API_CONTRACT STREQUAL "development")
+if(NOT Gungnir_NATIVE_API_CONTRACT STREQUAL "1.0")
     message(
         FATAL_ERROR
-        "Installed Gungnir native API contract is not development"
+        "Installed Gungnir native API contract is not the v1 release contract"
     )
 endif()
 
-if(NOT Gungnir_NATIVE_ABI_EPOCH STREQUAL "0")
+if(NOT Gungnir_NATIVE_ABI_EPOCH STREQUAL "1")
     message(
         FATAL_ERROR
-        "Installed Gungnir native ABI epoch is not development epoch 0"
+        "Installed Gungnir native ABI epoch is not epoch 1"
     )
 endif()
 

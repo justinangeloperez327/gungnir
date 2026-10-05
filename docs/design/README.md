@@ -1,10 +1,10 @@
 # Gungnir Design Specifications
 
-> **Gungnir development design set.** These documents describe intended long-term architecture beyond the current implementation. They are not current usage instructions. The [current documentation index](../README.md) is authoritative for implemented behavior.
+> **Gungnir future design set.** These documents describe intended long-term architecture beyond the current implementation. They are not current usage instructions. The [current documentation index](../README.md) is authoritative for implemented behavior.
 
-## Development design governance
+## Design governance
 
-The language, compiler, diagnostic, framework-semantic, and native C++ API contracts remain under development. Design proposals in this directory may target additive 1.x evolution or a future major version, but they must not be presented as already implemented unless the current guides and executable contract tests agree.
+The existing language, compiler, diagnostic and native API contracts are published as 1.0. Design proposals in this directory may target additive 1.x evolution or a future major version, but they must not be presented as already implemented unless the current guides and executable contract tests agree.
 
 Design work should preserve the canonical compiler pipeline:
 
@@ -12,7 +12,7 @@ Design work should preserve the canonical compiler pipeline:
 source -> lexer -> parser -> syntax AST -> semantics -> validated AST -> typed C++ IR -> C++23 emitter
 ```
 
-Runtime proposals must preserve tested lifecycle, security, resilience, and package-consumer invariants unless a deliberate development change updates those contracts and tests.
+Runtime proposals must preserve tested lifecycle, security, resilience, and package-consumer invariants unless an explicitly versioned change updates those contracts and tests.
 
 - [Application Lifecycle](application-lifecycle.md)
 - [Abstract Syntax Tree](ast.md)

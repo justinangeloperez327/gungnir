@@ -64,7 +64,7 @@ using OrmCompile =
     );
 
 static_assert(
-    GUNGNIR_VERSION_MAJOR == 0
+    GUNGNIR_VERSION_MAJOR == 1
 );
 
 static_assert(
@@ -77,17 +77,17 @@ static_assert(
 
 static_assert(
     gungnir::version ==
-        "development"
+        "1.0.0"
 );
 
 static_assert(
     gungnir::
         native_api_contract_version ==
-        "development"
+        "1.0"
 );
 
 static_assert(
-    gungnir::native_abi_epoch == 0
+    gungnir::native_abi_epoch == 1
 );
 
 static_assert(

@@ -1,6 +1,6 @@
 # Compiler Fuzzing
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+> This guide describes the 1.0 contract and its documented limits. See [release scope](release-v1.md).
 
 Gungnir uses two complementary robustness gates. The normal test suite runs a deterministic adversarial corpus on every compiler CI run, while Clang/libFuzzer continuously mutates raw lexer input and complete structured compiler input under sanitizers.
 

@@ -1,7 +1,20 @@
 name: Release
 
 on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/gungnir/language/spec.hpp"
+      - "tests/release_smoke.py"
+      - "tools/wait_release_checks.py"
+      - ".github/workflows/release.yml"
   push:
+    branches:
+      - main
+    paths:
+      - "CMakeLists.txt"
+      - ".github/workflows/release.yml"
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -11,14 +24,54 @@ on:
         required: true
         type: string
 
-env:
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+concurrency:
+  group: release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  identity:
+    name: Release identity
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      source: ${{ steps.identity.outputs.source }}
+      enabled: ${{ steps.identity.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+      - name: Resolve pinned release identity
+        id: identity
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="$(sed -nE 's/^set\(GUNGNIR_RELEASE_CHANNEL "([^"]*)"\).*/\1/p' CMakeLists.txt)"
+          if [[ "$channel" != stable ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 tools/check_development_contract.py
+          version="$(sed -nE 's/^project\(gungnir VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)"
+          tag="v$version"
+          if [[ -n "$REQUESTED_TAG" && "$REQUESTED_TAG" != "$tag" ]]; then
+            echo "Requested tag differs from source version"
+            exit 1
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build-linux:
+    needs: identity
+    if: needs.identity.outputs.enabled == 'true'
+    env:
+      RELEASE_TAG: ${{ needs.identity.outputs.tag }}
     name: Package · Linux x86_64
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -27,7 +80,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.identity.outputs.source }}
 
       - name: Validate tag version
         shell: bash
@@ -105,6 +158,9 @@ jobs:
             -DCMAKE_PREFIX_PATH="$GUNGNIR_PREFIX"
           cmake --build install-smoke-build --parallel 2
 
+          ./install-smoke-build/gungnir_install_smoke
+          python3 tests/release_smoke.py "$GUNGNIR_PREFIX"
+
           actual_version="$("$GUNGNIR_PREFIX/bin/gungnir" --version)"
           release_version="${RELEASE_TAG#v}"
           expected_version="Gungnir $release_version"
@@ -146,6 +202,10 @@ jobs:
           retention-days: 7
 
   build-windows:
+    needs: identity
+    if: needs.identity.outputs.enabled == 'true'
+    env:
+      RELEASE_TAG: ${{ needs.identity.outputs.tag }}
     name: Package · Windows x86_64
     runs-on: windows-latest
     timeout-minutes: 35
@@ -154,7 +214,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.identity.outputs.source }}
 
       - name: Validate tag version
         shell: pwsh
@@ -206,6 +266,11 @@ jobs:
           cmake -S tests/install_smoke -B install-smoke-build -A x64 `
             "-DCMAKE_PREFIX_PATH=$env:GUNGNIR_PREFIX"
           cmake --build install-smoke-build --config Release --parallel 2
+
+          & "./install-smoke-build/Release/gungnir_install_smoke.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Installed package consumer failed" }
+          python tests/release_smoke.py "$env:GUNGNIR_PREFIX"
+          if ($LASTEXITCODE -ne 0) { throw "Installed application smoke failed" }
 
           $actualVersion = (& "$env:GUNGNIR_PREFIX\bin\gungnir.exe" --version).Trim()
           $releaseVersion = $env:RELEASE_TAG.Substring(1)
@@ -422,14 +487,30 @@ jobs:
 
   publish:
     name: Publish GitHub Release
+    if: github.event_name != 'pull_request'
+    env:
+      RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+      RELEASE_SOURCE: ${{ needs.identity.outputs.source }}
+    timeout-minutes: 30
     needs:
+      - identity
       - build-linux
       - build-windows
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
 
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.identity.outputs.source }}
+          fetch-depth: 0
+      - name: Require exact-commit validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/wait_release_checks.py "$GITHUB_REPOSITORY" "$RELEASE_SOURCE"
+
       - name: Download release artifacts
         uses: actions/download-artifact@v5
         with:
@@ -451,24 +532,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Tag the commit that produced both verified SDKs; never replace a tag.
+          if git rev-parse --verify --quiet "$RELEASE_TAG^{commit}" >/dev/null; then
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_SOURCE"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_SOURCE" >/dev/null
+          fi
+
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists; uploading assets."
-            gh release upload "$RELEASE_TAG" release-assets/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --clobber
-            exit 0
+            echo "Release already exists; refusing to overwrite published assets."
+            exit 1
           fi
-
-          version="${RELEASE_TAG#v}"
-          prerelease=()
-
-          if [[ "$version" == 0.* || "$version" == *-* ]]; then
-            prerelease+=(--prerelease)
-          fi
-
           gh release create "$RELEASE_TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "Gungnir $RELEASE_TAG" \
-            --generate-notes \
-            "${prerelease[@]}"
+            --notes-file docs/release-v1.md

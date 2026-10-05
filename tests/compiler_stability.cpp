@@ -40,15 +40,15 @@ CompilationResult check(
     );
 }
 
-void development_metadata_is_consistent() {
+void release_metadata_is_consistent() {
     static_assert(language_name == "Gungnir");
-    static_assert(language_version == "development");
-    static_assert(compiler_contract_version == "development");
-    static_assert(diagnostic_contract_version == "development");
-    static_assert(!structured_profile_feature_frozen);
+    static_assert(language_version == "1.0");
+    static_assert(compiler_contract_version == "1.0");
+    static_assert(diagnostic_contract_version == "1.0");
+    static_assert(structured_profile_feature_frozen);
     static_assert(
         compiler_compatibility ==
-        Compatibility::experimental
+        Compatibility::stable
     );
 
     const CompilerOptions defaults;
@@ -157,7 +157,7 @@ void development_check_and_compile_semantics_match() {
     assert(!compiled.code.empty());
     assert(
         compiled.code.find(
-            "compiler_contract_version == \"development\""
+            "compiler_contract_version == \"1.0\""
         ) != std::string::npos
     );
     assert(checked.diagnostics.empty());
@@ -172,7 +172,7 @@ void development_check_and_compile_semantics_match() {
 } // namespace
 
 int main() {
-    development_metadata_is_consistent();
+    release_metadata_is_consistent();
     development_acceptance_contract();
     development_diagnostic_codes();
     development_check_and_compile_semantics_match();

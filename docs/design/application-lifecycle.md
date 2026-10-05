@@ -1,11 +1,11 @@
 # Application Lifecycle
 
-> **Development design specification.** This document describes intended long-term architecture beyond the frozen `development` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../application-lifecycle.md) before using an API.
+> **Future design specification.** This document describes intended long-term architecture beyond the published `1.0` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../application-lifecycle.md) before using an API.
 
 
-## Development alignment
+## Release alignment
 
-Gungnir is under active development. No 1.0 compatibility contract is frozen; this document may describe intended future architecture, but current implementation guides and executable tests remain authoritative.
+This document describes possible future architecture beyond 1.0. Current implementation guides and executable tests define the published contract.
 
 Gungnir applications have one explicit lifecycle shared by the HTTP runtime, queue workers, scheduler, providers, database services, observability, and other long-lived framework components.
 

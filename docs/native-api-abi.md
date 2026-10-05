@@ -1,95 +1,25 @@
 # Native API and ABI Stability
 
-> **Status: Development.** Native C++ source APIs and binary ABI are actively evolving. The verification infrastructure remains in place, but no 1.0 source/ABI compatibility promise is made yet.
+Version 1.0.0 publishes native source contract `1.0` and ABI epoch `1` for the retained public APIs.
 
-## Development metadata
+## Metadata
 
-Installed consumers can include:
+Include `<gungnir/version.hpp>` to read package version `1.0.0`, release channel `stable`, native API contract `1.0` and native ABI epoch `1`.
 
-```cpp
-#include <gungnir/version.hpp>
-```
-
-Development builds expose:
-
-```text
-release identity          development
-internal CMake version    0.0.0
-release channel           development
-native API contract       development
-native ABI epoch          0
-```
-
-The numeric `0.0.0` value exists only for CMake/package machinery.
-
-## Installed package metadata
-
-The CMake package exposes:
+The installed CMake package exports `Gungnir_VERSION`, `Gungnir_RELEASE_VERSION`, `Gungnir_RELEASE_CHANNEL`, version components, `Gungnir_NATIVE_API_CONTRACT` and `Gungnir_NATIVE_ABI_EPOCH`. Consumers can use:
 
 ```cmake
-Gungnir_VERSION
-Gungnir_RELEASE_VERSION
-Gungnir_RELEASE_CHANNEL
-Gungnir_VERSION_MAJOR
-Gungnir_VERSION_MINOR
-Gungnir_VERSION_PATCH
-Gungnir_NATIVE_API_CONTRACT
-Gungnir_NATIVE_ABI_EPOCH
+find_package(Gungnir 1.0 CONFIG REQUIRED)
 ```
 
-Development consumers should normally use:
+CMake package compatibility uses the same major version. Public headers and installed `gungnir::gungnir`, `gungnir::orm` and `gungnir::language` targets are checked in CI. Optional adapters expose their own imported targets and dependency requirements.
 
-```cmake
-find_package(Gungnir CONFIG REQUIRED)
-```
+## Source and binary compatibility
 
-Do not request a stable compatibility version from a development build.
+Compatible fixes/additions retain the 1.x native source contract. Breaking source changes require a new major contract and upgrade guidance. Changes that break the supported binary line require a new ABI epoch.
 
-## Source compatibility
+ABI epoch alone does not guarantee portability across platforms or toolchains. Binary compatibility also requires matching architecture, compiler ABI, standard library ABI, runtime model, dependencies and build features. Linux/Windows shared-package consumers and Linux exported-symbol manifests remain verification evidence.
 
-The public headers and imported targets are continuously compiled and exercised by package-consumer tests:
+Generated application C++ is an implementation artifact. Regenerate and rebuild it with the matching compiler/runtime rather than depending on generated names or layouts.
 
-```text
-gungnir::gungnir
-gungnir::orm
-gungnir::language
-```
-
-This catches accidental breakage, but it does not freeze the API before 1.0.
-
-Compatibility-friendly changes are preferred. When a public API is replaced, use deprecation and migration guidance where practical.
-
-## Binary ABI
-
-Development ABI epoch is:
-
-```text
-0
-```
-
-Epoch 0 is explicitly unstable. Native applications should be rebuilt whenever the development framework changes.
-
-Binary compatibility also depends on operating system, architecture, compiler ABI, standard library ABI, runtime model, dependencies, and build features.
-
-## Shared-library verification
-
-Linux and Windows shared builds remain part of CI. External consumer projects verify that installed shared packages link and execute correctly.
-
-Linux exported-symbol manifests remain useful for review, but they are not a frozen ABI list during development.
-
-## Generated C++
-
-Generated application C++ is not a native API or ABI surface. Always regenerate/rebuild it with the matching compiler/runtime.
-
-## 1.0 rule
-
-Native API contract `1.0` and ABI epoch `1` will be assigned only during the final completeness/release audit, together with package 1.0.0 and the stable compiler contracts.
-
-## Implementation references
-
-- [Development Status](development-status.md)
-- [cmake/version.hpp.in](../cmake/version.hpp.in)
-- [include/gungnir/api.hpp](../include/gungnir/api.hpp)
-- [tests/public_api_contract.cpp](../tests/public_api_contract.cpp)
-- [tests/install_smoke](../tests/install_smoke)
-- [.github/workflows/native-api-abi.yml](../.github/workflows/native-api-abi.yml)
+See [Release Scope](release-v1.md), [Stability](stability.md), [Upgrading](upgrading.md), [native API tests](../tests/public_api_contract.cpp) and [shared-package CI](../.github/workflows/native-api-abi.yml).

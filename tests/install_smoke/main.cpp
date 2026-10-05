@@ -6,16 +6,16 @@
 #include <gungnir/version.hpp>
 
 static_assert(
-    gungnir::version == "development"
+    gungnir::version == "1.0.0"
 );
 
 static_assert(
     gungnir::native_api_contract_version ==
-        "development"
+        "1.0"
 );
 
 static_assert(
-    gungnir::native_abi_epoch == 0
+    gungnir::native_abi_epoch == 1
 );
 
 int main() {

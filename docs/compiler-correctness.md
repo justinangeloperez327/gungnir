@@ -1,6 +1,6 @@
 # Compiler Correctness
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+> This guide describes the 1.0 contract and its documented limits. See [release scope](release-v1.md).
 
 ## Definition
 
@@ -332,11 +332,11 @@ The profile is authoritative only for constructs the structured compiler claims 
 
 Phase 6 also requires semantic-gate parity: for the supported profile, validation-only checking and normal compilation must make the same accept/reject decision and produce the same semantic diagnostic codes. Backend IR verification may still detect internal compiler defects, but it must not be needed to diagnose ordinary source errors.
 
-## Development compatibility gate
+## Release compatibility gate
 
-The structured compiler contract remains under development and the feature set is not frozen.
+The structured 1.0 compiler contract is frozen for the published language surface.
 
-Compiler changes must preserve established correctness invariants and regression coverage while allowing coherent implementation work required to complete the framework. The compatibility gate verifies representative accepted programs, diagnostic codes, `--check`/full-compilation semantic parity, and machine-readable development metadata under GCC, Clang, and MSVC.
+Compiler changes must preserve established correctness invariants and regression coverage while allowing compatible fixes and additions. The compatibility gate verifies representative accepted programs, diagnostic codes, `--check`/full-compilation semantic parity, and machine-readable release metadata under GCC, Clang, and MSVC.
 
 Generated C++ remains a rebuild artifact. Native API/ABI stability, compatibility mode, and incomplete capabilities are governed separately.
 

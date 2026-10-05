@@ -122,7 +122,7 @@ jobs:
                   throw "Installer changed or truncated the existing long user PATH"
               }
 
-              $expectedVersion = "Gungnir development"
+              $expectedVersion = "Gungnir 1.0.0"
               $actualVersion = (& $cli --version).Trim()
 
               if ($actualVersion -ne $expectedVersion) {
@@ -135,19 +135,19 @@ jobs:
               }
 
               $compilerVersion = (& $compiler --version).Trim()
-              $expectedCompiler = "Gungnir compiler development (language development)"
+              $expectedCompiler = "Gungnir compiler 1.0.0 (language 1.0)"
               if ($compilerVersion -ne $expectedCompiler) {
                   throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
               }
 
               $contract = (& $compiler --print-contract) -join "`n"
               foreach ($required in @(
-                  "package_version=development",
-                  "language_version=development",
-                  "compiler_contract=development",
-                  "diagnostic_contract=development",
-                  "structured_feature_freeze=false",
-                  "compatibility=experimental"
+                  "package_version=1.0.0",
+                  "language_version=1.0",
+                  "compiler_contract=1.0",
+                  "diagnostic_contract=1.0",
+                  "structured_feature_freeze=true",
+                  "compatibility=stable"
               )) {
                   if ($contract -notmatch [regex]::Escape($required)) {
                       throw "Installed compiler contract is missing '$required'."

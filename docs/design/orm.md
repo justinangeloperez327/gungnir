@@ -1,11 +1,11 @@
 # Gungnir ORM
 
-> **Development design specification.** This document describes intended long-term architecture beyond the frozen `development` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../orm.md) before using an API.
+> **Future design specification.** This document describes intended long-term architecture beyond the published `1.0` contract. Examples and requirements may exceed the current implementation. See the [current implementation guide](../orm.md) before using an API.
 
 
-## Development alignment
+## Release alignment
 
-Gungnir is under active development. No 1.0 compatibility contract is frozen; this document may describe intended future architecture, but current implementation guides and executable tests remain authoritative.
+This document describes possible future architecture beyond 1.0. Current implementation guides and executable tests define the published contract.
 
 Gungnir ORM is the application-facing model query and persistence layer for `.gnr` applications.
 
