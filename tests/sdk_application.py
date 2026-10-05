@@ -99,8 +99,9 @@ int main() { return EVP_MD_get_size(EVP_sha256()) == 32 && sqlite3_libversion_nu
 ''')
         subprocess.run(["cmake", "-S", str(probe), "-B", str(probe / "build"), f"-DCMAKE_PREFIX_PATH={sdk}"],
             env=env, check=True, timeout=60, stdout=subprocess.DEVNULL)
-        subprocess.run(["cmake", "--build", str(probe / "build"), "--config", "Release", "--parallel", "2"],
-            env=env, check=True, timeout=120, stdout=subprocess.DEVNULL)
+        probe_build = subprocess.run(["cmake", "--build", str(probe / "build"), "--config", "Release", "--parallel", "2"],
+            env=env, timeout=120, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert probe_build.returncode == 0, probe_build.stdout
         candidates = [probe / "build/sdk_headers", probe / "build/sdk_headers.exe", probe / "build/Release/sdk_headers.exe"]
         subprocess.run([str(next(path for path in candidates if path.is_file()))], env=env, check=True, timeout=15)
         # Only the built-in OpenSSL default provider is needed for password APIs.
