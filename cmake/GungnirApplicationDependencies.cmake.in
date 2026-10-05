@@ -1,0 +1,22 @@
+@PACKAGE_INIT@
+
+set_and_check(gungnir_sdk_vendor_include "@PACKAGE_GUNGNIR_SDK_INCLUDE_DIR@")
+set_and_check(gungnir_sdk_sqlite_library "@PACKAGE_GUNGNIR_SDK_LIBRARY_DIR@/@GUNGNIR_SDK_SQLITE_LIBRARY_NAME@")
+set_and_check(gungnir_sdk_crypto_library "@PACKAGE_GUNGNIR_SDK_LIBRARY_DIR@/@GUNGNIR_SDK_CRYPTO_LIBRARY_NAME@")
+if(NOT TARGET gungnir::sdk_sqlite)
+    add_library(gungnir::sdk_sqlite STATIC IMPORTED)
+    set_target_properties(gungnir::sdk_sqlite PROPERTIES
+        IMPORTED_LOCATION "${gungnir_sdk_sqlite_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${gungnir_sdk_vendor_include}"
+        INTERFACE_LINK_LIBRARIES "@GUNGNIR_SDK_SQLITE_LINK_LIBRARIES@")
+endif()
+if(NOT TARGET gungnir::sdk_crypto)
+    add_library(gungnir::sdk_crypto STATIC IMPORTED)
+    set_target_properties(gungnir::sdk_crypto PROPERTIES
+        IMPORTED_LOCATION "${gungnir_sdk_crypto_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${gungnir_sdk_vendor_include}"
+        INTERFACE_LINK_LIBRARIES "@GUNGNIR_SDK_CRYPTO_LINK_LIBRARIES@")
+endif()
+unset(gungnir_sdk_vendor_include)
+unset(gungnir_sdk_sqlite_library)
+unset(gungnir_sdk_crypto_library)

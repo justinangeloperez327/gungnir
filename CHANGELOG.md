@@ -4,6 +4,13 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Add an application SDK profile with bundled static SQLite and OpenSSL Crypto,
+  relocatable CMake targets, dependency notices and installed capability metadata.
+- Build core/application portable packages and Windows installers; exercise
+  migrations, stored passwords, login/logout and process restart using relocated SDKs.
+- Report missing password support before generated application compilation and
+  provide actionable database adapter installation guidance.
+
 - Add injected typed mail and notification delivery, owned recipient envelopes,
   binary attachments, model/channel routing and versioned queued snapshots.
 - Resolve queued transports/channels in fresh worker application scopes; verify

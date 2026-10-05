@@ -6,6 +6,10 @@ Gungnir provides a unified database layer for application connections, queries, 
 
 Applications configure named database connections through environment and configuration values. A default connection is used unless a model or operation selects another connection.
 
+The [application SDK](sdk-packages.md) includes SQLite. Other database adapters
+require a custom source build with their native dependencies. A core SDK can run
+an HTTP application with `DB_CONNECTION` empty.
+
 ## Supported databases
 
 Gungnir provides adapters for:

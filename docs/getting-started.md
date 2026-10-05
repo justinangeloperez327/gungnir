@@ -10,6 +10,10 @@ A Gungnir development environment requires a supported C++23 compiler, CMake, an
 
 Install a packaged Gungnir distribution for your platform or build and install the framework from source.
 
+For SQLite and password authentication, select the [application SDK](sdk-packages.md).
+The published v1.0.0 packages contain the core SDK; the application profile is
+available from current source and is included in subsequent release packaging.
+
 After installation, verify the tools:
 
 ```sh

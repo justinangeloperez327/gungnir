@@ -55,6 +55,10 @@ Requirements:
 
 Install the v1.0.0 Windows setup executable or portable Windows/Linux SDK from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases). The packaged core includes the CLI, compiler, headers, libraries and CMake package. Optional adapters require a source build with their dependencies; see [release installation](docs/release-v1.md).
 
+Current source also offers an [application SDK](docs/sdk-packages.md) with bundled
+SQLite and password hashing dependencies. Release packaging verifies both SDK
+profiles; the existing v1.0.0 core assets remain unchanged.
+
 ### Build from source
 
 ```sh

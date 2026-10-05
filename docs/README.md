@@ -7,6 +7,7 @@ The documentation defines the Gungnir developer experience: how applications are
 ## Getting started
 
 - [Getting Started](getting-started.md)
+- [SDK Packages](sdk-packages.md)
 - [Language](language.md)
 - [CLI and Code Generation](cli-codegen.md)
 - [Editor Tooling](editor-tooling.md)

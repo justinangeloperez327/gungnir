@@ -7,6 +7,19 @@
 #include <utility>
 
 namespace gungnir::database {
+namespace {
+String adapter_guidance(Backend backend) {
+    switch (backend) {
+        case Backend::sqlite:
+            return "Install the Gungnir application SDK, or rebuild/install Gungnir with GUNGNIR_WITH_SQLITE=ON. Select that SDK with GUNGNIR_CMAKE_PREFIX and rebuild the application.";
+        case Backend::postgresql: return "Build/install with GUNGNIR_WITH_POSTGRESQL=ON and link/register gungnir::postgresql.";
+        case Backend::mysql: return "Build/install with GUNGNIR_WITH_MYSQL=ON and link/register gungnir::mysql.";
+        case Backend::mssql: return "Build/install with GUNGNIR_WITH_SQLSERVER=ON and link/register gungnir::sqlserver.";
+        case Backend::mongodb: return "Build/install with GUNGNIR_WITH_MONGODB=ON and register the MongoDB adapter.";
+    }
+    return "Install or register that backend adapter before opening a connection.";
+}
+}
 DriverRegistry::DriverRegistry() {
 #ifdef GUNGNIR_WITH_SQLITE
     add(Backend::sqlite, [](const Settings& settings) { return std::make_shared<SQLiteDriver>(settings); });
@@ -20,7 +33,7 @@ DriverUnavailableError::DriverUnavailableError(
     : std::runtime_error(
         "No concrete Gungnir database driver is registered for backend '" +
         String{name(backend)} +
-        "'. Install or register that backend adapter before opening a connection."
+        "'. " + adapter_guidance(backend)
     ) {}
 
 DriverRegistry& DriverRegistry::add(

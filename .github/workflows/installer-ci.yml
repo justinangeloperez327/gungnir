@@ -12,6 +12,7 @@ on:
       - "tests/compiler_release_contract.cmake"
       - "tests/cli_integration.cmake"
       - "tests/generated_project.py"
+      - "tests/sdk_application.py"
       - ".github/workflows/release.yml"
       - ".github/workflows/installer-ci.yml"
 
@@ -24,9 +25,13 @@ concurrency:
 
 jobs:
   installer:
-    name: Windows setup executable
+    name: Windows setup executable · ${{ matrix.profile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [core, application]
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -36,11 +41,19 @@ jobs:
         shell: pwsh
         run: choco install nsis --yes --no-progress
 
+      - name: Build static application dependencies
+        if: matrix.profile == 'application'
+        shell: pwsh
+        run: ./cmake/windows/BuildApplicationDependencies.ps1 -WorkDir "$env:RUNNER_TEMP/gungnir-application-deps"
+
       - name: Configure
         run: >
           cmake -S . -B build -A x64
           -DGUNGNIR_BUILD_TESTS=OFF
           -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_APPLICATION_SDK=${{ matrix.profile == 'application' && 'ON' || 'OFF' }}
+          "-DCMAKE_PREFIX_PATH=${{ env.GUNGNIR_APPLICATION_DEPS }}"
+          "-DOPENSSL_ROOT_DIR=${{ env.GUNGNIR_APPLICATION_DEPS }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel 2
@@ -171,6 +184,9 @@ jobs:
               finally {
                   Pop-Location
               }
+
+              python tests/sdk_application.py "$installDir"
+              if ($LASTEXITCODE -ne 0) { throw "Windows installer database/auth application failed" }
 
               $uninstaller = Join-Path $installDir "Uninstall Gungnir.exe"
               if (-not (Test-Path $uninstaller)) {

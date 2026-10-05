@@ -32,8 +32,15 @@ list(
 )
 
 option(GUNGNIR_WITH_S3 "Build the libcurl S3-compatible object storage adapter" OFF)
-option(GUNGNIR_WITH_SQLITE "Build and register the SQLite adapter" OFF)
-option(GUNGNIR_WITH_PASSWORD "Build OpenSSL scrypt password hashing" OFF)
+option(GUNGNIR_APPLICATION_SDK "Bundle SQLite and password dependencies in the installed SDK" OFF)
+option(GUNGNIR_WITH_SQLITE "Build and register the SQLite adapter" ${GUNGNIR_APPLICATION_SDK})
+option(GUNGNIR_WITH_PASSWORD "Build OpenSSL scrypt password hashing" ${GUNGNIR_APPLICATION_SDK})
+if(GUNGNIR_APPLICATION_SDK)
+    if(NOT GUNGNIR_WITH_SQLITE OR NOT GUNGNIR_WITH_PASSWORD)
+        message(FATAL_ERROR "GUNGNIR_APPLICATION_SDK requires GUNGNIR_WITH_SQLITE=ON and GUNGNIR_WITH_PASSWORD=ON. Use a fresh build directory or enable both options.")
+    endif()
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+endif()
 
 option(GUNGNIR_BUILD_TESTS "Build Gungnir tests" ON)
 option(GUNGNIR_BUILD_TOOLS "Build Gungnir command-line tools" ON)
@@ -242,8 +249,10 @@ if(
     find_package(CURL 7.56 REQUIRED)
 endif()
 
-if(GUNGNIR_WITH_TLS OR GUNGNIR_WITH_PASSWORD)
-    find_package(OpenSSL 3.0 REQUIRED)
+if(GUNGNIR_WITH_TLS)
+    find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto SSL)
+elseif(GUNGNIR_WITH_PASSWORD)
+    find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
 endif()
 
 if(GUNGNIR_WITH_HTTP2)
@@ -307,14 +316,34 @@ if(GUNGNIR_WITH_S3)
     target_compile_definitions(gungnir PUBLIC GUNGNIR_WITH_S3=1)
 endif()
 if(GUNGNIR_WITH_SQLITE)
+    if(GUNGNIR_APPLICATION_SDK AND NOT WIN32)
+        set(gungnir_saved_library_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+    endif()
     find_package(SQLite3 REQUIRED)
+    if(GUNGNIR_APPLICATION_SDK AND NOT WIN32)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES "${gungnir_saved_library_suffixes}")
+        unset(gungnir_saved_library_suffixes)
+    endif()
     target_sources(gungnir PRIVATE src/database/sqlite.cpp)
-    target_link_libraries(gungnir PUBLIC SQLite::SQLite3)
+    if(GUNGNIR_APPLICATION_SDK)
+        target_link_libraries(gungnir PUBLIC
+            $<BUILD_INTERFACE:SQLite::SQLite3>
+            $<INSTALL_INTERFACE:gungnir::sdk_sqlite>)
+    else()
+        target_link_libraries(gungnir PUBLIC SQLite::SQLite3)
+    endif()
     target_compile_definitions(gungnir PUBLIC GUNGNIR_WITH_SQLITE=1)
 endif()
 if(GUNGNIR_WITH_PASSWORD)
     target_sources(gungnir PRIVATE src/auth/password.cpp)
-    target_link_libraries(gungnir PUBLIC OpenSSL::Crypto)
+    if(GUNGNIR_APPLICATION_SDK)
+        target_link_libraries(gungnir PUBLIC
+            $<BUILD_INTERFACE:OpenSSL::Crypto>
+            $<INSTALL_INTERFACE:gungnir::sdk_crypto>)
+    else()
+        target_link_libraries(gungnir PUBLIC OpenSSL::Crypto)
+    endif()
     target_compile_definitions(gungnir PUBLIC GUNGNIR_WITH_PASSWORD=1)
 endif()
 
@@ -2478,6 +2507,8 @@ if(GUNGNIR_BUILD_TESTS)
     endif()
 endif()
 
+include(cmake/ApplicationSDK.cmake)
+
 
 install(
     TARGETS
@@ -2778,6 +2809,9 @@ if(WIN32)
         CPACK_PACKAGE_FILE_NAME
         "gungnir-${GUNGNIR_VERSION_FULL}-windows-x86_64-setup"
     )
+    if(GUNGNIR_APPLICATION_SDK)
+        set(CPACK_PACKAGE_FILE_NAME "gungnir-${GUNGNIR_VERSION_FULL}-windows-x86_64-application-setup")
+    endif()
     set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
     set(CPACK_NSIS_DISPLAY_NAME "Gungnir")
     set(CPACK_NSIS_PACKAGE_NAME "Gungnir")
