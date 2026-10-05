@@ -6,10 +6,12 @@
 #include <gungnir/queue/worker.hpp>
 #include <gungnir/scheduler/scheduler.hpp>
 #include <gungnir/mail/transport.hpp>
+#include <gungnir/mail/service.hpp>
 #include <gungnir/events/service.hpp>
 #include <gungnir/queue/service.hpp>
 #include <gungnir/scheduler/service.hpp>
 #include <gungnir/notifications/adapters.hpp>
+#include <gungnir/notifications/service.hpp>
 #include <gungnir/storage/manager.hpp>
 #include <gungnir/storage/service.hpp>
 #include <gungnir/auth/resource_authorization.hpp>
@@ -100,13 +102,40 @@ public:
             struct MailerOwner { std::shared_ptr<mail::Transport> transport; mail::Mailer mailer; explicit MailerOwner(std::shared_ptr<mail::Transport> transport) : transport(std::move(transport)), mailer(*this->transport) {} };
             auto owner = std::make_shared<MailerOwner>(options_.mail);
             container.instance<mail::Mailer>(std::shared_ptr<mail::Mailer>{owner,&owner->mailer});
+            container.instance<mail::Service>(std::make_shared<mail::Service>(options_.mail, options_.sender,
+                options_.queue ? container.resolve<queue::Service>() : nullptr));
             notifications->channel("mail",std::make_shared<notifications::MailChannel>(options_.mail,options_.sender));
         }
         if (options_.database_notifications) notifications->channel("database",std::make_shared<notifications::DatabaseChannel>());
-        container.instance<notifications::Manager>(std::move(notifications));
+        container.instance<notifications::Manager>(notifications);
+        container.instance<notifications::Service>(std::make_shared<notifications::Service>(std::move(notifications), options_.sender,
+            options_.queue ? container.resolve<queue::Service>() : nullptr));
         if (options_.storage) {
             container.instance<storage::Manager>(options_.storage);
             container.instance<storage::Service>(std::make_shared<storage::Service>(options_.storage));
+        }
+        if (options_.queue) {
+            auto worker = container.resolve<queue::Worker>();
+            auto context = std::weak_ptr<detail::ExecutionContext>{app.execution_context()};
+            // Weak application ownership avoids a worker/container cycle. A new
+            // execution and dependency scope belongs to each delivery attempt.
+            auto delivery_scope = [context] {
+                auto owner = context.lock();
+                if (!owner) throw std::logic_error("Delivery application is no longer available");
+                auto current = std::make_shared<detail::ExecutionContext>(*owner);
+                current->trace = observability::current_context();
+                return current;
+            };
+            worker->handle(std::string{mail::delivery::Job::job_name}, [delivery_scope](std::string_view payload) {
+                auto owner = delivery_scope(); detail::ExecutionScope active{owner};
+                auto scope = owner->container->scope();
+                scope.resolve<mail::Service>()->deliver(mail::delivery::Job::read(payload));
+            });
+            worker->handle(std::string{notifications::Delivery::job_name}, [delivery_scope](std::string_view payload) {
+                auto owner = delivery_scope(); detail::ExecutionScope active{owner};
+                auto scope = owner->container->scope();
+                scope.resolve<notifications::Service>()->deliver(notifications::Snapshot::read(payload));
+            });
         }
     }
 private:

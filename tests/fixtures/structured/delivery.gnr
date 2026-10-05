@@ -1,0 +1,86 @@
+model DeliveryRecipient {
+    table = "delivery_recipients";
+    fillable = ["name", "email", "password"];
+    hidden = ["email", "password"];
+    casts = {name: "string", email: "string", password: "string"};
+}
+model DeliveryAccount {
+    table = "delivery_accounts";
+    primaryKey = "key";
+    incrementing = false;
+    fillable = ["key", "email"];
+    casts = {key: "string", email: "string"};
+}
+mail DeliveryWelcome {
+    string name;
+    subject() { return "Welcome " + name; }
+    text() { return "Hello " + name; }
+    html() { return "<b>Welcome</b>"; }
+}
+mail DeliveryView {
+    string name;
+    subject() { return "View mail"; }
+    content() { return view("mail/welcome", {name: name}); }
+}
+notification DeliveryNotice {
+    string title;
+    via(DeliveryRecipient recipient) { return ["mail", "database", "audit"]; }
+    toMail(DeliveryRecipient recipient) { return DeliveryWelcome(recipient.name); }
+    toDatabase(DeliveryRecipient recipient) { return {title: title, user: recipient}; }
+}
+notification DeliveryMailOnly {
+    via(DeliveryRecipient recipient) { return ["mail"]; }
+    toMail(DeliveryRecipient recipient) { return DeliveryWelcome(recipient.name); }
+    toDatabase(DeliveryRecipient recipient) { throw "unselected payload"; return {ignored: true}; }
+}
+notification DeliveryAccountNotice {
+    via(DeliveryAccount recipient) { return ["database"]; }
+    toDatabase(DeliveryAccount recipient) { return {account: recipient.key}; }
+}
+notification DeliveryMissing {
+    via(DeliveryRecipient recipient) { return ["mail", "missing"]; }
+    toMail(DeliveryRecipient recipient) { return DeliveryWelcome(recipient.name); }
+}
+notification DeliveryDuplicate {
+    via(DeliveryRecipient recipient) { return ["mail", "mail"]; }
+    toMail(DeliveryRecipient recipient) { return DeliveryWelcome(recipient.name); }
+}
+notification DeliveryNoMail {
+    via(DeliveryRecipient recipient) { return ["mail"]; }
+}
+function DeliveryRecipient deliveryRecipient() {
+    let recipient = DeliveryRecipient();
+    recipient.id = 42; recipient.name = "Ada"; recipient.email = "ada@example.test";
+    recipient.password = "hidden-hash"; return recipient;
+}
+function PendingMail deliveryPending(Mail mail) {
+    return mail.to("ada@example.test", "Ada").cc("copy@example.test")
+        .bcc("private@example.test").replyTo("reply@example.test", "Reply")
+        .attach("bytes.bin", "a\0b");
+}
+function void deliverySend(Mail mail) { deliveryPending(mail).send(DeliveryWelcome("Ada")); }
+function string deliveryQueue(Mail mail, int attempts = 2, bool afterCommit = true) {
+    return deliveryPending(mail).queue(DeliveryWelcome("Queued"), attempts, afterCommit);
+}
+function string deliveryQueueNotice(Notifications notifications, DeliveryRecipient recipient, int attempts = 2, bool afterCommit = true) {
+    return notifications.queue(recipient, DeliveryNotice("Queued notice"), attempts, afterCommit);
+}
+controller DeliveryController {
+    inject Mail mail;
+    inject Notifications notifications;
+    send() {
+        deliverySend(mail);
+        notifications.send(deliveryRecipient(), DeliveryNotice("Direct notice"));
+        return noContent();
+    }
+    queue() { return text(deliveryQueue(mail)); }
+}
+middleware DeliveryMiddleware {
+    inject Mail mail;
+    async handle(Request request, Next next) {
+        const pending = mail.to("middleware@example.test");
+        const response = await next(request);
+        pending.send(DeliveryWelcome("After suspension"));
+        return response;
+    }
+}

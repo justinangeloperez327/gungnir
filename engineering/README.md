@@ -12,4 +12,5 @@ The public product manual is in [docs](../docs/README.md).
 - [Validation and upload contracts](validation-contract-audit.md)
 - [Events, queues and scheduling contracts](background-contract-audit.md)
 - [Views, authorization, configuration, DI and observability](application-contract-audit.md)
+- [Typed mail and notification delivery](delivery-contract-audit.md)
 - [Version 1.0.0 release audit](release-v1-audit.md)

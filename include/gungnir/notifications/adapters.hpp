@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <gungnir/notifications/channel.hpp>
 #include <gungnir/mail/transport.hpp>
 #include <gungnir/database/runtime.hpp>
@@ -15,7 +16,11 @@ public:
         auto message = notification.mail_message();
         if (!message) throw std::logic_error("Notification does not define a mail message");
         if (message->sender().email.empty()) message->from(sender_);
-        message->to(mail::Address{std::string{recipient}, {}});
+        const auto addressed = [&](const auto& values) {
+            return std::any_of(values.begin(), values.end(), [&](const auto& value) { return value.email == recipient; });
+        };
+        if (!addressed(message->recipients()) && !addressed(message->cc_recipients()) && !addressed(message->bcc_recipients()))
+            message->to(mail::Address{std::string{recipient}, {}});
         mail::Mailer{*transport_}.send(*message);
     }
 private:

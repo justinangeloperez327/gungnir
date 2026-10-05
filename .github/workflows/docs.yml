@@ -130,3 +130,5 @@ jobs:
 
       - name: Validate public application-service examples
         run: python3 tests/docs_application_examples.py ./build-docs/gungnirc
+      - name: Validate public delivery examples
+        run: python3 tests/docs_delivery_examples.py ./build-docs/gungnirc

@@ -4,6 +4,13 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Add injected typed mail and notification delivery, owned recipient envelopes,
+  binary attachments, model/channel routing and versioned queued snapshots.
+- Resolve queued transports/channels in fresh worker application scopes; verify
+  Redis restart/retry delivery through loopback SMTP, SQLite and custom channels.
+- Link optional SMTP in generated applications and keep post-release main
+  development from republishing an existing version tag.
+
 Future changes will be recorded here.
 
 ## 1.0.0 — 2026-10-05

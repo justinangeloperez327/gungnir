@@ -63,6 +63,18 @@ jobs:
             echo "Requested tag differs from source version"
             exit 1
           fi
+          # Development after a published release must not republish that tag.
+          # Explicit tag and manual releases retain their immutable-tag checks.
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+              echo "Release $tag already exists; continuing post-release development"
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            else
+              result=$?
+              if [[ "$result" != 2 ]]; then exit "$result"; fi
+            fi
+          fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
