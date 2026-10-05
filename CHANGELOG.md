@@ -4,6 +4,18 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+Future changes will be recorded here.
+
+## 1.0.0 — 2026-10-05
+
+- published the merged application framework with Windows setup, Windows/Linux portable SDKs and SHA-256 checksums;
+- assigned package 1.0.0, language/compiler/diagnostic/native API contract 1.0 and native ABI epoch 1;
+- froze the existing structured contract while retaining compiler/platform/security/package regression gates;
+- documented the packaged core, optional adapter dependencies and pending generated mail/notification delivery integration;
+- verified installed project creation/build/run and retained the canonical application acceptance suites.
+
+The application and compiler changes below summarize the work included in this release.
+
 ### Application services
 
 - connected typed Config, Logger, Telemetry and Span APIs to native application services;
@@ -14,7 +26,7 @@ This changelog records published releases and material development changes. Git 
 - isolated application tracing/metrics exporters, added facade redaction, and connected generated HTTP shutdown to cancellation and exporter cleanup;
 - documented and validated the public application-service examples.
 
-### Development consistency reset
+### Historical development consistency reset
 
 - removed the premature 1.0 release-candidate positioning;
 - returned package/language/compiler/diagnostic/native API metadata to development status;
@@ -25,7 +37,7 @@ This changelog records published releases and material development changes. Git 
 
 ### Completed maturity work retained
 
-The development branch already includes:
+The release includes:
 
 - compiler correctness and canonical structured compilation;
 - typed C++ IR;

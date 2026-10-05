@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
-# CMake requires a numeric project version. During active framework
-# development this is an internal placeholder, not a public release number.
-project(gungnir VERSION 0.0.0 LANGUAGES CXX)
+# Package, compiler and native contracts are assigned together for v1.0.0.
+project(gungnir VERSION 1.0.0 LANGUAGES CXX)
 
-set(GUNGNIR_RELEASE_CHANNEL "development")
-set(GUNGNIR_VERSION_FULL "development")
+set(GUNGNIR_RELEASE_CHANNEL "stable")
+set(GUNGNIR_VERSION_FULL "1.0.0")
 
 set(
     GUNGNIR_GENERATED_INCLUDE_DIR
@@ -2658,7 +2657,7 @@ write_basic_package_version_file(
     VERSION
         ${PROJECT_VERSION}
     COMPATIBILITY
-        ExactVersion
+        SameMajorVersion
 )
 
 install(

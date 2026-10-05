@@ -1,6 +1,6 @@
 # Compiler Conformance
 
-> **Status: Development.** This guide describes the current implementation and documented limits. The 1.0 compatibility contract is not frozen yet.
+> This guide describes the 1.0 contract and its documented limits. See [release scope](release-v1.md).
 
 ## Status values
 
@@ -38,7 +38,7 @@
 | Diagnostic/source mapping | Complete baseline | Phase 7 preserves source spans, deterministic diagnostic order, rich CLI rendering and statement-level `#line` mapping |
 | Fuzzing and compiler robustness | Complete baseline | Phase 8 adds bounded parser nesting, deterministic adversarial mutations and ASan/UBSan-backed libFuzzer targets for lexer and structured compiler |
 | GCC/Clang/MSVC conformance | Complete baseline | Phase 9 builds and runs compiler correctness, robustness and generated structured application tests under all three supported compiler families, then requires byte-identical structured compiler snapshots |
-| Development compatibility contract | Active | The structured compiler remains under development while correctness/conformance gates continue under GCC, Clang and MSVC |
+| Release compatibility contract | Active | The structured 1.0 contract is protected by GCC, Clang and MSVC gates |
 
 ## Feature completion rule
 
@@ -109,9 +109,9 @@ The comparison job requires the generated C++, validated dump, C++ IR dump and m
 Compiler-specific warnings or backend implementation defects are fixed in the originating compiler/runtime layer; they must not be papered over with toolchain-specific generated semantics.
 
 
-## Development stabilization contract
+## Release stabilization contract
 
-The structured compiler remains the canonical development compiler. Existing acceptance/rejection tests, diagnostics, validated/compiler IR boundaries, cross-compiler agreement, and deterministic snapshots remain protected while the language/framework feature set continues to mature.
+The structured compiler remains the canonical compiler. Existing acceptance/rejection tests, diagnostics, validated/compiler IR boundaries, cross-compiler agreement, and deterministic snapshots remain protected as compatible fixes and additions are introduced.
 
 No 1.0 source-language compatibility guarantee is frozen yet. New structured features are allowed when they follow the canonical parser -> semantics -> validated AST -> typed C++ IR -> emitter architecture and add the required compile-fail/run-pass coverage.
 

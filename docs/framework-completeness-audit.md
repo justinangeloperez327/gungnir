@@ -1,7 +1,9 @@
 # Framework Completeness Audit
 
-Status: active pre-1.0 development audit  
-Baseline: current `main` after the development-contract reset
+Status: historical pre-1.0 development baseline
+Baseline: the development-contract reset; subsequent merged contracts supersede this matrix.
+
+Current release scope is in [Version 1.0.0](release-v1.md); current implementation evidence is in [engineering audits](../engineering/README.md). This record is not the current release checklist.
 
 This audit measures Gungnir against the intended expressive framework surface. It distinguishes native/runtime capability from first-class structured `.gnr` developer experience. A native C++ API does not make a feature complete when the intended Gungnir language surface is still missing.
 

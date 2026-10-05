@@ -4,7 +4,7 @@
 
 Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-> Project status: **Development**. Gungnir has no 1.0 release candidate. 1.0 will be assigned only after the completeness gate is satisfied.
+> Project status: **Stable 1.0.0**. See the release scope and known limitations in the [v1.0.0 release guide](docs/release-v1.md).
 
 ## What Gungnir looks like
 
@@ -31,30 +31,20 @@ Route::get('/users', UserController::index)
 
 Structured `.gnr` source is parsed, semantically validated, lowered through typed structural C++ IR, and emitted as C++23.
 
-## Development identity
-
-Development builds intentionally do not claim a public release version.
+## Release identity
 
 ```text
-package_version=development
-language_version=development
-compiler_contract=development
-diagnostic_contract=development
-structured_feature_freeze=false
-compatibility=experimental
+package_version=1.0.0
+language_version=1.0
+compiler_contract=1.0
+diagnostic_contract=1.0
+structured_feature_freeze=true
+compatibility=stable
 ```
 
-CMake uses internal numeric version `0.0.0` only because its package machinery requires a numeric value. It is not a public Gungnir version.
-
-Native development metadata uses:
-
-```text
-native API contract = development
-native ABI epoch    = 0
-release channel     = development
-```
-
-See [Development Status](docs/development-status.md).
+Native API contract is `1.0`, ABI epoch is `1`, and release channel is `stable`.
+Generated application C++ must be rebuilt with the matching compiler/runtime.
+See [Stability](docs/stability.md).
 
 ## Installation
 
@@ -63,7 +53,7 @@ Requirements:
 - C++23-compatible compiler;
 - CMake 3.25 or newer.
 
-The latest source is the authoritative development build. Historical preview packages remain available from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases), but they do not represent the current development contract.
+Install the v1.0.0 Windows setup executable or portable Windows/Linux SDK from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases). The packaged core includes the CLI, compiler, headers, libraries and CMake package. Optional adapters require a source build with their dependencies; see [release installation](docs/release-v1.md).
 
 ### Build from source
 
@@ -85,7 +75,7 @@ gungnirc --version
 gungnirc --print-contract
 ```
 
-Development builds report `Gungnir development`.
+Version 1.0.0 reports `Gungnir 1.0.0`.
 
 ## Quick start
 
@@ -202,4 +192,4 @@ The `docs/design/` directory contains intended architecture and future-facing de
 - [Security Policy](SECURITY.md)
 - [License](LICENSE)
 
-Documentation integrity, development metadata, package consumers, compiler conformance, runtime correctness and the canonical example are continuously validated in CI.
+Documentation integrity, release metadata, package consumers, compiler conformance, runtime correctness and the canonical example are continuously validated in CI.

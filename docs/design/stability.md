@@ -1,6 +1,6 @@
 # Stability
 
-> **Development design specification.** This document defines the compatibility model Gungnir should adopt when the framework eventually reaches stable 1.0. The current [stability guide](../stability.md) remains authoritative for development behavior.
+> **Future design specification.** This document defines the compatibility model Gungnir should adopt when the framework eventually reaches stable 1.0. The current [stability guide](../stability.md) remains authoritative for development behavior.
 
 Gungnir is still under active feature-completion development.
 

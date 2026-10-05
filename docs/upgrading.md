@@ -1,39 +1,13 @@
-# Upgrading Gungnir
+# Upgrading to 1.0.0
 
-> **Status: Development.** Development builds have no public compatibility version. Pin exact commits or artifacts when evaluating main and rebuild generated/native code after framework changes.
+Install the new SDK/CLI together and rebuild existing applications. Historical preview packages such as 0.9.0 use older language/runtime contracts and should not be mixed with 1.0 headers or libraries.
 
-## Historical releases
+1. Pin the released artifact and verify its SHA-256 checksum.
+2. Check `gungnir --version`, `gungnirc --version` and `gungnirc --print-contract`.
+3. Back up application data and preserve `.env`, bootstrap configuration and source files.
+4. Run strict source checks and `gungnir build`; resolve diagnostics before deployment.
+5. Run application tests and preview migration plans before applying migrations.
 
-Published historical releases such as `0.9.0` remain valid historical artifacts, but they do not describe the current development contract on `main`.
+Version 1.0.0 reports language/compiler/diagnostic/native API contract 1.0 and ABI epoch 1. Regenerate generated C++ with the matching SDK. Review the [release scope](release-v1.md) for optional adapters and pending generated delivery APIs.
 
-## Moving from a historical release to development
-
-1. Read [CHANGELOG.md](../CHANGELOG.md).
-2. Install/build the exact development revision you intend to test.
-3. Verify:
-
-   ```sh
-   gungnir --version
-   gungnirc --version
-   gungnirc --print-contract
-   ```
-
-4. Development builds should report `development` contract identities.
-5. Run `gungnirc <entry>.gnr --check`.
-6. Regenerate/rebuild all generated C++.
-7. Rebuild native application code.
-8. Run the complete application test suite.
-9. Plan database migrations before applying them.
-10. Re-run workload-specific integration, security and performance tests.
-
-## Development compatibility
-
-Do not assume source or ABI compatibility between arbitrary development commits.
-
-The project tries to evolve coherently and regression tests protect implemented behavior, but the framework remains free to make necessary design changes until the 1.0 completeness gate is closed.
-
-## Future 1.0
-
-When the framework is complete, a final coordinated release change will assign the stable 1.0 package/language/compiler/native API/ABI contracts.
-
-See [Development Status](development-status.md) and [Stability](stability.md).
+Use a separate build directory when changing toolchains or adapter features. Native code must also be rebuilt if ABI-relevant platform, standard library, runtime or dependency settings change.

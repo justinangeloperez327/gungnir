@@ -1,8 +1,8 @@
 # Transpiler and C++23 Lowering
 
-> **Development design specification.** This document describes the canonical lowering architecture beyond the frozen `development` contract. The [current transpiler guide](../transpiler.md) is authoritative for shipped behavior.
+> **Future design specification.** This document describes the canonical lowering architecture beyond the published `1.0` contract. The [current transpiler guide](../transpiler.md) is authoritative for shipped behavior.
 
-## Development alignment
+## Release alignment
 
 The development compiler no longer treats raw-source rewriting as the canonical structured compilation path. The normal compiler boundary is:
 

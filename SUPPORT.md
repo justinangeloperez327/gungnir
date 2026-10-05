@@ -38,4 +38,4 @@ Potential vulnerabilities should follow [SECURITY.md](SECURITY.md) rather than t
 
 ## Production use
 
-Development builds are not a stable release and may change before 1.0. Pin exact versions, review the [stability contract](docs/stability.md), run workload-specific tests, and use appropriate external supervision, TLS, database resilience, backup, monitoring, and capacity controls.
+Pin the released package version and review the [stability contract](docs/stability.md) and [release scope](docs/release-v1.md). Deployment configuration, workload-specific tests, external supervision, TLS, database resilience, backup, monitoring and capacity controls remain application responsibilities.

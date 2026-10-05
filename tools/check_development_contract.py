@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Gungnir's development-state consistency contract."""
+"""Validate Gungnir's release identity consistency contract."""
 
 from __future__ import annotations
 
@@ -31,73 +31,71 @@ def main() -> int:
 
     require(
         errors,
-        "project(gungnir VERSION 0.0.0 LANGUAGES CXX)" in cmake,
-        "CMake development placeholder must be 0.0.0",
+        "project(gungnir VERSION 1.0.0 LANGUAGES CXX)" in cmake,
+        "CMake package version must be 1.0.0",
     )
     require(
         errors,
-        'set(GUNGNIR_RELEASE_CHANNEL "development")' in cmake,
-        "GUNGNIR_RELEASE_CHANNEL must be development",
+        'set(GUNGNIR_RELEASE_CHANNEL "stable")' in cmake,
+        "GUNGNIR_RELEASE_CHANNEL must match the 1.0 release contract",
     )
     require(
         errors,
-        'set(GUNGNIR_VERSION_FULL "development")' in cmake,
-        "GUNGNIR_VERSION_FULL must be development",
+        'set(GUNGNIR_VERSION_FULL "1.0.0")' in cmake,
+        "GUNGNIR_VERSION_FULL must match the 1.0 release contract",
     )
     require(
         errors,
-        "ExactVersion" in cmake,
-        "Development CMake package compatibility must be ExactVersion",
+        "SameMajorVersion" in cmake,
+        "Development CMake package compatibility must be SameMajorVersion",
     )
 
     for key in (
-        'language_version = "development"',
-        'compiler_contract_version = "development"',
-        'diagnostic_contract_version = "development"',
-        "structured_profile_feature_frozen = false",
-        "compiler_compatibility = Compatibility::experimental",
+        'language_version = "1.0"',
+        'compiler_contract_version = "1.0"',
+        'diagnostic_contract_version = "1.0"',
+        "structured_profile_feature_frozen = true",
+        "compiler_compatibility = Compatibility::stable",
     ):
-        require(errors, key in spec, f"Language development metadata missing: {key}")
+        require(errors, key in spec, f"Language release metadata missing: {key}")
 
     require(
         errors,
-        'native_api_contract_version = "development"' in native,
-        "Native API contract must remain development",
+        'native_api_contract_version = "1.0"' in native,
+        "Native API contract must match the 1.0 release contract",
     )
     require(
         errors,
-        "GUNGNIR_NATIVE_ABI_EPOCH 0" in native,
-        "Development native ABI epoch must remain 0",
+        "GUNGNIR_NATIVE_ABI_EPOCH 1" in native,
+        "Native ABI epoch must be 1",
     )
     require(
         errors,
-        'Gungnir_NATIVE_API_CONTRACT "development"' in package,
-        "Installed CMake package native API contract must be development",
+        'Gungnir_NATIVE_API_CONTRACT "1.0"' in package,
+        "Installed CMake package native API contract must match the 1.0 release contract",
     )
     require(
         errors,
-        'Gungnir_NATIVE_ABI_EPOCH "0"' in package,
-        "Installed CMake package ABI epoch must be 0",
+        'Gungnir_NATIVE_ABI_EPOCH "1"' in package,
+        "Installed CMake package ABI epoch must be 1",
     )
 
     require(
         errors,
-        "Project status: **Development**" in readme,
-        "README must identify the project as Development",
+        "Project status: **Stable 1.0.0**" in readme,
+        "README must identify the stable release",
     )
     require(
         errors,
-        "1.0 will be assigned only after the completeness gate is satisfied" in readme,
+        "See the release scope and known limitations" in readme,
         "README must explain the 1.0 release rule",
     )
 
     forbidden_current = (
         "Current release candidate:",
-        "Current stable release:",
         "1.0.0-rc.1",
         "Gungnir 1.0 release candidate",
         "feature-frozen for the 1.0",
-        "compatibility=stable",
         "Phase 16 benchmarks",
         "the 0.9 language",
     )
@@ -132,14 +130,14 @@ def main() -> int:
     )
 
     if errors:
-        print("Development consistency contract failed:", file=sys.stderr)
+        print("Release consistency contract failed:", file=sys.stderr)
 
         for error in errors:
             print(f" - {error}", file=sys.stderr)
 
         return 1
 
-    print("Gungnir development consistency contract passed.")
+    print("Gungnir release consistency contract passed.")
     return 0
 
 

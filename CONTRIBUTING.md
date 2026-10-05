@@ -40,7 +40,7 @@ A contribution should:
 1. preserve current compiler correctness while following the canonical architecture unless the change intentionally advances it;
 2. include a focused regression test for behavioral fixes;
 3. preserve generated-output determinism;
-4. keep public native API changes consistent with the current development contract or document an intentional break;
+4. keep public native API changes consistent with the published 1.0 contract; breaking changes require a new major contract and migration guidance;
 5. update current documentation when behavior changes;
 6. avoid presenting design-only behavior as already implemented;
 7. keep platform-specific behavior explicit.

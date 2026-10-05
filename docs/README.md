@@ -103,3 +103,5 @@ These documents explain how Gungnir itself works. Application developers do not 
 - [Request Context Contract Audit](../engineering/request-context-contract-audit.md)
 
 - [Authentication Contract Audit](../engineering/authentication-contract-audit.md)
+
+- [Version 1.0.0 release and installation](release-v1.md)
