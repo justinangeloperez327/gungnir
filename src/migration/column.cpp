@@ -39,6 +39,7 @@ ColumnDefinition& Column::add(
 
 ColumnDefinition& Column::id(String name) {
     return add(std::move(name), ColumnType::id)
+        .unsigned_()
         .primary()
         .auto_increment();
 }

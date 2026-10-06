@@ -50,6 +50,8 @@ driver.
 Live CI uses SQL Server 2022 and verifies native cancellation, nested savepoint
 rollback, after-commit callbacks, migrations, and the installed `.gnr`
 application's CRUD, bindings, pagination, relationships and restart persistence.
+Incrementing model inserts use `OUTPUT INSERTED` to hydrate the generated primary
+key before returning the model.
 SQL Server savepoints retain their native semantics; nested commits do not issue
 SQL `RELEASE SAVEPOINT`. The standard core/application packages do not bundle
 this adapter.

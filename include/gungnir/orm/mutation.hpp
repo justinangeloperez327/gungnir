@@ -14,6 +14,13 @@ namespace gungnir::orm {
     database::Backend backend
 );
 
+[[nodiscard]] CompiledQuery compile_insert(
+    std::string_view table,
+    const model::AttributeMap& attributes,
+    database::Backend backend,
+    std::string_view generated_key
+);
+
 [[nodiscard]] CompiledQuery compile_update(
     std::string_view table,
     const model::AttributeMap& attributes,

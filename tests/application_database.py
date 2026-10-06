@@ -38,9 +38,17 @@ def main():
 #include <gungnir/core/services.hpp>
 #include <gungnir/orm/query_log.hpp>
 #include <atomic>
+#include <iostream>
 namespace bootstrap {
 inline void configure(gungnir::Application& app) {
     app.provider<gungnir::ServicesProvider>();
+    app.router().use([](gungnir::Request& request, gungnir::Next next) -> gungnir::Task<gungnir::Response> {
+        try { co_return co_await next(request); }
+        catch (const std::exception& error) {
+            std::cerr << "Database acceptance request failed: " << error.what() << '\n';
+            throw;
+        }
+    });
     auto queries = std::make_shared<std::atomic<gungnir::Int64>>(0);
     app.on_boot([queries](gungnir::Application&) {
         gungnir::orm::listen([queries](const auto&) { ++*queries; });

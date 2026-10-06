@@ -93,6 +93,19 @@ int main() {
     assert(postgres.bindings.size() == 1);
     assert(std::get<gungnir::Boolean>(postgres.bindings[0]));
 
+    const gungnir::model::AttributeMap inserted_values{{"name", gungnir::String{"O'Neil"}}};
+    const auto insert_postgres = gungnir::orm::compile_insert(
+        "users", inserted_values, gungnir::database::Backend::postgresql, "user_id"
+    );
+    assert(insert_postgres.text == "INSERT INTO \"users\" (\"name\") VALUES ($1) RETURNING \"user_id\" AS \"id\";");
+    const auto insert_mssql = gungnir::orm::compile_insert(
+        "users", inserted_values, gungnir::database::Backend::mssql, "user_id"
+    );
+    assert(insert_mssql.text == "INSERT INTO [users] ([name]) OUTPUT INSERTED.[user_id] AS [id] VALUES (?);");
+    assert(insert_postgres.bindings == insert_mssql.bindings);
+    assert(gungnir::orm::compile_insert("users", inserted_values, gungnir::database::Backend::postgresql).text ==
+        "INSERT INTO \"users\" (\"name\") VALUES ($1);");
+
     const auto mysql = User::where(
         "email",
         gungnir::String{"test@example.com"}

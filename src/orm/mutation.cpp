@@ -122,6 +122,15 @@ CompiledQuery compile_insert(
     const model::AttributeMap& attributes,
     database::Backend backend
 ) {
+    return compile_insert(table, attributes, backend, {});
+}
+
+CompiledQuery compile_insert(
+    std::string_view table,
+    const model::AttributeMap& attributes,
+    database::Backend backend,
+    std::string_view generated_key
+) {
     if (backend == database::Backend::mongodb) {
         return compile_mongo_insert(table, attributes);
     }
@@ -139,7 +148,11 @@ CompiledQuery compile_insert(
         result.text += quote_identifier(backend, keys[index]);
     }
 
-    result.text += ") VALUES (";
+    result.text += ")";
+    if (backend == database::Backend::mssql && !generated_key.empty()) {
+        result.text += " OUTPUT INSERTED." + quote_identifier(backend, generated_key) + " AS [id]";
+    }
+    result.text += " VALUES (";
 
     for (std::size_t index = 0; index < keys.size(); ++index) {
         if (index != 0) {
@@ -150,7 +163,11 @@ CompiledQuery compile_insert(
         result.bindings.push_back(attributes.at(keys[index]));
     }
 
-    result.text += ");";
+    result.text += ")";
+    if (backend == database::Backend::postgresql && !generated_key.empty()) {
+        result.text += " RETURNING " + quote_identifier(backend, generated_key) + " AS \"id\"";
+    }
+    result.text += ";";
     return result;
 }
 

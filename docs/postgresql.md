@@ -43,6 +43,8 @@ DB_PASSWORD=your-password
 
 Live CI uses PostgreSQL 16 and verifies installed application migrations, model
 persistence, bound queries, pagination, relationships and nested transactions.
+Incrementing model inserts use `RETURNING` to hydrate the generated primary key
+before the model is returned to the application.
 The standard core/application packages do not bundle this adapter.
 
 ## Limits and planned work

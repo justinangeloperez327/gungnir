@@ -16,6 +16,15 @@ callback may return a typed value or void. Invalid callback values, parameters
 and async functions fail before C++ emission. Nested work uses the runtime's
 existing connection scope and savepoint ownership rules.
 
+Live acceptance exposed missing generated primary keys on PostgreSQL and SQL
+Server model inserts. Model saves now request the actual primary-key column via
+`RETURNING`/`OUTPUT INSERTED`, aliased for the existing adapter result contract;
+the original three-argument insert compiler remains available for query inserts.
+MySQL `id()` now matches `foreignId()` unsigned key types, and savepoint commands
+use the native direct protocol because the prepared protocol rejects them.
+MongoDB nullable schema fields now allow explicit BSON null, including nullable
+enum values. Compiler regression checks cover these schema and insert contracts.
+
 ## Acceptance boundaries
 
 `tests/application_database.py` installs the SDK, creates a project with its CLI,

@@ -44,7 +44,10 @@ DB_PASSWORD=your-password
 Live CI uses MySQL 8.4 and verifies installed application migrations, model
 persistence, bound queries, pagination, relationships and nested transactions.
 Foreign IDs must use a type compatible with the referenced primary key; use
-`table.foreignId(...)` for a generated `table.id()` key. The standard
+`table.foreignId(...)` for a generated `table.id()` key. Both generate unsigned
+`BIGINT` on MySQL. Existing tables require matching key types when adding foreign
+keys. Savepoint commands use the direct protocol; query values remain prepared
+bindings. The standard
 core/application packages do not bundle this adapter.
 
 ## Limits and planned work

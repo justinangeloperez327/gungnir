@@ -79,6 +79,7 @@ int main() {
     assert(table.columns[0].type == gungnir::migration::ColumnType::id);
     assert(table.columns[0].primary_value);
     assert(table.columns[0].auto_increment_value);
+    assert(table.columns[0].unsigned_value);
 
     assert(table.columns[2].name == "user_id");
     assert(table.columns[2].unsigned_value);
