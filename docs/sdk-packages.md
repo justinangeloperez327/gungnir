@@ -35,8 +35,13 @@ cd hello
 gungnir build
 ```
 
-The installed CLI finds its adjacent SDK automatically. When selecting another
-SDK explicitly, set its root directory, not its `bin` directory:
+The installed CLI finds its adjacent SDK automatically. The CLI refreshes
+CMake's cached Gungnir package locator when selecting an SDK,
+so an existing project can switch from core to application without removing its
+build directory.
+
+When selecting another SDK explicitly, set its root directory, not its `bin`
+directory:
 
 ```powershell
 $env:GUNGNIR_CMAKE_PREFIX = 'C:\SDKs\Gungnir-application'

@@ -3,6 +3,7 @@
 Uses the installed CLI and ordinary bootstrap configuration. No generated C++
 is patched, and bundled dependencies are tested with package discovery disabled.
 """
+from contextlib import closing
 from http.cookies import SimpleCookie
 import http.client
 import json
@@ -69,6 +70,9 @@ with tempfile.TemporaryDirectory(prefix="gungnir-sdk-application-") as temporary
             assert (sdk / f"share/gungnir/licenses/{notice}.txt").stat().st_size > 0
         for header in ("opensslconf.h", "configuration.h"):
             assert (sdk / f"include/gungnir/vendor/openssl/{header}").is_file()
+        sqlite_header = sdk / "include/gungnir/vendor/sqlite3.h"
+        if "sqlite3-vcpkg-config.h" in sqlite_header.read_text():
+            assert (sqlite_header.parent / "sqlite3-vcpkg-config.h").is_file(), "SDK is missing SQLite's vcpkg configuration header"
         probe = root / "probe"
         probe.mkdir()
         (probe / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.25)
@@ -99,8 +103,9 @@ int main() { return EVP_MD_get_size(EVP_sha256()) == 32 && sqlite3_libversion_nu
 ''')
         subprocess.run(["cmake", "-S", str(probe), "-B", str(probe / "build"), f"-DCMAKE_PREFIX_PATH={sdk}"],
             env=env, check=True, timeout=60, stdout=subprocess.DEVNULL)
-        subprocess.run(["cmake", "--build", str(probe / "build"), "--config", "Release", "--parallel", "2"],
-            env=env, check=True, timeout=120, stdout=subprocess.DEVNULL)
+        probe_build = subprocess.run(["cmake", "--build", str(probe / "build"), "--config", "Release", "--parallel", "2"],
+            env=env, timeout=120, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert probe_build.returncode == 0, probe_build.stdout
         candidates = [probe / "build/sdk_headers", probe / "build/sdk_headers.exe", probe / "build/Release/sdk_headers.exe"]
         subprocess.run([str(next(path for path in candidates if path.is_file()))], env=env, check=True, timeout=15)
         # Only the built-in OpenSSL default provider is needed for password APIs.
@@ -169,6 +174,14 @@ inline void boot(gungnir::Application&) {}
             reservation.bind(("127.0.0.1", 0))
             port = reservation.getsockname()[1]
         source(".env", f"APP_HOST=127.0.0.1\nAPP_PORT={port}\nDB_CONNECTION=sqlite\nDB_DATABASE=app.sqlite\n")
+        # An explicit/automatically selected SDK must replace a valid cached
+        # locator from an earlier SDK, as when upgrading a core application.
+        stale_sdk = root / "previous SDK"
+        stale_sdk.mkdir()
+        (stale_sdk / "GungnirConfig.cmake").write_text('message(FATAL_ERROR "The previous cached SDK was selected")\n')
+        cached_build = project / ".gungnir/build"
+        cached_build.mkdir(parents=True, exist_ok=True)
+        (cached_build / "CMakeCache.txt").write_text(f"Gungnir_DIR:PATH={stale_sdk.as_posix()}\n")
         run("build", "--release")
         assert "1 migration(s) applied" in run("migrate", "--release")
         assert "0 migration(s) applied" in run("migrate", "--release")
@@ -239,14 +252,14 @@ inline void boot(gungnir::Application&) {}
             login()
 
         serve(first_start)
-        with sqlite3.connect(project / "app.sqlite") as database:
+        with closing(sqlite3.connect(project / "app.sqlite")) as database:
             hashed = database.execute("SELECT password FROM sdk_users").fetchone()[0]
             assert hashed.startswith("scrypt$") and "correct-password" not in hashed, hashed
         # Authentication after a new process uses the persisted SQLite hash.
         # Sessions intentionally use the ordinary development memory store.
         serve(login)
         assert "1 migration(s) rolled back" in run("migrate:rollback", "--release")
-        with sqlite3.connect(project / "app.sqlite") as database:
+        with closing(sqlite3.connect(project / "app.sqlite")) as database:
             assert database.execute("SELECT name FROM sqlite_master WHERE name='sdk_users'").fetchone() is None
 
 print("Application SDK: relocated bundled dependencies, migrations, stored passwords, login/logout and restart passed" if application
