@@ -26,6 +26,25 @@ Select `DB_CONNECTION=postgresql` and configure the server/database/credentials 
 
 Live integration tests use `GUNGNIR_POSTGRESQL_INTEGRATION_TESTS=ON` and need a reachable correctly configured server. Enabling a build flag does not connect to a database.
 
+## Generated applications
+
+A custom SDK built with this adapter automatically links and registers it for
+generated `.gnr` applications. Select that SDK with `GUNGNIR_CMAKE_PREFIX` and
+configure the application's `.env`:
+
+```dotenv
+DB_CONNECTION=postgresql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=gungnir
+DB_USERNAME=postgres
+DB_PASSWORD=your-password
+```
+
+Live CI uses PostgreSQL 16 and verifies installed application migrations, model
+persistence, bound queries, pagination, relationships and nested transactions.
+The standard core/application packages do not bundle this adapter.
+
 ## Limits and planned work
 
 Check NUMERIC/DECIMAL conversions and backend capability reporting before depending on exact decimal semantics.

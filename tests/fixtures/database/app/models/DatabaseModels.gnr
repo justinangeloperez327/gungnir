@@ -1,0 +1,12 @@
+model AcceptanceUser {
+    table = 'database_acceptance_users'; timestamps = false;
+    fillable = ['name', 'active', 'note', 'password']; hidden = ['password'];
+    string name; bool active; string? note; string password;
+    posts() { return hasMany<AcceptancePost>('owner_id'); }
+}
+
+model AcceptancePost {
+    table = 'database_acceptance_posts'; timestamps = false;
+    fillable = ['owner_id', 'title']; int owner_id; string title;
+    owner() { return belongsTo<AcceptanceUser>('owner_id'); }
+}

@@ -85,7 +85,17 @@ Primary CI enables SQLite and runs a live behavioral baseline against an in-memo
 - exact decimal text preservation;
 - zero leaked pool leases.
 
-PostgreSQL and MySQL retain separate live adapter jobs. SQL Server and MongoDB behavior is tested through their adapter/integration configuration when those optional jobs are enabled. Backend differences are explicit rather than normalized into semantics the backend cannot guarantee.
+PostgreSQL, MySQL, SQL Server and MongoDB have live adapter and installed
+application jobs on pull requests and `main`. Their ordinary `.gnr` fixtures
+cover migrations, CRUD, bound Unicode values, nulls/visibility, pagination,
+relationships, restart persistence and rollback without generated C++ repair.
+SQLite runs the same application fixture in primary validation.
+
+The SQL adapter probes verify rollback of one nested savepoint while its parent
+continues, rollback of a parent after a nested commit, and callback promotion or
+discard at commit/rollback. MongoDB explicitly rejects transactions and does
+not enforce relational foreign keys. Backend differences are explicit rather
+than normalized into semantics the adapter cannot guarantee.
 
 ## Current limits
 

@@ -113,6 +113,13 @@ int main() {
     bool mass_assignment = false;
     try { static_cast<void>(User::create({{"id", Int64{42}}})); } catch (const MassAssignmentError&) { mass_assignment = true; }
     assert(mass_assignment);
+    assert(User::find(committedTransaction()));
+    bool rolled_back = false;
+    try { rolledBackTransaction(); } catch (const std::exception&) { rolled_back = true; }
+    assert(rolled_back && User::where("name", String{"Rolled back transaction"}).count() == 0);
+    const auto nested_id = nestedTransaction();
+    assert(User::find(nested_id) && Post::where("user_id", nested_id).count() == 1);
+    assert(User::find(namedTransaction()));
     assert(manager.pool_stats().leased == 0);
     assert(migrations.rollback({{"CreateOrmTables", &schema}}) == 1);
     database::runtime::clear();

@@ -7,6 +7,7 @@
 
 #include <gungnir/database/database.hpp>
 #include <gungnir/database/mysql.hpp>
+#include "database_acceptance.hpp"
 
 namespace {
 
@@ -248,9 +249,10 @@ int main() {
         "persisted"
     );
 
-    connection->execute(
-        "DROP TABLE gungnir_mysql_integration"
-    );
+    verify_sql_transaction_scopes(connection, "gungnir_mysql_integration");
+    connection->execute("DROP TABLE gungnir_mysql_integration");
+    connection.reset();
+    assert(manager.pool_stats(settings.name).leased == 0);
 
     return 0;
 }

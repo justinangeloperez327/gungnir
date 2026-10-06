@@ -1527,8 +1527,22 @@ if(GUNGNIR_BUILD_TESTS)
 
     if(GUNGNIR_BUILD_TOOLS)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        foreach(backend sqlite postgresql mysql sqlserver mongodb)
+            string(TOUPPER "${backend}" backend_upper)
+            if(GUNGNIR_WITH_${backend_upper} AND
+               (backend STREQUAL "sqlite" OR GUNGNIR_${backend_upper}_INTEGRATION_TESTS))
+                add_test(NAME gungnir.application_database_${backend}
+                    COMMAND ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/application_database.py"
+                    "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli> "${backend}")
+                set_tests_properties(gungnir.application_database_${backend}
+                    PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE LABELS "database;integration")
+            endif()
+        endforeach()
         add_test(NAME gungnir.docs_orm_examples COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_orm_examples.py $<TARGET_FILE:gungnirc>)
+        add_test(NAME gungnir.docs_database_examples COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_database_examples.py" $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_http_examples COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/docs_http_examples.py $<TARGET_FILE:gungnirc>)
         add_test(NAME gungnir.docs_service_examples COMMAND ${Python3_EXECUTABLE}

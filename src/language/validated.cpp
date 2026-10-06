@@ -98,11 +98,14 @@ public:
             {"Config","gungnir::config::Service"},{"Logger","gungnir::logging::Service"},{"Telemetry","gungnir::observability::Service"},{"Span","gungnir::observability::Span"},
             {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
+            {"Database","gungnir::language::runtime::Database"},
             {"Route","gungnir::Route"},{"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
             {"Callable","auto"},{"inferred","auto"}}) intern(name, cpp);
         declarations.emplace("native:auth", symbol({ResolvedSymbolKind::builtin,"auth",
             "gungnir::language::runtime::authentication_api",type_id("Authentication"),invalid_id,true}));
+        declarations.emplace("native:database", symbol({ResolvedSymbolKind::builtin,"database",
+            "gungnir::language::runtime::database_api",type_id("Database"),invalid_id,true}));
         for (const auto& native : options.native_types) {
             if (type_id(native.name) != invalid_id) report({}, "Native type conflicts with a prelude type: " + native.name);
             else intern(native.name, native.cpp_name);
@@ -146,6 +149,7 @@ public:
     }
     TypeId resolve(const TypeSyntax& syntax) {
         std::string name = syntax.name;
+        if (name == "Database") { report(syntax.origin,"database is an application API, not a value type", "GNR2370"); return type_id("Value"); }
         if (name == "Route") { report(syntax.origin,"Route is a static API, not a value type", "GNR2320"); return type_id("Value"); }
         if (name == "integer" || name == "int64" || name == "Integer" || name == "Int64") name = "int";
         if (name == "boolean" || name == "Boolean") name = "bool";
@@ -1011,6 +1015,31 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (t.name == "Database" && name == "transaction") {
+                arity(1,1);
+                TypeId result = type_id("void");
+                bool valid = false;
+                if (count == 1) {
+                    const auto argument = e.operands[1];
+                    const auto callback_type = expression(argument);
+                    const auto signature = type(callback_type);
+                    if (signature.name == "Function" && signature.arguments.size() == 1) {
+                        result = signature.arguments.back();
+                        valid = true;
+                    } else if (signature.name == "Callable" && v.expressions_[argument].symbol != invalid_id && v.syntax_.expressions[argument].kind == SyntaxExpressionKind::name) {
+                        auto callback = v.symbols_[v.expressions_[argument].symbol];
+                        if (callback.kind == ResolvedSymbolKind::declaration && declaration_ids.contains(v.expressions_[argument].symbol)) {
+                            const auto declaration = declaration_ids.at(v.expressions_[argument].symbol);
+                            if (v.syntax_.declarations[declaration].kind == DeclarationKind::function)
+                                callback = v.symbols_[v.declarations_[declaration].methods.front().symbol];
+                        }
+                        valid = callback.kind == ResolvedSymbolKind::callable && callback.parameters.empty() && !callback.asynchronous;
+                        if (valid) result = callback.type;
+                    }
+                }
+                if (!valid) report(e.origin,"Transactions require a synchronous callback with no parameters", "GNR2370");
+                return finish_builtin(result,"gungnir::language::runtime::database_transaction");
+            }
             if (t.name == "Mail" || t.name == "PendingMail" || t.name == "Notifications") {
                 if (callee.literal_type == "::") report(callee.origin,"Delivery service methods require an instance", "GNR2360");
                 if ((t.name == "Mail" && name == "to") || (t.name == "PendingMail" && (name == "to" || name == "from" || name == "cc" || name == "bcc" || name == "replyTo"))) {

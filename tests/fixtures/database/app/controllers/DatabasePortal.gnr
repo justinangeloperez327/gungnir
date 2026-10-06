@@ -1,0 +1,61 @@
+import app.models.DatabaseModels;
+
+controller DatabasePortal {
+    index() { return text('database-ready'); }
+    store(Request request) {
+        return json(AcceptanceUser::create({
+            'name': request.input('name'), 'active': true, 'note': null, 'password': 'fixture-secret'
+        }));
+    }
+    users() { return json(AcceptanceUser::orderBy('id').get()); }
+    show(AcceptanceUser user) { return json(user); }
+    search(Request request) { return json(AcceptanceUser::where('name', request.query('name')).get()); }
+    page() {
+        const page = AcceptanceUser::orderBy('id').paginate(2, 2);
+        return json({'data': page.data, 'total': page.total, 'page': page.currentPage});
+    }
+    update(Request request, AcceptanceUser user) {
+        let current = AcceptanceUser::findOrFail(user.id);
+        current.name = request.input('name'); current.active = false; current.note = 'updated';
+        current.save(); return json(current);
+    }
+    remove(AcceptanceUser user) {
+        let current = AcceptanceUser::findOrFail(user.id);
+        return json(current.remove());
+    }
+    restricted() { return json(AcceptanceUser::create({'id': 42, 'name': 'forbidden'})); }
+    post(Request request, AcceptanceUser user) {
+        return json(AcceptancePost::create({'owner_id': user.id, 'title': request.input('title')}));
+    }
+    loaded() {
+        return json(AcceptanceUser::with('posts').orderBy('id').get().map((user) => {
+            return {'user': user, 'posts': user.posts.get()};
+        }));
+    }
+    posts() {
+        return json(AcceptancePost::with('owner').orderBy('id').get().map((post) => {
+            return {'post': post, 'owner': post.owner.get()};
+        }));
+    }
+    orphan() { return json(AcceptancePost::create({'owner_id': 999999, 'title': 'orphan'})); }
+    commit() {
+        const user = database.transaction(() => {
+            const parent = AcceptanceUser::create({'name': 'committed', 'active': true, 'note': null, 'password': 'fixture-secret'});
+            database.transaction(() => {
+                AcceptancePost::create({'owner_id': parent.id, 'title': 'nested commit'});
+            });
+            return parent;
+        });
+        return json(user);
+    }
+    rollback() {
+        database.transaction(() => {
+            AcceptanceUser::create({'name': 'rolled-back', 'active': true, 'note': null, 'password': 'fixture-secret'});
+            database.transaction(() => {
+                AcceptanceUser::create({'name': 'nested-rolled-back', 'active': true, 'note': null, 'password': 'fixture-secret'});
+                AcceptanceUser::findOrFail(-1);
+            });
+        });
+        return json(true);
+    }
+}

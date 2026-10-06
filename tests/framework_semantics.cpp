@@ -328,4 +328,14 @@ void invalid_framework_contracts_fail_semantically() {
 int main() {
     valid_framework_contracts_compile();
     invalid_framework_contracts_fail_semantically();
+    const auto transaction = gungnir::language::Compiler{}.compile(
+        "function int atomicValue() { return database.transaction(() => { return 7; }); } "
+        "function void atomicWork() { database.transaction(() => {}); }",
+        "database-valid.gnr"
+    );
+    assert(transaction.success() && transaction.validated);
+    assert(transaction.code.find("gungnir::language::runtime::database_transaction") != std::string::npos);
+    reject("function void wrong() { database.transaction(1); }", "GNR2370");
+    reject("function void wrong() { database.transaction((int value) => {}); }", "GNR2370");
+    reject("async function int work() { return 1; } function void wrong() { database.transaction(work); }", "GNR2370");
 }

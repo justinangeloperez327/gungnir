@@ -149,3 +149,27 @@ function Collection<Node> nodeChildren(int id) { return Node::findOrFail(id).chi
 controller UserApi {
     index() { return json(User::where("active", true).orderBy("name").get()); }
 }
+
+function int committedTransaction() {
+    return database.transaction(() => {
+        const user = createUser("Committed transaction");
+        return user.id;
+    });
+}
+function void rolledBackTransaction() {
+    database.transaction(() => {
+        createUser("Rolled back transaction");
+        User::findOrFail(-1);
+    });
+}
+function int nestedTransaction() {
+    return database.transaction(() => {
+        const user = createUser("Nested transaction");
+        return database.transaction(() => {
+            createPost(user.id, "Nested commit");
+            return user.id;
+        });
+    });
+}
+function int namedTransactionWork() { return createUser("Named transaction").id; }
+function int namedTransaction() { return database.transaction(namedTransactionWork); }

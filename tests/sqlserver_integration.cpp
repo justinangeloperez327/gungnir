@@ -12,6 +12,7 @@
 #include <gungnir/database/sqlserver.hpp>
 #include <gungnir/migration/migrations.hpp>
 #include <gungnir/orm/compiler.hpp>
+#include "database_acceptance.hpp"
 
 namespace {
 
@@ -368,9 +369,8 @@ int main() {
         "persisted"
     );
 
-    connection->execute(
-        "DROP TABLE dbo.gungnir_sqlserver_integration"
-    );
+    verify_sql_transaction_scopes(connection, "dbo.gungnir_sqlserver_integration");
+    connection->execute("DROP TABLE dbo.gungnir_sqlserver_integration");
 
     connection->execute(
         "DROP TABLE IF EXISTS dbo.gungnir_sqlserver_migration_probe"
@@ -456,5 +456,7 @@ int main() {
         "DROP TABLE IF EXISTS dbo.gungnir_migrations"
     );
 
+    connection.reset();
+    assert(manager.pool_stats(settings.name).leased == 0);
     return 0;
 }

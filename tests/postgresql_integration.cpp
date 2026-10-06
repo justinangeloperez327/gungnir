@@ -8,6 +8,7 @@
 
 #include <gungnir/database/database.hpp>
 #include <gungnir/database/postgresql.hpp>
+#include "database_acceptance.hpp"
 
 namespace {
 
@@ -276,9 +277,10 @@ int main() {
         "persisted"
     );
 
-    connection->execute(
-        "DROP TABLE gungnir_postgresql_integration"
-    );
+    verify_sql_transaction_scopes(connection, "gungnir_postgresql_integration");
+    connection->execute("DROP TABLE gungnir_postgresql_integration");
+    connection.reset();
+    assert(manager.pool_stats(settings.name).leased == 0);
 
     return 0;
 }

@@ -40,7 +40,14 @@ database.transaction(() => {
 });
 ```
 
-Nested transaction behavior follows the selected database driver's transaction/savepoint capabilities.
+The callback runs synchronously with no parameters. Its return value is returned
+by `database.transaction`; an exception rolls back the scope before propagating.
+ORM operations inside the callback use the same leased connection. Nested
+transactions use savepoints on SQLite, PostgreSQL, MySQL and SQL Server.
+
+The current MongoDB adapter supports document persistence but does not implement
+transaction sessions or savepoints. It rejects transaction work before invoking
+the callback, including when the server itself has a replica-set topology.
 
 ## Queries
 
@@ -65,3 +72,18 @@ Models can select a named connection through model metadata, allowing an applica
 ## MongoDB
 
 MongoDB uses the same application database manager but retains document-database semantics where SQL concepts do not apply.
+
+## Application acceptance
+
+The database acceptance suite builds an ordinary `.gnr` application through the
+installed CLI and SDK. It exercises migrations, bound queries, CRUD, nullable and
+hidden values, Unicode, pagination, route model binding, eager and inverse
+relationships, persistence across a server restart, and migration rollback.
+Eager loading uses two queries for multiple parents with a one-slot pool.
+
+SQLite runs in the primary validation job. PostgreSQL, MySQL, SQL Server and
+MongoDB have live service jobs on pull requests and `main`. SQL jobs also check
+nested savepoint rollback and after-commit callbacks through the native API.
+MongoDB checks explicitly cover its transaction and foreign-key limitations.
+
+See the adapter guides for native dependencies and deployment configuration.
