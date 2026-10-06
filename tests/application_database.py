@@ -163,9 +163,10 @@ inline void boot(gungnir::Application&) {}
             users = [request('/users', {'name': name}) for name in names]
             assert len({user['id'] for user in users}) == 3
             for user, name in zip(users, names):
-                assert user['id'] > 0 and user['name'] == name and user['active'] is True
+                assert user['id'] > 0 and user['name'] == name and user['active'] is True, (backend, user, name)
                 assert user['note'] is None and 'password' not in user
-                assert request(f"/users/{user['id']}") == user
+                persisted = request(f"/users/{user['id']}")
+                assert persisted == user, (backend, persisted, user)
                 assert find(request, name) == [user]
             request('/users/999999', status=404)
             assert request('/users') == users

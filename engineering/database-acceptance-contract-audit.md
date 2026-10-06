@@ -22,6 +22,9 @@ Server model inserts. Model saves now request the actual primary-key column via
 the original three-argument insert compiler remains available for query inserts.
 SQL Server refreshes affected-row counts after consuming the `OUTPUT` result,
 as required by the ODBC contract, so successful model inserts are persisted.
+Text bindings use Unicode SQL parameter types rather than the server's narrow
+code page; native and application acceptance verify non-ASCII round trips on
+the Linux UTF-8 client.
 MySQL `id()` now matches `foreignId()` unsigned key types, and savepoint commands
 use the native direct protocol because the prepared protocol rejects them.
 MongoDB nullable schema fields now allow explicit BSON null, including nullable

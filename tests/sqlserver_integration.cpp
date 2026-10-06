@@ -188,7 +188,7 @@ int main() {
             "INSERTED.score, INSERTED.note "
             "VALUES (?, ?, ?, ?)",
             {
-                String{"first@example.com"},
+                String{"first – 雪🙂@example.com"},
                 Boolean{true},
                 Double{12.5},
                 nullptr
@@ -206,7 +206,7 @@ int main() {
         model::value_cast<String>(
             first.at("email")
         ) ==
-        "first@example.com"
+        "first – 雪🙂@example.com"
     );
 
     assert(
@@ -251,7 +251,7 @@ int main() {
                 orm::Comparison::equal,
             .other_column = {},
             .values = {
-                String{"first@example.com"}
+                String{"first – 雪🙂@example.com"}
             },
             .automatic = false
         }
@@ -288,7 +288,7 @@ int main() {
                 "email"
             )
         ) ==
-        "first@example.com"
+        "first – 雪🙂@example.com"
     );
 
     connection->begin();

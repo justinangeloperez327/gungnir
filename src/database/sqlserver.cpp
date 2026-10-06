@@ -553,9 +553,9 @@ void bind_parameters(
                 );
             value_type = SQL_C_CHAR;
             parameter_type =
-                item.string.size() > 8000
-                    ? SQL_LONGVARCHAR
-                    : SQL_VARCHAR;
+                item.string.size() > 4000
+                    ? SQL_WLONGVARCHAR
+                    : SQL_WVARCHAR;
             column_size =
                 std::max<SQLULEN>(
                     1,

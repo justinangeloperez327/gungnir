@@ -52,6 +52,9 @@ rollback, after-commit callbacks, migrations, and the installed `.gnr`
 application's CRUD, bindings, pagination, relationships and restart persistence.
 Incrementing model inserts use `OUTPUT INSERTED` to hydrate the generated primary
 key before returning the model.
+Text parameters use Unicode SQL types to preserve non-ASCII values. The client
+character encoding follows the ODBC driver's platform and locale rules; live
+Linux acceptance uses UTF-8 and verifies Unicode insert, lookup and retrieval.
 SQL Server savepoints retain their native semantics; nested commits do not issue
 SQL `RELEASE SAVEPOINT`. The standard core/application packages do not bundle
 this adapter.
