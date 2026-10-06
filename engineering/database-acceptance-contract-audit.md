@@ -20,6 +20,8 @@ Live acceptance exposed missing generated primary keys on PostgreSQL and SQL
 Server model inserts. Model saves now request the actual primary-key column via
 `RETURNING`/`OUTPUT INSERTED`, aliased for the existing adapter result contract;
 the original three-argument insert compiler remains available for query inserts.
+SQL Server refreshes affected-row counts after consuming the `OUTPUT` result,
+as required by the ODBC contract, so successful model inserts are persisted.
 MySQL `id()` now matches `foreignId()` unsigned key types, and savepoint commands
 use the native direct protocol because the prepared protocol rejects them.
 MongoDB nullable schema fields now allow explicit BSON null, including nullable
@@ -56,3 +58,5 @@ parity or production durability/capacity certification.
 The published version, release tag and historical release audit are not changed
 by this group. Optional network adapters remain custom SDK dependencies.
 Local checks and exact-commit CI evidence are recorded in the pull request.
+Obsolete pull-request package runs are cancelled on newer revisions, while
+tag, main and manual release runs retain their existing concurrency behavior.

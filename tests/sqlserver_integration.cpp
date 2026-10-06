@@ -195,6 +195,7 @@ int main() {
             }
         );
 
+    assert(inserted.affected_rows == 1);
     assert(inserted.rows.size() == 1);
     assert(inserted.inserted_id.has_value());
 
