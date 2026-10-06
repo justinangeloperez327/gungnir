@@ -3,6 +3,7 @@
 #include <gungnir/language/spec.hpp>
 #include <gungnir/orm/orm.hpp>
 #include <gungnir/core/services.hpp>
+#include <gungnir/database/transaction.hpp>
 #include <gungnir/queue/job.hpp>
 #include <gungnir/queue/worker.hpp>
 #include <charconv>
@@ -27,6 +28,13 @@ inline String route_url(const String& name, const Json& parameters = Json::objec
 }
 struct Authentication {};
 inline constexpr Authentication authentication_api{};
+struct Database {};
+inline constexpr Database database_api{};
+template<class Callback>
+auto database_transaction(Callback&& callback) {
+    database::Transaction transaction{database::runtime::connection()};
+    return transaction.run(std::forward<Callback>(callback));
+}
 inline bool auth_attempt(Request& request, const Json& credentials, bool remember = false) {
 #ifdef GUNGNIR_WITH_PASSWORD
     if (!credentials.is_object()) throw http::BadRequestException("Credentials must be an object");

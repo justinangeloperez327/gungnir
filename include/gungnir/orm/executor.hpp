@@ -578,7 +578,8 @@ bool Model<Derived>::save() {
         const auto compiled = orm::compile_insert(
             table_name(),
             values,
-            connection->backend()
+            connection->backend(),
+            primary_key_incrementing() && !primary_key_value() ? key_name : std::string_view{}
         );
 
         auto result = connection->execute(

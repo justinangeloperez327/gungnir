@@ -14,6 +14,7 @@ public:
             column.boolean("active").default_value(true);
             column.enumeration("status", {"active", "disabled"})
                 .default_value("active");
+            column.enumeration("optional_status", {"draft", "published"}).nullable();
             column.json("profile").nullable();
             column.foreign_id("role_id")
                 .constrained("roles")
@@ -62,6 +63,8 @@ int main() {
     assert(!mysql.empty());
     assert(contains(mysql, "CREATE TABLE `users`"));
     assert(contains(mysql, "AUTO_INCREMENT"));
+    assert(contains(mysql, "`id` BIGINT UNSIGNED AUTO_INCREMENT"));
+    assert(contains(mysql, "`role_id` BIGINT UNSIGNED"));
     assert(contains(mysql, "ENUM('active', 'disabled')"));
     assert(contains(mysql, "JSON"));
 
@@ -87,6 +90,8 @@ int main() {
     assert(contains(mongodb, "\"create\":\"users\""));
     assert(contains(mongodb, "\"createIndexes\":\"users\""));
     assert(mongodb.has_warnings());
+    assert(contains(mongodb, "\"profile\":{\"bsonType\":[\"string\",\"null\"]}"));
+    assert(contains(mongodb, "\"optional_status\":{\"bsonType\":[\"string\",\"null\"],\"enum\":[\"draft\",\"published\",null]}"));
 
     return 0;
 }

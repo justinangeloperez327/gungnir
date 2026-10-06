@@ -1,0 +1,16 @@
+migration CreateDatabaseAcceptance {
+    up() {
+        Table::create('database_acceptance_users', (table) => {
+            table.id(); table.string('name').unique(); table.boolean('active');
+            table.string('note').nullable(); table.string('password');
+        });
+        Table::create('database_acceptance_posts', (table) => {
+            table.id(); table.foreignId('owner_id'); table.string('title');
+            table.foreign('owner_id').references('id').on('database_acceptance_users');
+        });
+    }
+    down() {
+        Table::dropIfExists('database_acceptance_posts');
+        Table::dropIfExists('database_acceptance_users');
+    }
+}

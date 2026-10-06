@@ -177,6 +177,13 @@ int main() {
     assert(connection->healthy());
     assert(!connection->supports_transactions());
     assert(!connection->supports_savepoints());
+    bool rejected_transaction = false;
+    try {
+        database::Transaction unsupported{connection};
+    } catch (const std::logic_error&) {
+        rejected_transaction = true;
+    }
+    assert(rejected_transaction && !connection->in_transaction());
 
     drop_if_present(
         *connection,
@@ -312,5 +319,7 @@ int main() {
     );
 
     database::runtime::clear();
+    connection.reset();
+    assert(manager.pool_stats(settings.name).leased == 0);
     return 0;
 }

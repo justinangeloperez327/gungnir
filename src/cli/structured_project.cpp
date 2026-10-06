@@ -151,7 +151,7 @@ endif()
 target_compile_features(program PUBLIC cxx_std_23)
 target_include_directories(program PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(program PUBLIC gungnir::gungnir gungnir::orm)
-foreach(adapter postgresql mysql sqlserver redis smtp)
+foreach(adapter postgresql mysql sqlserver mongodb redis smtp)
     if(TARGET gungnir::${adapter})
         target_link_libraries(program PUBLIC gungnir::${adapter})
         string(TOUPPER "${adapter}" macro)
@@ -205,6 +205,9 @@ target_link_libraries(background PRIVATE program)
 #ifdef GNR_ADAPTER_SQLSERVER
 #include <gungnir/database/sqlserver.hpp>
 #endif
+#ifdef GNR_ADAPTER_MONGODB
+#include <gungnir/database/mongodb.hpp>
+#endif
 )cpp" + aliases;
     if (std::filesystem::exists(root_ / "bootstrap/app.hpp")) bootstrap += "#include <bootstrap/app.hpp>\n";
     else bootstrap += "namespace bootstrap { inline void configure(gungnir::Application& app) { app.provider<gungnir::ServicesProvider>(); } inline void boot(gungnir::Application&) {} }\n";
@@ -226,6 +229,9 @@ inline void configure(gungnir::Application& app) {
 #endif
 #ifdef GNR_ADAPTER_SQLSERVER
     gungnir::database::register_sqlserver(app.database_drivers());
+#endif
+#ifdef GNR_ADAPTER_MONGODB
+    gungnir::database::register_mongodb(app.database_drivers());
 #endif
     bootstrap::configure(app);
 )cpp" + factories + middleware + "app.on_boot([](gungnir::Application& app) {\n" + registrations + "bootstrap::boot(app);\n" + schedules + "});\n}\n}\n";

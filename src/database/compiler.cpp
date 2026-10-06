@@ -870,9 +870,9 @@ String mongo_validator(
             properties += ",";
         }
 
-        properties += "\"" + escape_json(column.name) +
-                      "\":{\"bsonType\":\"" +
-                      mongo_bson_type(column.type) + "\"";
+        properties += "\"" + escape_json(column.name) + "\":{\"bsonType\":";
+        const auto bson_type = "\"" + mongo_bson_type(column.type) + "\"";
+        properties += column.nullable_value ? "[" + bson_type + ",\"null\"]" : bson_type;
 
         if (!column.allowed_values.empty()) {
             properties += ",\"enum\":[";
@@ -887,6 +887,9 @@ String mongo_validator(
                 properties += "\"" +
                               escape_json(column.allowed_values[index]) +
                               "\"";
+            }
+            if (column.nullable_value) {
+                properties += ",null";
             }
             properties += "]";
         }

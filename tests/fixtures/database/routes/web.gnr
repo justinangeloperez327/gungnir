@@ -1,0 +1,16 @@
+import app.controllers.DatabasePortal;
+Route::get('/', DatabasePortal::index);
+Route::post('/users', DatabasePortal::store);
+Route::get('/users', DatabasePortal::users);
+Route::get('/users/{user}', DatabasePortal::show);
+Route::put('/users/{user}', DatabasePortal::update);
+Route::delete('/users/{user}', DatabasePortal::remove);
+Route::post('/users/{user}/posts', DatabasePortal::post);
+Route::get('/search', DatabasePortal::search);
+Route::get('/page', DatabasePortal::page);
+Route::get('/loaded', DatabasePortal::loaded);
+Route::get('/posts', DatabasePortal::posts);
+Route::post('/restricted', DatabasePortal::restricted);
+Route::post('/orphan', DatabasePortal::orphan);
+Route::post('/commit', DatabasePortal::commit);
+Route::post('/rollback', DatabasePortal::rollback);

@@ -553,9 +553,9 @@ void bind_parameters(
                 );
             value_type = SQL_C_CHAR;
             parameter_type =
-                item.string.size() > 8000
-                    ? SQL_LONGVARCHAR
-                    : SQL_VARCHAR;
+                item.string.size() > 4000
+                    ? SQL_WLONGVARCHAR
+                    : SQL_WVARCHAR;
             column_size =
                 std::max<SQLULEN>(
                     1,
@@ -949,22 +949,24 @@ Result read_result(
 ) {
     Result result;
 
-    SQLLEN affected = 0;
-
-    if (
-        succeeded(
-            SQLRowCount(
-                statement_handle,
-                &affected
-            )
-        ) &&
-        affected > 0
-    ) {
-        result.affected_rows =
-            static_cast<std::size_t>(
-                affected
-            );
-    }
+    const auto read_affected_rows = [&] {
+        SQLLEN affected = 0;
+        if (
+            succeeded(
+                SQLRowCount(
+                    statement_handle,
+                    &affected
+                )
+            ) &&
+            affected > 0
+        ) {
+            result.affected_rows =
+                static_cast<std::size_t>(
+                    affected
+                );
+        }
+    };
+    read_affected_rows();
 
     const auto metadata =
         columns(statement_handle);
@@ -1014,6 +1016,9 @@ Result read_result(
             std::move(row)
         );
     }
+
+    // OUTPUT row counts become available only after SQLFetch reaches SQL_NO_DATA.
+    read_affected_rows();
 
     if (
         starts_with_insert(sql) &&
