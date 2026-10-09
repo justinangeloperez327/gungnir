@@ -52,6 +52,7 @@ The documentation defines the Gungnir developer experience: how applications are
 - [Notifications](notification.md)
 - [Mail](mail.md)
 - [Cache](cache.md)
+- [Distributed coordination](cache-coordination.md)
 - [Storage](storage.md)
 - [Scheduler](scheduler.md)
 - [Logging and Observability](logging-observability.md)
@@ -104,5 +105,6 @@ These documents explain how Gungnir itself works. Application developers do not 
 - [Request Context Contract Audit](../engineering/request-context-contract-audit.md)
 
 - [Authentication Contract Audit](../engineering/authentication-contract-audit.md)
+- [Cache Coordination Contract Audit](../engineering/cache-coordination-contract-audit.md)
 
 - [Version 1.0.0 release and installation](release-v1.md)

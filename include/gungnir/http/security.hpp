@@ -2,12 +2,14 @@
 
 #include <chrono>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 
 #include <gungnir/http/middleware.hpp>
 #include <gungnir/http/uploads.hpp>
+#include <gungnir/http/rate_limit.hpp>
 #include <gungnir/session/session.hpp>
 
 namespace gungnir::http {
@@ -72,6 +74,10 @@ struct RateLimitOptions {
 MiddlewareHandler rate_limit(
     RateLimitOptions options = {}
 );
+
+// Namespace and policy must match across instances sharing the same quota.
+[[nodiscard]] MiddlewareHandler rate_limit(RateLimitOptions options,
+    std::shared_ptr<RateLimitStore> store, std::string namespace_key);
 
 struct CsrfOptions {
     std::string session_key{

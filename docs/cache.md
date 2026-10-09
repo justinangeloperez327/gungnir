@@ -72,6 +72,57 @@ Lifetimes are whole seconds. Omitting the lifetime in `put` stores without an ex
 
 ## Locks
 
-Distributed cache stores can provide locks for operations that must be coordinated across application instances.
+`cache.lock(key, ttlMilliseconds)` returns a `CacheLock` handle. Acquisition is non-blocking: `acquire()` returns false when another owner holds the key. `renew()` extends the current lease using its original lifetime; `renew(milliseconds)` selects a new positive lifetime. `release()` removes only the current owner's lease and returns false for a missing, expired or replaced lease.
+
+```gnr
+controller ExportController {
+    inject Cache cache;
+    generate() {
+        const lock = cache.lock('reports:export', 30000);
+        if (!lock.acquire()) { return text('Export is busy', 409); }
+        // Perform a bounded operation while the lease is active.
+        return text('Export complete');
+    }
+}
+```
+
+Copies share ownership, including handles passed to functions or retained across `await`. The last handle releases the lease automatically, also when an exception unwinds the operation. Explicit release reports backend errors; destructor cleanup suppresses them and relies on expiration. Lock handles cannot be serialized into cache entries, models or job payloads.
+
+Configure `ServiceOptions.cache_locks` separately from the cache value store. Generated development bootstraps use `cache::MemoryLockStore`, which coordinates only clients sharing that object in one process. An unconfigured lock store raises a configuration error. Shared applications can reuse the existing owner-checked Redis lease adapter through `<gungnir/cache/redis_lock.hpp>`:
+
+```cpp
+cache::RedisSettings values;
+values.prefix = "myapp:cache:values:";
+cache::RedisLockSettings locks;
+locks.host = values.host;
+locks.port = values.port;
+locks.database = values.database;
+locks.prefix = "myapp:cache:locks:";
+ServiceOptions services;
+services.cache = std::make_shared<cache::RedisStore>(values);
+services.cache_locks = std::make_shared<cache::RedisLockStore>(locks);
+app.provider<ServicesProvider>(std::move(services));
+```
+
+Use distinct, non-overlapping prefixes for values, locks, sessions and scheduler leases. `cache.flush()` affects the configured value namespace; it preserves locks in their separate namespace. Prefixes are literal bytes, including Redis glob characters. Redis cache and lease adapters use their configured single endpoint, credentials, database and timeouts; they do not use the topology/TLS options of the separate `redis::Client` API.
+
+## Coordinated factories
+
+`rememberLocked(key, seconds, leaseMilliseconds, factory)` uses the configured lock store to coordinate cache misses. It checks for a cached value, acquires `remember:` plus the key, checks again, and invokes the synchronous factory only on a remaining miss. Stored JSON null is a cache hit.
+
+```gnr
+controller CoordinatedReportController {
+    inject Cache cache;
+    index() {
+        return json(cache.rememberLocked('dashboard:summary', 300, 30000, () => {
+            return {count: 42, ratio: 3.0};
+        }));
+    }
+}
+```
+
+Contention raises native `cache::LockUnavailable` immediately; this helper does not wait or run a second factory while the lease is held. A factory or serialization failure releases the lease and stores no result. Ownership is checked by renewal before publication, and an observed lost lease raises `cache::LockLost`. A later call can retry after the winner fills the cache or its lease expires.
+
+These are expiring leases, not fencing tokens or a transaction combining locks and values. Choose a lease lifetime covering the factory and publication; expiration, eviction or backend failover can admit another owner while original work continues. External side effects need their own transaction, idempotency or fencing. Cache publication and owner-checked release are separate operations; a backend failure after publication may leave a filled entry even though the caller receives an error. See [Distributed coordination](cache-coordination.md) for deployment and acceptance details.
 
 Cache is an optimization and coordination service; application correctness should not depend on stale cached data being impossible.
