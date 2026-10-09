@@ -149,7 +149,8 @@ The framework already contains substantial implementation across:
 - async runtime and cancellation;
 - HTTP serving and WebSockets;
 - health/readiness and graceful shutdown;
-- logging/observability;
+- [logging/observability](docs/logging-observability.md) and
+  [external collector integration](docs/external-observability.md);
 - production resilience and overload admission.
 
 A subsystem is not considered **complete** merely because its type, parser node, interface, or basic implementation exists. Gungnir 1.0 requires end-to-end behavior, tests, consistent DX, backend coverage where applicable, and current documentation.

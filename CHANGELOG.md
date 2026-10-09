@@ -4,6 +4,17 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Link the optional OTLP adapter in generated applications and continue valid
+  HTTP traceparent identities through logical request and persisted queue context.
+- Refresh boot services and activate generated workers/migrations after boot to
+  retain tracing/meter bindings for lifecycle, processing and database work.
+- Bound OTLP records, pending bytes, responses, retries, flush and shutdown;
+  report rejected/lost records, preserve independent trace/metric delivery and
+  handle collector partial success without leaking responses into stdout.
+- Add concurrent bounded JSON stream logging and verify installed HTTP/SQLite/
+  Redis worker correlation, redaction, errors, exemplars and outage isolation
+  through the checksum-pinned official OpenTelemetry Collector.
+
 - Add an application SDK profile with bundled static SQLite and OpenSSL Crypto,
   relocatable CMake targets, dependency notices and installed capability metadata.
 - Build core/application portable packages and Windows installers; exercise

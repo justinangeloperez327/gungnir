@@ -19,6 +19,11 @@ shutdown, including configured tracing and metric exporter cleanup. Native
 applications can pass a `CancellationToken` to `Application::run` or
 `Application::listen` when using their own process supervision.
 
+Optional OTLP export has separate flush/shutdown deadlines and observable drop
+counts. Budget process shutdown for HTTP/work draining and exporter cleanup.
+See [External Observability](external-observability.md) for collector wiring,
+TLS/authentication, structured logs and the verified delivery contract.
+
 `Supervisor::shutdown()` is bounded by its configured supervisor timeout and returns the names of runtimes that still report running. For HTTP, `Application::is_running()` now covers the complete active/draining listen lifecycle rather than only listener admission.
 
 The HTTP server's own `shutdown_timeout` bounds network draining. These are distinct controls:

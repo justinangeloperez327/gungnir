@@ -555,6 +555,9 @@ void Application::boot() {
             ++impl_->registered_providers; // Includes a partially registered provider.
             provider->register_services(*this);
         }
+        // Providers can install execution services during registration. Refresh
+        // the boot scope before database initialization and lifecycle hooks.
+        auto registered_services = activate();
         impl_->lifecycle.stage(LifecycleStage::booting);
         configure_database();
         for (auto& provider : impl_->providers) provider->boot(*this);

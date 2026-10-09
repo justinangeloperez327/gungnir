@@ -246,7 +246,11 @@ if(
         GUNGNIR_BUILD_TESTS
     )
 )
-    find_package(CURL 7.56 REQUIRED)
+    if(GUNGNIR_WITH_OTLP)
+        find_package(CURL 7.68 REQUIRED)
+    else()
+        find_package(CURL 7.56 REQUIRED)
+    endif()
 endif()
 
 if(GUNGNIR_WITH_TLS)
@@ -1189,7 +1193,8 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/http/files.hpp gungnir/validation/validator.hpp gungnir/validation/definition.hpp
             gungnir/events/service.hpp gungnir/queue/service.hpp gungnir/scheduler/service.hpp
             gungnir/mail/delivery.hpp gungnir/mail/service.hpp gungnir/notifications/service.hpp
-            gungnir/config/service.hpp gungnir/logging/service.hpp
+            gungnir/config/service.hpp gungnir/logging/service.hpp gungnir/logging/json_stream_sink.hpp
+            gungnir/observability/propagation.hpp gungnir/observability/otlp_http_exporter.hpp
             gungnir/observability/service.hpp gungnir/auth/redis_remember_store.hpp)
         string(REPLACE "/" "_" unit "${header}")
         set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
@@ -2446,6 +2451,17 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 gungnir_otlp_test
         )
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_executable(gungnir_otlp_transport_test tests/otlp_transport.cpp)
+        target_link_libraries(gungnir_otlp_transport_test PRIVATE gungnir::otlp)
+        add_test(NAME gungnir.otlp_transport COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/otlp_transport.py" $<TARGET_FILE:gungnir_otlp_transport_test>)
+        set_tests_properties(gungnir.otlp_transport PROPERTIES TIMEOUT 90)
+        if(GUNGNIR_OTLP_INTEGRATION_TESTS AND GUNGNIR_BUILD_TOOLS AND GUNGNIR_WITH_REDIS AND GUNGNIR_WITH_SQLITE)
+            add_test(NAME gungnir.application_otlp COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/application_otlp.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
+            set_tests_properties(gungnir.application_otlp PROPERTIES TIMEOUT 360 RUN_SERIAL TRUE)
+        endif()
     endif()
 
     if(

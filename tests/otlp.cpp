@@ -237,9 +237,7 @@ int main() {
 
     exporter->flush();
 
-    assert(
-        exporter->dropped() == 0
-    );
+    assert(exporter->dropped() == (live_endpoint ? 0U : 5U));
 
     if (live_endpoint != nullptr) {
         assert(
