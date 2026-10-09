@@ -94,7 +94,7 @@ public:
             {"Session","std::shared_ptr<gungnir::session::Session>"},{"AuthIdentity","gungnir::auth::Identity"},
             {"Events","gungnir::events::Service"},{"Queue","gungnir::queue::Service"},{"Scheduler","gungnir::scheduler::Service"},{"ScheduledTask","gungnir::scheduler::Entry"},
             {"Mail","gungnir::mail::Service"},{"PendingMail","gungnir::mail::Pending"},{"Notifications","gungnir::notifications::Service"},
-            {"Cache","gungnir::cache::Values"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
+            {"Cache","gungnir::cache::Values"},{"CacheLock","gungnir::cache::Lock"},{"Storage","gungnir::storage::Service"},{"StorageDisk","gungnir::storage::FileStore"},
             {"Config","gungnir::config::Service"},{"Logger","gungnir::logging::Service"},{"Telemetry","gungnir::observability::Service"},{"Span","gungnir::observability::Span"},
             {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
@@ -192,7 +192,7 @@ public:
     }
     bool contains_service(TypeId id) const {
         const auto& value = type(id);
-        return value.name == "Mail" || value.name == "PendingMail" || value.name == "Notifications" || value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" || value.name == "Config" || value.name == "Logger" || value.name == "Telemetry" || value.name == "Span" ||
+        return value.name == "Mail" || value.name == "PendingMail" || value.name == "Notifications" || value.name == "Events" || value.name == "Queue" || value.name == "Scheduler" || value.name == "ScheduledTask" || value.name == "Cache" || value.name == "CacheLock" || value.name == "Storage" || value.name == "StorageDisk" || value.name == "Validator" || value.name == "Config" || value.name == "Logger" || value.name == "Telemetry" || value.name == "Span" ||
             std::any_of(value.arguments.begin(), value.arguments.end(), [&](auto argument) { return contains_service(argument); });
     }
     bool contains_callable(TypeId id) const {
@@ -1219,6 +1219,11 @@ public:
                 report(callee.origin,"Route declarations belong at module scope", "GNR2320");
                 return finish_builtin(type_id("void"), "gungnir::Route::" + name);
             }
+            if (t.name == "CacheLock") {
+                if (callee.literal_type == "::") report(callee.origin,"Lock methods require an instance");
+                if (name == "acquire" || name == "release") { arity(0,0); return finish_builtin(type_id("bool"), name); }
+                if (name == "renew") { arity(0,1); return finish_builtin(type_id("bool"), name, {type_id("int")}); }
+            }
             if (t.name == "Cache" || t.name == "Storage" || t.name == "StorageDisk") {
                 if (callee.literal_type == "::") report(callee.origin,"Service methods require an instance");
                 if (t.name == "Cache") {
@@ -1226,15 +1231,20 @@ public:
                         arity(1,1); return finish_builtin(name == "get" ? optional(type_id("Json")) : type_id("bool"), name, {type_id("string")});
                     }
                     if (name == "put") { arity(2,3); return finish_builtin(type_id("void"), name, {type_id("string"),type_id("Json"),type_id("int")}); }
+                    if (name == "lock") { arity(2,2); return finish_builtin(type_id("CacheLock"), name, {type_id("string"),type_id("int")}); }
                     if (name == "flush") { arity(0,0); return finish_builtin(type_id("void"), name); }
-                    if (name == "remember") {
-                        arity(3,3);
-                        const auto result = finish_builtin(type_id("Json"), name, {type_id("string"),type_id("int"),intern("Function","auto",{type_id("Json")})});
-                        if (count == 3) {
-                            const auto& factory = v.expressions_[e.operands[3]];
+                    if (name == "remember" || name == "rememberLocked") {
+                        const auto factory_index = name == "remember" ? 3U : 4U;
+                        arity(factory_index,factory_index);
+                        const auto callback = intern("Function","auto",{type_id("Json")});
+                        const auto result = name == "remember"
+                            ? finish_builtin(type_id("Json"), name, {type_id("string"),type_id("int"),callback})
+                            : finish_builtin(type_id("Json"), name, {type_id("string"),type_id("int"),type_id("int"),callback});
+                        if (count == factory_index) {
+                            const auto& factory = v.expressions_[e.operands[factory_index]];
                             const auto& signature = type(factory.type);
                             bool valid = signature.name == "Function" && signature.arguments.size() == 1 && assignable(type_id("Json"),signature.arguments.back());
-                            if (signature.name == "Callable" && factory.symbol != invalid_id && v.syntax_.expressions[e.operands[3]].kind == SyntaxExpressionKind::name) {
+                            if (signature.name == "Callable" && factory.symbol != invalid_id && v.syntax_.expressions[e.operands[factory_index]].kind == SyntaxExpressionKind::name) {
                                 const auto* callable = &v.symbols_[factory.symbol];
                                 if (callable->kind == ResolvedSymbolKind::declaration && declaration_ids.contains(factory.symbol)) {
                                     const auto declaration = declaration_ids.at(factory.symbol);
@@ -1243,7 +1253,7 @@ public:
                                 }
                                 valid = callable->kind == ResolvedSymbolKind::callable && callable->parameters.empty() && !callable->asynchronous && assignable(type_id("Json"),callable->type);
                             }
-                            if (!valid) report(v.syntax_.expressions[e.operands[3]].origin,"Cache factory must be a synchronous callable with no parameters and a JSON-compatible result");
+                            if (!valid) report(v.syntax_.expressions[e.operands[factory_index]].origin,"Cache factory must be a synchronous callable with no parameters and a JSON-compatible result");
                         }
                         return result;
                     }

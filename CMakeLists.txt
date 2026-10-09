@@ -757,6 +757,7 @@ if(GUNGNIR_WITH_REDIS)
         src/scheduler/redis_lock.cpp
         src/session/redis_store.cpp
         src/auth/redis_remember_store.cpp
+        src/http/redis_rate_limit.cpp
     )
 
     add_library(
@@ -1195,7 +1196,9 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/mail/delivery.hpp gungnir/mail/service.hpp gungnir/notifications/service.hpp
             gungnir/config/service.hpp gungnir/logging/service.hpp gungnir/logging/json_stream_sink.hpp
             gungnir/observability/propagation.hpp gungnir/observability/otlp_http_exporter.hpp
-            gungnir/observability/service.hpp gungnir/auth/redis_remember_store.hpp)
+            gungnir/observability/service.hpp gungnir/auth/redis_remember_store.hpp
+            gungnir/cache/lock.hpp gungnir/cache/redis_lock.hpp
+            gungnir/http/rate_limit.hpp gungnir/http/redis_rate_limit.hpp)
         string(REPLACE "/" "_" unit "${header}")
         set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
         file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
@@ -2519,7 +2522,15 @@ if(GUNGNIR_BUILD_TESTS)
             COMMAND
                 gungnir_redis_integration_test
         )
+        add_executable(gungnir_cache_redis_test tests/cache_redis.cpp)
+        target_link_libraries(gungnir_cache_redis_test PRIVATE gungnir::redis)
+        target_compile_features(gungnir_cache_redis_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.cache_redis COMMAND gungnir_cache_redis_test)
+        set_tests_properties(gungnir.cache_redis PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
         if(GUNGNIR_BUILD_TOOLS)
+            add_test(NAME gungnir.cache_coordination_redis COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cache_coordination_redis.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
+            set_tests_properties(gungnir.cache_coordination_redis PROPERTIES TIMEOUT 360 RUN_SERIAL TRUE)
             add_test(NAME gungnir.background_redis COMMAND ${Python3_EXECUTABLE}
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/background_redis.py" "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
             set_tests_properties(gungnir.background_redis PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
