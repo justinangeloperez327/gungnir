@@ -4,6 +4,11 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Add owned canonical cache leases and explicitly coordinated cache factories,
+  with Redis owner checks, exception cleanup and literal namespace isolation.
+- Add an explicit atomic Redis HTTP rate-limit backend and verify installed
+  applications across concurrent processes, holder crashes and process restarts.
+
 - Add an application SDK profile with bundled static SQLite and OpenSSL Crypto,
   relocatable CMake targets, dependency notices and installed capability metadata.
 - Build core/application portable packages and Windows installers; exercise

@@ -62,7 +62,7 @@ The process-local limiter validates its configuration, emits limit/remaining met
 
 Expired buckets are pruned before capacity rejection. If the bucket table is still full, a new client is rejected instead of growing process memory without bound.
 
-A process-local limiter is not a distributed rate limiter. Multi-instance deployments still require a shared atomic backend when a global quota is needed.
+For global quotas across instances, pass an explicit `RedisRateLimitStore` and shared policy namespace to `http::rate_limit(options, store, namespace)`. Redis admission and first-hit expiration are atomic; backend failures stop the request rather than opening a process-local quota. See [Distributed coordination](cache-coordination.md) for configuration and limits.
 
 ### Cookies and sessions
 

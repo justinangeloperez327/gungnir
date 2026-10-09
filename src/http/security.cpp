@@ -984,178 +984,33 @@ MiddlewareHandler trusted_proxies(
     };
 }
 
-MiddlewareHandler rate_limit(
-    RateLimitOptions options
-) {
-    if (
-        options.requests == 0 ||
-        options.window.count() <= 0 ||
-        options.max_clients == 0
-    ) {
-        throw std::invalid_argument(
-            "Rate limit values must be greater than zero"
-        );
-    }
+MiddlewareHandler rate_limit(RateLimitOptions options) {
+    if (options.max_clients == 0)
+        throw std::invalid_argument("Rate limit client capacity must be positive");
+    return rate_limit(options, std::make_shared<MemoryRateLimitStore>(options.max_clients), "local:");
+}
 
-    struct Bucket {
-        std::size_t count{};
-        std::chrono::steady_clock::
-            time_point reset{};
-    };
-
-    auto buckets =
-        std::make_shared<
-            std::unordered_map<
-                std::string,
-                Bucket
-            >
-        >();
-
-    auto mutex =
-        std::make_shared<std::mutex>();
-
-    return [
-        options,
-        buckets,
-        mutex
-    ](
-        Request& request,
-        Next next
-    ) -> Task<Response> {
-        auto key =
-            std::string{
-                request.client_ip()
-            };
-
-        if (key.empty()) {
-            key = "unknown-client";
-        }
-
-        const auto now =
-            std::chrono::steady_clock::now();
-
-        bool limited = false;
-        std::size_t remaining = 0;
-        std::chrono::seconds retry_after{1};
-
-        {
-            std::lock_guard lock{
-                *mutex
-            };
-
-            auto found =
-                buckets->find(key);
-
-            if (
-                found == buckets->end() &&
-                buckets->size() >=
-                    options.max_clients
-            ) {
-                std::erase_if(
-                    *buckets,
-                    [&](const auto& item) {
-                        return
-                            item.second.reset <=
-                            now;
-                    }
-                );
-
-                found =
-                    buckets->find(key);
-            }
-
-            if (
-                found == buckets->end() &&
-                buckets->size() >=
-                    options.max_clients
-            ) {
-                limited = true;
-                retry_after =
-                    options.window;
-            } else {
-                auto& bucket =
-                    (*buckets)[key];
-
-                if (bucket.reset <= now) {
-                    bucket.count = 0;
-                    bucket.reset =
-                        now + options.window;
-                }
-
-                ++bucket.count;
-
-                limited =
-                    bucket.count >
-                    options.requests;
-
-                remaining =
-                    bucket.count >=
-                        options.requests
-                    ? 0
-                    : options.requests -
-                        bucket.count;
-
-                const auto retry =
-                    std::chrono::
-                        duration_cast<
-                            std::chrono::seconds
-                        >(
-                            bucket.reset -
-                            now
-                        );
-
-                retry_after =
-                    retry.count() > 0
-                    ? retry
-                    : std::chrono::seconds{1};
-            }
-        }
-
-        if (limited) {
-            auto response =
-                Response::text(
-                    "Too Many Requests",
-                    429
-                );
-
-            response
-                .header(
-                    "retry-after",
-                    std::to_string(
-                        retry_after.count()
-                    )
-                )
-                .header(
-                    "x-ratelimit-limit",
-                    std::to_string(
-                        options.requests
-                    )
-                )
-                .header(
-                    "x-ratelimit-remaining",
-                    "0"
-                );
-
+MiddlewareHandler rate_limit(RateLimitOptions options, std::shared_ptr<RateLimitStore> store,
+    std::string namespace_key) {
+    validate_rate_limit(options.requests, options.window);
+    if (!store) throw std::invalid_argument("Rate limit store is not configured");
+    if (namespace_key.empty()) throw std::invalid_argument("Rate limit namespace cannot be empty");
+    return [options, store = std::move(store), namespace_key = std::move(namespace_key)]
+        (Request& request, Next next) -> Task<Response> {
+        const auto client = request.client_ip().empty() ? std::string{"unknown-client"} : std::string{request.client_ip()};
+        // The length delimiter prevents policy/client boundary collisions.
+        const auto decision = store->consume(std::to_string(namespace_key.size()) + ":" + namespace_key + client,
+            options.requests, options.window);
+        if (!decision.allowed) {
+            auto response = Response::text("Too Many Requests", 429);
+            response.header("retry-after", std::to_string(decision.retry_after.count()))
+                .header("x-ratelimit-limit", std::to_string(options.requests))
+                .header("x-ratelimit-remaining", "0");
             co_return response;
         }
-
-        auto response =
-            co_await next(request);
-
-        response
-            .header(
-                "x-ratelimit-limit",
-                std::to_string(
-                    options.requests
-                )
-            )
-            .header(
-                "x-ratelimit-remaining",
-                std::to_string(
-                    remaining
-                )
-            );
-
+        auto response = co_await next(request);
+        response.header("x-ratelimit-limit", std::to_string(options.requests))
+            .header("x-ratelimit-remaining", std::to_string(decision.remaining));
         co_return response;
     };
 }

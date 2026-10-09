@@ -59,6 +59,8 @@ See [Authentication](authentication.md).
 
 Applications can configure session persistence appropriate to their deployment. Process-local storage is suitable for development and tests; shared production deployments should use a shared session backend.
 
+The Redis store writes complete snapshots with server-side expiration. Concurrent requests use last-writer-wins semantics; rotation cleanup is separate from saving. Shared persistence does not serialize request updates or prevent an old in-flight snapshot from recreating a removed identifier. See [Distributed coordination](cache-coordination.md) for the explicit contract and multi-instance acceptance.
+
 ## Cookies
 
 The session identifier is transported using a configured cookie with appropriate security, same-site, and lifetime settings.

@@ -45,6 +45,7 @@ namespace bootstrap {
 inline void configure(gungnir::Application& app) {
     gungnir::ServiceOptions services;
     services.cache = std::make_shared<gungnir::cache::MemoryStore>();
+    services.cache_locks = std::make_shared<gungnir::cache::MemoryLockStore>();
     services.queue = std::make_shared<gungnir::queue::MemoryDriver>();
     services.scheduler_locks = std::make_shared<gungnir::scheduler::MemoryLockStore>();
     services.mail = std::make_shared<gungnir::mail::MemoryTransport>();
