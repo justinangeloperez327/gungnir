@@ -56,6 +56,7 @@ The documentation defines the Gungnir developer experience: how applications are
 - [Storage](storage.md)
 - [Scheduler](scheduler.md)
 - [Logging and Observability](logging-observability.md)
+- [External Observability](external-observability.md)
 - [Packages and Extensions](extensions.md)
 
 ## The Gungnir language

@@ -71,10 +71,17 @@ explicit attribute contract.
 
 ## Exporters
 
-The OTLP HTTP exporter is built with `GUNGNIR_WITH_OTLP=ON` and exported as
-`gungnir::otlp`. Configure its endpoint, credentials, bounded buffering, and
-sinks explicitly in bootstrap. Test required remote propagation and exporter
-behavior for the deployment.
+The OTLP HTTP exporter is built with `GUNGNIR_WITH_OTLP=ON` (libcurl 7.68+) and
+exported as `gungnir::otlp`. Generated apps link that optional installed target.
+Configure the endpoint, authorization, resources, retry/byte/deadline limits, and
+tracer/meter explicitly in bootstrap. `logging::JsonStreamSink` provides bounded
+newline-delimited JSON for a platform log agent.
+
+The HTTP listener continues valid v00 `traceparent` identities; Redis queue
+metadata continues them in separate worker processes. The tracer records every
+span when a sink is configured; remote flags do not select sampling. See
+[External Observability](external-observability.md) for configuration, exact
+delivery/metric/propagation limits and official Collector acceptance coverage.
 
 See [Production](production.md), [Dependency Injection](dependency-injection.md),
 and [the native OTLP exporter](../include/gungnir/observability/otlp_http_exporter.hpp).

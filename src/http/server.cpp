@@ -32,6 +32,7 @@
 #include <gungnir/http/websocket.hpp>
 #include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
+#include <gungnir/observability/propagation.hpp>
 #include <gungnir/view/runtime.hpp>
 #include <gungnir/routing/router.hpp>
 
@@ -1500,7 +1501,9 @@ struct PendingDispatch {
                                 request.path()
                             }
                         }
-                    }
+                    },
+                    observability::parse_traceparent(request.header("traceparent"))
+                        .value_or(observability::TraceContext{})
                 )
           ) {}
 
