@@ -16,6 +16,11 @@ Linux](production-deployment.md). It connects real Nginx TLS, Supervisor-managed
 HTTP/worker/scheduler processes, shared SQLite/Redis persistence, health probes,
 verified backups, restart recovery and manual release promotion.
 
+Use the [application load measurements](application-performance.md) to measure
+HTTP concurrency, real SQLite operations, process memory and request draining
+on your hardware. The shipped workload measures one native loopback process;
+capacity planning must include your application's dependencies and deployment.
+
 ## Shutdown contract
 
 Generated HTTP and background executables handle signals through native

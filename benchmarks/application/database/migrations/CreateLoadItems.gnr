@@ -1,0 +1,9 @@
+migration CreateLoadItems {
+    up() {
+        Table::create('load_items', (table) => {
+            table.id();
+            table.string('body', 128);
+        });
+    }
+    down() { Table::dropIfExists('load_items'); }
+}

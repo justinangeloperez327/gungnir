@@ -77,6 +77,8 @@ The documentation defines the Gungnir developer experience: how applications are
 - [HTTP Runtime](http-runtime.md)
 - [Native API and ABI](native-api-abi.md)
 - [Performance](performance.md)
+- [Application Load and Performance](application-performance.md)
+- [Application Load Baseline](application-performance-baseline.md)
 - [Production Resilience](production-resilience.md)
 - [Security Hardening](security-hardening.md)
 
