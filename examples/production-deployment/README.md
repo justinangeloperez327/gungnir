@@ -5,7 +5,7 @@ TLS, two HTTP processes, a queue worker, a scheduler, SQLite and persistent
 Redis. Supervisor manages the processes; the rendered systemd unit starts
 Supervisor at boot.
 
-Read the [deployment guide](../../docs/production-deployment.md) before using
+Read the [deployment guide](https://github.com/justinangeloperez327/gungnir/blob/main/docs/production-deployment.md) before using
 the example. The installed copy is under
 `share/gungnir/examples/production-deployment` in the SDK; the guide is in the
 repository documentation.
