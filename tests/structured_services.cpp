@@ -78,6 +78,15 @@ void exercise_services() {
     reject("cache.put(1, {}); return noContent();");
     reject("cache.put(\"k\", {}, true); return noContent();");
     reject("return json(cache.remember(\"k\", 300, []));");
+    reject("return json(cache.rememberLocked(\"k\", 300, 5000, []));");
+    reject("return json(cache.rememberLocked(\"k\", 300, true, () => 1));");
+    reject("return json(cache.rememberLocked(\"k\", 300, 5000, (int x) => x));");
+    reject("return json(cache.rememberLocked(\"k\", 300, 5000, () => cache.lock(\"k\", 5000)));");
+    reject("return json(cache.lock(\"k\", 5000));");
+    reject("cache.put(\"k\", {lock: cache.lock(\"k\", 5000)}); return noContent();");
+    reject("return json(cache.lock(\"k\", true));");
+    reject("return json(cache.lock(\"k\", 5000).acquire(1));", "GNR2209");
+    reject("return json(cache.lock(\"k\", 5000).renew(true));");
     reject("return json(cache.remember(\"k\", 300, (int value) => value));");
     reject("return json(cache.remember(\"k\", 300, () => cache));");
     reject("return json(cache.remember(\"k\", 300, () => { return () => 1; }));");
@@ -110,7 +119,8 @@ void exercise_services() {
     auto manager = std::make_shared<storage::Manager>();
     manager->add("local", local).add("archive", archive);
     Application app;
-    app.provider<ServicesProvider>(ServiceOptions{.cache=store, .storage=manager});
+    auto locks = std::make_shared<cache::MemoryLockStore>();
+    app.provider<ServicesProvider>(ServiceOptions{.cache=store, .storage=manager, .cache_locks=locks});
     auto reports = std::make_shared<ReportSource>(0);
     app.container().instance<ReportSource>(reports);
     app.boot();
@@ -201,6 +211,21 @@ void exercise_services() {
     try { (void)controller->cache->get("broken"); } catch (const std::invalid_argument& error) { malformed = String{error.what()}.find("secret-not-json") == String::npos; }
     CHECK(malformed);
 
+    stage("generated lock handles and factories");
+    {
+        auto held = retainLock(*controller->cache, "shared", 5000);
+        CHECK(acquireLock(held) && !retainLock(*controller->cache, "shared", 5000).acquire());
+        auto copy = held;
+        CHECK(renewLock(copy) && releaseLock(copy) && !held.release());
+        CHECK(held.acquire());
+    }
+    CHECK(!locks->locked("shared"));
+    bool unwound = false;
+    try { failedLock(*controller->cache); } catch (...) { unwound = true; }
+    CHECK(unwound && !locks->locked("unwind"));
+    CHECK(coordinatedSummary(*controller->cache).get("kind")->string() == "named");
+    CHECK(!locks->locked("remember:coordinated"));
+
     stage("direct file action and replacement");
     const String binary{"a\0b", 3};
     Request direct{http::Method::post, "/file", binary};
@@ -263,6 +288,10 @@ void exercise_services() {
     Application unconfigured; unconfigured.provider<ServicesProvider>(); unconfigured.boot();
     try { (void)ServiceController::make(unconfigured.container()); } catch (const std::logic_error&) { missing_binding = true; }
     CHECK(missing_binding);
+    cache::Repository no_locks{*store};
+    bool missing_locks = false;
+    try { (void)no_locks.lock("key", std::chrono::seconds{5}); } catch (const std::logic_error&) { missing_locks = true; }
+    CHECK(missing_locks);
     stage("complete");
 }
 

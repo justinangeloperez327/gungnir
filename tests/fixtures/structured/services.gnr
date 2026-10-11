@@ -5,6 +5,12 @@ controller ReportSource {
 
 function Json namedSummary() { return {"kind": "named", "ratio": 3.0}; }
 function Cache retainCache(Cache cache) { return cache; }
+function CacheLock retainLock(Cache cache, string key, int milliseconds) { return cache.lock(key, milliseconds); }
+function bool acquireLock(CacheLock lock) { return lock.acquire(); }
+function bool renewLock(CacheLock lock) { return lock.renew(5000); }
+function bool releaseLock(CacheLock lock) { return lock.release(); }
+function void failedLock(Cache cache) { const lock = cache.lock('unwind', 5000); if (lock.acquire()) { throw 'factory failed'; } }
+function Json coordinatedSummary(Cache cache) { return cache.rememberLocked('coordinated', 300, 5000, namedSummary); }
 function Storage retainStorage(Storage storage) { return storage; }
 function StorageDisk retainDisk(Storage storage, string name) { return storage.disk(name); }
 function void cacheLifetime(Cache cache, int seconds) { cache.put("lifetime", {"value": 1}, seconds); }

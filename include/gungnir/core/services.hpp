@@ -34,6 +34,7 @@ struct ServiceOptions {
     std::shared_ptr<logging::Logger> logger;
     std::shared_ptr<observability::Tracer> tracer;
     std::shared_ptr<observability::Meter> meter;
+    std::shared_ptr<cache::LockStore> cache_locks;
 };
 // Explicit adapters are registered during application bootstrap. No network
 // clients or worker threads are started merely by constructing an application.
@@ -75,8 +76,8 @@ public:
         if (options_.cache) {
             container.instance<cache::Store>(options_.cache);
             // Aliasing owners preserve adapter lifetimes beyond the provider.
-            struct RepositoryOwner { std::shared_ptr<cache::Store> store; cache::Repository repository; explicit RepositoryOwner(std::shared_ptr<cache::Store> store) : store(std::move(store)), repository(*this->store) {} };
-            auto owner = std::make_shared<RepositoryOwner>(options_.cache);
+            struct RepositoryOwner { std::shared_ptr<cache::Store> store; cache::Repository repository; RepositoryOwner(std::shared_ptr<cache::Store> store, std::shared_ptr<cache::LockStore> locks) : store(std::move(store)), repository(*this->store, std::move(locks)) {} };
+            auto owner = std::make_shared<RepositoryOwner>(options_.cache, options_.cache_locks);
             auto repository = std::shared_ptr<cache::Repository>{owner,&owner->repository};
             container.instance<cache::Repository>(repository);
             container.instance<cache::Values>(std::make_shared<cache::Values>(std::move(repository)));

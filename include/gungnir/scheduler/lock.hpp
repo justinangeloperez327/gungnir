@@ -154,8 +154,9 @@ public:
             return false;
         }
 
+        const bool active = found->second.expires_at > Clock::now();
         locks_.erase(found);
-        return true;
+        return active;
     }
 
     [[nodiscard]]

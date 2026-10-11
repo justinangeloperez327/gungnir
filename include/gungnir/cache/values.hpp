@@ -35,10 +35,23 @@ public:
     bool forget(std::string_view key) const { return repository_->forget(key); }
     void flush() const { repository_->flush(); }
 
+    [[nodiscard]] Lock lock(String key, Int64 milliseconds) const {
+        return repository_->lock(std::move(key), Lock::duration(milliseconds));
+    }
+
     template<class Factory>
     [[nodiscard]] http::Json remember(String key, Int64 seconds, Factory&& factory) const {
         const auto ttl = expiration(seconds);
         return http::Json::parse(repository_->remember(std::move(key), ttl, [&factory] {
+            return http::make_json(std::invoke(std::forward<Factory>(factory))).dump();
+        }));
+    }
+
+    template<class Factory>
+    [[nodiscard]] http::Json rememberLocked(String key, Int64 seconds, Int64 lease_milliseconds, Factory&& factory) const {
+        const auto ttl = expiration(seconds);
+        const auto lease_ttl = Lock::duration(lease_milliseconds);
+        return http::Json::parse(repository_->remember_locked(std::move(key), ttl, lease_ttl, [&factory] {
             return http::make_json(std::invoke(std::forward<Factory>(factory))).dump();
         }));
     }

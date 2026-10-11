@@ -780,6 +780,28 @@ void rate_limit_boundary() {
             "x-ratelimit-remaining"
         ) == "0"
     );
+
+    auto shared = std::make_shared<http::MemoryRateLimitStore>();
+    auto first_policy = http::rate_limit({.requests = 1, .window = 60s}, shared, "login");
+    auto second_policy = http::rate_limit({.requests = 1, .window = 60s}, shared, "login");
+    auto isolated_policy = http::rate_limit({.requests = 1, .window = 60s}, shared, "download");
+    assert(run(first_policy, first).status() == 200);
+    assert(run(second_policy, first).status() == 429);
+    assert(run(isolated_policy, first).status() == 200);
+    assert(throws_invalid_argument([&] { (void)http::rate_limit({}, shared, ""); }));
+    assert(throws_invalid_argument([&] { (void)http::rate_limit({}, nullptr, "login"); }));
+    assert(throws_invalid_argument([&] { (void)shared->consume("client", 1, std::chrono::seconds::max()); }));
+
+    class FailedStore final : public http::RateLimitStore {
+    public:
+        http::RateLimitDecision consume(std::string_view, std::size_t, std::chrono::seconds) override {
+            throw std::runtime_error("backend unavailable");
+        }
+    };
+    auto unavailable = http::rate_limit({}, std::make_shared<FailedStore>(), "login");
+    bool reported = false;
+    try { (void)run(unavailable, first); } catch (const std::runtime_error&) { reported = true; }
+    assert(reported);
 }
 
 } // namespace

@@ -284,9 +284,6 @@ public:
                 command({
                     "SCAN",
                     cursor,
-                    "MATCH",
-                    settings.prefix +
-                        "*",
                     "COUNT",
                     "256"
                 });
@@ -348,11 +345,9 @@ public:
                     item->type ==
                         REDIS_REPLY_STRING
                 ) {
-                    owned.push_back(
-                        reply_text(
-                            *item
-                        )
-                    );
+                    auto key = reply_text(*item);
+                    // Prefixes are literal bytes, never Redis glob patterns.
+                    if (key.starts_with(settings.prefix)) owned.push_back(std::move(key));
                 }
             }
 
