@@ -1,0 +1,67 @@
+@NGINX_USER@
+pid @ROOT@/run/nginx.pid;
+error_log @ROOT@/logs/nginx-error.log warn;
+worker_processes 1;
+events { worker_connections 1024; }
+http {
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+    client_max_body_size 32k;
+    client_header_timeout 5s;
+    client_body_timeout 5s;
+    send_timeout 10s;
+    keepalive_timeout 10s;
+    client_body_temp_path @ROOT@/run/nginx/body;
+    proxy_temp_path @ROOT@/run/nginx/proxy;
+    fastcgi_temp_path @ROOT@/run/nginx/fastcgi;
+    uwsgi_temp_path @ROOT@/run/nginx/uwsgi;
+    scgi_temp_path @ROOT@/run/nginx/scgi;
+    log_format safe escape=json '{"time":"$time_iso8601","method":"$request_method","path":"$uri","status":$status,"request_id":"$request_id"}';
+    access_log @ROOT@/logs/nginx-access.jsonl safe;
+    upstream application {
+        server 127.0.0.1:@WEB_A@ max_fails=1 fail_timeout=2s;
+        server 127.0.0.1:@WEB_B@ max_fails=1 fail_timeout=2s;
+        keepalive 8;
+    }
+    server {
+        listen 0.0.0.0:@HTTP@ default_server;
+        server_name _;
+        return 421;
+    }
+    server {
+        listen 0.0.0.0:@HTTP@;
+        server_name @DOMAIN@;
+        return 308 https://@DOMAIN@:@HTTPS@$request_uri;
+    }
+    server {
+        listen 0.0.0.0:@HTTPS@ ssl default_server;
+        server_name _;
+        ssl_reject_handshake on;
+        return 421;
+    }
+    server {
+        listen 0.0.0.0:@HTTPS@ ssl;
+        server_name @DOMAIN@;
+        ssl_certificate @CERTIFICATE@;
+        ssl_certificate_key @PRIVATE_KEY@;
+        ssl_session_cache shared:TLS:1m;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        location / {
+            proxy_pass http://application;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host @DOMAIN@;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header Forwarded "";
+            proxy_set_header X-Request-ID $request_id;
+            proxy_connect_timeout 1s;
+            proxy_send_timeout 5s;
+            proxy_read_timeout 10s;
+            # Preserve the application's errors and avoid replaying a POST on another server.
+            proxy_intercept_errors off;
+            proxy_next_upstream off;
+        }
+    }
+}

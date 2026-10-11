@@ -1,0 +1,10 @@
+model Note {
+    table = 'notes';
+    timestamps = false;
+    fillable = ['reference', 'body', 'processed'];
+    casts = {'processed': 'bool'};
+
+    string reference;
+    string body;
+    bool processed;
+}

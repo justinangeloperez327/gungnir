@@ -475,6 +475,35 @@ jobs:
           cmake --build otlp-consumer --parallel 2
           ctest --test-dir otlp-consumer --no-tests=error --output-on-failure
 
+  deployment:
+    name: Integration · production deployment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install deployment and build dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          ninja-build nginx supervisor redis-server redis-tools openssl
+          libsqlite3-dev libhiredis-dev libcurl4-openssl-dev
+      - name: Configure deployment SDK
+        run: >-
+          cmake -S . -B build-deployment -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DGUNGNIR_WITH_SQLITE=ON
+          -DGUNGNIR_WITH_REDIS=ON
+          -DGUNGNIR_WITH_OTLP=ON
+          -DGUNGNIR_DEPLOYMENT_INTEGRATION_TESTS=ON
+      - name: Build installed deployment dependencies
+        run: >-
+          cmake --build build-deployment --parallel 2 --target
+          gungnir-cli gungnirc gungnir-orm gungnir-redis gungnir-otlp
+      - name: Test installed TLS deployment, supervision, backup and recovery
+        run: >-
+          ctest --test-dir build-deployment --output-on-failure --no-tests=error
+          -R '^gungnir\.production_deployment$'
+
   tls:
     name: Integration · TLS
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

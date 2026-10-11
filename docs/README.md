@@ -13,6 +13,7 @@ The documentation defines the Gungnir developer experience: how applications are
 - [Editor Tooling](editor-tooling.md)
 - [Testing](testing.md)
 - [Production and Deployment](production.md)
+- [Linux Deployment Reference](production-deployment.md)
 
 ## HTTP applications
 

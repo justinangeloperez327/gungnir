@@ -1,0 +1,12 @@
+migration CreateNotes {
+    up() {
+        Table::create('notes', (table) => {
+            table.id();
+            table.string('reference', 64).unique();
+            table.string('body', 512);
+            table.boolean('processed');
+        });
+    }
+
+    down() { Table::dropIfExists('notes'); }
+}
