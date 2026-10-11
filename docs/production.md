@@ -11,6 +11,11 @@ HTTP production limits now include `max_active_dispatches` in addition to connec
 
 Register required dependency checks, configure HTTP limits/timeouts, choose TLS or a reverse proxy, and run workers/scheduler under an appropriate host. See [Production Resilience](production-resilience.md) for the Gungnir contract.
 
+For a complete installed application example, follow [Deploy an application on
+Linux](production-deployment.md). It connects real Nginx TLS, Supervisor-managed
+HTTP/worker/scheduler processes, shared SQLite/Redis persistence, health probes,
+verified backups, restart recovery and manual release promotion.
+
 ## Shutdown contract
 
 Generated HTTP and background executables handle signals through native

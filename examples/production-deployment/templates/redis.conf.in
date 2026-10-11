@@ -1,0 +1,13 @@
+bind 127.0.0.1
+protected-mode yes
+port @REDIS_PORT@
+requirepass @REDIS_PASSWORD@
+daemonize no
+dir @ROOT@/data/redis
+dbfilename dump.rdb
+save 60 1
+appendonly yes
+appendfsync everysec
+no-appendfsync-on-rewrite no
+# This Redis instance owns sessions, locks and queued work as well as cache values.
+maxmemory-policy noeviction

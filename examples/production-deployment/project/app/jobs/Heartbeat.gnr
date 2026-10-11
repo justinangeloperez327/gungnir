@@ -1,0 +1,5 @@
+job Heartbeat {
+    inject Storage storage;
+
+    handle() { storage.put('scheduler-heartbeat.txt', 'alive'); }
+}

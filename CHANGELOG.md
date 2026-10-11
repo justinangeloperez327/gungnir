@@ -4,6 +4,13 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Install a single-host Linux deployment reference with real Nginx TLS,
+  supervised HTTP/worker/scheduler processes, strict production authentication
+  and shared SQLite/Redis state.
+- Add explicit release promotion/rollback, coordinated verified backups,
+  offline restore with renewed Redis AOF, maintenance admission and recovery
+  guidance; verify the installed deployment through process and TLS acceptance.
+
 - Link the optional OTLP adapter in generated applications and continue valid
   HTTP traceparent identities through logical request and persisted queue context.
 - Refresh boot services and activate generated workers/migrations after boot to

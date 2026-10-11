@@ -1,0 +1,20 @@
+[Unit]
+Description=Gungnir reference deployment
+After=network.target
+
+[Service]
+Type=simple
+User=gungnir
+Group=gungnir
+WorkingDirectory=@ROOT@
+ExecStart=@SUPERVISORD@ -n -c @ROOT@/config/supervisord.conf
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

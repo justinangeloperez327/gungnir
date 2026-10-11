@@ -1,0 +1,6 @@
+Route::get('/', Notes::index);
+Route::post('/notes', Notes::store);
+Route::get('/notes/{reference}', Notes::show);
+Route::get('/cache/{reference}', Notes::cached);
+Route::post('/session', Notes::sessionWrite);
+Route::get('/session', Notes::sessionRead);

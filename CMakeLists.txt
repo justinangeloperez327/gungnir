@@ -135,6 +135,17 @@ option(
     "Build live OTLP HTTP integration tests"
     OFF
 )
+option(
+    GUNGNIR_DEPLOYMENT_INTEGRATION_TESTS
+    "Test the installed Linux deployment with Nginx, Supervisor and persistent Redis"
+    OFF
+)
+if(GUNGNIR_DEPLOYMENT_INTEGRATION_TESTS)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT GUNGNIR_BUILD_TESTS OR
+       NOT GUNGNIR_BUILD_TOOLS OR NOT GUNGNIR_WITH_SQLITE OR NOT GUNGNIR_WITH_REDIS)
+        message(FATAL_ERROR "Deployment acceptance requires Linux, tests/tools, SQLite and Redis")
+    endif()
+endif()
 
 if(
     GUNGNIR_POSTGRESQL_INTEGRATION_TESTS AND
@@ -1156,6 +1167,14 @@ endif()
 
 if(GUNGNIR_BUILD_TESTS)
     enable_testing()
+
+    if(GUNGNIR_DEPLOYMENT_INTEGRATION_TESTS)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME gungnir.production_deployment COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/production_deployment.py"
+            "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
+        set_tests_properties(gungnir.production_deployment PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
+    endif()
 
     add_executable(
         gungnir_public_api_contract_test
@@ -2716,6 +2735,11 @@ install(
     DESTINATION
         ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+install(DIRECTORY examples/production-deployment/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/gungnir/examples/production-deployment
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN ".gungnir" EXCLUDE)
 
 install(
     FILES

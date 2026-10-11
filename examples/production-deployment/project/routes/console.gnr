@@ -1,0 +1,5 @@
+import app.jobs.Heartbeat;
+
+function void schedule(Scheduler schedule) {
+    schedule.every('heartbeat', 1000, Heartbeat()).withoutOverlapping(5000).onOneServer(10000);
+}

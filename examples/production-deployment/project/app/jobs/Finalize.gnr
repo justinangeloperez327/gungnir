@@ -1,0 +1,12 @@
+import app.models.Note;
+
+job Finalize {
+    inject Logger logger;
+    string reference;
+
+    handle() {
+        // Repeated delivery has the same effect. SQL and Redis are separate stores.
+        Note::where('reference', reference).update({'processed': true});
+        logger.info('Note processed', {'reference': reference});
+    }
+}

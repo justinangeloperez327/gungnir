@@ -1,0 +1,34 @@
+import app.models.Note;
+import app.jobs.Finalize;
+
+controller Notes {
+    inject Queue queue;
+    inject Cache cache;
+    inject Logger logger;
+
+    index() { return text('Gungnir production example'); }
+
+    store(Request request) {
+        request.validate({
+            'reference': 'required|string|max:64',
+            'body': 'required|string|max:512'
+        });
+        const reference = request.input('reference');
+        const body = request.input('body');
+        if (Note::where('reference', reference).count() == 0) {
+            Note::create({'reference': reference, 'body': body, 'processed': false});
+        }
+        const note = Note::where('reference', reference).firstOrFail();
+        if (note.body != body) { return text('Reference already has a different body', 409); }
+        // A failed enqueue can be retried with the same reference and body.
+        cache.put('note:' + reference, body, 3600);
+        const job = queue.dispatch(Finalize(reference), 3);
+        logger.info('Note queued', {'reference': reference});
+        return json({'reference': reference, 'job': job}, 202);
+    }
+
+    show(string reference) { return json(Note::where('reference', reference).firstOrFail()); }
+    cached(string reference) { return json(cache.get('note:' + reference)); }
+    sessionWrite(Request request) { request.session().put('message', 'shared'); return text('saved'); }
+    sessionRead(Request request) { return json(request.session().get('message')); }
+}
