@@ -4,6 +4,10 @@
 #include <vector>
 
 #include <gungnir/observability/otlp_http_exporter.hpp>
+#include <gungnir/observability/propagation.hpp>
+#include <gungnir/logging/json_stream_sink.hpp>
+#include <sstream>
+#include "guide.hpp"
 
 int main() {
     using namespace gungnir::observability;
@@ -42,9 +46,14 @@ int main() {
     settings.resource =
         resource;
 
-    OtlpHttpExporter exporter{
-        settings
-    };
+    OtlpHttpPolicy policy;
+    policy.shutdown_timeout = std::chrono::milliseconds{100};
+    OtlpHttpExporter exporter{settings, policy};
+    assert(parse_traceparent(format_traceparent({span.trace_id, span.span_id})));
+    std::ostringstream output;
+    gungnir::logging::JsonStreamSink logger{output};
+    logger.write({.message="installed logger"});
+    assert(output.str().find("installed logger") != std::string::npos);
 
     assert(
         exporter.settings()
@@ -54,6 +63,12 @@ int main() {
     );
 
     exporter.shutdown();
+
+    auto app = gungnir::Application::create();
+    gungnir::ServiceOptions services;
+    configure_observability(app, services);
+    assert(services.logger && services.tracer && services.meter);
+    services.tracer->shutdown(); services.meter->shutdown();
 
     return 0;
 }

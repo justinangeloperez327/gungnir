@@ -152,7 +152,7 @@ endif()
 target_compile_features(program PUBLIC cxx_std_23)
 target_include_directories(program PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(program PUBLIC gungnir::gungnir gungnir::orm)
-foreach(adapter postgresql mysql sqlserver mongodb redis smtp)
+foreach(adapter postgresql mysql sqlserver mongodb redis smtp otlp)
     if(TARGET gungnir::${adapter})
         target_link_libraries(program PUBLIC gungnir::${adapter})
         string(TOUPPER "${adapter}" macro)
@@ -265,6 +265,7 @@ if (command == "migrate:plan") {
     return 0;
 }
 app.boot();
+auto context = app.activate();
 gungnir::migration::DatabaseRepository repository;
 gungnir::migration::Runner runner{repository};
 if (command == "migrate") std::cout << runner.migrate(migrations) << " migration(s) applied\n";
@@ -283,11 +284,11 @@ int main(int argc, char** argv) {
     try {
         auto app = gungnir::Application::create();
         gungnir_generated::configure(app);
-        auto context = app.activate();
         struct Shutdown { gungnir::Application& app; ~Shutdown() { app.shutdown(); } } shutdown{app};
         gungnir::CancellationSource cancellation;
         gungnir::production::SignalWatcher signals{[&](int) { cancellation.cancel(); }};
         app.boot();
+        auto context = app.activate();
         const std::string command = argc > 1 ? argv[1] : "";
         if (command == "queue:work") {
             auto worker = app.container().resolve<gungnir::queue::Worker>();

@@ -2,18 +2,82 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <sstream>
+#include <thread>
+#include <vector>
 
 #include <gungnir/cache/cache.hpp>
 #include <gungnir/core/executor.hpp>
 #include <gungnir/database/database.hpp>
 #include <gungnir/mail/mail.hpp>
 #include <gungnir/observability/observability.hpp>
+#include <gungnir/logging/json_stream_sink.hpp>
+#include <gungnir/logging/service.hpp>
+#include <gungnir/http/message.hpp>
 #include <gungnir/queue/queue.hpp>
 #include <gungnir/scheduler/scheduling.hpp>
 
 int main() {
     using namespace gungnir;
     using namespace gungnir::observability;
+
+    const TraceContext incoming{"0123456789abcdef0123456789abcdef", "0123456789abcdef"};
+    assert(parse_traceparent(format_traceparent(incoming))->trace_id == incoming.trace_id);
+    assert(parse_traceparent(format_traceparent(incoming, false))->span_id == incoming.span_id);
+    for (const auto& invalid : {"", "00-00000000000000000000000000000000-0123456789abcdef-01",
+             "00-0123456789abcdef0123456789abcdef-0000000000000000-01",
+             "00-0123456789abcdef0123456789abcdeF-0123456789abcdef-01",
+             "00-0123456789abcdef0123456789abcdef-0123456789abcdef-xx",
+             "01-0123456789abcdef0123456789abcdef-0123456789abcdef-01"})
+        assert(!parse_traceparent(invalid));
+    bool bad_context = false;
+    try { static_cast<void>(format_traceparent({"invalid", "invalid"})); }
+    catch (const std::invalid_argument&) { bad_context = true; }
+    assert(bad_context);
+    const auto duplicate = http::wire::parse_request("GET / HTTP/1.1\r\nHost: localhost\r\ntraceparent: " +
+        format_traceparent(incoming) + "\r\nTraceparent: " + format_traceparent(incoming) + "\r\n\r\n");
+    assert(!parse_traceparent(duplicate.header("traceparent")));
+
+    std::ostringstream output;
+    auto json_sink = std::make_shared<logging::JsonStreamSink>(output, 1024);
+    auto logger = std::make_shared<logging::Logger>(); logger->sink(json_sink);
+    logging::Service log{logger};
+    {
+        auto context = activate(incoming);
+        log.info("Quoted \"line\"\nUnicode: Freyja 🦅", http::Json::object({{"Authorization", "private-bearer"}, {"request_id", "test-request"}}));
+    }
+    std::vector<std::thread> writers;
+    for (int index = 0; index < 4; ++index)
+        writers.emplace_back([&] { for (int count = 0; count < 20; ++count) log.info("parallel"); });
+    for (auto& writer : writers) writer.join();
+    logger->info(std::string(2000, 'x'));
+    assert(json_sink->dropped() == 1);
+    std::istringstream lines{output.str()};
+    std::string line;
+    int count = 0;
+    while (std::getline(lines, line)) {
+        const auto record = http::Json::parse(line);
+        assert(record.get("level")->string() == "info");
+        if (count++ == 0) {
+            assert(record.get("message")->string() == "Quoted \"line\"\nUnicode: Freyja 🦅");
+            const auto& context = *record.get("context");
+            assert(context.get("trace_id")->string() == incoming.trace_id);
+            assert(context.get("span_id")->string() == incoming.span_id);
+            assert(context.get("Authorization")->string() == "[redacted]");
+        }
+    }
+    assert(count == 81 && output.str().find("private-bearer") == std::string::npos);
+    std::ostringstream broken; broken.setstate(std::ios::badbit);
+    auto broken_sink = std::make_shared<logging::JsonStreamSink>(broken);
+    logging::Logger isolated; isolated.sink(broken_sink); isolated.info("sink failure");
+    assert(broken_sink->dropped() == 1);
+    struct FailedBuffer : std::streambuf {
+        std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
+    } failed_buffer;
+    std::ostream throwing_stream{&failed_buffer}; throwing_stream.exceptions(std::ios::badbit | std::ios::failbit);
+    auto throwing_sink = std::make_shared<logging::JsonStreamSink>(throwing_stream);
+    logging::Logger throwing_logger; throwing_logger.sink(throwing_sink); throwing_logger.info("throwing stream");
+    assert(throwing_sink->dropped() == 1);
 
     Tracer noop;
     assert(

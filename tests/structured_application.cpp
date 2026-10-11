@@ -117,7 +117,16 @@ int main() {
     app.config().set("app.name","Application A").set("app.limit",Int64{17}).set("app.enabled",true).set("app.ratio",3.5).set("stored.null",config::Value{std::monostate{}});
     app.views().helper("shout",[](const std::vector<view::Value>& values) { return view::Value{values.empty() ? "" : values.front().string()+"!"}; });
     factory<ApplicationController>(app); factory<ApplicationMiddleware>(app);
+    app.on_boot([&](Application&) {
+        CHECK(observability::global_tracer()==exports.tracer && observability::global_meter()==exports.meter);
+        observability::global_tracer()->start_span("application.boot").end();
+        observability::global_meter()->counter("application.boot").add();
+    });
+    app.on_ready([&](Application&) {
+        CHECK(observability::global_tracer()==exports.tracer && observability::global_meter()==exports.meter);
+    });
     app.boot(); auto active=app.activate();
+    CHECK(exports.spans->records.size()==1 && exports.spans->records[0].name=="application.boot");
     gnr_register_routes(app);
 
     std::cerr << "application: generated views, visibility and numbers\n";

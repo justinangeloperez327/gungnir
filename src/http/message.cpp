@@ -146,6 +146,7 @@ Request parse_request(
     std::vector<std::pair<std::string, std::string>> headers;
     std::optional<std::size_t> content_length;
     bool host_seen = false;
+    unsigned traceparent_count = 0;
 
     std::size_t cursor = request_line_end + 2;
     while (cursor < header_end) {
@@ -180,6 +181,7 @@ Request parse_request(
             }
         }
 
+        if (lower_name == "traceparent") ++traceparent_count;
         if (lower_name == "host") {
             if (host_seen || value.empty()) {
                 throw std::invalid_argument("Invalid Host header");
@@ -248,6 +250,9 @@ Request parse_request(
     for (auto& [name, value] : headers) {
         request.set_header(std::move(name), std::move(value));
     }
+    // traceparent is a single-valued identity header. Ignore ambiguous duplicate
+    // identities while preserving normal request handling and other headers.
+    if (traceparent_count > 1) request.set_header("traceparent", "");
 
     return request;
 }

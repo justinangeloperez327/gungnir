@@ -5,3 +5,4 @@
 #include <gungnir/observability/memory_span_sink.hpp>
 #include <gungnir/observability/metrics.hpp>
 #include <gungnir/observability/trace.hpp>
+#include <gungnir/observability/propagation.hpp>

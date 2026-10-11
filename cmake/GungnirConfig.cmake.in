@@ -58,10 +58,9 @@ if("@GUNGNIR_WITH_REDIS@" STREQUAL "ON")
     find_dependency(Hiredis)
 endif()
 
-if(
-    "@GUNGNIR_WITH_SMTP@" STREQUAL "ON" OR
-    "@GUNGNIR_WITH_OTLP@" STREQUAL "ON"
-)
+if("@GUNGNIR_WITH_OTLP@" STREQUAL "ON")
+    find_dependency(CURL 7.68)
+elseif("@GUNGNIR_WITH_SMTP@" STREQUAL "ON")
     find_dependency(CURL 7.56)
 endif()
 

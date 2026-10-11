@@ -53,7 +53,7 @@ jobs:
           gungnir_http_reactor_test gungnir_http_server_test
           gungnir_http_streaming_test gungnir_websocket_test
           gungnir_runtime_supervisor_test gungnir_runtime_host_test
-          gungnir_runtime_lifecycle_test
+          gungnir_runtime_lifecycle_test gungnir_observability_test
           gungnir_production_resilience_test gungnir_http_overload_test
           gungnir_security_test gungnir_security_hardening_test
           gungnir_csrf_test gungnir_auth_session_test
@@ -71,6 +71,8 @@ jobs:
           -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|docs_delivery_examples|docs_application_examples|docs_background_examples|docs_service_examples|docs_routing_examples|docs_validation_examples|docs_auth_examples|structured_request_context|language|cli|docs_orm_examples|docs_http_examples|docs_context_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|cache|scheduler|view_security|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
       - name: Test database examples and installed SQLite application
         run: ctest --test-dir build --no-tests=error -R '^gungnir\.(application_database_sqlite|docs_database_examples)$' --output-on-failure
+      - name: Test native observability
+        run: ctest --test-dir build --no-tests=error -R '^gungnir\.observability$' --output-on-failure
       - name: Build and run generated ORM against the installed package
         run: |
           cmake --install build --prefix "$RUNNER_TEMP/gungnir-orm"
@@ -413,6 +415,65 @@ jobs:
         run: cmake --build build --target gungnir_redis_integration_test gungnir_cache_redis_test gungnir-smtp gungnir-orm gungnir-cli gungnirc --parallel 2
       - name: Test adapter
         run: ctest --test-dir build --no-tests=error -R '^gungnir\.(redis|cache_redis|cache_coordination_redis|background_redis|application_redis|delivery_redis)$' --output-on-failure
+
+  otlp:
+    name: Integration · external observability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      GUNGNIR_REDIS_HOST: 127.0.0.1
+      GUNGNIR_REDIS_PORT: "6379"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libhiredis-dev libsqlite3-dev libcurl4-openssl-dev ninja-build openssl
+      - name: Install pinned official OpenTelemetry Collector
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/otelcol"
+          mkdir -p "$directory"
+          curl --fail --location --retry 3 --output "$directory/collector.tar.gz" \
+            https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.160.0/otelcol-contrib_0.160.0_linux_amd64.tar.gz
+          printf '%s  %s\n' '7bb60c584c241c86261c2b8697cd3725dd8c56691f5ad5d98454eaa005b47b0c' "$directory/collector.tar.gz" | sha256sum --check
+          tar -xzf "$directory/collector.tar.gz" -C "$directory"
+          echo "GUNGNIR_OTELCOL=$directory/otelcol-contrib" >> "$GITHUB_ENV"
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_WITH_OTLP=ON
+          -DGUNGNIR_OTLP_INTEGRATION_TESTS=ON
+          -DGUNGNIR_WITH_REDIS=ON
+          -DGUNGNIR_WITH_SQLITE=ON
+          -DCURL_LIBRARY=/usr/lib/x86_64-linux-gnu/libcurl.so
+          -DCURL_INCLUDE_DIR=/usr/include/x86_64-linux-gnu
+      - name: Build installed application and transport acceptance
+        run: cmake --build build --parallel 2 --target gungnir_otlp_test gungnir_otlp_transport_test gungnir_observability_test gungnir-cli gungnirc gungnir-redis gungnir-orm
+      - name: Test collector and exporter failure behavior
+        run: ctest --test-dir build --no-tests=error -R '^gungnir\.(observability|otlp|otlp_transport|application_otlp)$' --output-on-failure
+      - name: Test installed native OTLP consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --install build --prefix "$RUNNER_TEMP/gungnir-otlp"
+          cmake -S tests/otlp-package-consumer -B otlp-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/gungnir-otlp" \
+            -DCURL_LIBRARY=/usr/lib/x86_64-linux-gnu/libcurl.so -DCURL_INCLUDE_DIR=/usr/include/x86_64-linux-gnu
+          cmake --build otlp-consumer --parallel 2
+          ctest --test-dir otlp-consumer --no-tests=error --output-on-failure
 
   tls:
     name: Integration · TLS
