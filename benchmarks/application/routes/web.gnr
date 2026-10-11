@@ -1,0 +1,5 @@
+import app.controllers.LoadController;
+
+Route::get('/json', LoadController::index);
+Route::get('/items/{item}', LoadController::show);
+Route::put('/items/{item}', LoadController::update);

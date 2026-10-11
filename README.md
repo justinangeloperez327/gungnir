@@ -184,6 +184,7 @@ Start with:
 - [HTTP Runtime](docs/http-runtime.md)
 - [Production](docs/production.md)
 - [Linux deployment reference](docs/production-deployment.md)
+- [Application load and performance](docs/application-performance.md)
 - [Security](docs/security-hardening.md)
 - [Stability](docs/stability.md)
 

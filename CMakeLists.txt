@@ -2741,6 +2741,13 @@ install(DIRECTORY examples/production-deployment/
     PATTERN "__pycache__" EXCLUDE
     PATTERN ".gungnir" EXCLUDE)
 
+install(FILES benchmarks/application_load.py
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/gungnir/benchmarks)
+install(DIRECTORY benchmarks/application/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/gungnir/benchmarks/application
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN ".gungnir" EXCLUDE)
+
 install(
     FILES
         "${GUNGNIR_GENERATED_INCLUDE_DIR}/gungnir/version.hpp"

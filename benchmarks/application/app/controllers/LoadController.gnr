@@ -1,0 +1,13 @@
+import app.models.LoadItem;
+
+controller LoadController {
+    index() { return json({'message': 'Gungnir application load'}); }
+    show(LoadItem item) { return json(item); }
+    update(Request request, LoadItem item) {
+        request.validate({'body': 'required|string|max:128'});
+        let current = LoadItem::findOrFail(item.id);
+        current.body = request.input('body');
+        current.save();
+        return json(current);
+    }
+}

@@ -22,7 +22,10 @@ Performance comparisons are meaningful only when the candidate and reference run
 
 ## Benchmark suites
 
-Phase 16 adds three Release-mode suites.
+Three Release-mode microbenchmark suites cover the compiler, HTTP/routing and
+ORM query construction. A separate [application load suite](application-performance.md)
+builds an installed `.gnr` application and measures real HTTP/1.1 requests,
+SQLite operations, concurrency, server memory and shutdown during active traffic.
 
 ### Compiler
 
@@ -133,16 +136,24 @@ The **Performance Baseline** workflow:
 2. builds all benchmark targets;
 3. executes smoke mode to validate the benchmark contract;
 4. executes the measurement run;
-5. publishes the table to the job summary;
-6. uploads JSON and Markdown results as a 30-day artifact.
+5. installs the Release SDK and builds its `.gnr` application load fixture;
+6. measures JSON, ORM read and validated durable write requests with concurrent
+   keep-alive clients, then exercises an ORM read soak and SIGTERM draining;
+7. publishes both tables to the job summary;
+8. uploads JSON, Markdown and application logs as a 30-day artifact.
 
 It runs on relevant pull requests, relevant pushes to `main`, and manual dispatch.
 
 The artifact from a `main` run is the natural reference for a like-for-like pull-request comparison.
 
-## What this phase does not claim
+## Measurement limits
 
-Phase 16 does not publish a universal requests/second number or claim superiority over another framework. Those claims require a separately defined workload, deployment topology, hardware, concurrency model, compiler configuration, database configuration and reproducible external load generator.
+These suites do not publish a universal requests/second number or claim superiority
+over another framework. The application suite publishes its workload, topology,
+toolchain, database durability, concurrency policy and external generator metadata.
+Its results describe that workload on that machine; TLS/proxy, remote databases,
+queues, sessions, other application payloads and external comparative runs need
+their own like-for-like measurements.
 
 It also does not treat microbenchmarks as substitutes for profiling. A measured regression should be reproduced and profiled before changing architecture.
 

@@ -1,0 +1,7 @@
+model LoadItem {
+    table = 'load_items';
+    timestamps = false;
+    fillable = ['body'];
+
+    string body;
+}

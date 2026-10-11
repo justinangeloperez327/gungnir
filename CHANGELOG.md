@@ -4,6 +4,13 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Add installed `.gnr` HTTP/application load measurements for authenticated
+  JSON, SQLite ORM reads and validated durable writes, with bounded native
+  database histograms, separate generator CPU and server RSS samples.
+- Publish reproducible workload metadata and per-run JSON/Markdown results;
+  verify persisted writes, lease cleanup and SIGTERM draining under active
+  traffic in performance CI without a shared-runner timing threshold.
+
 - Install a single-host Linux deployment reference with real Nginx TLS,
   supervised HTTP/worker/scheduler processes, strict production authentication
   and shared SQLite/Redis state.

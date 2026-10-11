@@ -29,25 +29,29 @@ permissions:
 jobs:
   benchmark:
     name: Release benchmark baseline
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install application benchmark dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsqlite3-dev
+
       - name: Configure Release benchmark build
         run: >
           cmake -S . -B build-bench -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DGUNGNIR_BUILD_TESTS=OFF
-          -DGUNGNIR_BUILD_TOOLS=OFF
+          -DGUNGNIR_BUILD_TOOLS=ON
+          -DGUNGNIR_WITH_SQLITE=ON
           -DGUNGNIR_BUILD_BENCHMARKS=ON
 
       - name: Build benchmarks
         run: >
           cmake --build build-bench
-          --target gungnir_benchmarks
+          --target gungnir_benchmarks gungnir-cli gungnirc gungnir-orm
           --parallel 2
 
       - name: Smoke benchmark contract
@@ -64,16 +68,34 @@ jobs:
           --output benchmark-results.json
           --summary benchmark-summary.md
 
+      - name: Install Release SDK
+        run: cmake --install build-bench --prefix "$RUNNER_TEMP/gungnir-load-sdk"
+
+      - name: Measure installed application load and verify shutdown
+        run: >-
+          python3 "$RUNNER_TEMP/gungnir-load-sdk/share/gungnir/benchmarks/application_load.py"
+          --sdk "$RUNNER_TEMP/gungnir-load-sdk"
+          --duration 2 --samples 2 --concurrency 1,8,32 --soak-duration 10
+          --output application-load.json --summary application-load.md
+
       - name: Publish job summary
+        if: always()
         shell: bash
-        run: cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          for summary in benchmark-summary.md application-load.md; do
+            if [ -f "$summary" ]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+          done
 
       - name: Upload benchmark result
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gungnir-performance-${{ github.sha }}
           path: |
             benchmark-results.json
             benchmark-summary.md
+            application-load.json
+            application-load.md
+            application-load.log
           if-no-files-found: error
           retention-days: 30
