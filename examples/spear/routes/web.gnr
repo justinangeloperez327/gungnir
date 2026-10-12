@@ -1,0 +1,5 @@
+Route::get('/', HomeController::index);
+Route::get('/empty', HomeController::empty);
+Route::get('/legacy', HomeController::legacy);
+Route::get('/numbers', HomeController::numbers);
+Route::get('/ready', HomeController::ready);

@@ -1,0 +1,23 @@
+import app.models.SpearUser;
+
+controller HomeController {
+    index(Request request) {
+        let first = SpearUser();
+        first.name = 'Ada'; first.password = 'must-stay-hidden';
+        let second = SpearUser();
+        second.name = '<Bob>'; second.password = 'must-stay-hidden';
+        return view('users/index', {
+            title: request.has('title') ? request.query('title') : 'Users',
+            users: [first, second], trustedHtml: '<em>Trusted</em>'
+        }, 201);
+    }
+    empty() { return view('users/index', {title: 'Empty', users: []}); }
+    legacy() { return view('users/index.html', {title: 'Legacy'}); }
+    broken() { return view('broken'); }
+    cycle() { return view('cycle'); }
+    invalid() { return view('../outside'); }
+    numbers() {
+        return view('numbers', {large: 18446744073709551615ULL, small: -9223372036854775808}, 202);
+    }
+    ready() { return text('ready'); }
+}

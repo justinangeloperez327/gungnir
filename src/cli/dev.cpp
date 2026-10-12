@@ -25,7 +25,10 @@ Snapshot snapshot(const std::filesystem::path& root) {
         if(!it->is_regular_file()) continue;
         const auto relative=it->path().lexically_relative(root).generic_string();
         const auto extension=it->path().extension().string();
-        if(extension!=".gnr" && extension!=".hpp" && extension!=".h" && extension!=".cpp" && extension!=".cmake" && name!=".env" && name!=".gungnir-project" && !relative.starts_with("views/") && !relative.starts_with("config/") && !relative.starts_with("bootstrap/")) continue;
+        if(extension==".spear" || extension==".html") continue;
+        // The development view engine reloads content on render. Template-only
+        // edits do not need to rebuild or restart the native application.
+        if(extension!=".gnr" && extension!=".hpp" && extension!=".h" && extension!=".cpp" && extension!=".cmake" && name!=".env" && name!=".gungnir-project" && !relative.starts_with("config/") && !relative.starts_with("bootstrap/")) continue;
         std::ifstream input(it->path(),std::ios::binary); if(!input) throw std::runtime_error("Unable to watch " + relative);
         std::uint64_t hash=14695981039346656037ULL; char c; while(input.get(c)) { hash^=static_cast<unsigned char>(c); hash*=1099511628211ULL; }
         result.emplace(relative,hash);
@@ -55,7 +58,7 @@ int Project::dev() const {
             application.stop();
             if(!running.empty()) { std::error_code ignored; std::filesystem::remove(running,ignored); }
             application.start({next.string()},root_,true); running=next;
-            std::cerr << "gungnir dev: running; watching sources, bootstrap, configuration, and views\n";
+            std::cerr << "gungnir dev: running; watching sources, bootstrap, and configuration; templates reload on render\n";
         } catch(const std::exception& e) { std::cerr << "gungnir dev: " << e.what() << "\nWaiting for changes\n"; }
     };
     auto accepted=snapshot(root_), pending=accepted;

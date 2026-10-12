@@ -1,0 +1,6 @@
+{{-- comment --}}
+@if(user.enabled && user.name != null){{ echo(user.name) }}@else Empty@endif
+@forelse(items as index => item){{ loop.index }}{{ item }}@empty Empty@endforelse
+{!! raw !!}
+@{{ literal }}@@if
+@verbatim{{ literal }}@endverbatim

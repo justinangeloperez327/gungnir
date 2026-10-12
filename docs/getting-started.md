@@ -28,7 +28,7 @@ gungnir new hello
 cd hello
 ```
 
-A project contains application declarations, routes, views, configuration, bootstrap code, tests, and build metadata.
+A project contains application declarations, routes, `views/welcome.spear`, configuration, bootstrap code, tests, and build metadata. [Spear templates](view.md) use ordinary HTML with Blade-like directives.
 
 ## Create a controller
 

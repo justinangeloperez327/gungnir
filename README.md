@@ -144,7 +144,7 @@ The framework already contains substantial implementation across:
 - events and listeners;
 - jobs/queues and scheduler;
 - notifications and mail;
-- views, storage and cache;
+- [Spear views](docs/view.md), storage and cache;
 - SQLite, PostgreSQL, MySQL/MariaDB, SQL Server and MongoDB adapters;
 - async runtime and cancellation;
 - HTTP serving and WebSockets;

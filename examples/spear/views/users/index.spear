@@ -1,0 +1,15 @@
+@extends('layouts/users')
+@section('title', title)
+@section('content')
+<h1>{{ title }}</h1>
+<ul>
+@forelse(users as user)
+    @include('partials/user', {position: loop.iteration})
+@empty
+    <li>No users</li>
+@endforelse
+</ul>
+{!! trustedHtml !!}
+@if(users && title != 'Empty')<p>{{ upper('ready') }}</p>@else<p>Empty list</p>@endif
+{{-- This comment is omitted from the response. --}}
+@endsection

@@ -318,6 +318,8 @@ add_library(gungnir
     src/session/middleware.cpp
     src/storage/local_disk.cpp
     src/validation/validator.cpp
+    src/view/spear_parser.cpp
+    src/view/spear_renderer.cpp
     src/view/engine.cpp
     src/view/runtime.cpp
     src/view/value.cpp
@@ -452,6 +454,14 @@ if(GUNGNIR_BUILD_FUZZERS)
                 -fsanitize=fuzzer,address,undefined
         )
     endforeach()
+    # Instrument the template implementation directly; unrelated HTTP/runtime
+    # libraries are not required by this parser/rendering fuzz target.
+    add_executable(gungnir_spear_fuzzer tests/fuzz/spear_fuzz.cpp
+        src/view/engine.cpp src/view/value.cpp src/view/spear_parser.cpp src/view/spear_renderer.cpp)
+    target_include_directories(gungnir_spear_fuzzer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(gungnir_spear_fuzzer PRIVATE cxx_std_23)
+    target_compile_options(gungnir_spear_fuzzer PRIVATE -fsanitize=address,undefined,fuzzer-no-link -fno-omit-frame-pointer)
+    target_link_options(gungnir_spear_fuzzer PRIVATE -fsanitize=fuzzer,address,undefined)
 endif()
 
 add_library(
@@ -1217,7 +1227,8 @@ if(GUNGNIR_BUILD_TESTS)
             gungnir/observability/propagation.hpp gungnir/observability/otlp_http_exporter.hpp
             gungnir/observability/service.hpp gungnir/auth/redis_remember_store.hpp
             gungnir/cache/lock.hpp gungnir/cache/redis_lock.hpp
-            gungnir/http/rate_limit.hpp gungnir/http/redis_rate_limit.hpp)
+            gungnir/http/rate_limit.hpp gungnir/http/redis_rate_limit.hpp
+            gungnir/view/engine.hpp gungnir/view/error.hpp)
         string(REPLACE "/" "_" unit "${header}")
         set(source "${CMAKE_CURRENT_BINARY_DIR}/public-headers/${unit}.cpp")
         file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
@@ -1554,6 +1565,10 @@ if(GUNGNIR_BUILD_TESTS)
 
     if(GUNGNIR_BUILD_TOOLS)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME gungnir.application_spear COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/application_spear.py"
+            "${CMAKE_CURRENT_BINARY_DIR}" $<TARGET_FILE:gungnir-cli>)
+        set_tests_properties(gungnir.application_spear PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE LABELS "view;integration")
         foreach(backend sqlite postgresql mysql sqlserver mongodb)
             string(TOUPPER "${backend}" backend_upper)
             if(GUNGNIR_WITH_${backend_upper} AND
@@ -2064,6 +2079,11 @@ if(GUNGNIR_BUILD_TESTS)
             GUNGNIR_TEST_VIEW_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/views"
     )
     add_test(NAME gungnir.view COMMAND gungnir_view_test)
+
+    add_executable(gungnir_spear_test tests/spear.cpp)
+    target_link_libraries(gungnir_spear_test PRIVATE gungnir::orm)
+    target_compile_features(gungnir_spear_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.spear COMMAND gungnir_spear_test)
 
     add_executable(
         gungnir_view_runtime_test
@@ -2738,6 +2758,11 @@ install(
 
 install(DIRECTORY examples/production-deployment/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/gungnir/examples/production-deployment
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN ".gungnir" EXCLUDE)
+
+install(DIRECTORY examples/spear/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/gungnir/examples/spear
     PATTERN "__pycache__" EXCLUDE
     PATTERN ".gungnir" EXCLUDE)
 
