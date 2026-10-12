@@ -4,7 +4,22 @@
 
 Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-> Project status: **Stable 1.0.0**. See the release scope and known limitations in the [v1.0.0 release guide](docs/release-v1.md).
+> Project status: **Stable 1.0.0**. See the [published release scope](docs/release-v1.md) and [current-source status](docs/development-status.md).
+
+## Published release versus current source
+
+The published **v1.0.0** SDKs were released on **5 October 2026**.
+Later changes merged to `main` have **not** been added to those existing
+release downloads, although the source package version still says `1.0.0`.
+
+| Install | Best for | Documentation |
+| --- | --- | --- |
+| Published v1.0.0 core SDK | Core HTTP applications and the APIs actually shipped | [Release scope](docs/release-v1.md) |
+| SDK built from current `main` | Newer Spear views, typed delivery, application SDK, Redis coordination and installed production/performance examples | [Source availability](docs/development-status.md) and [SDK packages](docs/sdk-packages.md) |
+| Custom source-built SDK | Applications requiring native database, Redis, SMTP, TLS or OTLP adapters | [Database](docs/database.md) and adapter-specific guides |
+
+Environment variables alone do not add missing compiled adapters. Select an
+SDK that contains the features your application uses.
 
 ## What Gungnir looks like
 
@@ -55,9 +70,10 @@ Requirements:
 
 Install the v1.0.0 Windows setup executable or portable Windows/Linux SDK from [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases). The packaged core includes the CLI, compiler, headers, libraries and CMake package. Optional adapters require a source build with their dependencies; see [release installation](docs/release-v1.md).
 
-Current source also offers an [application SDK](docs/sdk-packages.md) with bundled
-SQLite and password hashing dependencies. Release packaging verifies both SDK
-profiles; the existing v1.0.0 core assets remain unchanged.
+Current source offers an [application SDK](docs/sdk-packages.md) with bundled
+SQLite and password-hashing dependencies. The existing published v1.0.0
+downloads are **core-only**; build the application SDK from current source
+until a separate package is published.
 
 ### Build from source
 
@@ -132,7 +148,7 @@ Application
 
 ## Framework surface
 
-The framework already contains substantial implementation across:
+Across the published core framework and later merged source, Gungnir implements:
 
 - models and ORM;
 - migrations;
@@ -155,21 +171,19 @@ The framework already contains substantial implementation across:
 
 A subsystem is not considered **complete** merely because its type, parser node, interface, or basic implementation exists. Gungnir 1.0 requires end-to-end behavior, tests, consistent DX, backend coverage where applicable, and current documentation.
 
-## 1.0 release rule
+## Build an application
 
-Gungnir will become `1.0.0` only after:
+Follow [Getting Started](docs/getting-started.md) and the verified
+[Hello Gungnir example](examples/hello/README.md) for a first native HTTP
+endpoint. For pages using the newer Blade-like syntax, follow
+[Spear views](docs/view.md) and the [Spear example](examples/spear/README.md),
+which require current source.
 
-1. all intended framework features are complete;
-2. compiler architecture is consistent;
-3. framework APIs are consistent;
-4. database/backend behavior is verified;
-5. security and production readiness are verified;
-6. integration/stress/fuzz/performance tests are satisfactory;
-7. installers/packages are verified;
-8. documentation matches implementation;
-9. the final completeness audit is fully green.
-
-There is no phase-number-based version promotion.
+Use a configured persistence adapter for database-backed applications and
+independent workers. For production, explicitly configure TLS/proxying,
+shared persistence, process supervision, recovery, backups and monitoring.
+The [Linux deployment example](docs/production-deployment.md) illustrates
+a current-source installation; it is not part of the October 5 core SDK.
 
 ## Documentation
 
