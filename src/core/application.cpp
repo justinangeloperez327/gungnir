@@ -460,6 +460,7 @@ Application& Application::view_root(
         );
     }
 
+    impl_->views->cache_mode(is_production() ? view::CacheMode::immutable : view::CacheMode::reload);
     impl_->views->root(
         std::move(path)
     );

@@ -1,0 +1,5 @@
+model SpearUser {
+    hidden = ['password'];
+    string name;
+    string password;
+}

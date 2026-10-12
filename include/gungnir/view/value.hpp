@@ -17,6 +17,7 @@ namespace gungnir::view {
 
 struct ArrayStorage;
 struct ObjectStorage;
+namespace detail { struct ValueAccess; }
 
 class Value {
 public:
@@ -58,6 +59,7 @@ public:
     [[nodiscard]] String string() const;
 
 private:
+    friend struct detail::ValueAccess;
     Storage storage_;
 };
 

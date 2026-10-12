@@ -401,7 +401,7 @@ Project Project::create(
     write_file(
         destination /
         "views" /
-        "welcome.html",
+        "welcome.spear",
         "<!doctype html>\n"
         "<html lang=\"en\">\n"
         "<head>\n"

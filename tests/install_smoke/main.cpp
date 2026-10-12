@@ -22,6 +22,10 @@ int main() {
     auto application =
         gungnir::Application::create();
 
+    if (application.views().render_spear_text(
+            "@forelse(users as user){{ user }}@empty Empty@endforelse",
+            {{"users", gungnir::view::Value::array({"<installed>"})}}) != "&lt;installed&gt;") return 4;
+
     application.http_runtime(
         gungnir::http::RuntimeOptions{}
     );

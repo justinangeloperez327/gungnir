@@ -4,6 +4,13 @@ This changelog records published releases and material development changes. Git 
 
 ## Unreleased
 
+- Add canonical `.spear` templates with a structured expression/directive AST,
+  escaped/raw output, conditions, loops, empty states, includes and layout chains.
+- Cache bounded immutable parsed templates per application; reload from content
+  in development without rebuilding, and select immutable caching in production.
+- Retain existing `.html` templates and `view()`; add located diagnostics,
+  shared composition limits and installed native/HTTP Spear acceptance.
+
 - Add installed `.gnr` HTTP/application load measurements for authenticated
   JSON, SQLite ORM reads and validated durable writes, with bounded native
   database histograms, separate generator CPU and server RSS samples.

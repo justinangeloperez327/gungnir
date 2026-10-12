@@ -101,7 +101,7 @@ int main() {
     assert(
         std::filesystem::exists(
             destination /
-            "views/welcome.html"
+            "views/welcome.spear"
         )
     );
 

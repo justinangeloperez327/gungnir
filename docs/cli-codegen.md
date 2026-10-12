@@ -54,7 +54,7 @@ the required SDK.
 
 ## Development watcher
 
-`dev` watches source, native headers, bootstrap, `.env`, configuration, and views. It polls at 200 ms and waits for a stable snapshot before rebuilding. A failed build leaves the last healthy application running. A successful build replaces it with a new executable. Ctrl-C stops and reaps the application. This is a process restart; in-memory state is lost. Generated output, storage, and vendor/build directories are excluded.
+`dev` watches source, native headers, bootstrap, `.env`, and configuration. Templates reload from content on the next render in development/testing mode; template-only edits do not rebuild or restart the process. See [Spear views](view.md). It polls at 200 ms and waits for a stable snapshot before rebuilding. A failed build leaves the last healthy application running. A successful build replaces it with a new executable. Ctrl-C stops and reaps the application. This is a process restart; in-memory state is lost. Generated output, storage, and vendor/build directories are excluded.
 
 ## Validation
 

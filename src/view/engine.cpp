@@ -1,5 +1,6 @@
 #include <gungnir/view/engine.hpp>
 #include <gungnir/view/error.hpp>
+#include "spear.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -142,6 +143,11 @@ std::filesystem::path resolve_template(
     }
 
     if (!relative.has_extension()) {
+        const auto spear = resolve_template(root, relative.generic_string() + ".spear");
+        std::error_code status_error;
+        const bool exists = std::filesystem::exists(spear, status_error);
+        if (status_error) throw Error{"Unable to inspect Spear template: " + status_error.message()};
+        if (exists) return spear;
         relative += ".html";
     }
 
@@ -305,35 +311,7 @@ std::string_view trim(std::string_view value) {
     return value;
 }
 
-String escape_html(std::string_view value) {
-    String result;
-    result.reserve(value.size());
-
-    for (const char character : value) {
-        switch (character) {
-        case '&':
-            result += "&amp;";
-            break;
-        case '<':
-            result += "&lt;";
-            break;
-        case '>':
-            result += "&gt;";
-            break;
-        case '"':
-            result += "&quot;";
-            break;
-        case '\'':
-            result += "&#39;";
-            break;
-        default:
-            result.push_back(character);
-            break;
-        }
-    }
-
-    return result;
-}
+String escape_html(std::string_view value) { return detail::escape(value); }
 
 const Value* resolve_path(
     std::string_view path,
@@ -425,8 +403,8 @@ const Value* resolve_path(
 
 struct RenderState {
     const Engine& engine;
-    std::unordered_map<String, String> sections;
-    std::size_t remaining{8 * 1024 * 1024};
+    detail::Session& session;
+    detail::Sections& sections;
 };
 std::vector<std::string_view> arguments(std::string_view source, char separator = ',') {
     std::vector<std::string_view> result;
@@ -495,10 +473,10 @@ String render_block(std::string_view source, const Data& data, const Value* curr
     if (depth > 64) throw SyntaxError{"View composition nesting limit exceeded"};
     String output;
     auto append = [&](std::string_view text) {
-        if (text.size() > state.remaining) throw SyntaxError{"View output limit exceeded"};
-        state.remaining -= text.size(); output += text;
+        state.session.append(output, text);
     };
     for (std::size_t cursor = 0; cursor < source.size();) {
+        state.session.step();
         auto open = source.find("{{",cursor);
         if (open == std::string_view::npos) { append(source.substr(cursor)); break; }
         append(source.substr(cursor,open-cursor));
@@ -525,6 +503,7 @@ String render_block(std::string_view source, const Data& data, const Value* curr
                 if (collection.is_array() && !collection.as_array().empty()) {
                     const auto& items = collection.as_array();
                     for (std::size_t i = 0; i < items.size(); ++i) {
+                        state.session.step();
                         auto child = data;
                         child.with("loop", Value::object({{"index",Value{static_cast<UInt64>(i)}},{"first",Value{i==0}},{"last",Value{i+1==items.size()}},{"count",Value{static_cast<UInt64>(items.size())}}}));
                         append(render_block(body,child,&items[i],state,depth+1));
@@ -553,7 +532,7 @@ String render_block(std::string_view source, const Data& data, const Value* curr
                 auto saved_sections = state.sections;
                 auto slot = render_block(body,child,current,state,depth+1);
                 child.with("slot", slot); child.with("content", slot);
-                append(render_block(state.engine.source(evaluate(params[0],data,current,state).string()),child,nullptr,state,depth+1));
+                append(state.session.render(evaluate(params[0],data,current,state).string(),child,nullptr,state.sections,depth+1));
                 state.sections = std::move(saved_sections);
             } else throw SyntaxError{"Unknown view block: " + String{name}};
         } else if (tag.starts_with('>')) {
@@ -565,7 +544,7 @@ String render_block(std::string_view source, const Data& data, const Value* curr
                 if (equal == std::string_view::npos) throw SyntaxError{"Partial prop requires name=value"};
                 child.with(String{params[i].substr(0,equal)},evaluate(params[i].substr(equal+1),data,current,state));
             }
-            append(render_block(state.engine.source(evaluate(params[0],data,current,state).string()),child,current,state,depth+1));
+            append(state.session.render(evaluate(params[0],data,current,state).string(),child,current,state.sections,depth+1));
         } else {
             auto value = evaluate(tag,data,current,state).string();
             append(raw ? value : escape_html(value));
@@ -605,11 +584,9 @@ Engine& Engine::root(
         mutex_
     };
 
-    root_ =
-        normalize_root(
-            std::move(value)
-        );
-
+    root_ = normalize_root(std::move(value));
+    cache_.clear();
+    cached_bytes_ = 0;
     return *this;
 }
 
@@ -623,37 +600,70 @@ Engine::root() const {
 }
 
 String Engine::render(std::string_view name, const Data& data) const {
-    return render_text(source(name), data);
+    detail::Session session{*this};
+    detail::Sections sections;
+    return session.render(name, data, nullptr, sections, 0);
 }
-String Engine::source(std::string_view name) const {
-    const auto path =
-        resolve_template(
-            root(),
-            name
-        );
+String Engine::source(std::string_view name) const { return load(root(), name)->source; }
 
-    std::ifstream input{
-        path,
-        std::ios::binary
-    };
-    if (!input) {
-        throw NotFound{path.string()};
+std::shared_ptr<const detail::Template> Engine::load(const std::filesystem::path& root, std::string_view name) const {
+    // Resolve and validate even cache hits, so a replaced symlink cannot bypass confinement.
+    const auto path = resolve_template(root, name);
+    const auto key = path.generic_string();
+    {
+        std::shared_lock lock{mutex_};
+        const auto found = cache_.find(key);
+        if (cache_mode_ == CacheMode::immutable && found != cache_.end()) return found->second;
     }
-
-    const String source{
-        std::istreambuf_iterator<char>{input},
-        std::istreambuf_iterator<char>{}
-    };
-
-    return source;
+    std::ifstream input{path, std::ios::binary};
+    if (!input) throw NotFound{key};
+    String source;
+    char buffer[8192];
+    while (input.read(buffer, sizeof(buffer)) || input.gcount() != 0) {
+        const auto count = static_cast<std::size_t>(input.gcount());
+        if (count > detail::source_limit - source.size()) throw SyntaxError{"View source limit exceeded", key, 1, 1};
+        source.append(buffer, count);
+    }
+    if (!input.eof()) throw Error{"Unable to read view template: " + key};
+    std::unique_lock lock{mutex_};
+    auto found = cache_.find(key);
+    if (found != cache_.end() && (cache_mode_ == CacheMode::immutable || found->second->source == source)) return found->second;
+    const auto compiled = detail::compile(key, std::move(source), path.extension() == ".spear");
+    // A render snapshots its root. Do not repopulate a cache cleared by a concurrent root change.
+    if (root_ != root) return compiled;
+    if (found != cache_.end()) { cached_bytes_ -= found->second->cache_cost; cache_.erase(found); }
+    constexpr std::size_t byte_limit = 32 * 1024 * 1024;
+    if (compiled->cache_cost > byte_limit) return compiled;
+    while (!cache_.empty() && (cache_.size() >= 256 || cached_bytes_ + compiled->cache_cost > byte_limit)) {
+        auto victim = cache_.begin(); cached_bytes_ -= victim->second->cache_cost; cache_.erase(victim);
+    }
+    cached_bytes_ += compiled->cache_cost; cache_.emplace(key, compiled);
+    return compiled;
 }
-
-String Engine::render_text(
-    std::string_view source,
-    const Data& data
-) const {
-    RenderState state{*this};
-    return render_block(source, data, nullptr, state, 0);
+String Engine::render_text(std::string_view source, const Data& data) const {
+    if (source.size() > detail::source_limit) throw SyntaxError{"View source limit exceeded"};
+    detail::Session session{*this};
+    detail::Sections sections;
+    return detail::render_legacy(source, data, nullptr, session, sections, 0);
 }
+String Engine::render_spear_text(std::string_view source, const Data& data, std::string_view name) const {
+    const auto compiled = detail::compile(String{name}, String{source}, true);
+    detail::Session session{*this};
+    detail::Sections sections;
+    return session.spear(*compiled, data, sections, 0);
+}
+Engine& Engine::cache_mode(CacheMode mode) {
+    std::unique_lock lock{mutex_};
+    if (mode != cache_mode_) { cache_.clear(); cached_bytes_ = 0; cache_mode_ = mode; }
+    return *this;
+}
+CacheMode Engine::cache_mode() const { std::shared_lock lock{mutex_}; return cache_mode_; }
+void Engine::clear_cache() { std::unique_lock lock{mutex_}; cache_.clear(); cached_bytes_ = 0; }
+std::size_t Engine::cached_templates() const { std::shared_lock lock{mutex_}; return cache_.size(); }
 
+String detail::render_legacy(std::string_view source, const Data& data, const Value* current,
+                             Session& session, Sections& sections, unsigned depth) {
+    RenderState state{session.engine, session, sections};
+    return render_block(source, data, current, state, depth);
+}
 } // namespace gungnir::view
