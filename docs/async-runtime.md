@@ -31,15 +31,3 @@ Destroying an already suspended timer/executor task invalidates its queued conti
 Cancellation is cooperative. A synchronous database, filesystem or user callback does not become non-blocking because its caller is a coroutine. Gungnir does not forcibly destroy a coroutine that is currently executing or suspended in an uncooperative external operation.
 
 For request-lifetime async work, prefer token-aware operations and propagate the provided token through nested waits and child tasks.
-
-## Implementation references
-
-- [include/gungnir/core/task.hpp](../include/gungnir/core/task.hpp)
-- [include/gungnir/core/executor.hpp](../include/gungnir/core/executor.hpp)
-- [include/gungnir/core/cancellation.hpp](../include/gungnir/core/cancellation.hpp)
-- [include/gungnir/core/timer.hpp](../include/gungnir/core/timer.hpp)
-- [include/gungnir/http/stream.hpp](../include/gungnir/http/stream.hpp)
-- [include/gungnir/http/websocket.hpp](../include/gungnir/http/websocket.hpp)
-- [Runtime Correctness](runtime-correctness.md)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/async-runtime.md).

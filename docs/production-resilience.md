@@ -60,27 +60,13 @@ Gungnir intentionally does not retry arbitrary operations automatically. Retryin
 
 ## Shutdown and failure behavior
 
-Phase 11 shutdown guarantees remain authoritative:
+During shutdown:
 
 - admission stops first;
 - in-flight work drains within the configured deadline;
 - cancellation propagates when the deadline expires;
 - supervised services share the process cancellation boundary;
 - fatal supervised runtime failures are retained and surfaced by `RuntimeHost`.
-
-Phase 15 adds health visibility and overload admission on top of those lifecycle guarantees.
-
-## CI resilience gate
-
-Primary pull-request CI runs:
-
-- `gungnir.production_resilience`
-- `gungnir.http_overload`
-- `gungnir.runtime_supervisor`
-- `gungnir.runtime_host`
-- `gungnir.runtime_lifecycle`
-
-The overload test proves that one retained in-flight request can consume the configured dispatch budget while the next request is rejected with 503, then confirms the retained request drains cleanly.
 
 ## Deployment boundaries
 
@@ -97,4 +83,4 @@ Framework resilience is only one layer. Production deployments still need approp
 - telemetry retention/export policy;
 - capacity testing and alerting.
 
-See [Production and Deployment](production.md), [Runtime Correctness](runtime-correctness.md), and [Security Hardening](security-hardening.md).
+See [Production and Deployment](production.md), [Security Hardening](security-hardening.md).

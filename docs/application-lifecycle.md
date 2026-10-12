@@ -7,13 +7,6 @@ Application exposes `create`, `provider`, `boot`, `shutdown`, `run`, `listen`, `
 
 Applications own their routing, container, database and view contexts. Use `app.activate()` around native work; request dispatch and framework task/executor paths carry their owning context. HTTP resources are initialized when listening starts, so constructing an application for a CLI task does not start an HTTP runtime.
 
-## Scope
-Dependency-graph ordering, automatic ownership of every background service and full deadline-bounded draining are design requirements rather than universal guarantees. Configure readiness checks and runtime supervision explicitly.
+## Running an application
 
-
-
-- [include/gungnir/core/application.hpp](../include/gungnir/core/application.hpp)
-- [include/gungnir/core/lifecycle.hpp](../include/gungnir/core/lifecycle.hpp)
-- [include/gungnir/core/provider.hpp](../include/gungnir/core/provider.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/application-lifecycle.md).
+Register providers and lifecycle hooks before booting the application. Configure readiness checks and process supervision explicitly when deploying multiple services.

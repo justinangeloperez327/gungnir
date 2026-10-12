@@ -47,14 +47,5 @@ Incrementing model inserts use `RETURNING` to hydrate the generated primary key
 before the model is returned to the application.
 The standard core/application packages do not bundle this adapter.
 
-## Limits and planned work
-
+## Limitations
 Check NUMERIC/DECIMAL conversions and backend capability reporting before depending on exact decimal semantics.
-
-## Implementation references
-
-- [include/gungnir/database/postgresql.hpp](../include/gungnir/database/postgresql.hpp)
-- [CMakeLists.txt](../CMakeLists.txt)
-- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/postgresql.md).

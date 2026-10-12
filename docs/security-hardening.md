@@ -1,8 +1,8 @@
 # Security Hardening
 
-> This guide describes the 1.0 contract and its documented limits. See [release scope](release-v1.md).
+Configure security middleware for your application and reverse-proxy environment. See [Security](security.md) for the general security model.
 
-## Phase 14 guarantees
+## Request and response protections
 
 ### HTTP request framing
 
@@ -43,7 +43,7 @@ For `X-Forwarded-For`, Gungnir walks the chain from the direct peer toward the c
 
 ### CORS
 
-CORS preflight is now handled by the middleware rather than depending on an application OPTIONS route.
+CORS preflight is handled by middleware without requiring an application OPTIONS route.
 
 The middleware:
 
@@ -76,7 +76,7 @@ Session identifiers and CSRF tokens continue to use the operating system cryptog
 
 ### Security response headers
 
-The default security-header middleware continues to emit CSP, frame, MIME-sniffing and referrer controls. Requests considered secure also receive:
+The default security-header middleware emits CSP, frame, MIME-sniffing and referrer controls. Requests considered secure also receive:
 
 ```text
 Strict-Transport-Security: max-age=31536000
@@ -84,33 +84,10 @@ Strict-Transport-Security: max-age=31536000
 
 Only mark a proxied request secure through a configured trusted proxy.
 
-## CI security gate
-
-Phase 14 promotes the following suites into primary pull-request CI:
-
-- `gungnir.security`
-- `gungnir.security_hardening`
-- `gungnir.csrf`
-- `gungnir.auth_session`
-- `gungnir.session_lifecycle`
-- `gungnir.view_security`
-
-The hardening suite includes adversarial cases for HTTP framing, header injection, CORS preflight, proxy spoofing, Host handling, cookie prefixes, request IDs and rate-limit state growth.
-
 ## Remaining boundaries
 
-Phase 14 does not claim a blanket security certification. Applications still need to define authorization rules, allowed hosts/origins/proxies, upload policy, secrets management, TLS termination, distributed rate limiting, database privileges, logging redaction and production error policy.
+These controls do not replace an application security review. Applications still need to define authorization rules, allowed hosts/origins/proxies, upload policy, secrets management, TLS termination, distributed rate limiting, database privileges, logging redaction and production error policy.
 
 Optional protocol/adaptor implementations remain subject to their own conformance and integration tests.
-
-## Implementation references
-
-- [include/gungnir/http/security.hpp](../include/gungnir/http/security.hpp)
-- [src/http/security.cpp](../src/http/security.cpp)
-- [src/http/message.cpp](../src/http/message.cpp)
-- [src/http/server.cpp](../src/http/server.cpp)
-- [src/http/cookie.cpp](../src/http/cookie.cpp)
-- [src/security/security.cpp](../src/security/security.cpp)
-- [tests/security_hardening.cpp](../tests/security_hardening.cpp)
 
 See [Security](security.md), [Authentication](authentication.md), [Sessions](session.md), and [Production](production.md).

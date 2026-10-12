@@ -12,4 +12,4 @@ The target grammar is stricter and more complete than current parsing. Full defi
 - [src/language/parser.cpp](../src/language/parser.cpp)
 - [src/language/semantic.cpp](../src/language/semantic.cpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/statements.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

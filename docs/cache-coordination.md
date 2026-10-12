@@ -1,11 +1,5 @@
 # Distributed coordination
 
-**Availability:** This integrated source implementation and its installed
-acceptance were merged in PR #189 after the published v1.0.0 assets.
-Build current source with Redis support; the published core package does not
-contain this integrated contract. See
-[Release Status](development-status.md) and [SDK Packages](sdk-packages.md).
-
 The installed application SDK supports shared JSON cache values, explicit cache leases, Redis HTTP quotas, shared sessions and the existing queue/scheduler adapters when Redis support is built. Enable `GUNGNIR_WITH_REDIS=ON`, install hiredis and link `gungnir::redis`. Generated applications link the installed adapter automatically. The core/application release package profiles do not bundle Redis or hiredis; select a custom SDK containing the adapter.
 
 ## Shared configuration
@@ -35,7 +29,7 @@ Requests are keyed by the policy namespace and trusted `request.client_ip()`, wi
 
 Allowed responses include `x-ratelimit-limit` and `x-ratelimit-remaining`. Denied responses return 429 with those headers and a positive, rounded-up `retry-after` in seconds. Backend or corrupt-record errors stop the request before the handler; normal HTTP exception handling produces an error response. `max_clients` controls only the default memory backend, while Redis stores expire on the server. Limits and windows reject zero, negative or unrepresentable values.
 
-The quota adapter uses the existing pooled `redis::Client`, including its authentication, timeouts and explicitly selected topology/TLS configuration. Group 4 acceptance covers standalone Redis. It establishes no Sentinel/Cluster failover or TLS acceptance claim. A single-primary lease or counter does not guarantee coordination across loss of acknowledged Redis state; eviction, persistence and failover configuration remain application deployment concerns.
+The quota adapter uses the existing pooled `redis::Client`, including its authentication, timeouts and explicitly selected topology/TLS configuration. The Redis quota behavior has been verified against standalone Redis. This does not establish Sentinel/Cluster failover or TLS compatibility. A single-primary lease or counter does not guarantee coordination across loss of acknowledged Redis state; eviction, persistence and failover configuration remain application deployment concerns.
 
 ## Leases and other shared state
 
@@ -46,14 +40,3 @@ Cache value flushes preserve separately namespaced leases and sessions. Administ
 Redis sessions provide shared serialization, lifetime and rotation cleanup. Saves replace the entire session, so concurrent requests use last-writer-wins semantics. Loading, regenerating/erasing and saving are separate operations; a request holding an old snapshot can overwrite newer values or recreate an erased identifier. Shared storage alone does not serialize requests. Applications needing concurrent session mutation guarantees must serialize the entire session load/action/save boundary or use a store with an appropriate stronger contract. See [Sessions](session.md).
 
 Scheduler `withoutOverlapping` protects the scheduled action; a queued action protects publication rather than the eventual job handler. `onOneServer` coordinates an occurrence. Queues use their existing reservation, renewal and durable retry contracts. See [Scheduler](scheduler.md) and [Queues](queues.md).
-
-## Acceptance
-
-With `GUNGNIR_REDIS_INTEGRATION_TESTS=ON`, run:
-
-```sh
-ctest --test-dir build --output-on-failure --no-tests=error \
-  -R '^gungnir\.(redis|cache_redis|cache_coordination_redis|background_redis|application_redis|delivery_redis)$'
-```
-
-The native coordination test checks concurrent admission against two independent clients, literal prefix isolation, expired owners, renewal, stored null, lost factory leases, corrupt counters, backend failure and fixed-window expiration. The installed `.gnr` acceptance starts multiple actual HTTP processes, verifies shared JSON and application restart, coordinates factories and awaited lock middleware, resumes a stale owner after replacement, kills a lock holder and recovers after expiration, shares a quota across restarted processes, and checks session rotation and expiry. Tests use isolated prefixes and literal cleanup. Existing installed producer/worker/scheduler and delivery tests continue to verify shared scheduling, durable retries and authentication persistence.

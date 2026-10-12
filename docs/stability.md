@@ -1,21 +1,28 @@
-# Stability
+# Version Compatibility
 
-Gungnir 1.0.0 freezes the existing published contracts described by the current guides and executable acceptance tests. The [release scope](release-v1.md) lists optional adapters and pending features separately.
+Gungnir v1.0.0 publishes a stable language, compiler and native API
+contract. Verify your installed tools with:
 
-| Surface | Contract |
-| --- | --- |
-| Package | `1.0.0` |
-| Structured language/compiler/diagnostics | `1.0` |
-| Structured feature freeze | true |
-| Compiler compatibility | stable |
-| Native C++ source API | `1.0` |
-| Native ABI epoch | 1 |
-| Generated C++ | regenerate and rebuild with the matching SDK |
+```sh
+gungnir --version
+gungnirc --version
+gungnirc --print-contract
+```
 
-Use `gungnirc --print-contract` for machine-readable identity. Correctness, deterministic IR/emission, diagnostics, GCC/Clang/MSVC agreement, runtime/security/ORM regression tests, installed consumers and performance gates remain enabled.
+The package version is `1.0.0`, the language/compiler/diagnostic contract
+is `1.0`, and the native API contract is `1.0` with ABI epoch `1`.
 
-Patch releases preserve source contracts while correcting defects. Minor releases can add compatible capabilities. Breaking changes require a new major contract and migration documentation. A frozen contract describes the accepted language and documented behavior; it does not prohibit compatible extensions.
+## Upgrade an application
 
-Native binary compatibility also depends on operating system, architecture, compiler, standard library, runtime and enabled dependencies. Rebuild application code when changing those dimensions. Generated helper names, layout and emitter spelling are implementation details.
+Generated C++ must be **regenerated and rebuilt** using the matching
+Gungnir compiler and native runtime SDK. Native compatibility additionally
+depends on the operating system, architecture, compiler, C++ standard
+library and compiled adapters.
 
-See [Native API and ABI](native-api-abi.md), [Compiler Correctness](compiler-correctness.md), [Compiler Conformance](compiler-conformance.md) and [Upgrading](upgrading.md).
+Install the intended SDK, confirm its `PATH`/`GUNGNIR_CMAKE_PREFIX`,
+then rebuild your project. Re-test database and external service
+connections before deployment.
+
+See [SDK Packages](sdk-packages.md),
+[Native API and ABI](native-api-abi.md) and
+[Upgrading](upgrading.md).

@@ -1,10 +1,5 @@
 # Cache
 
-The basic cache API predates the published v1.0.0 core release. Owned
-cache locks, `rememberLocked` and integrated Redis coordination described
-below were merged afterward; they require a current-source SDK with the
-appropriate adapters. See [Release Status](development-status.md).
-
 Inject `Cache` into a controller, middleware or handler to use the configured cache repository. Cache stores JSON-compatible values, including scalars, arrays, objects and visible model data. Service handles and callbacks are not cache values.
 
 ## Basic operations

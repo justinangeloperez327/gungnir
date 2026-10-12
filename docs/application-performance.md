@@ -1,13 +1,5 @@
 # Application Load and Performance
 
-**Availability:** The installed HTTP/ORM load fixture was merged in PR #192
-after the published v1.0.0 core SDK. Build a current-source SDK with SQLite
-support to run it. The October 5 release downloads do not contain this
-post-release fixture. See [Release Status](development-status.md).
-
-See the [recorded local baseline](application-performance-baseline.md) for its
-environment, results and resource observations.
-
 Measure a running native Gungnir application through real HTTP/1.1 connections.
 The installed SDK compiles the fixture's ordinary `.gnr` model, controller,
 routes and migration in Release mode. No generated C++ is patched.
@@ -148,31 +140,16 @@ budget. This exercises cooperative request draining on the generated native
 server. Slow synchronous user code, deadline cancellation, background workers
 and exporter cleanup have their own runtime/deployment acceptance coverage.
 
-## CI and comparisons
+## Compare results
 
-Performance Baseline installs its optimized SDK and runs two two-second samples
-at 1, 8 and 32 clients plus a ten-second read soak. Response correctness,
-persisted writes, zero query errors, completion counts, request/lease cleanup and
-admitted-request shutdown are required. Timing and memory values are reported
-without a shared-runner regression threshold. JSON, Markdown and logs are
-uploaded with the microbenchmark artifacts, including a failure report when the
-application run fails.
+Compare reports only when the hardware, CPU limits, compiler, SDK adapters,
+database durability, workload and concurrency settings are equivalent.
+Keep every sample and account for load-generator CPU before interpreting
+throughput or latency changes.
 
-Compare raw reports only on equivalent hardware, CPU quotas, compilers, flags,
-SDK features, database durability, fixture and generator hashes, concurrency and sample policy.
-Retain all samples and account for generator CPU before interpreting a plateau.
-The microbenchmark comparison command operates on its own schema and does not
-accept this application report.
+These loopback tests use local SQLite, small payloads and one server
+process. They do not establish production capacity or a comparison with
+other frameworks. Measure your actual endpoints, TLS/proxy setup,
+databases and background services separately.
 
-These measurements establish a reproducible application workload, not universal
-production capacity or a speed comparison with Laravel. The fixture uses
-loopback HTTP without TLS or a proxy, local SQLite, a small payload and one
-server process. Measure your real endpoints, deployment topology, remote
-databases, cache/session/queue traffic and realistic request mix separately.
-The [Linux deployment reference](production-deployment.md) supplies a tested
-TLS/proxy/shared-state topology for that follow-on measurement.
-
-Sources: [runner](../benchmarks/application_load.py),
-[controller](../benchmarks/application/app/controllers/LoadController.gnr),
-[bootstrap](../benchmarks/application/bootstrap/app.hpp),
-[performance workflow](../.github/workflows/benchmark.yml).
+See [Linux Deployment](production-deployment.md) for a deployment example.

@@ -14,12 +14,3 @@ verify passwords through the configured credential provider; persistent sessions
 and remember tokens require explicitly configured stores. Enforce resource
 policies at the operation boundary and configure deployment trust boundaries.
 See [Authentication](authentication.md), [Policies](policy.md), and [Views](view.md).
-
-
-
-- [include/gungnir/http/security.hpp](../include/gungnir/http/security.hpp)
-- [include/gungnir/security/random.hpp](../include/gungnir/security/random.hpp)
-- [include/gungnir/session/middleware.hpp](../include/gungnir/session/middleware.hpp)
-- [include/gungnir/auth/authorization.hpp](../include/gungnir/auth/authorization.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/security.md).

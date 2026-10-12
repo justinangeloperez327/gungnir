@@ -53,17 +53,8 @@ migrations apply validators and indexes, but declared foreign keys are not
 enforced by MongoDB. Migration records and multi-command schema changes are not
 atomic.
 
-## Limits and planned work
-
+## Limitations
 The current adapter does not implement transaction sessions or savepoints on
 any server topology. `database.transaction(...)` rejects work before the callback
 runs. A replica set alone does not enable Gungnir transactions. The standard
 core/application packages do not bundle this adapter.
-
-## Implementation references
-
-- [include/gungnir/database/mongodb.hpp](../include/gungnir/database/mongodb.hpp)
-- [CMakeLists.txt](../CMakeLists.txt)
-- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/mongodb.md).

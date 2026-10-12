@@ -12,4 +12,4 @@ This interface does not implement dynamic library discovery/loading, dependency 
 - [include/gungnir/extensions/plugin.hpp](../include/gungnir/extensions/plugin.hpp)
 - [include/gungnir/extensions/extensions.hpp](../include/gungnir/extensions/extensions.hpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/extensions.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

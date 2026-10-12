@@ -1,14 +1,30 @@
 # Async and Await
 
-## Overview
-The async lowerer handles supported explicitly typed methods and rewrites async/await into native coroutine forms. Native runtime uses Task<T>.
+Gungnir supports asynchronous application methods with `async` and
+`await`. Async methods compile to C++23 coroutine-based tasks.
 
-## Scope
-Async is not evidence of non-blocking I/O. The target implicit framework return contracts, typed arrow async closures, structured concurrency and fully validated awaitability remain compiler/runtime work.
+## Write an asynchronous handler
 
+```gnr
+controller ReportController {
+    async index() {
+        const report = await reports.generate();
+        return json(report);
+    }
+}
+```
 
+`await` suspends the current coroutine while an awaitable operation runs.
+The awaited operation must have a supported task/result type. Route handlers
+still return ordinary framework responses.
 
-- [src/language/async_lowering.cpp](../src/language/async_lowering.cpp)
-- [include/gungnir/core/task.hpp](../include/gungnir/core/task.hpp)
+## What to consider
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/async.md).
+Async does not automatically make blocking database drivers or arbitrary
+native calls non-blocking. Use the async services supported by your selected
+adapters, propagate cancellation, and avoid holding references to
+request-lifetime objects beyond their scope.
+
+See [Language](language.md), [Functions](functions.md),
+[Async Runtime](async-runtime.md) and
+[Controllers](controller.md).

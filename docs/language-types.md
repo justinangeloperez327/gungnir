@@ -16,4 +16,4 @@ The existing numeric `decimal` alias uses double precision. `Decimal` is a separ
 - [include/gungnir/language/types.hpp](../include/gungnir/language/types.hpp)
 - [include/gungnir/language/type_system.hpp](../include/gungnir/language/type_system.hpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/language-types.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

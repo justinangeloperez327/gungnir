@@ -1,12 +1,5 @@
 # Production and Deployment
 
-The [Linux deployment reference](production-deployment.md),
-[application load fixture](application-performance.md) and
-[OTLP integration](external-observability.md) describe features subsequently
-merged to current `main`; they are **not included** in the published
-5 October v1.0.0 core downloads. See
-[Release Status](development-status.md) before selecting an SDK.
-
 ## Overview
 Health supports named liveness and readiness callbacks with fail-closed evaluation. A callback that returns false or throws marks the probe unhealthy without propagating the dependency failure through the probe call. Named reports expose each check result.
 
@@ -53,13 +46,3 @@ Cancellation remains cooperative. User code that blocks or ignores cancellation 
 ## Limits
 
 The Health object does not install HTTP endpoints automatically; `live()` is not an external process probe. Probe callbacks are isolated and fail closed, but applications still decide which dependencies belong in liveness versus readiness. Runtime lifecycle hardening does not remove the need for workload-specific load testing, dependency health checks, deployment probes and external process supervision.
-
-
-
-- [include/gungnir/production/health.hpp](../include/gungnir/production/health.hpp)
-- [include/gungnir/production/runtime_host.hpp](../include/gungnir/production/runtime_host.hpp)
-- [include/gungnir/production/supervisor.hpp](../include/gungnir/production/supervisor.hpp)
-- [include/gungnir/http/runtime.hpp](../include/gungnir/http/runtime.hpp)
-- [Runtime Correctness](runtime-correctness.md)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/production.md).

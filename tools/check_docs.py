@@ -159,19 +159,26 @@ def check_docs_index(errors: list[str]) -> None:
         if f"({path.name})" not in index:
             fail(errors, f"docs/README.md does not index {path.name}")
 
-    design_index = (
-        ROOT / "docs" / "design" / "README.md"
-    ).read_text(encoding="utf-8")
 
-    for path in sorted((ROOT / "docs" / "design").glob("*.md")):
-        if path.name == "README.md":
-            continue
 
-        if f"({path.name})" not in design_index:
-            fail(
-                errors,
-                f"docs/design/README.md does not index {path.name}",
-            )
+def check_public_guide_scope(errors: list[str]) -> None:
+    """Keep public documentation focused on supported APIs and usage."""
+    if (ROOT / "docs" / "design").exists():
+        fail(errors, "Remove obsolete target-design documents from public guides")
+    if (ROOT / "engineering").exists():
+        fail(errors, "Remove internal audit narratives from public documentation")
+
+    historical_heading = re.compile(
+        r"(?im)^#{1,4}\s+(?:phase\s+\d+|group\s+\d+|roadmap|"
+        r"completeness audit|future development plan|limits and planned work)\b"
+    )
+    milestone_prose = re.compile(r"(?i)\b(?:phase|group)\s+\d+\b")
+    for source in [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]:
+        public_text = prose_without_fenced_code(
+            source.read_text(encoding="utf-8")
+        )
+        if historical_heading.search(public_text) or milestone_prose.search(public_text):
+            fail(errors, f"{source.relative_to(ROOT)} contains milestone or roadmap history")
 
 
 def check_identity_contract(
@@ -240,6 +247,7 @@ def main() -> int:
     internal_version, release_channel = project_identity(errors)
     check_relative_links(errors)
     check_docs_index(errors)
+    check_public_guide_scope(errors)
     check_identity_contract(
         errors,
         internal_version,

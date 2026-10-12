@@ -59,14 +59,5 @@ SQL Server savepoints retain their native semantics; nested commits do not issue
 SQL `RELEASE SAVEPOINT`. The standard core/application packages do not bundle
 this adapter.
 
-## Limits and planned work
-
+## Limitations
 ODBC manager discovery does not install a database driver. Configure encryption and certificate trust explicitly; validate DECIMAL/NUMERIC conversion.
-
-## Implementation references
-
-- [include/gungnir/database/sqlserver.hpp](../include/gungnir/database/sqlserver.hpp)
-- [CMakeLists.txt](../CMakeLists.txt)
-- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/sqlserver.md).
