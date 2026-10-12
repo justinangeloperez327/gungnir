@@ -169,10 +169,10 @@ def check_public_guide_scope(errors: list[str]) -> None:
         fail(errors, "Remove internal audit narratives from public documentation")
 
     historical_heading = re.compile(
-        r"(?im)^#{1,4}\\s+(?:phase\\s+\\d+|group\\s+\\d+|roadmap|"
-        r"completeness audit|future development plan|limits and planned work)\\b"
+        r"(?im)^#{1,4}\s+(?:phase\s+\d+|group\s+\d+|roadmap|"
+        r"completeness audit|future development plan|limits and planned work)\b"
     )
-    milestone_prose = re.compile(r"(?i)\\b(?:phase|group)\\s+\\d+\\b")
+    milestone_prose = re.compile(r"(?i)\b(?:phase|group)\s+\d+\b")
     for source in [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]:
         public_text = prose_without_fenced_code(
             source.read_text(encoding="utf-8")

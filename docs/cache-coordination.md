@@ -29,7 +29,7 @@ Requests are keyed by the policy namespace and trusted `request.client_ip()`, wi
 
 Allowed responses include `x-ratelimit-limit` and `x-ratelimit-remaining`. Denied responses return 429 with those headers and a positive, rounded-up `retry-after` in seconds. Backend or corrupt-record errors stop the request before the handler; normal HTTP exception handling produces an error response. `max_clients` controls only the default memory backend, while Redis stores expire on the server. Limits and windows reject zero, negative or unrepresentable values.
 
-The quota adapter uses the existing pooled `redis::Client`, including its authentication, timeouts and explicitly selected topology/TLS configuration. Group 4 acceptance covers standalone Redis. It establishes no Sentinel/Cluster failover or TLS acceptance claim. A single-primary lease or counter does not guarantee coordination across loss of acknowledged Redis state; eviction, persistence and failover configuration remain application deployment concerns.
+The quota adapter uses the existing pooled `redis::Client`, including its authentication, timeouts and explicitly selected topology/TLS configuration. The Redis quota behavior has been verified against standalone Redis. This does not establish Sentinel/Cluster failover or TLS compatibility. A single-primary lease or counter does not guarantee coordination across loss of acknowledged Redis state; eviction, persistence and failover configuration remain application deployment concerns.
 
 ## Leases and other shared state
 

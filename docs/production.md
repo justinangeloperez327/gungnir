@@ -46,12 +46,3 @@ Cancellation remains cooperative. User code that blocks or ignores cancellation 
 ## Limits
 
 The Health object does not install HTTP endpoints automatically; `live()` is not an external process probe. Probe callbacks are isolated and fail closed, but applications still decide which dependencies belong in liveness versus readiness. Runtime lifecycle hardening does not remove the need for workload-specific load testing, dependency health checks, deployment probes and external process supervision.
-
-
-
-- [include/gungnir/production/health.hpp](../include/gungnir/production/health.hpp)
-- [include/gungnir/production/runtime_host.hpp](../include/gungnir/production/runtime_host.hpp)
-- [include/gungnir/production/supervisor.hpp](../include/gungnir/production/supervisor.hpp)
-- [include/gungnir/http/runtime.hpp](../include/gungnir/http/runtime.hpp)
-
-See [Documentation](README.md) and [Getting Started](getting-started.md).

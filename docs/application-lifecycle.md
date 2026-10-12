@@ -10,11 +10,3 @@ Applications own their routing, container, database and view contexts. Use `app.
 ## Running an application
 
 Register providers and lifecycle hooks before booting the application. Configure readiness checks and process supervision explicitly when deploying multiple services.
-
-
-
-- [include/gungnir/core/application.hpp](../include/gungnir/core/application.hpp)
-- [include/gungnir/core/lifecycle.hpp](../include/gungnir/core/lifecycle.hpp)
-- [include/gungnir/core/provider.hpp](../include/gungnir/core/provider.hpp)
-
-See [Documentation](README.md) and [Getting Started](getting-started.md).

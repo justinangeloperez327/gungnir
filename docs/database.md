@@ -73,17 +73,4 @@ Models can select a named connection through model metadata, allowing an applica
 
 MongoDB uses the same application database manager but retains document-database semantics where SQL concepts do not apply.
 
-## Application acceptance
-
-The database acceptance suite builds an ordinary `.gnr` application through the
-installed CLI and SDK. It exercises migrations, bound queries, CRUD, nullable and
-hidden values, Unicode, pagination, route model binding, eager and inverse
-relationships, persistence across a server restart, and migration rollback.
-Eager loading uses two queries for multiple parents with a one-slot pool.
-
-SQLite runs in the primary validation job. PostgreSQL, MySQL, SQL Server and
-MongoDB have live service jobs on pull requests and `main`. SQL jobs also check
-nested savepoint rollback and after-commit callbacks through the native API.
-MongoDB checks explicitly cover its transaction and foreign-key limitations.
-
-See the adapter guides for native dependencies and deployment configuration.
+See the adapter guides for supported database configuration and dependencies.

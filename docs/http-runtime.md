@@ -43,20 +43,8 @@ Existing non-cancellable `BodyStream::Producer` and `WebSocketSession::Handler` 
 
 `shutdown_timeout` is a **drain deadline**, not a mechanism for forcibly destroying arbitrary C++ code.
 
-## Performance baseline
-
 ## Limits
 
 Cancellation is cooperative. A request handler, stream producer or WebSocket handler that performs blocking work or ignores its cancellation token can delay final dispatch cleanup after the network drain deadline. Gungnir does not destroy a running coroutine from another thread because doing so would be unsafe.
 
 Protocol types and ALPN entries alone do not prove complete protocol support. Optional transports still require their dependencies and configuration. Validate workload-specific backpressure and resource limits before production deployment.
-
-## Implementation references
-
-- [include/gungnir/http/runtime.hpp](../include/gungnir/http/runtime.hpp)
-- [include/gungnir/http/server.hpp](../include/gungnir/http/server.hpp)
-- [include/gungnir/http/stream.hpp](../include/gungnir/http/stream.hpp)
-- [include/gungnir/http/websocket.hpp](../include/gungnir/http/websocket.hpp)
-- [src/http/server.cpp](../src/http/server.cpp)
-
-See [Documentation](README.md) and [Getting Started](getting-started.md).
