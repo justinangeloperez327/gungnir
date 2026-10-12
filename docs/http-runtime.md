@@ -45,8 +45,6 @@ Existing non-cancellable `BodyStream::Producer` and `WebSocketSession::Handler` 
 
 ## Performance baseline
 
-Phase 16 adds in-process Release-mode benchmarks for HTTP/1 parsing, response serialization, and populated static/parameterized route matching. These measurements are intentionally separate from network throughput claims. See [Performance Baseline](performance.md).
-
 ## Limits
 
 Cancellation is cooperative. A request handler, stream producer or WebSocket handler that performs blocking work or ignores its cancellation token can delay final dispatch cleanup after the network drain deadline. Gungnir does not destroy a running coroutine from another thread because doing so would be unsafe.
@@ -60,6 +58,5 @@ Protocol types and ALPN entries alone do not prove complete protocol support. Op
 - [include/gungnir/http/stream.hpp](../include/gungnir/http/stream.hpp)
 - [include/gungnir/http/websocket.hpp](../include/gungnir/http/websocket.hpp)
 - [src/http/server.cpp](../src/http/server.cpp)
-- [Runtime Correctness](runtime-correctness.md)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/http-runtime.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

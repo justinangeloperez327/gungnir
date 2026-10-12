@@ -55,7 +55,3 @@ the required SDK.
 ## Development watcher
 
 `dev` watches source, native headers, bootstrap, `.env`, and configuration. Templates reload from content on the next render in development/testing mode; template-only edits do not rebuild or restart the process. See [Spear views](view.md). It polls at 200 ms and waits for a stable snapshot before rebuilding. A failed build leaves the last healthy application running. A successful build replaces it with a new executable. Ctrl-C stops and reaps the application. This is a process restart; in-memory state is lost. Generated output, storage, and vendor/build directories are excluded.
-
-## Validation
-
-The PR gate compiles public headers in isolation, runs compiler/tooling tests, and installs the framework to compile and run a generated project. The generated-app test covers every generator, injection, listeners/policies/jobs, HTTP, incremental rebuilds, migrations, and the POSIX watcher lifecycle. The Redis gate also verifies a generated application across producer, worker and scheduler processes. Other external database/TLS service jobs remain on pushes to `main`. Tests keep assertions enabled in Release builds.

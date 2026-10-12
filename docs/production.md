@@ -53,6 +53,5 @@ The Health object does not install HTTP endpoints automatically; `live()` is not
 - [include/gungnir/production/runtime_host.hpp](../include/gungnir/production/runtime_host.hpp)
 - [include/gungnir/production/supervisor.hpp](../include/gungnir/production/supervisor.hpp)
 - [include/gungnir/http/runtime.hpp](../include/gungnir/http/runtime.hpp)
-- [Runtime Correctness](runtime-correctness.md)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/production.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

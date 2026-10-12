@@ -40,6 +40,5 @@ For request-lifetime async work, prefer token-aware operations and propagate the
 - [include/gungnir/core/timer.hpp](../include/gungnir/core/timer.hpp)
 - [include/gungnir/http/stream.hpp](../include/gungnir/http/stream.hpp)
 - [include/gungnir/http/websocket.hpp](../include/gungnir/http/websocket.hpp)
-- [Runtime Correctness](runtime-correctness.md)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/async-runtime.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).
