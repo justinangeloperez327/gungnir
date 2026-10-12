@@ -4,7 +4,7 @@
 
 Gungnir targets a Laravel/Adonis-style development experience while retaining native C++ deployment, interoperability, and inspectable generated code.
 
-> Project status: **Stable 1.0.0**. See the [published release scope](docs/release-v1.md) and [current-source status](docs/development-status.md).
+> Project status: **Stable 1.0.0**. See the release scope and known limitations in the [published v1.0.0 guide](docs/release-v1.md). For later merged capabilities, see [current-source status](docs/development-status.md).
 
 ## Published release versus current source
 
