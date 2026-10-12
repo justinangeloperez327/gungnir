@@ -2,8 +2,10 @@
 
 Notifications deliver application messages to a recipient through one or more channels.
 
-The typed delivery APIs below require the current source SDK. See the
-[v1.0.0 release scope](release-v1.md) for the published package contract.
+The typed delivery APIs below were merged to `main` in PR #185, **after**
+the published v1.0.0 assets. Use a current-source SDK; the
+[v1.0.0 release scope](release-v1.md) describes the published package and
+[Release Status](development-status.md) describes source availability.
 
 ## Defining a notification
 

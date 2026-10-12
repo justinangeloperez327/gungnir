@@ -1,5 +1,11 @@
 # Version 1.0.0
 
+**This page describes the packages published on 5 October 2026.**
+Features merged later into `main` are **not** contained in these existing
+release assets, even though the source package version remains `1.0.0`.
+For the application SDK, typed delivery, Spear templates and current-source
+deployment/load tooling, see [Release and Source Status](development-status.md).
+
 Gungnir 1.0.0 packages the merged framework for building and running applications. The release includes the canonical structured compiler, models/ORM/relationships, migrations, routing and binding, requests and responses, validation, authentication and policies, views, configuration and DI, events/jobs/scheduling, cache/storage and observability.
 
 ## Install and run
@@ -36,7 +42,7 @@ Memory queues, sessions, cache and locks are process-local. Separate servers and
 
 The release freezes the existing documented language/native contracts. The design documents describe future capabilities and are not additional 1.0 APIs. Generated C++ remains an artifact to regenerate and rebuild using the matching SDK.
 
-Native mail composition, memory/SMTP transports and notification channels exist. Typed `.gnr` sending, recipient routing and generated queued mail/notification delivery acceptance remain follow-up work. They are not part of the release's generated application guarantee. Applications that need delivery can use the existing native bootstrap/adapters and ordinary jobs.
+Native mail composition, memory/SMTP transports and notification channels exist. At publication time, typed `.gnr` sending, recipient routing and generated queued mail/notification delivery acceptance were outside this release's generated-application guarantee. They were later merged into `main` in PR #185; this did not update the published v1.0.0 packages. Applications that need delivery can use the existing native bootstrap/adapters and ordinary jobs.
 
 Optional adapters remain dependent on provisioned services and build flags. Live SQL Server/MongoDB/SMTP and external collector/cloud acceptance are not established by the core package tests. Production topology, TLS/proxy settings, persistence/durability, backups, monitoring and workload capacity must be configured for the deployed application.
 

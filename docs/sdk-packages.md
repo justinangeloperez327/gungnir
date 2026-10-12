@@ -1,5 +1,10 @@
 # SDK Packages
 
+**Availability:** Published v1.0.0 assets contain only the core SDK.
+The application SDK profile was merged to current `main` after that release.
+Build the profile from source; existing installers do not gain its capabilities
+automatically. See [Release Status](development-status.md).
+
 Choose the application SDK for SQLite-backed applications and password
 authentication. Choose the core SDK for HTTP applications that do not need
 those features.

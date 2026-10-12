@@ -1,5 +1,11 @@
 # Deploy an application on Linux
 
+**Availability:** This installed Linux reference deployment and recovery
+acceptance were merged in PR #191 after the published v1.0.0 assets. It
+uses a current-source custom SDK and separately provisioned services,
+not a one-command deployment bundled in the core release.
+See [Release Status](development-status.md).
+
 The [production deployment example](../examples/production-deployment/README.md)
 provides a tested reference for running a Gungnir application on one Linux host.
 It uses Nginx for HTTPS, Supervisor for process supervision, SQLite for records,

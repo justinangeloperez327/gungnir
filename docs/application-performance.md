@@ -1,5 +1,10 @@
 # Application Load and Performance
 
+**Availability:** The installed HTTP/ORM load fixture was merged in PR #192
+after the published v1.0.0 core SDK. Build a current-source SDK with SQLite
+support to run it. The October 5 release downloads do not contain this
+post-release fixture. See [Release Status](development-status.md).
+
 See the [recorded local baseline](application-performance-baseline.md) for its
 environment, results and resource observations.
 

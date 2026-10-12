@@ -2,7 +2,30 @@
 
 Gungnir is an expressive web application framework built in C++23. It combines a concise, framework-oriented `.gnr` language with a native C++ runtime so applications can use high-level conventions without giving up compiled performance, static analysis, or native interoperability.
 
-The documentation defines the Gungnir developer experience: how applications are structured, how the language works, and how framework services are used.
+These guides focus on the developer-facing application language and runtime.
+Compiler internals and historical audits are separated into contributor references.
+
+**Choose an SDK first:** the published 5 October 2026 v1.0.0 installers
+contain the core SDK; current `main` includes subsequently merged,
+unreleased functionality. Read [Release and Source Status](development-status.md)
+and [Version 1.0.0](release-v1.md) before using newer examples.
+
+## Read by task
+
+- **First HTTP app:** [Getting Started](getting-started.md) →
+  [Routing](routing.md) → [Controllers](controller.md) →
+  [Requests](request.md) and [Responses](response.md).
+- **Database app:** [SDK Packages](sdk-packages.md) →
+  [Database](database.md) → [Models](model.md) →
+  [ORM](orm.md) → [Migrations](migration.md).
+- **HTML pages on current source:** [Spear Views](view.md) →
+  [Authentication](authentication.md) → [Policies](policy.md).
+- **Production services:** [Queues](queues.md) and [Scheduler](scheduler.md) →
+  [Production](production.md) →
+  [Linux deployment reference](production-deployment.md).
+
+Runnable examples: [Hello Gungnir](../examples/hello/README.md) for minimal
+HTTP and [Spear](../examples/spear/README.md) for current-source views.
 
 ## Getting started
 
@@ -23,7 +46,7 @@ The documentation defines the Gungnir developer experience: how applications are
 - [Requests](request.md)
 - [Responses](response.md)
 - [Validation](validation.md)
-- [Views](view.md)
+- [Views and Spear](view.md)
 - [Authentication](authentication.md)
 - [Policies and Authorization](policy.md)
 - [Security](security.md)
