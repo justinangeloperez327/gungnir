@@ -1,137 +1,98 @@
 # Gungnir Documentation
 
-Gungnir is an expressive web application framework built in C++23. It combines a concise, framework-oriented `.gnr` language with a native C++ runtime so applications can use high-level conventions without giving up compiled performance, static analysis, or native interoperability.
+Gungnir is an expressive web framework built with C++23. Applications use
+`.gnr` files for models, controllers, routes, middleware and other application
+logic. Gungnir validates the source and builds native executables.
 
-These guides focus on the developer-facing application language and runtime.
-Compiler internals and historical audits are separated into contributor references.
+Start with [Getting Started](getting-started.md) to install the SDK, create a
+project, build it and run the local server.
 
-**Choose an SDK first:** the published 5 October 2026 v1.0.0 installers
-contain the core SDK; current `main` includes subsequently merged,
-unreleased functionality. Read [Release and Source Status](development-status.md)
-and [Version 1.0.0](release-v1.md) before using newer examples.
+## Setup and development
 
-## Read by task
-
-- **First HTTP app:** [Getting Started](getting-started.md) →
-  [Routing](routing.md) → [Controllers](controller.md) →
-  [Requests](request.md) and [Responses](response.md).
-- **Database app:** [SDK Packages](sdk-packages.md) →
-  [Database](database.md) → [Models](model.md) →
-  [ORM](orm.md) → [Migrations](migration.md).
-- **HTML pages on current source:** [Spear Views](view.md) →
-  [Authentication](authentication.md) → [Policies](policy.md).
-- **Production services:** [Queues](queues.md) and [Scheduler](scheduler.md) →
-  [Production](production.md) →
-  [Linux deployment reference](production-deployment.md).
-
-Runnable examples: [Hello Gungnir](../examples/hello/README.md) for minimal
-HTTP and [Spear](../examples/spear/README.md) for current-source views.
-
-## Getting started
-
-- [Getting Started](getting-started.md)
-- [SDK Packages](sdk-packages.md)
-- [Language](language.md)
-- [CLI and Code Generation](cli-codegen.md)
-- [Editor Tooling](editor-tooling.md)
-- [Testing](testing.md)
-- [Production and Deployment](production.md)
-- [Linux Deployment Reference](production-deployment.md)
+- [Getting Started](getting-started.md) — install, create, run and troubleshoot
+- [SDK Packages](sdk-packages.md) — choose the required native adapters
+- [CLI and Code Generation](cli-codegen.md) — scaffold application files and run commands
+- [Configuration](configuration.md) — application and environment settings
+- [Editor Tooling](editor-tooling.md) — language server integration
+- [Testing](testing.md) — check code and test applications
 
 ## HTTP applications
 
-- [Routing](routing.md)
-- [Controllers](controller.md)
-- [Middleware](middleware.md)
-- [Requests](request.md)
-- [Responses](response.md)
-- [Validation](validation.md)
-- [Views and Spear](view.md)
-- [Authentication](authentication.md)
-- [Policies and Authorization](policy.md)
-- [Security](security.md)
+- [Routing](routing.md) — endpoints, route names and model binding
+- [Controllers](controller.md) — request handlers
+- [Middleware](middleware.md) — request processing
+- [Requests](request.md) — inspect input
+- [Responses](response.md) — send JSON, text and files
+- [Validation](validation.md) — validate application data
+- [Views and Spear](view.md) — render server-side HTML
+- [Authentication](authentication.md) — sessions and identity
+- [Policies and Authorization](policy.md) — protect resources
+- [Sessions](session.md) — store user session state
+- [Security](security.md) — configure HTTP security
+- [Security Hardening](security-hardening.md) — security behaviors and limits
 
-## Data
+## Databases and models
 
-- [Models](model.md)
-- [ORM](orm.md)
-- [Collections](collection.md)
-- [Relationships](relationships.md)
-- [Migrations](migration.md)
-- [Database](database.md)
-- [MySQL](mysql.md)
-- [PostgreSQL](postgresql.md)
-- [SQL Server](sqlserver.md)
-- [MongoDB](mongodb.md)
+- [Database](database.md) — connections and transactions
+- [Models](model.md) — model declarations and persistence
+- [ORM](orm.md) — querying and updating records
+- [Relationships](relationships.md) — associated records and eager loading
+- [Collections](collection.md) — manipulate application collections
+- [Migrations](migration.md) — create and change schemas
+- [MySQL](mysql.md) — MySQL and MariaDB
+- [PostgreSQL](postgresql.md) — PostgreSQL
+- [SQL Server](sqlserver.md) — SQL Server
+- [MongoDB](mongodb.md) — MongoDB
 
 ## Application services
 
-- [Dependency Injection](dependency-injection.md)
-- [Configuration](configuration.md)
-- [Application Lifecycle](application-lifecycle.md)
-- [Sessions](session.md)
-- [Events](event.md)
-- [Listeners](listener.md)
-- [Queues and Jobs](queues.md)
-- [Notifications](notification.md)
-- [Mail](mail.md)
-- [Cache](cache.md)
-- [Distributed coordination](cache-coordination.md)
-- [Storage](storage.md)
-- [Scheduler](scheduler.md)
-- [Logging and Observability](logging-observability.md)
-- [External Observability](external-observability.md)
-- [Packages and Extensions](extensions.md)
+- [Dependency Injection](dependency-injection.md) — resolve dependencies
+- [Application Lifecycle](application-lifecycle.md) — startup and shutdown
+- [Events](event.md) — dispatch events
+- [Listeners](listener.md) — handle events
+- [Queues and Jobs](queues.md) — run background work
+- [Scheduler](scheduler.md) — recurring tasks
+- [Notifications](notification.md) — notify recipients
+- [Mail](mail.md) — compose and send email
+- [Cache](cache.md) — cache values and use locks
+- [Distributed Coordination](cache-coordination.md) — share cache and quotas through Redis
+- [Storage](storage.md) — read and write files
+- [Logging and Observability](logging-observability.md) — application diagnostics
+- [External Observability](external-observability.md) — export telemetry
+- [Packages and Extensions](extensions.md) — extend the application
 
-## The Gungnir language
+## Gungnir language
 
-- [Language Types](language-types.md)
-- [Expressions](expressions.md)
-- [Statements](statements.md)
-- [Functions](functions.md)
-- [Async and Await](async.md)
-- [Modules](modules.md)
-- [Grammar](grammar.md)
-- [Errors and Diagnostics](errors.md)
+- [Language Overview](language.md) — basic syntax and declarations
+- [Language Types](language-types.md) — available types
+- [Expressions](expressions.md) — values and operators
+- [Statements](statements.md) — branching and looping
+- [Functions](functions.md) — declare and call functions
+- [Async and Await](async.md) — asynchronous application code
+- [Modules](modules.md) — imports and code organization
+- [Grammar](grammar.md) — language syntax reference
+- [Errors and Diagnostics](errors.md) — understand errors
 
-## Runtime and native integration
+## Runtime and deployment
 
-- [Async Runtime](async-runtime.md)
-- [HTTP Runtime](http-runtime.md)
-- [Native API and ABI](native-api-abi.md)
-- [Performance](performance.md)
-- [Application Load and Performance](application-performance.md)
-- [Application Load Baseline](application-performance-baseline.md)
-- [Production Resilience](production-resilience.md)
-- [Security Hardening](security-hardening.md)
+- [HTTP Runtime](http-runtime.md) — configure HTTP serving
+- [Async Runtime](async-runtime.md) — native tasks and cancellation
+- [Production and Deployment](production.md) — run production applications
+- [Linux Deployment](production-deployment.md) — Nginx, Supervisor and persistent services
+- [Production Resilience](production-resilience.md) — health and capacity limits
+- [Application Performance](application-performance.md) — run the load measurement tool
+- [Native API and ABI](native-api-abi.md) — native compatibility
+- [Stability](stability.md) — compatibility and version contracts
+- [Upgrading](upgrading.md) — rebuild applications with a different SDK
+- [Version 1.0.0 Installation](release-v1.md) — published binary downloads and their scope
 
-## Compatibility and upgrades
+## Working examples
 
-- [Stability](stability.md)
-- [Upgrading](upgrading.md)
+- [Hello Gungnir](../examples/hello/README.md) — minimal HTTP project
+- [Spear](../examples/spear/README.md) — server-rendered views
+- [Linux Application](../examples/production-deployment/README.md) — deployment walkthrough
 
-## Compiler and contributor reference
-
-These documents explain how Gungnir itself works. Application developers do not need them for ordinary framework use.
-
-- [Abstract Syntax Tree](ast.md)
-- [Semantic Analysis](semantics.md)
-- [Validated AST](validated-ast.md)
-- [C++ Intermediate Representation](cpp-ir.md)
-- [Transpiler](transpiler.md)
-- [Compiler Correctness](compiler-correctness.md)
-- [Compiler Conformance](compiler-conformance.md)
-- [Compiler Fuzzing](fuzzing.md)
-- [Compiler Profiles](compiler-profiles.md)
-- [Framework Semantic Contracts](framework-semantics.md)
-- [Runtime Correctness](runtime-correctness.md)
-- [Database and ORM Correctness](database-correctness.md)
-
-- [Development Status](development-status.md)
-- [Framework Completeness Audit](framework-completeness-audit.md)
-- [Request Context Contract Audit](../engineering/request-context-contract-audit.md)
-
-- [Authentication Contract Audit](../engineering/authentication-contract-audit.md)
-- [Cache Coordination Contract Audit](../engineering/cache-coordination-contract-audit.md)
-
-- [Version 1.0.0 release and installation](release-v1.md)
+**SDK note:** The published v1.0.0 downloads provide the core SDK. Building
+current source is necessary for functionality added afterward, including Spear
+templates and the bundled SQLite/password application SDK. The corresponding
+guides explain required build flags and adapters.
