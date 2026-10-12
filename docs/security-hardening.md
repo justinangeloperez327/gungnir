@@ -43,7 +43,7 @@ For `X-Forwarded-For`, Gungnir walks the chain from the direct peer toward the c
 
 ### CORS
 
-CORS preflight is now handled by the middleware rather than depending on an application OPTIONS route.
+CORS preflight is handled by middleware without requiring an application OPTIONS route.
 
 The middleware:
 
@@ -76,7 +76,7 @@ Session identifiers and CSRF tokens continue to use the operating system cryptog
 
 ### Security response headers
 
-The default security-header middleware continues to emit CSP, frame, MIME-sniffing and referrer controls. Requests considered secure also receive:
+The default security-header middleware emits CSP, frame, MIME-sniffing and referrer controls. Requests considered secure also receive:
 
 ```text
 Strict-Transport-Security: max-age=31536000

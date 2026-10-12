@@ -22,4 +22,4 @@ ABI epoch alone does not guarantee portability across platforms or toolchains. B
 
 Generated application C++ is an implementation artifact. Regenerate and rebuild it with the matching compiler/runtime rather than depending on generated names or layouts.
 
-See [Release Scope](release-v1.md), [Stability](stability.md), [Upgrading](upgrading.md), [native API tests](../tests/public_api_contract.cpp) and [shared-package CI](../.github/workflows/native-api-abi.yml).
+See [SDK Packages](sdk-packages.md), [Stability](stability.md), and [Upgrading](upgrading.md).

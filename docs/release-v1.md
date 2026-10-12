@@ -3,8 +3,7 @@
 Install Gungnir from the published
 [GitHub release](https://github.com/justinangeloperez327/gungnir/releases).
 The binary downloads published on 5 October 2026 contain the **core SDK**;
-building current source is necessary for newer APIs and bundled
-SQLite/password application SDK functionality.
+building current source is necessary to use APIs and application SDK capabilities that are not contained in these downloads.
 
 ## Downloads
 

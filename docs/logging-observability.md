@@ -81,7 +81,7 @@ The HTTP listener continues valid v00 `traceparent` identities; Redis queue
 metadata continues them in separate worker processes. The tracer records every
 span when a sink is configured; remote flags do not select sampling. See
 [External Observability](external-observability.md) for configuration, exact
-delivery/metric/propagation limits and official Collector acceptance coverage.
+delivery, metrics, and trace propagation settings.
 
 See [Production](production.md), [Dependency Injection](dependency-injection.md),
 and [the native OTLP exporter](../include/gungnir/observability/otlp_http_exporter.hpp).
