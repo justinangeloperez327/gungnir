@@ -1,5 +1,12 @@
 # Views and Spear
 
+**Availability:** Spear was merged into current `main` in PR #193,
+after the 5 October 2026 v1.0.0 release. Published core SDK downloads
+do not include `.spear` syntax or scaffold files. Build/install current
+source for this guide, or use the older `.html` grammar with the published
+SDK. See [Release Status](development-status.md) and
+[SDK Packages](sdk-packages.md).
+
 Spear is Gungnir's server-rendered template language. Templates use ordinary
 HTML, escaped expressions and Blade-like directives. Controllers continue to
 return views through `view()`.

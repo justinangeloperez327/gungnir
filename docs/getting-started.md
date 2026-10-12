@@ -1,81 +1,109 @@
 # Getting Started
 
-Gungnir is an expressive C++23 web framework with a dedicated `.gnr` application language and a native runtime.
+Gungnir is a C++23 web framework whose application logic is written in
+structured `.gnr` files. The `gungnir` CLI creates, builds and runs native
+applications; `gungnirc` validates the language without generating a binary.
 
-## Requirements
+## 1. Choose an SDK
 
-A Gungnir development environment requires a supported C++23 compiler, CMake, and the Gungnir CLI. Optional database, Redis, SMTP, TLS, HTTP/2, and storage adapters may require their native dependencies.
+You need a C++23-compatible compiler, **CMake 3.25+**, and Gungnir's CLI.
+On Windows, install Visual Studio C++ Build Tools and use a developer
+terminal that can locate the compiler. Open a new terminal after setup
+to refresh `PATH`.
 
-## Install
+- **Published v1.0.0 core:** Install an asset from
+  [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
+  This includes core HTTP capabilities, but not bundled SQLite or password
+  hashing.
+- **Current source / application SDK:** Build from `main` for the application
+  SDK with SQLite/password support and later Spear views and typed delivery.
+  See [SDK Packages](sdk-packages.md).
+- **Other adapters:** Build Gungnir with the corresponding adapter and native
+  dependencies. Selecting a database in `.env` does not enable an unbuilt
+  adapter.
 
-Install a packaged Gungnir distribution for your platform or build and install the framework from source.
+The October 5 release assets do not include the later merged features.
+See [Release Status](development-status.md).
 
-For SQLite and password authentication, select the [application SDK](sdk-packages.md).
-The published v1.0.0 packages contain the core SDK; the application profile is
-available from current source and is included in subsequent release packaging.
-
-After installation, verify the tools:
+Verify the installed commands:
 
 ```sh
 gungnir --version
 gungnirc --version
 ```
 
-## Create an application
+## 2. Create a project
 
 ```sh
 gungnir new hello
 cd hello
 ```
 
-A project contains application declarations, routes, `views/welcome.spear`, configuration, bootstrap code, tests, and build metadata. [Spear templates](view.md) use ordinary HTML with Blade-like directives.
+The generated project contains application declarations, routes, configuration,
+editable native bootstrap, and build metadata. Current source also generates
+`views/welcome.spear`; the published core release predates the Spear grammar.
+See [Views and Spear](view.md) for current-source templates.
 
-## Create a controller
+For a minimal controller, use the same shape as the
+[verified Hello example](../examples/hello/README.md):
 
 ```gnr
 controller HomeController {
-    index() {
+    Response index() {
         return text("Hello from Gungnir");
     }
 }
 ```
 
-## Register a route
+Register the action in `routes/web.gnr`:
 
 ```gnr
 Route::get("/", HomeController::index);
 ```
 
-## Build and run
+The example README identifies which generated files to replace.
+
+## 3. Build and run
 
 ```sh
 gungnir build
 gungnir run
 ```
 
-The development server can rebuild and restart the application while source files change:
+With the default generated environment, visit
+`http://127.0.0.1:8000/`. Set `APP_PORT` in `.env` to select another port;
+**8000 is the default**, not 3000 or 7000.
+
+For automatic rebuilds/restarts during development:
 
 ```sh
 gungnir dev
 ```
 
-## Validate source
+The watcher tracks source, native bootstrap and configuration changes.
+On current source, template-only edits reload on the next request in
+development/testing mode instead of rebuilding the binary. A source-driven
+process restart loses process-local memory state.
+
+## 4. Check your source
 
 ```sh
 gungnirc app/controllers/HomeController.gnr --check
 ```
 
-The check command performs Gungnir parsing and semantic/framework validation without producing a native executable.
+`--check` performs structured-language semantic validation without native
+compilation. `gungnir build` additionally compiles routes and modules,
+emits native code and builds the executable. The Hello controller is compiled
+by the documentation CI workflow.
 
-## Generate application files
-
-Use the CLI to generate framework declarations:
+## 5. Generate application components
 
 ```sh
 gungnir make:model User
 gungnir make:controller UserController
 gungnir make:migration CreateUsers
 gungnir make:middleware Authenticate
+gungnir make:request StoreUser
 gungnir make:policy UserPolicy app.models.User::User
 gungnir make:event UserRegistered
 gungnir make:listener SendWelcomeEmail app.events.UserRegistered::UserRegistered
@@ -84,8 +112,55 @@ gungnir make:mail WelcomeMail
 gungnir make:job ProcessImport
 ```
 
-Generated declarations follow Gungnir naming and project-layout conventions.
+Declaration filenames retain PascalCase, such as `UserController.gnr`;
+migrations use snake_case filenames. Generators refuse to overwrite
+existing files. See [CLI and Code Generation](cli-codegen.md) for
+arguments and generated declarations.
 
-## Next steps
+## 6. Add a database or background processing
 
-Continue with [The Gungnir Language](language.md), [Routing](routing.md), [Controllers](controller.md), [Models](model.md), [ORM](orm.md), [Migrations](migration.md), and [Testing](testing.md).
+To use SQLite, install/build an SDK that includes the SQLite adapter,
+create the parent directory for the database, and set in `.env`:
+
+```dotenv
+DB_CONNECTION=sqlite
+DB_DATABASE=storage/app.sqlite
+```
+
+Then run migrations:
+
+```sh
+gungnir migrate
+gungnir migrate:status
+```
+
+The published core SDK does not contain the SQLite backend. Consult
+[SDK Packages](sdk-packages.md), [Database](database.md),
+[Models](model.md), [ORM](orm.md) and [Migrations](migration.md).
+
+When your application defines queued jobs or schedules, start the
+separate processes explicitly:
+
+```sh
+gungnir queue:work
+gungnir schedule:work
+```
+
+Memory stores are process-local. For independent servers and workers,
+configure shared services; see [Queues](queues.md),
+[Sessions](session.md) and [Production](production.md).
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `gungnir` is not recognized | Install the CLI and add the SDK `bin` directory to `PATH`; reopen the terminal |
+| CMake or the compiler cannot be found | Install CMake and a C++23 toolchain; use a Visual Studio developer terminal on Windows |
+| SQLite/password capability error | Select an SDK with those compiled features; changing `.env` or generated CMake cannot add them |
+| Can't reach the local HTTP application | Confirm the listener address and `APP_HOST`/`APP_PORT` |
+| A queued job is not consumed | Run a worker and check both processes use the same configured queue |
+| A production view change is not visible | Restart the process or explicitly invalidate the immutable view cache |
+
+Next: [Language](language.md), [Routing](routing.md),
+[Validation](validation.md), [Views](view.md),
+[Testing](testing.md) and [Production](production.md).
