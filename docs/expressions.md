@@ -14,4 +14,4 @@ String interpolation, general native operators, safe optional method calls and g
 - [include/gungnir/language/ast.hpp](../include/gungnir/language/ast.hpp)
 - [src/language/parser.cpp](../src/language/parser.cpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/expressions.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

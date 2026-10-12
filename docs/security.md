@@ -22,4 +22,4 @@ See [Authentication](authentication.md), [Policies](policy.md), and [Views](view
 - [include/gungnir/session/middleware.hpp](../include/gungnir/session/middleware.hpp)
 - [include/gungnir/auth/authorization.hpp](../include/gungnir/auth/authorization.hpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/security.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).

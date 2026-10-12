@@ -18,4 +18,4 @@ This is incremental native compilation, not a persisted parser/semantic cache. C
 - [include/gungnir/language/dependency_graph.hpp](../include/gungnir/language/dependency_graph.hpp)
 - [src/cli/project.cpp](../src/cli/project.cpp)
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/modules.md).
+See [Documentation](README.md) and [Getting Started](getting-started.md).
