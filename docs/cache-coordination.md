@@ -1,5 +1,11 @@
 # Distributed coordination
 
+**Availability:** This integrated source implementation and its installed
+acceptance were merged in PR #189 after the published v1.0.0 assets.
+Build current source with Redis support; the published core package does not
+contain this integrated contract. See
+[Release Status](development-status.md) and [SDK Packages](sdk-packages.md).
+
 The installed application SDK supports shared JSON cache values, explicit cache leases, Redis HTTP quotas, shared sessions and the existing queue/scheduler adapters when Redis support is built. Enable `GUNGNIR_WITH_REDIS=ON`, install hiredis and link `gungnir::redis`. Generated applications link the installed adapter automatically. The core/application release package profiles do not bundle Redis or hiredis; select a custom SDK containing the adapter.
 
 ## Shared configuration
