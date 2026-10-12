@@ -22,8 +22,7 @@ to refresh `PATH`.
   dependencies. Selecting a database in `.env` does not enable an unbuilt
   adapter.
 
-The October 5 release assets do not include the later merged features.
-See [Release Status](development-status.md).
+The published v1.0.0 core SDK and current-source application SDK have different compiled capabilities. Check [SDK Packages](sdk-packages.md) before configuring persistence or password authentication.
 
 Verify the installed commands:
 

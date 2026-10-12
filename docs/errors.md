@@ -1,20 +1,29 @@
-# Errors
+# Errors and Diagnostics
 
-## Overview
-Compiler diagnostics carry stable code, level, message, source location and a half-open source span. Structured compilation enriches diagnostics with the original source line and normalized end position before results leave the compiler. `gungnirc` uses the shared diagnostic renderer, showing source context and a span underline, and exits nonzero on errors. Diagnostic ordering is deterministic across multi-file compilation.
+Gungnir reports language and framework errors with a diagnostic code,
+message, source location and source span.
 
-Generated C++ carries `#line` directives at callable and statement boundaries when line directives are enabled. Native compiler diagnostics are therefore mapped back to the closest originating `.gnr` statement instead of only the generated C++ file.
+## Check an application file
 
-Native errors and exceptions cover HTTP, validation, ORM, database, view and storage failures. `ExceptionHandler` defines HTTP rendering at the router boundary.
+```sh
+gungnirc app/controllers/HomeController.gnr --check
+```
 
-## Scope
-The structured compiler has an authoritative `ValidatedProject` gate for the supported language profile. Native compilation can still report backend/toolchain failures, but ordinary supported-language errors must be diagnosed before lowering. Multi-line diagnostic rendering currently emphasizes the first source line of the span; richer secondary labels and cross-backend native diagnostic normalization remain future work. Exception rendering must still be configured appropriately for production.
+The compiler reports errors in `.gnr` source and exits with a nonzero
+status. Fix those errors before running `gungnir build`. Native
+compilation can also report missing C++ toolchains, headers or
+optional SDK adapters.
 
+## HTTP and application errors
 
+Runtime failures can arise from validation, routes, database connections,
+ORM operations, views, storage and external services. Configure the HTTP
+`ExceptionHandler` so clients receive appropriate error responses rather
+than uncaught native exceptions.
 
-- [include/gungnir/language/diagnostic.hpp](../include/gungnir/language/diagnostic.hpp)
-- [include/gungnir/language/diagnostic_renderer.hpp](../include/gungnir/language/diagnostic_renderer.hpp)
-- [include/gungnir/http/exception_handler.hpp](../include/gungnir/http/exception_handler.hpp)
-- [include/gungnir/errors/error.hpp](../include/gungnir/errors/error.hpp)
+For production applications, keep stack traces and sensitive internal
+details out of public responses and send diagnostic details to
+[Logging and Observability](logging-observability.md).
 
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/errors.md).
+See [Validation](validation.md), [Responses](response.md) and
+[Production](production.md).
