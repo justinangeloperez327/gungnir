@@ -50,14 +50,5 @@ keys. Savepoint commands use the direct protocol; query values remain prepared
 bindings. The standard
 core/application packages do not bundle this adapter.
 
-## Limits and planned work
-
+## Limitations
 DECIMAL/NEWDECIMAL currently map to Double; use explicit conversion where exact decimal semantics matter.
-
-## Implementation references
-
-- [include/gungnir/database/mysql.hpp](../include/gungnir/database/mysql.hpp)
-- [CMakeLists.txt](../CMakeLists.txt)
-- [include/gungnir/database/settings.hpp](../include/gungnir/database/settings.hpp)
-
-See the [documentation index](README.md), [getting started](getting-started.md), and [target design](design/mysql.md).
