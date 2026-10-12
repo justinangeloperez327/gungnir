@@ -1,11 +1,5 @@
 # External observability
 
-**Availability:** Generated-app OTLP integration and collector acceptance
-were merged in PR #190 after the published v1.0.0 assets. Build current
-source with the optional adapter; the existing core download does not
-include these post-release changes. See
-[Release Status](development-status.md).
-
 Generated applications can send traces and metrics to an OpenTelemetry Collector
 with the optional `gungnir::otlp` adapter. `Logger` can write newline-delimited
 JSON to a process stream for a platform log agent. The native instrumentation and

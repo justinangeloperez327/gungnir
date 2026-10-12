@@ -1,12 +1,5 @@
 # Production and Deployment
 
-The [Linux deployment reference](production-deployment.md),
-[application load fixture](application-performance.md) and
-[OTLP integration](external-observability.md) describe features subsequently
-merged to current `main`; they are **not included** in the published
-5 October v1.0.0 core downloads. See
-[Release Status](development-status.md) before selecting an SDK.
-
 ## Overview
 Health supports named liveness and readiness callbacks with fail-closed evaluation. A callback that returns false or throws marks the probe unhealthy without propagating the dependency failure through the probe call. Named reports expose each check result.
 
