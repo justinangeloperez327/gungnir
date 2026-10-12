@@ -176,36 +176,7 @@ cookie/api-key rules. Native attributes, resource attributes, messages, names,
 and error text retain their explicit caller contract. Never put secrets in
 those values or print exporter settings/authorization headers.
 
-## Acceptance evidence
-
-The PR CI observability job downloads checksum-pinned official
-`otelcol-contrib` **0.160.0**, builds a custom SDK, and runs:
-
-- `gungnir.observability`: propagation validation, structured logging, redaction,
-  concurrent writers, and logical framework context;
-- `gungnir.otlp` and `gungnir.otlp_transport`: JSON encoding/precision, authenticated
-  HTTP, retries/rejections/partial success, queue byte limits, response bounds,
-  TLS CA/hostname verification, concurrent shutdown, and snapshot/deadline flush;
-- `gungnir.application_otlp`: installed generated HTTP/SQLite/Redis application,
-  concurrent independent request traces, real timer suspension, producer exit,
-  separate workers, worker/HTTP errors, collector-decoded resources/exemplars,
-  field redaction, graceful exporter drain, and collector outage isolation;
-- `installed.otlp`: external native consumer linked against the installed SDK,
-  including compilation of this guide's bootstrap helper.
-
-The real Collector test uses its OTLP HTTP receiver and JSON file exporter to
-inspect decoded data. The separate fault server tests failure behavior and is
-not used as interoperability evidence. Vendor backends, gRPC/protobuf export,
-remote TLS/proxy deployment, external log-agent ingestion, and production load
-are outside this acceptance coverage.
-
-To reproduce, provision Redis and the official Collector binary, configure
-`GUNGNIR_WITH_OTLP=ON`, `GUNGNIR_OTLP_INTEGRATION_TESTS=ON`,
-`GUNGNIR_WITH_REDIS=ON`, and `GUNGNIR_WITH_SQLITE=ON`, build the CI targets,
-then set `GUNGNIR_OTELCOL` and `GUNGNIR_REDIS_HOST`/`GUNGNIR_REDIS_PORT` before
-running `ctest --output-on-failure -R 'observability|otlp'`. The installed app test
-manages its own loopback collector and temporary application.
-
-See [Logging and Observability](logging-observability.md),
-[Production](production.md), the [OTLP protocol](https://opentelemetry.io/docs/specs/otlp/),
-and the [Collector release](https://github.com/open-telemetry/opentelemetry-collector-releases/releases/tag/v0.160.0).
+For collector configuration, see the
+[OTLP protocol](https://opentelemetry.io/docs/specs/otlp/).
+Also see [Logging and Observability](logging-observability.md) and
+[Production](production.md).
