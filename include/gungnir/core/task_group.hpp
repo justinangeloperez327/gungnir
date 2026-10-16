@@ -19,7 +19,7 @@ struct TaskWaiter {
     struct promise_type {
         TaskCompletion& completion;
         promise_type(TaskCompletion& completion, Task<void>&) : completion(completion) {}
-        TaskWaiter get_return_object() { return {std::coroutine_handle<promise_type>::from_promise(*this)}; }
+        TaskWaiter get_return_object() { return TaskWaiter{std::coroutine_handle<promise_type>::from_promise(*this)}; }
         std::suspend_always initial_suspend() noexcept { return {}; }
         struct Final {
             bool await_ready() const noexcept { return false; }
@@ -34,7 +34,18 @@ struct TaskWaiter {
         void unhandled_exception() noexcept { completion.error = std::current_exception(); }
     };
     std::coroutine_handle<promise_type> frame;
-    ~TaskWaiter() { frame.destroy(); }
+    explicit TaskWaiter(std::coroutine_handle<promise_type> handle) noexcept : frame(handle) {}
+    TaskWaiter(const TaskWaiter&) = delete;
+    TaskWaiter& operator=(const TaskWaiter&) = delete;
+    TaskWaiter(TaskWaiter&& other) noexcept : frame(std::exchange(other.frame, {})) {}
+    TaskWaiter& operator=(TaskWaiter&& other) noexcept {
+        if (this != &other) {
+            if (frame) frame.destroy();
+            frame = std::exchange(other.frame, {});
+        }
+        return *this;
+    }
+    ~TaskWaiter() { if (frame) frame.destroy(); }
 };
 inline TaskWaiter complete_task(TaskCompletion& state, Task<void>& task) { co_await task; }
 }

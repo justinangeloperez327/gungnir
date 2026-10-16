@@ -145,7 +145,8 @@ public:
             const auto id = symbol({ResolvedSymbolKind::builtin, name, type(type_id(name)).cpp_name, type_id(name)});
             declarations.emplace("native:" + name, id); return id;
         }
-        if (diagnose) report(where, "Unknown name '" + name + "'", "GNR2202"); return invalid_id;
+        if (diagnose) report(where, "Unknown name '" + name + "'", "GNR2202");
+        return invalid_id;
     }
     TypeId resolve(const TypeSyntax& syntax) {
         std::string name = syntax.name;
@@ -325,7 +326,8 @@ public:
             if (const auto found = fields.find(name); found != fields.end())
                 return symbol({ResolvedSymbolKind::field, name, found->second, type_id("int")});
         }
-        if (diagnose) report(origin, "Unknown member '" + name + "' on " + type(receiver).name, "GNR2206"); return invalid_id;
+        if (diagnose) report(origin, "Unknown member '" + name + "' on " + type(receiver).name, "GNR2206");
+        return invalid_id;
     }
     SymbolId builtin(std::string name, std::string cpp, TypeId result, std::vector<TypeId> parameters = {}, bool async = false) {
         ResolvedSymbol value{ResolvedSymbolKind::builtin, std::move(name), std::move(cpp), result}; value.parameters = std::move(parameters); value.asynchronous = async; return symbol(std::move(value));
@@ -676,7 +678,8 @@ public:
                 if (!valid_identifier(field.name)) report(field.origin,"Field name is not a valid native identifier");
                 const auto id = symbol({field.injection ? ResolvedSymbolKind::injection : ResolvedSymbolKind::field, field.name, field.name, resolve(field.type), current_owner,
                     declaration.kind == DeclarationKind::event || declaration.kind == DeclarationKind::mail || declaration.kind == DeclarationKind::notification || declaration.kind == DeclarationKind::job, false, field.visibility});
-                if (!members.emplace(std::to_string(current_owner) + ":" + field.name, id).second) report(field.origin, "Duplicate field '" + field.name + "'"); resolved.fields.push_back(id);
+                if (!members.emplace(std::to_string(current_owner) + ":" + field.name, id).second) report(field.origin, "Duplicate field '" + field.name + "'");
+                resolved.fields.push_back(id);
             }
             for (std::size_t r = 0; r < declaration.relationships.size(); ++r) {
                 const auto& relation = declaration.relationships[r];
@@ -778,7 +781,8 @@ public:
             const auto operand = expression(e.operands[0]);
             if (e.text == "!") { if (operand != type_id("bool")) report(e.origin, "Logical negation requires bool"); return set(type_id("bool")); }
             if (!numeric(operand)) report(e.origin, "Numeric unary operator requires a number");
-            if (e.text.starts_with("post")) writable(e.operands[0]); return set(operand);
+            if (e.text.starts_with("post")) writable(e.operands[0]);
+            return set(operand);
         }
         if (e.kind == SyntaxExpressionKind::conditional) {
             if (expression(e.operands[0]) != type_id("bool")) report(e.origin, "Conditional expression requires bool");
@@ -793,7 +797,15 @@ public:
         const auto lhs = expression(e.operands[0]);
         if (e.text == "??") {
             std::function<bool(SyntaxId)> contains_await = [&](SyntaxId id) { const auto& node = v.syntax_.expressions[id]; if (node.kind == SyntaxExpressionKind::await_) return true; if (node.kind == SyntaxExpressionKind::lambda) return false; for (auto child : node.operands) if (contains_await(child)) return true; return false; };
-            if (contains_await(e.operands[0]) || contains_await(e.operands[1])) report(e.origin,"await in null coalescing requires a separate binding"); if (!type(lhs).optional) report(e.origin, "Null coalescing requires an optional value"); const auto base = unoptional(lhs); if (!assignable(base, expression(e.operands[1], base))) report(e.origin, "Incompatible coalescing value"); return set(base); }
+            if (contains_await(e.operands[0]) || contains_await(e.operands[1]))
+                report(e.origin, "await in null coalescing requires a separate binding");
+            if (!type(lhs).optional)
+                report(e.origin, "Null coalescing requires an optional value");
+            const auto base = unoptional(lhs);
+            if (!assignable(base, expression(e.operands[1], base)))
+                report(e.origin, "Incompatible coalescing value");
+            return set(base);
+        }
         TypeId assignment_target = lhs;
         if (e.text == "=") {
             const auto target_symbol = v.expressions_[e.operands[0]].symbol;
@@ -2641,7 +2653,8 @@ public:
                         if (!part.starts_with('{') || !part.ends_with('}') || !valid_identifier(parameter) || !parameters.insert(parameter).second)
                             report(syntax.origin,"Route parameters must be unique named segments", "GNR2320");
                     }
-                    if (end == std::string::npos) break; begin = end + 1;
+                    if (end == std::string::npos) break;
+                    begin = end + 1;
                 }
             }
             for (const auto& option : syntax.modifiers) apply(option);

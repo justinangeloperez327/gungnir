@@ -54,8 +54,8 @@ std::vector<Token> Lexer::tokenize(
     std::size_t column = 1;
 
     const auto report = [&](
-        std::size_t line,
-        std::size_t column,
+        std::size_t diagnostic_line,
+        std::size_t diagnostic_column,
         std::size_t begin,
         std::size_t end,
         std::string message,
@@ -64,7 +64,7 @@ std::vector<Token> Lexer::tokenize(
         if (!diagnostics) return;
         Diagnostic diagnostic{
             DiagnosticLevel::error,
-            {std::string{source_name}, line, column},
+            {std::string{source_name}, diagnostic_line, diagnostic_column},
             std::move(message),
             std::move(code),
             {}

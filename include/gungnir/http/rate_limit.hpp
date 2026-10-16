@@ -12,9 +12,9 @@
 namespace gungnir::http {
 
 struct RateLimitDecision {
-    bool allowed;
-    std::size_t remaining;
-    std::chrono::seconds retry_after;
+    bool allowed{false};
+    std::size_t remaining{};
+    std::chrono::seconds retry_after{};
 };
 
 inline void validate_rate_limit(std::size_t requests, std::chrono::seconds window) {

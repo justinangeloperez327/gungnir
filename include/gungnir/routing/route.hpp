@@ -58,12 +58,6 @@ template <typename ControllerType, typename Method>
                 http::Request&
             >
         ) {
-            using Result = std::invoke_result_t<
-                Method,
-                ControllerType&,
-                http::Request&
-            >;
-
             co_return co_await controller::normalize(
                 std::invoke(method, *controller, request)
             );
@@ -73,11 +67,6 @@ template <typename ControllerType, typename Method>
                 ControllerType&
             >
         ) {
-            using Result = std::invoke_result_t<
-                Method,
-                ControllerType&
-            >;
-
             co_return co_await controller::normalize(
                 std::invoke(method, *controller)
             );

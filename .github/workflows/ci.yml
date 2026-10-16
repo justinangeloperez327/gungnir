@@ -50,6 +50,7 @@ jobs:
           gungnir_structured_request_context_test
           gungnir_language_test
           gungnir_runtime_safety_test gungnir_timer_runtime_test
+          gungnir_ioc_test gungnir_ioc_scope_test gungnir_priority3_runtime_test
           gungnir_http_reactor_test gungnir_http_server_test
           gungnir_http_streaming_test gungnir_websocket_test
           gungnir_runtime_supervisor_test gungnir_runtime_host_test
@@ -76,6 +77,8 @@ jobs:
         run: ctest --test-dir build --no-tests=error -R '^gungnir\.application_spear$' --output-on-failure
       - name: Test native observability
         run: ctest --test-dir build --no-tests=error -R '^gungnir\.observability$' --output-on-failure
+      - name: Test resource lifetime and reentrant cleanup
+        run: ctest --test-dir build --no-tests=error -R '^(gungnir\.(ioc|ioc_scope)|gungnir_priority3_runtime)$' --output-on-failure
       - name: Build and run generated ORM against the installed package
         run: |
           cmake --install build --prefix "$RUNNER_TEMP/gungnir-orm"

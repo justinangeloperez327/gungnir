@@ -71,6 +71,33 @@ int main() {
     auto broken_sink = std::make_shared<logging::JsonStreamSink>(broken);
     logging::Logger isolated; isolated.sink(broken_sink); isolated.info("sink failure");
     assert(broken_sink->dropped() == 1);
+    {
+        struct CountingSink final : logging::Sink {
+            int calls{};
+            void write(const logging::Record&) override { ++calls; }
+        };
+        struct RegisteringSink final : logging::Sink {
+            logging::Logger& owner;
+            std::shared_ptr<logging::Sink> next;
+            bool registered{};
+            RegisteringSink(logging::Logger& logger, std::shared_ptr<logging::Sink> sink)
+                : owner(logger), next(std::move(sink)) {}
+            void write(const logging::Record&) override {
+                if (!std::exchange(registered, true)) {
+                    // Force reallocation while log() is traversing its sinks.
+                    for (int index = 0; index < 64; ++index) owner.sink(next);
+                }
+            }
+        };
+        logging::Logger reentrant;
+        const auto counter = std::make_shared<CountingSink>();
+        reentrant.sink(std::make_shared<RegisteringSink>(reentrant, counter));
+        reentrant.sink(counter);
+        reentrant.info("register during dispatch");
+        assert(counter->calls == 1);
+        reentrant.info("new sinks are active");
+        assert(counter->calls == 66);
+    }
     struct FailedBuffer : std::streambuf {
         std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
     } failed_buffer;

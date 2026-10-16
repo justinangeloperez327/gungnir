@@ -9,10 +9,16 @@
 #include <cassert>
 #include <atomic>
 #include <latch>
+#include <limits>
 #include <thread>
+#include <type_traits>
 
 using namespace gungnir;
 using namespace std::chrono_literals;
+static_assert(!std::is_copy_constructible_v<detail::TaskWaiter>);
+static_assert(!std::is_copy_assignable_v<detail::TaskWaiter>);
+static_assert(std::is_nothrow_move_constructible_v<detail::TaskWaiter>);
+static_assert(std::is_nothrow_move_assignable_v<detail::TaskWaiter>);
 struct ProbeProvider : Provider {
     std::vector<int>& calls;
     int id;
@@ -26,6 +32,31 @@ struct ProbeProvider : Provider {
 Task<int> abandoned_timer(std::atomic<int>& count) { co_await sleep_for(30ms); ++count; co_return 1; }
 Task<int> abandoned_executor(Executor& executor,std::atomic<int>& count) { co_await executor.yield(); ++count; co_return 1; }
 int main() {
+    {
+        struct Capture {
+            CancellationToken token;
+            int& destroyed;
+            Capture(CancellationToken value, int& count) : token(std::move(value)), destroyed(count) {}
+            ~Capture() {
+                auto nested = token.on_cancel([] {});
+                ++destroyed;
+            }
+        };
+        CancellationSource source;
+        int destroyed{};
+        auto capture = std::make_shared<Capture>(source.token(), destroyed);
+        auto registration = source.token().on_cancel([capture] {});
+        capture.reset();
+        registration.reset();
+        assert(destroyed == 1);
+    }
+    {
+        Executor oversized{std::numeric_limits<std::size_t>::max()};
+        bool rejected = false;
+        try { oversized.start(); }
+        catch (const std::length_error&) { rejected = true; }
+        assert(rejected && !oversized.running());
+    }
     for (int stage=1;stage<=3;++stage) {
         std::vector<int> calls; Application app;
         app.provider<ProbeProvider>(calls,1,0).provider<ProbeProvider>(calls,2,stage);

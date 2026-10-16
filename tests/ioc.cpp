@@ -33,6 +33,31 @@ public:
 };
 
 int main() {
+    {
+        struct ReentrantService {
+            gungnir::Container& container;
+            int& destroyed;
+            ReentrantService(gungnir::Container& owner, int& count) : container(owner), destroyed(count) {}
+            ~ReentrantService() {
+                static_cast<void>(container.has<ReentrantService>());
+                ++destroyed;
+            }
+        };
+        gungnir::Container container;
+        int destroyed{};
+        container.instance(std::make_shared<ReentrantService>(container, destroyed));
+        container.instance(std::make_shared<ReentrantService>(container, destroyed));
+        assert(destroyed == 1);
+        container.forget<ReentrantService>();
+        assert(destroyed == 2);
+
+        // Factory captures also own resources that must retire without a lock.
+        auto captured = std::make_shared<ReentrantService>(container, destroyed);
+        container.bind<int>([captured] { return 1; });
+        captured.reset();
+        container.bind<int>([] { return 2; });
+        assert(destroyed == 3);
+    }
     gungnir::Application app;
 
     app.bind<MessageBus, LocalMessageBus>();

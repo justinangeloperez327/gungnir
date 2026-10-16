@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -26,6 +27,8 @@ public:
     ~Executor();
     Executor(const Executor&) = delete;
     Executor& operator=(const Executor&) = delete;
+    Executor(Executor&&) = delete;
+    Executor& operator=(Executor&&) = delete;
 
     void start();
     void stop() noexcept;
