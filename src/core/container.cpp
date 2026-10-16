@@ -86,40 +86,35 @@ void Container::register_factory(
         );
     }
 
-    std::lock_guard lock{
-        impl_->mutex
+    Impl::Binding replacement{
+        .factory = std::move(factory),
+        .lifetime = lifetime,
+        .instance = {}
     };
-
-    impl_->bindings.insert_or_assign(
-        type,
-        Impl::Binding{
-            .factory =
-                std::move(factory),
-            .lifetime =
-                lifetime,
-            .instance = {}
-        }
-    );
+    {
+        std::lock_guard lock{impl_->mutex};
+        auto [binding, inserted] = impl_->bindings.try_emplace(type);
+        static_cast<void>(inserted);
+        std::swap(binding->second, replacement);
+    }
+    // Retired factories and services may call back into the container.
 }
 
 void Container::register_instance(
     std::type_index type,
     std::shared_ptr<void> instance
 ) {
-    std::lock_guard lock{
-        impl_->mutex
+    Impl::Binding replacement{
+        .factory = {},
+        .lifetime = Lifetime::singleton,
+        .instance = std::move(instance)
     };
-
-    impl_->bindings.insert_or_assign(
-        type,
-        Impl::Binding{
-            .factory = {},
-            .lifetime =
-                Lifetime::singleton,
-            .instance =
-                std::move(instance)
-        }
-    );
+    {
+        std::lock_guard lock{impl_->mutex};
+        auto [binding, inserted] = impl_->bindings.try_emplace(type);
+        static_cast<void>(inserted);
+        std::swap(binding->second, replacement);
+    }
 }
 
 std::shared_ptr<void>
@@ -276,13 +271,11 @@ void Container::validate_scope(
 void Container::erase(
     std::type_index type
 ) {
-    std::lock_guard lock{
-        impl_->mutex
-    };
-
-    impl_->bindings.erase(
-        type
-    );
+    decltype(impl_->bindings)::node_type removed;
+    {
+        std::lock_guard lock{impl_->mutex};
+        removed = impl_->bindings.extract(type);
+    }
 }
 
 bool Container::contains(

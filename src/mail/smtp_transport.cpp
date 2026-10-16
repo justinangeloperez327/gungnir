@@ -79,12 +79,12 @@ void check(
 }
 
 void append(
-    curl_slist*& list,
+    HeaderList& list,
     const std::string& value
 ) {
     auto* updated =
         curl_slist_append(
-            list,
+            list.get(),
             value.c_str()
         );
 
@@ -92,7 +92,9 @@ void append(
         throw std::bad_alloc{};
     }
 
-    list = updated;
+    // append may return the existing head; reset must not free that head.
+    static_cast<void>(list.release());
+    list.reset(updated);
 }
 
 [[nodiscard]]
@@ -672,56 +674,43 @@ public:
             "sender configuration"
         );
 
-        curl_slist* raw_recipients =
-            nullptr;
+        HeaderList recipients{nullptr, &curl_slist_free_all};
 
-        try {
-            for (
-                const auto& address :
-                message.recipients()
-            ) {
-                append(
-                    raw_recipients,
-                    envelope_address(
-                        address
-                    )
-                );
-            }
-
-            for (
-                const auto& address :
-                message.cc_recipients()
-            ) {
-                append(
-                    raw_recipients,
-                    envelope_address(
-                        address
-                    )
-                );
-            }
-
-            for (
-                const auto& address :
-                message.bcc_recipients()
-            ) {
-                append(
-                    raw_recipients,
-                    envelope_address(
-                        address
-                    )
-                );
-            }
-        } catch (...) {
-            curl_slist_free_all(
-                raw_recipients
+        for (
+            const auto& address :
+            message.recipients()
+        ) {
+            append(
+                recipients,
+                envelope_address(
+                    address
+                )
             );
-            throw;
         }
 
-        HeaderList recipients{
-            raw_recipients,
-            &curl_slist_free_all
-        };
+        for (
+            const auto& address :
+            message.cc_recipients()
+        ) {
+            append(
+                recipients,
+                envelope_address(
+                    address
+                )
+            );
+        }
+
+        for (
+            const auto& address :
+            message.bcc_recipients()
+        ) {
+            append(
+                recipients,
+                envelope_address(
+                    address
+                )
+            );
+        }
 
         check(
             curl_easy_setopt(
@@ -732,88 +721,75 @@ public:
             "recipient configuration"
         );
 
-        curl_slist* raw_headers =
-            nullptr;
+        HeaderList headers{nullptr, &curl_slist_free_all};
 
-        try {
+        append(
+            headers,
+            "From: " +
+                display_address(
+                    message.sender()
+                )
+        );
+
+        if (
+            !message.recipients()
+                .empty()
+        ) {
             append(
-                raw_headers,
-                "From: " +
-                    display_address(
-                        message.sender()
+                headers,
+                "To: " +
+                    joined_addresses(
+                        message
+                            .recipients()
                     )
             );
-
-            if (
-                !message.recipients()
-                    .empty()
-            ) {
-                append(
-                    raw_headers,
-                    "To: " +
-                        joined_addresses(
-                            message
-                                .recipients()
-                        )
-                );
-            } else if (
-                message.cc_recipients()
-                    .empty()
-            ) {
-                append(
-                    raw_headers,
-                    "To: undisclosed-recipients:;"
-                );
-            }
-
-            if (
-                !message.cc_recipients()
-                    .empty()
-            ) {
-                append(
-                    raw_headers,
-                    "Cc: " +
-                        joined_addresses(
-                            message
-                                .cc_recipients()
-                        )
-                );
-            }
-
-            if (message.reply_address()) {
-                validate_address(*message.reply_address(), "reply-to");
-                append(raw_headers, "Reply-To: " + display_address(*message.reply_address()));
-            }
+        } else if (
+            message.cc_recipients()
+                .empty()
+        ) {
             append(
-                raw_headers,
-                "Subject: " +
-                    message.subject_line()
+                headers,
+                "To: undisclosed-recipients:;"
             );
-
-            append(
-                raw_headers,
-                "Date: " +
-                    message_date()
-            );
-
-            append(
-                raw_headers,
-                "Message-ID: " +
-                    message_id(
-                        message.sender()
-                    )
-            );
-        } catch (...) {
-            curl_slist_free_all(
-                raw_headers
-            );
-            throw;
         }
 
-        HeaderList headers{
-            raw_headers,
-            &curl_slist_free_all
-        };
+        if (
+            !message.cc_recipients()
+                .empty()
+        ) {
+            append(
+                headers,
+                "Cc: " +
+                    joined_addresses(
+                        message
+                            .cc_recipients()
+                    )
+            );
+        }
+
+        if (message.reply_address()) {
+            validate_address(*message.reply_address(), "reply-to");
+            append(headers, "Reply-To: " + display_address(*message.reply_address()));
+        }
+        append(
+            headers,
+            "Subject: " +
+                message.subject_line()
+        );
+
+        append(
+            headers,
+            "Date: " +
+                message_date()
+        );
+
+        append(
+            headers,
+            "Message-ID: " +
+                message_id(
+                    message.sender()
+                )
+        );
 
         check(
             curl_easy_setopt(

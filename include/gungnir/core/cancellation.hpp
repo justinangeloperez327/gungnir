@@ -98,13 +98,13 @@ public:
             const auto state =
                 state_.lock()
         ) {
-            std::lock_guard lock{
-                state->mutex
-            };
-
-            state->callbacks.erase(
-                id_
-            );
+            // Destroy the callback after releasing the registry mutex: its
+            // captures may themselves unregister or register callbacks.
+            decltype(state->callbacks)::node_type removed;
+            {
+                std::lock_guard lock{state->mutex};
+                removed = state->callbacks.extract(id_);
+            }
         }
 
         state_.reset();

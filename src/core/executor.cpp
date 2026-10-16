@@ -13,11 +13,24 @@ Executor::Executor(std::size_t workers, std::size_t capacity)
 Executor::~Executor() { stop(); join(); }
 
 void Executor::start() {
-    std::lock_guard lock{mutex_};
+    std::unique_lock lock{mutex_};
     if (running_) return;
+    // Allocate the thread slots before publishing a running executor.
+    workers_.reserve(worker_count_);
     stopping_ = false;
     running_ = true;
-    for (std::size_t i = 0; i < worker_count_; ++i) workers_.emplace_back([this] { worker_loop(); });
+    try {
+        for (std::size_t i = 0; i < worker_count_; ++i)
+            workers_.emplace_back([this] { worker_loop(); });
+    } catch (...) {
+        // Thread creation can fail after some workers have started. Release
+        // the queue mutex before joining so those workers can observe stop.
+        stopping_ = true;
+        lock.unlock();
+        ready_.notify_all();
+        join();
+        throw;
+    }
 }
 
 void Executor::stop() noexcept {

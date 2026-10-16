@@ -677,6 +677,8 @@ void security_header_boundary() {
 
 void rate_limit_boundary() {
     using namespace gungnir;
+    const http::RateLimitDecision decision;
+    assert(!decision.allowed && decision.remaining == 0 && decision.retry_after.count() == 0);
 
     assert(
         throws_invalid_argument(

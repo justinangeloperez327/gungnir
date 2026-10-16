@@ -114,7 +114,8 @@ void validate_settings(const OtlpHttpSettings& settings, const OtlpHttpPolicy& p
     char* raw_scheme = nullptr;
     if (curl_url_get(url.get(), CURLUPART_SCHEME, &raw_scheme, 0) != CURLUE_OK)
         throw std::invalid_argument("Invalid OTLP HTTP endpoint");
-    const std::string scheme{raw_scheme}; curl_free(raw_scheme);
+    const std::unique_ptr<char, decltype(&curl_free)> scheme_buffer{raw_scheme, &curl_free};
+    const std::string_view scheme{scheme_buffer.get()};
     if (scheme != "http" && scheme != "https") throw std::invalid_argument("OTLP endpoint must use http:// or https://");
     char* credentials = nullptr;
     const auto user = curl_url_get(url.get(), CURLUPART_USER, &credentials, 0); curl_free(credentials);

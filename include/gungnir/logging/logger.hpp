@@ -23,7 +23,10 @@ public:
 
     void log(Level level, std::string message, Context context = {}) const {
         Record record{.level=level, .message=std::move(message), .context=std::move(context)};
-        for (const auto& sink : sinks_) {
+        // A sink may register another sink while handling this record.
+        // Keep both iteration and sink lifetime independent of that mutation.
+        const auto sinks = sinks_;
+        for (const auto& sink : sinks) {
             try { sink->write(record); } catch (...) {}
         }
     }

@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cstdlib>
 #include <fstream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -31,10 +32,8 @@ std::optional<String> process_environment_value(
         return std::nullopt;
     }
 
-    String result{value};
-    std::free(value);
-
-    return result;
+    const std::unique_ptr<char, decltype(&std::free)> owned{value, &std::free};
+    return String{owned.get()};
 #else
     const char* value = std::getenv(
         key.c_str()

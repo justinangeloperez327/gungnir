@@ -2132,6 +2132,7 @@ if(GUNGNIR_BUILD_TESTS)
     target_link_libraries(gungnir_ioc_test PRIVATE gungnir::gungnir)
     target_compile_features(gungnir_ioc_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.ioc COMMAND gungnir_ioc_test)
+    set_tests_properties(gungnir.ioc PROPERTIES TIMEOUT 30)
 
     add_executable(gungnir_ioc_scope_test tests/ioc_scope.cpp)
     target_link_libraries(gungnir_ioc_scope_test PRIVATE gungnir::gungnir)

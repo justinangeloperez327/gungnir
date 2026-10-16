@@ -440,7 +440,10 @@ public:
             if (is("(")) { at = saved; value.methods.push_back(callable(value.kind, member_visibility, false)); continue; }
             if (async) error("Fields cannot be async");
             FieldSyntax field{member_origin, std::move(member_name), std::move(field_type)}; field.visibility = member_visibility;
-            if (take("=")) field.initializer = expression(); need(";"); finish(field.origin); value.fields.push_back(std::move(field));
+            if (take("=")) field.initializer = expression();
+            need(";");
+            finish(field.origin);
+            value.fields.push_back(std::move(field));
         }
         need("}"); take(";"); finish(value.origin); result.project.modules[0].declarations.push_back(result.project.declarations.size()); result.project.declarations.push_back(std::move(value));
     }
