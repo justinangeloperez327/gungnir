@@ -97,11 +97,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnir" --version)" = "Gungnir 1.0.0"
-          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --version)" = "Gungnir compiler 1.0.0 (language 1.0)"
+          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnir" --version)" = "Gungnir 1.0.1"
+          test "$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --version)" = "Gungnir compiler 1.0.1 (language 1.0)"
 
           contract="$("$GUNGNIR_DEVELOPMENT_PREFIX/bin/gungnirc" --print-contract)"
-          grep -qx "package_version=1.0.0" <<< "$contract"
+          grep -qx "package_version=1.0.1" <<< "$contract"
           grep -qx "language_version=1.0" <<< "$contract"
           grep -qx "compiler_contract=1.0" <<< "$contract"
           grep -qx "diagnostic_contract=1.0" <<< "$contract"

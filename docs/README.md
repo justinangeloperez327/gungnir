@@ -84,7 +84,8 @@ project, build it and run the local server.
 - [Native API and ABI](native-api-abi.md) — native compatibility
 - [Stability](stability.md) — compatibility and version contracts
 - [Upgrading](upgrading.md) — rebuild applications with a different SDK
-- [Version 1.0.0 Installation](release-v1.md) — published binary downloads and their scope
+- [Version 1.0.1 Installation](release-v1.0.1.md) — current binary downloads and their scope
+- [Version 1.0.0 Installation](release-v1.md) — older core-only binary downloads
 
 ## Working examples
 
@@ -92,7 +93,6 @@ project, build it and run the local server.
 - [Spear](../examples/spear/README.md) — server-rendered views
 - [Linux Application](../examples/production-deployment/README.md) — deployment walkthrough
 
-**SDK note:** The published v1.0.0 downloads provide the core SDK. Building
-current source is necessary for functionality added afterward, including Spear
-templates and the bundled SQLite/password application SDK. The corresponding
-guides explain required build flags and adapters.
+**SDK note:** Version 1.0.1 provides core and application SDKs. Choose the
+application profile for bundled SQLite and password hashing; see
+[SDK Packages](sdk-packages.md) for other adapters and source builds.

@@ -72,12 +72,12 @@ static_assert(
 );
 
 static_assert(
-    GUNGNIR_VERSION_PATCH == 0
+    GUNGNIR_VERSION_PATCH == 1
 );
 
 static_assert(
     gungnir::version ==
-        "1.0.0"
+        "1.0.1"
 );
 
 static_assert(

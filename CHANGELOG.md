@@ -6,11 +6,20 @@ For installation and usage instructions, see the [README](README.md) and
 
 ## Unreleased
 
-Current source includes additions to templates, SDK packaging, mail and
-notification delivery, shared cache coordination, external observability,
-database integration testing, and Linux deployment and application load
-examples. These changes are not part of the previously published v1.0.0
-download assets. Build an SDK from current source to use them.
+No unreleased changes.
+
+## 1.0.1 — 2026-10-18
+
+- Application SDK packages for Windows and Linux bundle SQLite persistence and
+  OpenSSL password hashing alongside the existing core SDK.
+- Current Spear templates, typed mail/notification delivery, shared cache
+  coordination and external observability are included in the source release.
+- Fixed cancellation/container cleanup deadlocks, logger sink mutation,
+  coroutine ownership and executor startup cleanup.
+- Updated Windows installer upgrade/PATH checks and downloadable workflow
+  artifacts with checksums and source metadata.
+
+See [Version 1.0.1 Installation](docs/release-v1.0.1.md).
 
 ## 1.0.0 — 2026-10-05
 

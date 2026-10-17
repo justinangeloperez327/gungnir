@@ -2,9 +2,8 @@
 
 Gungnir provides structured mail declarations and native transports for composing and sending application email.
 
-Typed delivery requires a current-source SDK. The published v1.0.0 core
-package supports its documented native delivery interfaces;
-see [SDK Packages](sdk-packages.md).
+Typed delivery requires a v1.0.1 or newer SDK. The older v1.0.0 core package
+supports its original native delivery interfaces; see [SDK Packages](sdk-packages.md).
 
 ## Defining mail
 
