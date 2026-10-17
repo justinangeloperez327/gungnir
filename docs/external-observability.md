@@ -31,7 +31,7 @@ inline void configure_observability(gungnir::Application& app,
     observability::OtlpHttpSettings settings;
     settings.endpoint = app.env().get("OBSERVABILITY_OTLP_ENDPOINT", "http://127.0.0.1:4318");
     settings.resource.service_name = app.env().get("APP_NAME", "my-application");
-    settings.resource.service_version = app.env().get("APP_VERSION", "1.0.0");
+    settings.resource.service_version = app.env().get("APP_VERSION", "1.0.1");
     settings.resource.deployment_environment = app.environment();
     const auto instance = app.env().get("INSTANCE_ID");
     if (!instance.empty()) settings.resource.attributes["service.instance.id"] = instance;
@@ -63,7 +63,7 @@ collector can provide its CA certificate file without disabling verification.
 
 Resources carry `service.name`, optional `service.version`,
 `deployment.environment.name`, and custom attributes. Instrumentation scope is
-`gungnir` with the actual framework version, currently `1.0.0`. Use a distinct
+`gungnir` with the actual framework version, currently `1.0.1`. Use a distinct
 `service.instance.id` per application process when a backend requires separate
 metric writers. Do not store credentials in resource or measurement attributes.
 

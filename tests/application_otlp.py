@@ -257,7 +257,7 @@ inline void boot(gungnir::Application&) {}
                     assert attributes['service.name'] == 'observed-application'
                     assert attributes['service.version'] == '1.0.0' and attributes['deployment.environment.name'] == 'acceptance'
                     for scope in resource['scopeSpans']:
-                        assert scope['scope']['name'] == 'gungnir' and scope['scope']['version'] == '1.0.0'
+                        assert scope['scope']['name'] == 'gungnir' and scope['scope']['version'] == '1.0.1'
                         traces.extend((attributes, span) for span in scope['spans'])
             for envelope in lines(metric_file):
                 for resource in envelope['resourceMetrics']:

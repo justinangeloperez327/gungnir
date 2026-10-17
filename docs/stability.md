@@ -1,6 +1,6 @@
 # Version Compatibility
 
-Gungnir v1.0.0 publishes a stable language, compiler and native API
+Gungnir v1.0.1 publishes a stable language, compiler and native API
 contract. Verify your installed tools with:
 
 ```sh
@@ -9,7 +9,7 @@ gungnirc --version
 gungnirc --print-contract
 ```
 
-The package version is `1.0.0`, the language/compiler/diagnostic contract
+The package version is `1.0.1`, the language/compiler/diagnostic contract
 is `1.0`, and the native API contract is `1.0` with ABI epoch `1`.
 
 ## Upgrade an application

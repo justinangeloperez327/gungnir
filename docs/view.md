@@ -1,6 +1,6 @@
 # Views and Spear
 
-> Spear templates require an SDK built from current source; published v1.0.0 core downloads use the earlier HTML template syntax.
+> Spear templates require a v1.0.1 or newer SDK; older v1.0.0 core downloads use the earlier HTML template syntax.
 
 Spear is Gungnir's server-rendered template language. Templates use ordinary
 HTML, escaped expressions and Blade-like directives. Controllers continue to

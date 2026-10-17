@@ -11,18 +11,15 @@ On Windows, install Visual Studio C++ Build Tools and use a developer
 terminal that can locate the compiler. Open a new terminal after setup
 to refresh `PATH`.
 
-- **Published v1.0.0 core:** Install an asset from
+- **Core SDK:** Install the v1.0.1 core package from
   [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
-  This includes core HTTP capabilities, but not bundled SQLite or password
-  hashing.
-- **Current source / application SDK:** Build from `main` for the application
-  SDK with SQLite/password support and later Spear views and typed delivery.
-  See [SDK Packages](sdk-packages.md).
+  It includes HTTP, Spear views and typed delivery APIs, without bundled SQLite
+  or password hashing.
+- **Application SDK:** Install the v1.0.1 application package for bundled SQLite
+  and password hashing. See [SDK Packages](sdk-packages.md).
 - **Other adapters:** Build Gungnir with the corresponding adapter and native
   dependencies. Selecting a database in `.env` does not enable an unbuilt
   adapter.
-
-The published v1.0.0 core SDK and current-source application SDK have different compiled capabilities. Check [SDK Packages](sdk-packages.md) before configuring persistence or password authentication.
 
 Verify the installed commands:
 

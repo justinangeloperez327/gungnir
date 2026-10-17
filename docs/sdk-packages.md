@@ -4,7 +4,8 @@ Choose the application SDK for SQLite-backed applications and password
 authentication. Choose the core SDK for HTTP applications that do not need
 those features.
 
-The application SDK can be built from current source. Published v1.0.0 downloads contain only the core profile.
+Version 1.0.1 provides both profiles. The older v1.0.0 downloads contain only
+the core profile.
 
 | Package | Included capabilities | Dependencies |
 | --- | --- | --- |

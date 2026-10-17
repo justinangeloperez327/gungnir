@@ -33,7 +33,7 @@ sudo cmake --install build-deployment --prefix /opt/gungnir
 
 Retain the SDK and its runtime adapter dependencies for building later
 releases. This profile uses the host SQLite/hiredis/libcurl packages.
-Package version remains `1.0.0`, native contract `1.0`, ABI epoch `1`.
+Package version remains `1.0.1`, native contract `1.0`, ABI epoch `1`.
 
 ## Provision the host
 
