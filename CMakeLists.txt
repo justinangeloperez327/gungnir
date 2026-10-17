@@ -2926,6 +2926,11 @@ if(WIN32)
 nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\share\gungnir\installer\UpdateUserPath.ps1" -BinPath "$INSTDIR\bin" -Action Add'
 Pop $0
 DetailPrint "Gungnir user PATH update exit code: $0"
+StrCmp $0 "0" gungnir_path_install_ok
+MessageBox MB_OK|MB_ICONSTOP "Gungnir could not update your user PATH. Re-run setup or add the installed bin directory to PATH manually." /SD IDOK
+SetErrorLevel 1
+Quit
+gungnir_path_install_ok:
 SendMessage 0xffff 0x001A 0 "STR:Environment" /TIMEOUT=5000
         ]=]
     )
@@ -2935,6 +2940,11 @@ SendMessage 0xffff 0x001A 0 "STR:Environment" /TIMEOUT=5000
 nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\share\gungnir\installer\UpdateUserPath.ps1" -BinPath "$INSTDIR\bin" -Action Remove'
 Pop $0
 DetailPrint "Gungnir user PATH removal exit code: $0"
+StrCmp $0 "0" gungnir_path_uninstall_ok
+MessageBox MB_OK|MB_ICONSTOP "Gungnir could not remove its user PATH entry. Correct your user PATH and re-run the uninstaller." /SD IDOK
+SetErrorLevel 1
+Quit
+gungnir_path_uninstall_ok:
 SendMessage 0xffff 0x001A 0 "STR:Environment" /TIMEOUT=5000
         ]=]
     )

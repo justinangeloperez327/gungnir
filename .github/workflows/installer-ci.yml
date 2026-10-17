@@ -1,12 +1,13 @@
 name: Windows Installer
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "CMakeLists.txt"
       - "cmake/**"
       - "include/gungnir/**"
-      - "src/cli/**"
+      - "src/**"
       - "tools/gungnir.cpp"
       - "tools/gungnirc.cpp"
       - "tests/compiler_release_contract.cmake"
@@ -20,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: installer-${{ github.event.pull_request.number }}
+  group: installer-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -66,6 +67,9 @@ jobs:
             -G NSIS `
             -C Release `
             -B installer
+          if ($LASTEXITCODE -ne 0) {
+              throw "CPack failed to create the Windows installer"
+          }
 
           $installer = Get-ChildItem installer -Filter "gungnir-*-setup.exe" |
             Select-Object -First 1
@@ -77,10 +81,23 @@ jobs:
           "GUNGNIR_INSTALLER=$($installer.FullName)" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" |
+            Set-Content -Path "$($installer.FullName).sha256" -Encoding ascii
+          $sourceCommit = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Unable to identify the installer source commit" }
+          @{
+              source_commit = $sourceCommit
+              profile = '${{ matrix.profile }}'
+              installer = $installer.Name
+              sha256 = $hash
+              workflow_run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          } | ConvertTo-Json | Set-Content installer/build-info.json -Encoding utf8
+
       - name: Install with long PATH and build a project
         shell: pwsh
         run: |
-          $installDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-ci"
+          $installDir = Join-Path $env:RUNNER_TEMP "Gungnir Installer CI"
           $projectDir = Join-Path $env:RUNNER_TEMP "gungnir-installer-ci-app"
           $originalUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 
@@ -134,6 +151,22 @@ jobs:
               )) {
                   throw "Installer changed or truncated the existing long user PATH"
               }
+
+              # Upgrade/reinstall the same SDK before exercising the installed
+              # tools. It must retain a single PATH entry and a complete SDK.
+              $upgrade = Start-Process `
+                -FilePath $env:GUNGNIR_INSTALLER `
+                -ArgumentList @("/S", "/D=$installDir") `
+                -Wait `
+                -PassThru
+              if ($upgrade.ExitCode -ne 0) {
+                  throw "Installer upgrade exited with code $($upgrade.ExitCode)"
+              }
+              $upgradedUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+              if ($upgradedUserPath -ne $installedUserPath) {
+                  throw "Installer upgrade changed or duplicated the existing user PATH"
+              }
+              if (-not (Test-Path $cli)) { throw "Installer upgrade removed the CLI" }
 
               $expectedVersion = "Gungnir 1.0.0"
               $actualVersion = (& $cli --version).Trim()
@@ -222,3 +255,14 @@ jobs:
                   "User"
               )
           }
+
+      - name: Upload verified Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: gungnir-windows-x86_64-${{ matrix.profile }}-installer-${{ github.run_id }}
+          path: |
+            installer/gungnir-*-setup.exe
+            installer/gungnir-*-setup.exe.sha256
+            installer/build-info.json
+          if-no-files-found: error
+          retention-days: 30
