@@ -26,6 +26,64 @@ if(NOT structured_check_output STREQUAL "")
     message(FATAL_ERROR "--check must validate without emitting generated C++")
 endif()
 
+# --verify-ir performs lower/verify after semantic validation without emission.
+execute_process(
+    COMMAND "${GUNGNIRC}" "${structured}" --verify-ir
+    RESULT_VARIABLE verify_ir_result
+    OUTPUT_VARIABLE verify_ir_output
+    ERROR_VARIABLE verify_ir_error
+)
+if(NOT verify_ir_result EQUAL 0 OR NOT verify_ir_output STREQUAL "")
+    message(FATAL_ERROR "--verify-ir must verify structural IR without emitting C++: ${verify_ir_error}")
+endif()
+
+set(verified_output "${root}/should-not-exist.cpp")
+execute_process(
+    COMMAND "${GUNGNIRC}" "${structured}" --verify-ir -o "${verified_output}"
+    RESULT_VARIABLE verify_ir_output_rejected
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if(verify_ir_output_rejected EQUAL 0 OR EXISTS "${verified_output}")
+    message(FATAL_ERROR "--verify-ir must reject output-file selection")
+endif()
+
+file(MAKE_DIRECTORY "${root}/sample/storage")
+file(WRITE "${root}/sample/answer.gnr" "function int answer() { return 42; }\n")
+file(WRITE "${root}/sample/storage/invalid.gnr" "function int broken( {\n")
+execute_process(
+    COMMAND "${GUNGNIRC}" "${root}/sample" --project --verify-ir
+    RESULT_VARIABLE verify_project_result
+    OUTPUT_VARIABLE verify_project_output
+    ERROR_VARIABLE verify_project_error
+)
+if(NOT verify_project_result EQUAL 0 OR NOT verify_project_output STREQUAL "")
+    message(FATAL_ERROR "--project --verify-ir must succeed without C++ emission: ${verify_project_error}")
+endif()
+
+execute_process(
+    COMMAND "${GUNGNIRC}" "${invalid_semantic}" --verify-ir
+    RESULT_VARIABLE verify_invalid_result
+    OUTPUT_VARIABLE verify_invalid_output
+    ERROR_VARIABLE verify_invalid_error
+)
+if(verify_invalid_result EQUAL 0 OR NOT verify_invalid_output STREQUAL "" OR
+   NOT verify_invalid_error MATCHES "GNR2215")
+    message(FATAL_ERROR "--verify-ir must preserve semantic diagnostic failures")
+endif()
+
+foreach(conflict IN ITEMS --check --format --compat --dump-cpp-ir --dump-validated-ast)
+    execute_process(
+        COMMAND "${GUNGNIRC}" "${structured}" --verify-ir "${conflict}"
+        RESULT_VARIABLE verify_conflict_result
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(verify_conflict_result EQUAL 0)
+        message(FATAL_ERROR "--verify-ir must reject ${conflict}")
+    endif()
+endforeach()
+
 execute_process(
     COMMAND "${GUNGNIRC}" "${invalid_semantic}" --check
     RESULT_VARIABLE invalid_semantic_result

@@ -9,6 +9,8 @@
 | `gungnir schedule:run [--release]` | Boot and run due scheduled actions once |
 | `gungnir schedule:work [--release]` | Boot and run the continuous scheduler |
 | `gungnir dev` | Watch, rebuild, and restart with diagnostics |
+| `gungnirc --project . --check` | Check project syntax and semantics without generating C++ |
+| `gungnirc --project . --verify-ir` | Validate and verify C++ IR without emitting source files |
 | `gungnir make:model <name>` | Model in `app/models` |
 | `gungnir make:controller <name>` | Controller in `app/controllers` |
 | `gungnir make:middleware <name>` | Async middleware in `app/middleware` |

@@ -1,14 +1,22 @@
 # Testing Gungnir Applications
 
-Use `gungnirc --check` to catch language and framework errors before compiling
-an application. A full build additionally verifies the generated native C++.
+Use `gungnirc --check` for syntax and semantic validation without C++ code
+generation. Use `gungnirc --verify-ir` to additionally lower and verify the C++
+intermediate representation without emitting C++ files. A full `gungnir build`
+also generates and compiles native C++ executables.
 
 ## Check source
 
 ```sh
 gungnirc app/controllers/HomeController.gnr --check
+gungnirc --project . --verify-ir
 gungnir build
 ```
+
+Both checks support a single `.gnr` file or `--project <directory>`.
+`--verify-ir` cannot be combined with `--check`, `--format`, `--compat`,
+compiler dumps, or `-o`. It verifies compiler IR only: it does not emit C++,
+invoke CMake, link native code, or start the application.
 
 A successful source check does not prove a database connection, an HTTP
 listener or an external adapter is configured correctly. Start the application
