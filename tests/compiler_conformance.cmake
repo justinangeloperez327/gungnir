@@ -144,3 +144,59 @@ foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.
         "${file_name} ${file_hash}\n"
     )
 endforeach()
+
+# Failed-source diagnostic output is part of the cross-toolchain compiler
+# conformance contract, not only successful C++ and IR serialization.
+# Use relative input names and an isolated working directory so diagnostic
+# file paths do not depend on runner filesystem layout.
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" "")
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/invalid-lex.gnr" "/* unterminated comment\n")
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/invalid-syntax.gnr" "function int broken( {\n")
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/invalid-semantic.gnr"
+     "function int broken() { return unknown; }\n")
+
+function(snapshot_diagnostic label source mode)
+    execute_process(
+        COMMAND "${GUNGNIRC}" "${source}" "${mode}"
+        WORKING_DIRECTORY "${GUNGNIR_OUTPUT_DIR}"
+        RESULT_VARIABLE status
+        OUTPUT_VARIABLE stdout
+        ERROR_VARIABLE stderr
+    )
+    if(NOT status EQUAL 1 OR NOT stdout STREQUAL "")
+        message(FATAL_ERROR "${label}: expected a failing, output-free compiler check; exit=${status}; stdout=${stdout}; stderr=${stderr}")
+    endif()
+
+    # MSVC's text-mode stderr can use CRLF; normalize line endings only.
+    string(REPLACE "\r\n" "\n" stderr "${stderr}")
+    string(REGEX MATCH "GNR[0-9][0-9][0-9][0-9]" code "${stderr}")
+    if(code STREQUAL "" OR
+       NOT stderr MATCHES "${source}:[0-9]+:[0-9]+" OR
+       NOT stderr MATCHES "\\^")
+        message(FATAL_ERROR "${label}: missing diagnostic code, source position or caret:\n${stderr}")
+    endif()
+
+    file(APPEND "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt"
+         "=== ${label} ===\n${stderr}\n")
+    set("${label}_code" "${code}" PARENT_SCOPE)
+endfunction()
+
+snapshot_diagnostic(lex_check "invalid-lex.gnr" --check)
+snapshot_diagnostic(lex_format "invalid-lex.gnr" --format)
+snapshot_diagnostic(syntax_check "invalid-syntax.gnr" --check)
+snapshot_diagnostic(syntax_format "invalid-syntax.gnr" --format)
+snapshot_diagnostic(semantic_check "invalid-semantic.gnr" --check)
+snapshot_diagnostic(semantic_ir "invalid-semantic.gnr" --verify-ir)
+
+if(NOT lex_check_code STREQUAL lex_format_code OR
+   NOT syntax_check_code STREQUAL syntax_format_code OR
+   NOT semantic_check_code STREQUAL semantic_ir_code)
+    message(FATAL_ERROR "Compiler diagnostic codes differ across equivalent CLI modes")
+endif()
+if(NOT semantic_check_code STREQUAL "GNR2202")
+    message(FATAL_ERROR "Unexpected undefined-symbol diagnostic: ${semantic_check_code}")
+endif()
+
+file(SHA256 "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" diagnostics_hash)
+file(APPEND "${GUNGNIR_OUTPUT_DIR}/manifest.txt"
+     "diagnostics.txt ${diagnostics_hash}\n")
