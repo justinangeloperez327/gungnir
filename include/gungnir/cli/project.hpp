@@ -68,6 +68,7 @@ public:
 private:
     std::filesystem::path root_;
     [[nodiscard]] std::filesystem::path assemble_structured() const;
+    int build_target(bool release, std::string_view target) const;
 
     [[nodiscard]] static String normalize_class_name(
         std::string_view value
