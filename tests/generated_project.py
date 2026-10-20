@@ -218,12 +218,6 @@ def response(path, data=None, content_type=None):
         return result.status, result.read().decode(), result.headers
 
 
-# `run` propagates child failure status, including bootstrap failures.
-with (project / ".env").open("a") as output:
-    output.write("DB_CONNECTION=does-not-exist\n")
-assert run("run", expect=1)
-(project / ".env").write_text(application_env)
-
 # A project-wide build produces all entrypoints, while run/dev should rebuild
 # only the app target. Removing unrelated binaries makes that distinction
 # observable in a real installed-SDK native build.
@@ -238,7 +232,7 @@ def built_executable(name):
 unrelated = [built_executable("migrations"), built_executable("background")]
 for executable in unrelated:
     executable.unlink()
-# Running the application must not rebuild migration and background targets.
+# `run` must propagate the child failure without rebuilding unrelated targets.
 with (project / ".env").open("a") as output:
     output.write("DB_CONNECTION=does-not-exist\n")
 assert run("run", expect=1)
