@@ -132,7 +132,10 @@ try:
                     "controller HomeController { Response index() { return unknown; } }\n",
                     encoding="utf-8",
                 )
-                wait_log("gungnir dev: build failed", watcher)
+                # Source validation reports GNR diagnostics before a native
+                # build starts, so it does not produce the build-failed marker.
+                # Check the compiler error and that the previous child survives.
+                wait_log("GNR2202", watcher)
                 wait_http("dev-second", watcher, seconds=10)
 
                 # Recovery must compile, release the prior executable, restart,
