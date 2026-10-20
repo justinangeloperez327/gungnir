@@ -81,6 +81,7 @@ Validate Gungnir source without producing a native executable:
 
 ```sh
 gungnirc app/controllers/HomeController.gnr --check
+gungnirc --project . --verify-ir
 ```
 
 ## Generate application components
