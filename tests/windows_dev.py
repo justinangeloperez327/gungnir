@@ -115,7 +115,6 @@ try:
                 assert len(list(dev_dir.glob("app-*.exe"))) == 1, log_tail()
 
                 # Reject source errors without replacing the still-serving child.
-                write_controller("dev-broken")
                 controller.write_text(
                     "controller HomeController { Response index() { return unknown; } }\n",
                     encoding="utf-8",
