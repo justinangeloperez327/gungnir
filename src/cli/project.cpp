@@ -1228,6 +1228,13 @@ Project::assemble() const {
 int Project::build(
     bool release
 ) const {
+    return build_target(release, {});
+}
+
+int Project::build_target(
+    bool release,
+    std::string_view target
+) const {
     (void) assemble();
 
     const int configured =
@@ -1239,7 +1246,8 @@ int Project::build(
 
     return build_generated(
         root_,
-        release
+        release,
+        target
     );
 }
 
@@ -1247,7 +1255,7 @@ int Project::run(
     bool release
 ) const {
     const int built =
-        build(release);
+        build_target(release, "app");
 
     if (built != 0) {
         return built;
