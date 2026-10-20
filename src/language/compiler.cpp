@@ -149,9 +149,6 @@ CompilationResult finish(
     const CompilerOptions& options,
     const SourceCatalog& sources
 ) {
-    if (options.validate_only && options.verify_ir_only) {
-        throw std::invalid_argument("validate_only and verify_ir_only cannot both be enabled");
-    }
     CompilationResult result; result.diagnostics = std::move(diagnostics);
     if (!result.diagnostics.empty()) {
         normalize_diagnostics(result.diagnostics, sources);
@@ -176,9 +173,7 @@ CompilationResult finish(
             }
             throw std::logic_error(message);
         }
-        if (!options.verify_ir_only) {
-            result.code = CppEmitter{}.emit(ir);
-        }
+        result.code = CppEmitter{}.emit(ir);
     }
     return result;
 }
