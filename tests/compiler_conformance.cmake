@@ -193,8 +193,22 @@ if(NOT lex_check_code STREQUAL lex_format_code OR
    NOT semantic_check_code STREQUAL semantic_ir_code)
     message(FATAL_ERROR "Compiler diagnostic codes differ across equivalent CLI modes")
 endif()
-if(NOT semantic_check_code STREQUAL "GNR2202")
-    message(FATAL_ERROR "Unexpected undefined-symbol diagnostic: ${semantic_check_code}")
+# The invalid return also produces a return-type mismatch (GNR2214),
+# which may precede the underlying unknown-name diagnostic (GNR2202).
+# Require the expected root-cause code anywhere in the full diagnostic output.
+# The first-code parity above still detects mode-specific ordering differences.
+# Verify the full rendered error includes the unknown-name diagnostic as well.
+execute_process(
+    COMMAND "${GUNGNIRC}" "invalid-semantic.gnr" --check
+    WORKING_DIRECTORY "${GUNGNIR_OUTPUT_DIR}"
+    RESULT_VARIABLE semantic_code_result
+    OUTPUT_VARIABLE semantic_code_output
+    ERROR_VARIABLE semantic_code_error
+)
+if(NOT semantic_code_result EQUAL 1 OR
+   NOT semantic_code_output STREQUAL "" OR
+   NOT semantic_code_error MATCHES "GNR2202")
+    message(FATAL_ERROR "Expected unknown-name diagnostic GNR2202 in semantic failure output")
 endif()
 
 file(SHA256 "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" diagnostics_hash)
