@@ -230,7 +230,7 @@ CompilationResult Compiler::compile_project(const std::filesystem::path& root, c
     std::vector<std::filesystem::path> files;
     if (!std::filesystem::is_directory(root)) return {{},{{DiagnosticLevel::error,{root.string()},"Project root is not a directory","GNR2100",{}}},{}};
     for (auto it = std::filesystem::recursive_directory_iterator(root); it != std::filesystem::recursive_directory_iterator{}; ++it) {
-        if (it->is_directory() && (it->path().filename() == ".git" || it->path().filename() == ".gungnir" || it->path().filename() == "build" || it->path().filename() == "vendor")) { it.disable_recursion_pending(); continue; }
+        if (it->is_directory() && (it->path().filename() == ".git" || it->path().filename() == ".gungnir" || it->path().filename() == "build" || it->path().filename() == "vendor" || it->path().filename() == "storage")) { it.disable_recursion_pending(); continue; }
         if (it->is_regular_file() && it->path().extension() == ".gnr") files.push_back(std::filesystem::absolute(it->path()));
     }
     return compile_files(root,std::move(files),options);

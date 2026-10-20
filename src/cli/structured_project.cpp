@@ -111,13 +111,10 @@ std::filesystem::path Project::make(std::string_view kind,String name,String dep
 }
 
 std::filesystem::path Project::assemble_structured() const {
-    std::vector<std::filesystem::path> sources;
-    for (auto it = std::filesystem::recursive_directory_iterator(root_); it != std::filesystem::recursive_directory_iterator{}; ++it) {
-        const auto name = it->path().filename().string();
-        if (it->is_directory() && (name == ".git" || name == ".gungnir" || name == "build" || name == "vendor" || name == "storage")) { it.disable_recursion_pending(); continue; }
-        if (it->is_regular_file() && it->path().extension() == ".gnr") sources.push_back(it->path());
-    }
-    const auto result = language::Compiler{}.compile_files(root_,sources);
+    // Use the canonical project source discovery and validate without
+    // generating an unused monolithic C++ translation unit.
+    const auto result = language::Compiler{}.compile_project(
+        root_, language::CompilerOptions{.validate_only = true});
     check(result.diagnostics);
     if (!result.validated) throw std::runtime_error("Project validation failed");
     const auto& project = *result.validated;

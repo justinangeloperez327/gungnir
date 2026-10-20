@@ -22,12 +22,22 @@ int main() {
     struct Cleanup { std::filesystem::path path; ~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);} } cleanup{root};
     auto project=gungnir::cli::Project::create(root,"sample");
     assert(project.structured() && project.name()=="sample");
+    // Both project compilation and application assembly must ignore generated
+    // and application-data directories, even when they contain invalid .gnr.
+    for (const auto directory : {".git", ".gungnir", "build", "vendor", "storage"}) {
+        const auto ignored = root / directory / "nested";
+        std::filesystem::create_directories(ignored);
+        write(ignored / "invalid.gnr", "function int broken( {\n");
+    }
     (void)project.make("model","User");
     (void)project.make("event","Created");
     (void)project.make("listener","Record","app.events.Created::Created");
     (void)project.make("policy","User","app.models.User::User");
     (void)project.make("notification","Welcome","app.models.User::User");
     for(const auto kind:{"job","mail","request","middleware","migration","controller"}) (void)project.make(kind,"Sample");
+    const auto validated=Compiler{}.compile_project(root,{.validate_only=true});
+    assert(validated.success() && validated.validated && validated.code.empty());
+    assert(!validated.validated->syntax().modules.empty());
     const auto main=project.assemble();
     const auto route_file=root/"routes/web.gnr";
     auto generated_app=read(main);
