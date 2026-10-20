@@ -202,6 +202,10 @@ if(NOT semantic_check_stderr MATCHES "GNR2202" OR
     message(FATAL_ERROR "Semantic failures must include the unknown-name diagnostic GNR2202")
 endif()
 
-file(SHA256 "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" diagnostics_hash)
+# On Windows CMake writes CRLF snapshots; hash normalized content so
+# manifest checksums compare the same diagnostic bytes across toolchains.
+file(READ "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" diagnostics_snapshot)
+string(REPLACE "\r\n" "\n" diagnostics_snapshot "${diagnostics_snapshot}")
+string(SHA256 diagnostics_hash "${diagnostics_snapshot}")
 file(APPEND "${GUNGNIR_OUTPUT_DIR}/manifest.txt"
      "diagnostics.txt ${diagnostics_hash}\n")
