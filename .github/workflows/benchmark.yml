@@ -8,6 +8,9 @@ on:
       - "src/**"
       - "CMakeLists.txt"
       - ".github/workflows/benchmark.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
   push:
     branches:
       - main
@@ -17,6 +20,9 @@ on:
       - "src/**"
       - "CMakeLists.txt"
       - ".github/workflows/benchmark.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
   workflow_dispatch:
 
 concurrency:
