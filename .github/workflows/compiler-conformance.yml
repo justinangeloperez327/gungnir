@@ -213,7 +213,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for file in program.cpp program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir services.cpp services.validated services.ir routing.cpp routing.validated routing.ir validation.cpp validation.validated validation.ir background.cpp background.validated background.ir application.cpp application.validated application.ir delivery.cpp delivery.validated delivery.ir; do
+          for file in diagnostics.txt program.cpp program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir services.cpp services.validated services.ir routing.cpp routing.validated routing.ir validation.cpp validation.validated validation.ir background.cpp background.validated background.ir application.cpp application.validated application.ir delivery.cpp delivery.validated delivery.ir; do
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-Clang/$file"
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-MSVC/$file"
           done
