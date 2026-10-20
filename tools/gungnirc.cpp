@@ -49,7 +49,7 @@ void print_contract() {
 
 void usage() {
     std::cerr
-        << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] "
+        << "Usage: gungnirc <input.gnr> [-o output.cpp] [--check] [--verify-ir] "
            "[--no-line-directives] [--project] [--dump-validated-ast] "
            "[--dump-cpp-ir] [--format] [--compat] [--strict]\n"
            "       gungnirc --version\n"
@@ -115,6 +115,7 @@ int main(int argc, char** argv) {
     std::filesystem::path input_path;
     std::filesystem::path output_path;
     bool check_only = false;
+    bool verify_ir_only = false;
     bool emit_line_directives = true;
     bool format_only = false;
     bool compatibility = false, compatibility_requested = false;
@@ -140,6 +141,10 @@ int main(int argc, char** argv) {
         if (argument == "--dump-cpp-ir") { dump_ir = true; continue; }
         if (argument == "--check") {
             check_only = true;
+            continue;
+        }
+        if (argument == "--verify-ir") {
+            verify_ir_only = true;
             continue;
         }
 
@@ -180,6 +185,12 @@ int main(int argc, char** argv) {
         std::cerr << "gungnirc: error: --compat cannot be combined with project or structured compiler dumps\n";
         return 2;
     }
+    if (verify_ir_only && (check_only || format_only || compatibility_requested ||
+                           dump_validated || dump_ir || !output_path.empty())) {
+        std::cerr << "gungnirc: error: --verify-ir cannot be combined with "
+                     "--check, --format, --compat, dumps, or -o\n";
+        return 2;
+    }
 
     try {
         if (format_only) {
@@ -202,6 +213,7 @@ int main(int argc, char** argv) {
             gungnir::language::CompilerOptions options;
             options.emit_line_directives = emit_line_directives;
             options.validate_only = check_only || dump_validated || dump_ir;
+            options.verify_ir_only = verify_ir_only;
             const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
             for (const auto& diagnostic : result.diagnostics) {
                 std::cerr
@@ -209,7 +221,7 @@ int main(int argc, char** argv) {
                     << '\n';
             }
             if (!result.success()) return 1;
-            if (!check_only || dump_validated || dump_ir) {
+            if (dump_validated || dump_ir || (!check_only && !verify_ir_only)) {
                 std::string content;
                 if (dump_validated) {
                     content = gungnir::language::dump_validated(*result.validated);
