@@ -343,7 +343,11 @@ jobs:
     timeout-minutes: 20
     services:
       mongodb:
-        image: mongo:8.0
+        # Temporary CI compatibility pin: MongoDB 8.x TCMalloc cannot start
+        # on GitHub runner Linux kernels 6.19–7.0.13 (SERVER-121912).
+        # MongoDB 7.0 is unaffected. Restore 8.x acceptance on a known-safe
+        # runner/kernel when available; keep the application adapter unchanged.
+        image: mongo:7.0.41-jammy
         ports:
           - 27017:27017
         options: >-
