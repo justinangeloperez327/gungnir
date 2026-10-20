@@ -218,11 +218,34 @@ def response(path, data=None, content_type=None):
         return result.status, result.read().decode(), result.headers
 
 
-# `run` propagates child failure status, including bootstrap failures.
+# A project-wide build produces all entrypoints, while run/dev should rebuild
+# only the app target. Removing unrelated binaries makes that distinction
+# observable in a real installed-SDK native build.
+def built_executable(name):
+    filename = name + (".exe" if os.name == "nt" else "")
+    candidates = [build / "Debug" / filename, build / filename]
+    matches = [candidate for candidate in candidates if candidate.is_file()]
+    assert matches, (name, candidates)
+    return matches[0]
+
+
+unrelated = [built_executable("migrations"), built_executable("background")]
+for executable in unrelated:
+    executable.unlink()
+# `run` must propagate the child failure without rebuilding unrelated targets.
 with (project / ".env").open("a") as output:
     output.write("DB_CONNECTION=does-not-exist\n")
 assert run("run", expect=1)
+assert all(not executable.exists() for executable in unrelated), "gungnir run rebuilt unrelated targets"
 (project / ".env").write_text(application_env)
+run("build")
+assert all(executable.is_file() for executable in unrelated)
+
+# On POSIX, launch the documented 'run dev' alias and verify app-only rebuilds.
+if os.name != "nt":
+    for executable in unrelated:
+        executable.unlink()
+
 with (project / "dev.log").open("w") as log:
     if os.name == "nt":
         # Windows verifies native HTTP startup; signal/watch lifecycle runs on
@@ -232,9 +255,11 @@ with (project / "dev.log").open("w") as log:
             binary = build / "app.exe"
         process = subprocess.Popen([str(binary)], cwd=project, env=env, stdout=log, stderr=log)
     else:
-        process = subprocess.Popen([cli, "dev"], cwd=project, env=env, stdout=log, stderr=log)
+        process = subprocess.Popen([cli, "run", "dev"], cwd=project, env=env, stdout=log, stderr=log)
     try:
         wait_response("first", process)
+        if os.name != "nt":
+            assert all(not executable.exists() for executable in unrelated), "gungnir run dev rebuilt unrelated targets"
         assert response("/background")[0] == 200
         assert (project / "storage/event.txt").read_text() == "event done"
         payload = {"code": "GNR", "profile": {"email": "a@example.test", "admin": True}, "secret": "omit"}
@@ -291,6 +316,9 @@ with (project / "dev.log").open("w") as log:
         if process.poll() is None:
             stop(process)
 if os.name != "nt":
+    assert all(not executable.exists() for executable in unrelated), "gungnir dev rebuilt unrelated targets"
+    run("build")
+    assert all(executable.is_file() for executable in unrelated)
     for command in ("queue:work", "schedule:work"):
         background = build / "background"
         with (project / "background.log").open("w") as log:

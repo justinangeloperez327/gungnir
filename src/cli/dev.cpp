@@ -44,7 +44,7 @@ int Project::dev() const {
     const auto rebuild=[&] {
         try {
             std::cerr << "gungnir dev: building\n";
-            const auto code=build(false);
+            const auto code=build_target(false, "app");
             if(code!=0) { std::cerr << "gungnir dev: build failed (" << code << "); waiting for changes\n"; return; }
             if(stopped) return;
             auto executable=root_ / ".gungnir/build/app";
