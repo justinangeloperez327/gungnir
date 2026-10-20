@@ -119,6 +119,9 @@ struct CompilerOptions {
     // Validation-only mode stops at ValidatedProject. It is used by
     // authoritative semantic checks and compiler inspection tooling.
     bool validate_only{false};
+    // Run C++ IR lowering and verification, but do not serialize generated C++.
+    // Mutually exclusive with validate_only.
+    bool verify_ir_only{false};
 };
 struct ResolvedType { std::string name, cpp_name; std::vector<TypeId> arguments; bool optional{false}; };
 enum class ResolvedSymbolKind { declaration, callable, parameter, local, field, injection, builtin };
