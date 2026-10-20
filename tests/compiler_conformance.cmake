@@ -144,3 +144,68 @@ foreach(file_name IN ITEMS program.validated program.ir modules.cpp orm.cpp orm.
         "${file_name} ${file_hash}\n"
     )
 endforeach()
+
+# Failed-source diagnostic output is part of the cross-toolchain compiler
+# conformance contract, not only successful C++ and IR serialization.
+# Use relative input names and an isolated working directory so diagnostic
+# file paths do not depend on runner filesystem layout.
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" "")
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/invalid-lex.gnr" "/* unterminated comment\n")
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/invalid-syntax.gnr" "function int broken( {\n")
+file(WRITE "${GUNGNIR_OUTPUT_DIR}/invalid-semantic.gnr"
+     "function int broken() { return unknown; }\n")
+
+function(snapshot_diagnostic label source mode)
+    execute_process(
+        COMMAND "${GUNGNIRC}" "${source}" "${mode}"
+        WORKING_DIRECTORY "${GUNGNIR_OUTPUT_DIR}"
+        RESULT_VARIABLE status
+        OUTPUT_VARIABLE stdout
+        ERROR_VARIABLE stderr
+    )
+    if(NOT status EQUAL 1 OR NOT stdout STREQUAL "")
+        message(FATAL_ERROR "${label}: expected a failing, output-free compiler check; exit=${status}; stdout=${stdout}; stderr=${stderr}")
+    endif()
+
+    # MSVC's text-mode stderr can use CRLF; normalize line endings only.
+    string(REPLACE "\r\n" "\n" stderr "${stderr}")
+    string(REGEX MATCH "GNR[0-9][0-9][0-9][0-9]" code "${stderr}")
+    if(code STREQUAL "" OR
+       NOT stderr MATCHES "${source}:[0-9]+:[0-9]+" OR
+       NOT stderr MATCHES "\\^")
+        message(FATAL_ERROR "${label}: missing diagnostic code, source position or caret:\n${stderr}")
+    endif()
+
+    file(APPEND "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt"
+         "=== ${label} ===\n${stderr}\n")
+    set("${label}_code" "${code}" PARENT_SCOPE)
+    set("${label}_stderr" "${stderr}" PARENT_SCOPE)
+endfunction()
+
+snapshot_diagnostic(lex_check "invalid-lex.gnr" --check)
+snapshot_diagnostic(lex_format "invalid-lex.gnr" --format)
+snapshot_diagnostic(syntax_check "invalid-syntax.gnr" --check)
+snapshot_diagnostic(syntax_format "invalid-syntax.gnr" --format)
+snapshot_diagnostic(semantic_check "invalid-semantic.gnr" --check)
+snapshot_diagnostic(semantic_ir "invalid-semantic.gnr" --verify-ir)
+
+if(NOT lex_check_code STREQUAL lex_format_code OR
+   NOT syntax_check_code STREQUAL syntax_format_code OR
+   NOT semantic_check_code STREQUAL semantic_ir_code)
+    message(FATAL_ERROR "Compiler diagnostic codes differ across equivalent CLI modes")
+endif()
+# The invalid return also produces a return-type mismatch (GNR2214),
+# which can appear before the underlying unknown-name diagnostic (GNR2202).
+# Check the complete failure output rather than assuming the root cause is first.
+if(NOT semantic_check_stderr MATCHES "GNR2202" OR
+   NOT semantic_ir_stderr MATCHES "GNR2202")
+    message(FATAL_ERROR "Semantic failures must include the unknown-name diagnostic GNR2202")
+endif()
+
+# On Windows CMake writes CRLF snapshots; hash normalized content so
+# manifest checksums compare the same diagnostic bytes across toolchains.
+file(READ "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" diagnostics_snapshot)
+string(REPLACE "\r\n" "\n" diagnostics_snapshot "${diagnostics_snapshot}")
+string(SHA256 diagnostics_hash "${diagnostics_snapshot}")
+file(APPEND "${GUNGNIR_OUTPUT_DIR}/manifest.txt"
+     "diagnostics.txt ${diagnostics_hash}\n")
