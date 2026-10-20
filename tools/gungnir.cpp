@@ -93,7 +93,7 @@ void help() {
         "  gungnir build|run [--release]\n"
         "  gungnir queue:work [--once] [--release]\n"
         "  gungnir schedule:run|schedule:work [--release]\n"
-        "  gungnir dev\n"
+        "  gungnir dev (or gungnir run dev)\n"
         "  gungnir lsp\n"
         "  gungnir make:model|controller|middleware|migration|request|job|event|mail <name>\n"
         "  gungnir make:listener|policy|notification <name> <module.path::Type>\n"
@@ -134,7 +134,10 @@ int main(int argc,char** argv) {
             }
             std::cout << "Created " << std::filesystem::relative(created,project.root()).generic_string() << '\n'; return 0;
         }
-        if(command=="dev") { if(argc!=2) throw std::invalid_argument("Usage: gungnir dev"); return project.dev(); }
+        if(command=="dev" || (command=="run" && argc==3 && std::string_view{argv[2]}=="dev")) {
+            if(command=="dev" && argc!=2) throw std::invalid_argument("Usage: gungnir dev");
+            return project.dev();
+        }
         if(command=="queue:work" || command=="schedule:run" || command=="schedule:work") {
             bool once=false, release=false;
             for (int i=2;i<argc;++i) {
