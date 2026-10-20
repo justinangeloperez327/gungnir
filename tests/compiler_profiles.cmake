@@ -9,10 +9,12 @@ file(MAKE_DIRECTORY "${root}")
 set(structured "${root}/structured.gnr")
 set(compatibility "${root}/compatibility.gnr")
 set(invalid_semantic "${root}/invalid-semantic.gnr")
+set(invalid_syntax "${root}/invalid-syntax.gnr")
 
 file(WRITE "${structured}" "function int answer() { return 42; }\n")
 file(WRITE "${compatibility}" "class LegacyController : Controller { Response index() { return text(\"ok\"); } }\n")
 file(WRITE "${invalid_semantic}" "function int missing(bool flag) { if (flag) { return 1; } }\n")
+file(WRITE "${invalid_syntax}" "function int broken( {\n")
 
 execute_process(
     COMMAND "${GUNGNIRC}" "${structured}" --check
@@ -109,6 +111,59 @@ execute_process(
 )
 if(NOT strict_alias EQUAL 0)
     message(FATAL_ERROR "--strict must remain a structured-profile compatibility alias")
+endif()
+
+# Explicit compiler modes are mutually exclusive regardless of flag order.
+foreach(flags IN ITEMS "--compat;--strict" "--strict;--compat")
+    execute_process(
+        COMMAND "${GUNGNIRC}" "${structured}" ${flags} --check
+        RESULT_VARIABLE conflicting_modes_result
+        OUTPUT_VARIABLE conflicting_modes_output
+        ERROR_VARIABLE conflicting_modes_error
+    )
+    if(NOT conflicting_modes_result EQUAL 2 OR
+       NOT conflicting_modes_output STREQUAL "" OR
+       NOT conflicting_modes_error MATCHES "--compat and --strict are mutually exclusive")
+        message(FATAL_ERROR "Conflicting compiler profiles must fail with usage error in both orders: ${flags}")
+    endif()
+endforeach()
+
+# Formatting errors must retain source location, diagnostic code, and caret.
+execute_process(
+    COMMAND "${GUNGNIRC}" "${invalid_syntax}" --check
+    RESULT_VARIABLE syntax_check_result
+    OUTPUT_VARIABLE syntax_check_output
+    ERROR_VARIABLE syntax_check_error
+)
+execute_process(
+    COMMAND "${GUNGNIRC}" "${invalid_syntax}" --format
+    RESULT_VARIABLE syntax_format_result
+    OUTPUT_VARIABLE syntax_format_output
+    ERROR_VARIABLE syntax_format_error
+)
+if(NOT syntax_check_result EQUAL 1 OR NOT syntax_format_result EQUAL 1 OR
+   NOT syntax_check_output STREQUAL "" OR NOT syntax_format_output STREQUAL "" OR
+   NOT syntax_check_error MATCHES "GNR[0-9][0-9][0-9][0-9]" OR
+   NOT syntax_format_error MATCHES "GNR[0-9][0-9][0-9][0-9]" OR
+   NOT syntax_format_error MATCHES "invalid-syntax.gnr" OR
+   NOT syntax_format_error MATCHES "\\^")
+    message(FATAL_ERROR "--format syntax errors must carry normal structured diagnostics: ${syntax_format_error}")
+endif()
+string(REGEX MATCH "GNR[0-9][0-9][0-9][0-9]" checked_syntax_code "${syntax_check_error}")
+string(REGEX MATCH "GNR[0-9][0-9][0-9][0-9]" formatted_syntax_code "${syntax_format_error}")
+if(NOT checked_syntax_code STREQUAL formatted_syntax_code)
+    message(FATAL_ERROR "--format must preserve the same primary syntax diagnostic code as --check")
+endif()
+
+set(format_output "${root}/invalid-format.cpp")
+execute_process(
+    COMMAND "${GUNGNIRC}" "${invalid_syntax}" --format -o "${format_output}"
+    RESULT_VARIABLE syntax_format_file_result
+    OUTPUT_QUIET
+    ERROR_QUIET
+)
+if(NOT syntax_format_file_result EQUAL 1 OR EXISTS "${format_output}")
+    message(FATAL_ERROR "Invalid formatted source must never write an output file")
 endif()
 
 execute_process(

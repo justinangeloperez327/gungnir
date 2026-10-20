@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
     bool verify_ir_only = false;
     bool emit_line_directives = true;
     bool format_only = false;
-    bool compatibility = false, compatibility_requested = false;
+    bool compatibility_requested = false, strict_requested = false;
     bool project = false, dump_validated = false, dump_ir = false;
 
     for (int index = 1; index < argc; ++index) {
@@ -134,8 +134,8 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        if (argument == "--strict") { compatibility = false; continue; }
-        if (argument == "--compat") { compatibility = true; compatibility_requested = true; continue; }
+        if (argument == "--strict") { strict_requested = true; continue; }
+        if (argument == "--compat") { compatibility_requested = true; continue; }
         if (argument == "--project") { project = true; continue; }
         if (argument == "--dump-validated-ast") { dump_validated = true; continue; }
         if (argument == "--dump-cpp-ir") { dump_ir = true; continue; }
@@ -176,6 +176,12 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    if (compatibility_requested && strict_requested) {
+        std::cerr << "gungnirc: error: --compat and --strict are mutually exclusive\n";
+        return 2;
+    }
+    const bool compatibility = compatibility_requested;
+
     if (dump_validated && dump_ir) {
         std::cerr << "gungnirc: error: choose one compiler dump mode\n";
         return 2;
@@ -197,8 +203,17 @@ int main(int argc, char** argv) {
             if (project || dump_validated || dump_ir) throw std::invalid_argument("--format requires a single source file and cannot dump compiler IR");
             const auto source = read_file(input_path);
             if (!compatibility) {
-                auto syntax = gungnir::language::SyntaxParser{}.parse(source,input_path.generic_string());
-                if (!syntax.diagnostics.empty()) throw std::invalid_argument(syntax.diagnostics.front().message);
+                const auto syntax = gungnir::language::SyntaxParser{}.parse(
+                    source, input_path.generic_string()
+                );
+                if (!syntax.diagnostics.empty()) {
+                    for (const auto& diagnostic : syntax.diagnostics) {
+                        std::cerr << gungnir::language::DiagnosticRenderer::render(
+                            diagnostic, source
+                        ) << '\n';
+                    }
+                    return 1;
+                }
             }
             gungnir::language::Formatter formatter;
             const auto formatted = formatter.format(source);
