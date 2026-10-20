@@ -18,6 +18,12 @@ Both checks support a single `.gnr` file or `--project <directory>`.
 compiler dumps, or `-o`. It verifies compiler IR only: it does not emit C++,
 invoke CMake, link native code, or start the application.
 
+The structured compiler is the default. `--strict` is an explicit alias for
+that mode, while `--compat` opts into the legacy transpiler for older source.
+Do not combine `--strict` and `--compat` (either order is rejected). Invalid
+structured source passed to `--format` reports the same diagnostic codes and
+source locations as a compiler syntax check.
+
 A successful source check does not prove a database connection, an HTTP
 listener or an external adapter is configured correctly. Start the application
 and exercise the real endpoints for those checks.
