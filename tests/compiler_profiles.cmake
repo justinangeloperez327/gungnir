@@ -149,6 +149,11 @@ if(NOT syntax_check_result EQUAL 1 OR NOT syntax_format_result EQUAL 1 OR
    NOT syntax_format_error MATCHES "\\^")
     message(FATAL_ERROR "--format syntax errors must carry normal structured diagnostics: ${syntax_format_error}")
 endif()
+string(REGEX MATCH "GNR[0-9][0-9][0-9][0-9]" checked_syntax_code "${syntax_check_error}")
+string(REGEX MATCH "GNR[0-9][0-9][0-9][0-9]" formatted_syntax_code "${syntax_format_error}")
+if(NOT checked_syntax_code STREQUAL formatted_syntax_code)
+    message(FATAL_ERROR "--format must preserve the same primary syntax diagnostic code as --check")
+endif()
 
 set(format_output "${root}/invalid-format.cpp")
 execute_process(
