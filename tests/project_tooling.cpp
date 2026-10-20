@@ -27,7 +27,7 @@ int main() {
     for (const auto directory : {".git", ".gungnir", "build", "vendor", "storage"}) {
         const auto ignored = root / directory / "nested";
         std::filesystem::create_directories(ignored);
-        write(ignored / "invalid.gnr", "function int broken( {\\n");
+        write(ignored / "invalid.gnr", "function int broken( {\n");
     }
     (void)project.make("model","User");
     (void)project.make("event","Created");
