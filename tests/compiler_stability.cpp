@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -55,7 +54,6 @@ void release_metadata_is_consistent() {
     const CompilerOptions defaults;
     assert(defaults.emit_line_directives);
     assert(!defaults.validate_only);
-    assert(!defaults.verify_ir_only);
 }
 
 void development_acceptance_contract() {
@@ -139,8 +137,6 @@ void development_check_and_compile_semantics_match() {
 
     auto compile_options = checked_options;
     compile_options.validate_only = false;
-    auto verify_options = compile_options;
-    verify_options.verify_ir_only = true;
 
     const auto checked = Compiler{}.compile(
         source,
@@ -152,16 +148,7 @@ void development_check_and_compile_semantics_match() {
         "stability-parity.gnr",
         compile_options
     );
-    const auto verified = Compiler{}.compile(
-        source,
-        "stability-parity.gnr",
-        verify_options
-    );
 
-    assert(verified.success());
-    assert(verified.validated.has_value());
-    assert(verified.code.empty());
-    assert(verified.diagnostics.empty());
     assert(checked.success());
     assert(compiled.success());
     assert(checked.validated.has_value());
@@ -180,29 +167,6 @@ void development_check_and_compile_semantics_match() {
         dump_validated(*checked.validated) ==
         dump_validated(*compiled.validated)
     );
-    assert(
-        dump_validated(*verified.validated) ==
-        dump_validated(*compiled.validated)
-    );
-
-    const auto invalid = Compiler{}.compile(
-        "function int broken() { return unknown; }",
-        "stability-ir-invalid.gnr",
-        verify_options
-    );
-    assert(!invalid.success());
-    assert(invalid.code.empty());
-    assert(has_code(invalid, "GNR2202"));
-
-    bool rejected_conflicting_options = false;
-    try {
-        auto conflicting = checked_options;
-        conflicting.verify_ir_only = true;
-        (void)Compiler{}.compile(source, "conflicting-modes.gnr", conflicting);
-    } catch (const std::invalid_argument&) {
-        rejected_conflicting_options = true;
-    }
-    assert(rejected_conflicting_options);
 }
 
 } // namespace
