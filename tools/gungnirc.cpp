@@ -212,8 +212,7 @@ int main(int argc, char** argv) {
             gungnir::language::Compiler compiler;
             gungnir::language::CompilerOptions options;
             options.emit_line_directives = emit_line_directives;
-            options.validate_only = check_only || dump_validated || dump_ir;
-            options.verify_ir_only = verify_ir_only;
+            options.validate_only = check_only || verify_ir_only || dump_validated || dump_ir;
             const auto result = project ? compiler.compile_project(input_path,options) : compiler.compile(read_file(input_path),input_path.generic_string(),options);
             for (const auto& diagnostic : result.diagnostics) {
                 std::cerr
@@ -221,6 +220,19 @@ int main(int argc, char** argv) {
                     << '\n';
             }
             if (!result.success()) return 1;
+            if (verify_ir_only) {
+                const auto ir = gungnir::language::CppIrLowerer{}.lower(
+                    *result.validated, emit_line_directives
+                );
+                const auto verification = gungnir::language::CppIrVerifier{}.verify(ir);
+                if (!verification.success()) {
+                    std::cerr << "gungnirc: error: invalid C++ IR\n";
+                    for (const auto& error : verification.errors) {
+                        std::cerr << " - " << error << '\n';
+                    }
+                    return 1;
+                }
+            }
             if (dump_validated || dump_ir || (!check_only && !verify_ir_only)) {
                 std::string content;
                 if (dump_validated) {
