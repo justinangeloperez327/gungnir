@@ -179,6 +179,7 @@ function(snapshot_diagnostic label source mode)
     file(APPEND "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt"
          "=== ${label} ===\n${stderr}\n")
     set("${label}_code" "${code}" PARENT_SCOPE)
+    set("${label}_stderr" "${stderr}" PARENT_SCOPE)
 endfunction()
 
 snapshot_diagnostic(lex_check "invalid-lex.gnr" --check)
@@ -194,21 +195,11 @@ if(NOT lex_check_code STREQUAL lex_format_code OR
     message(FATAL_ERROR "Compiler diagnostic codes differ across equivalent CLI modes")
 endif()
 # The invalid return also produces a return-type mismatch (GNR2214),
-# which may precede the underlying unknown-name diagnostic (GNR2202).
-# Require the expected root-cause code anywhere in the full diagnostic output.
-# The first-code parity above still detects mode-specific ordering differences.
-# Verify the full rendered error includes the unknown-name diagnostic as well.
-execute_process(
-    COMMAND "${GUNGNIRC}" "invalid-semantic.gnr" --check
-    WORKING_DIRECTORY "${GUNGNIR_OUTPUT_DIR}"
-    RESULT_VARIABLE semantic_code_result
-    OUTPUT_VARIABLE semantic_code_output
-    ERROR_VARIABLE semantic_code_error
-)
-if(NOT semantic_code_result EQUAL 1 OR
-   NOT semantic_code_output STREQUAL "" OR
-   NOT semantic_code_error MATCHES "GNR2202")
-    message(FATAL_ERROR "Expected unknown-name diagnostic GNR2202 in semantic failure output")
+# which can appear before the underlying unknown-name diagnostic (GNR2202).
+# Check the complete failure output rather than assuming the root cause is first.
+if(NOT semantic_check_stderr MATCHES "GNR2202" OR
+   NOT semantic_ir_stderr MATCHES "GNR2202")
+    message(FATAL_ERROR "Semantic failures must include the unknown-name diagnostic GNR2202")
 endif()
 
 file(SHA256 "${GUNGNIR_OUTPUT_DIR}/diagnostics.txt" diagnostics_hash)
