@@ -22,6 +22,9 @@ on:
       - "SUPPORT.md"
       - "docs/**"
       - ".github/workflows/development.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
       - ".github/workflows/installer-ci.yml"
   push:
     branches:
@@ -46,6 +49,9 @@ on:
       - "SUPPORT.md"
       - "docs/**"
       - ".github/workflows/development.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
       - ".github/workflows/installer-ci.yml"
 
 permissions:

@@ -29,6 +29,9 @@ on:
       - "tests/structured_orm_contract.cpp"
       - "tests/fixtures/structured/**"
       - ".github/workflows/compiler-conformance.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
   push:
     branches:
       - main
@@ -59,6 +62,9 @@ on:
       - "tests/structured_orm_contract.cpp"
       - "tests/fixtures/structured/**"
       - ".github/workflows/compiler-conformance.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
 
 permissions:
   contents: read

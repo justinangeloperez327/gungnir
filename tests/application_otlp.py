@@ -76,6 +76,9 @@ service:
             env['TEST_OTLP_ENDPOINT'] = f'http://127.0.0.1:{collector_port}'
             subprocess.run(['cmake', '--install', str(build), '--prefix', str(stage)], check=True, stdout=subprocess.DEVNULL)
             cli = stage / 'bin' / cli_name
+            sdk_metadata = dict(line.split('=', 1) for line in
+                                (stage / 'share/gungnir/sdk.txt').read_text().splitlines())
+            expected_version = sdk_metadata['package_version']
             env['GUNGNIR_CMAKE_PREFIX'] = str(stage)
             subprocess.run([str(cli), 'new', 'ExternalObservability', str(project)], env=env, check=True, stdout=subprocess.DEVNULL)
 
@@ -255,9 +258,10 @@ inline void boot(gungnir::Application&) {}
                 for resource in envelope['resourceSpans']:
                     attributes = {item['key']:item['value']['stringValue'] for item in resource['resource']['attributes']}
                     assert attributes['service.name'] == 'observed-application'
-                    assert attributes['service.version'] == '1.0.0' and attributes['deployment.environment.name'] == 'acceptance'
+                    assert attributes['service.version'] == expected_version, attributes
+                    assert attributes['deployment.environment.name'] == 'acceptance'
                     for scope in resource['scopeSpans']:
-                        assert scope['scope']['name'] == 'gungnir' and scope['scope']['version'] == '1.0.1'
+                        assert scope['scope']['name'] == 'gungnir' and scope['scope']['version'] == expected_version
                         traces.extend((attributes, span) for span in scope['spans'])
             for envelope in lines(metric_file):
                 for resource in envelope['resourceMetrics']:

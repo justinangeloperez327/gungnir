@@ -10,6 +10,9 @@ on:
       - "tests/install_smoke/**"
       - "tests/public_api_contract.cpp"
       - ".github/workflows/native-api-abi.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
   push:
     branches:
       - main
@@ -21,12 +24,15 @@ on:
       - "tests/install_smoke/**"
       - "tests/public_api_contract.cpp"
       - ".github/workflows/native-api-abi.yml"
+      - ".github/workflows/release.yml"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-api-abi
+  group: native-api-abi-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

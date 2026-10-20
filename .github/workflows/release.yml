@@ -10,6 +10,8 @@ on:
       - "tests/sdk_application.py"
       - "src/cli/**"
       - "tools/wait_release_checks.py"
+      - "tools/resolve_release_identity.py"
+      - "tests/test_release_identity.py"
       - ".github/workflows/release.yml"
   push:
     branches:
@@ -22,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing stable release tag to package, for example v1.0.1
+        description: Stable tag to publish from the selected branch, for example v1.0.1
         required: true
         type: string
 
@@ -45,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+          ref: ${{ github.sha }}
       - name: Resolve pinned release identity
         id: identity
         env:
@@ -53,33 +55,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          channel="$(sed -nE 's/^set\(GUNGNIR_RELEASE_CHANNEL "([^"]*)"\).*/\1/p' CMakeLists.txt)"
-          if [[ "$channel" != stable ]]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          python3 tools/check_development_contract.py
-          version="$(sed -nE 's/^project\(gungnir VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)"
-          tag="v$version"
-          if [[ -n "$REQUESTED_TAG" && "$REQUESTED_TAG" != "$tag" ]]; then
-            echo "Requested tag differs from source version"
-            exit 1
-          fi
-          # Development after a published release must not republish that tag.
-          # Explicit tag and manual releases retain their immutable-tag checks.
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
-            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
-              echo "Release $tag already exists; continuing post-release development"
-              echo "enabled=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            else
-              result=$?
-              if [[ "$result" != 2 ]]; then exit "$result"; fi
-            fi
-          fi
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          python3 -m unittest discover -s tests -p 'test_release_identity.py'
+          python3 tools/resolve_release_identity.py
+
+      - name: Validate enabled release contract
+        if: steps.identity.outputs.enabled == 'true'
+        run: python3 tools/check_development_contract.py
 
   build-linux:
     needs: identity
