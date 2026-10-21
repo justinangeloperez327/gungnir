@@ -27,11 +27,51 @@ public:
     std::size_t next{0};
     std::size_t reconnects{0};
     std::size_t acquire_timeouts{0};
+    std::mutex factory_mutex;
     mutable std::mutex mutex;
     std::condition_variable ready;
 };
 
 namespace {
+
+// The entry remains exclusive while driver callbacks run without the pool
+// mutex. Aliasing shared_ptrs keep this reservation alive for the full lease.
+class EntryLease {
+public:
+    EntryLease(
+        std::shared_ptr<ConnectionPool::Impl> impl,
+        std::size_t index
+    ) noexcept
+        : impl_(std::move(impl)), index_(index) {}
+
+    EntryLease(const EntryLease&) = delete;
+    EntryLease& operator=(const EntryLease&) = delete;
+    EntryLease(EntryLease&&) = delete;
+    EntryLease& operator=(EntryLease&&) = delete;
+
+    ~EntryLease() {
+        {
+            std::lock_guard lock{impl_->mutex};
+            impl_->entries[index_].leased = false;
+        }
+        impl_->ready.notify_one();
+    }
+
+private:
+    std::shared_ptr<ConnectionPool::Impl> impl_;
+    std::size_t index_;
+};
+
+// The caller holds impl->mutex and has checked that the entry is available.
+std::shared_ptr<EntryLease> reserve_entry(
+    const std::shared_ptr<ConnectionPool::Impl>& impl,
+    std::size_t index
+) {
+    // Allocate first so allocation failure cannot leave the entry reserved.
+    auto lease = std::make_shared<EntryLease>(impl, index);
+    impl->entries[index].leased = true;
+    return lease;
+}
 
 void validate_options(
     const PoolOptions& options
@@ -58,8 +98,13 @@ make_connection(
         ConnectionPool::Impl
     >& impl
 ) {
-    auto driver =
-        impl->factory();
+    std::shared_ptr<Driver> driver;
+    {
+        // Preserve serialized factory calls without holding the mutex used
+        // by pool waiters, lease returns, cancellation and statistics.
+        std::lock_guard lock{impl->factory_mutex};
+        driver = impl->factory();
+    }
 
     if (!driver) {
         throw std::logic_error(
@@ -146,7 +191,10 @@ void ensure_healthy(
                 std::chrono::
                     steady_clock::now();
 
-            ++impl->reconnects;
+            {
+                std::lock_guard lock{impl->mutex};
+                ++impl->reconnects;
+            }
             return;
         } catch (...) {
             last_error =
@@ -239,6 +287,9 @@ ConnectionPool::acquire(
     auto wake =
         cancellation.on_cancel(
             [impl = impl_] {
+                // Pair notification with the waiter's locked token check so
+                // cancellation cannot be lost just before wait_until().
+                std::lock_guard lock{impl->mutex};
                 impl->ready.notify_all();
             }
         );
@@ -271,59 +322,22 @@ ConnectionPool::acquire(
                 continue;
             }
 
-            entry.leased = true;
+            auto lease = reserve_entry(impl_, index);
             impl_->next =
                 (
                     index + 1
                 ) %
                 impl_->entries.size();
 
-            try {
-                ensure_healthy(
-                    impl_,
-                    index
-                );
-            } catch (...) {
-                entry.leased = false;
-                impl_->ready.notify_one();
-                throw;
-            }
-
-            auto* raw =
-                entry.connection.get();
-
-            auto impl =
-                impl_;
-
             lock.unlock();
 
-            return
-                std::shared_ptr<
-                    Connection
-                >(
-                    raw,
-                    [
-                        impl,
-                        index
-                    ](
-                        Connection*
-                    ) noexcept {
-                        {
-                            std::lock_guard
-                                release{
-                                    impl->mutex
-                                };
+            cancellation.throw_if_cancelled();
+            ensure_healthy(impl_, index);
+            cancellation.throw_if_cancelled();
 
-                            impl->entries[
-                                index
-                            ].leased =
-                                false;
-                        }
-
-                        impl->ready
-                            .notify_one();
-                    }
-                );
+            return std::shared_ptr<Connection>{
+                std::move(lease), entry.connection.get()
+            };
         }
 
         if (
@@ -401,22 +415,19 @@ PoolStats ConnectionPool::stats()
 }
 
 void ConnectionPool::validate_idle() {
-    std::lock_guard lock{
-        impl_->mutex
-    };
-
     for (
         std::size_t index = 0;
         index <
             impl_->entries.size();
         ++index
     ) {
-        if (
-            impl_->entries[
-                index
-            ].leased
-        ) {
-            continue;
+        std::shared_ptr<EntryLease> lease;
+        {
+            std::lock_guard lock{impl_->mutex};
+            if (impl_->entries[index].leased) {
+                continue;
+            }
+            lease = reserve_entry(impl_, index);
         }
 
         ensure_healthy(
