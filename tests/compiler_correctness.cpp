@@ -571,6 +571,52 @@ void framework_contracts_fail_before_codegen() {
     assert_diagnostic_location(result, "event.gnr");
 }
 
+void optional_flow_rejects_stale_nonnull_facts() {
+    const std::vector<std::string_view> sources{
+        "function int broken(int? input, bool reset) { let value = input; "
+        "if (value == null) { return 0; } if (reset) { value = null; } return value; }",
+        "function int broken(int? input, bool reset) { let value = input; "
+        "if (value == null) { return 0; } while (reset) { value = null; break; } return value; }",
+        "function int broken(int? input) { let value = input; const read = () => { "
+        "if (value == null) { return 0; } return value; }; return value; }",
+        "function int broken(int? input, bool reset) { let value = input; "
+        "if (value != null) { if (reset) { value = null; } return value; } return 0; }",
+        "function int broken(int? input, bool repeat) { let value = input; "
+        "if (value == null) { return 0; } while (repeat) { const copy = value + 1; value = null; } return 0; }",
+        "function int broken(int? input) { let value = input; "
+        "if (value == null) { return 0; } for (let i = 0; i < 2; i++) { const copy = value + 1; value = null; } return 0; }",
+        "function int broken(int? input) { let value = input; "
+        "if (value == null) { return 0; } for (item in [1,2]) { const copy = value + 1; value = null; } return 0; }",
+        "function int broken(int? input) { let value = input; "
+        "if (value == null) { return 0; } while (value > 0) { value = null; } return 0; }",
+        "function int broken(int? input, bool reset) { let value = input; "
+        "if (value == null) { return 0; } for (let i = 0; i < 2; value++) { if (reset) { value = null; continue; } i++; } return 0; }",
+        "function int broken(int? input) { let value = input; "
+        "for (let i = 0; i < 2; value++) { if (value == null) { continue; } value++; } return 0; }",
+        "function int broken(int? input) { let value = input; "
+        "for (let i = 0; i < 0; i++) { if (value == null) { return 0; } } return value; }",
+        "function int broken(int? input, List<int> items) { let value = input; "
+        "for (item in items) { if (value == null) { return 0; } } return value; }",
+        "function int broken(int? input) { let value = input; const outer = () => { "
+        "const inner = () => { if (value == null) { return 0; } return value; }; return 0; }; return value; }"
+    };
+    for (const auto source : sources) {
+        auto options = deterministic_options();
+        const auto emitted = Compiler{}.compile(source, "null-flow.gnr", options);
+        options.validate_only = true;
+        const auto checked = Compiler{}.compile(source, "null-flow.gnr", options);
+        assert(!emitted.success() && !checked.success());
+        assert(emitted.code.empty() && checked.code.empty());
+        assert(!emitted.validated && !checked.validated);
+        assert(emitted.diagnostics.size() == checked.diagnostics.size());
+        assert_diagnostic_location(emitted, "null-flow.gnr");
+        for (std::size_t i = 0; i < emitted.diagnostics.size(); ++i) {
+            assert(emitted.diagnostics[i].code == checked.diagnostics[i].code);
+            assert(emitted.diagnostics[i].message == checked.diagnostics[i].message);
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -589,4 +635,5 @@ int main() {
     malformed_input_is_controlled();
     structured_model_metadata_is_canonical();
     framework_contracts_fail_before_codegen();
+    optional_flow_rejects_stale_nonnull_facts();
 }
