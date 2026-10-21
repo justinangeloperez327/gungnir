@@ -5,6 +5,8 @@ The structured frontend parses typed literals, calls, members, indexing, lists, 
 
 Value captures are immutable inside an arrow, including captures of outer `let` bindings. Read their fields or create a local `let` copy when mutation is needed. A `const` binding also prevents writes through its fields and indexed elements. Injected service handles retain access to their service.
 
+A null guard remains valid after an `if` only when every continuing branch preserves it. Assignments in a loop invalidate earlier guards for the assigned variable; check it in the loop condition or body before using its non-null value. Variables that the loop does not assign retain their guards. An arrow's guards apply within that arrow and do not establish guards in its caller; captured values retain the state they had when the arrow was created.
+
 ## Scope
 String interpolation, general native operators, safe optional method calls and general flow-sensitive narrowing are not supported. Await expressions inside null coalescing require a separate binding. Native APIs must be declared through compiler bindings. Framework compatibility expressions continue through the legacy parser.
 

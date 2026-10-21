@@ -16,6 +16,29 @@ file(WRITE "${compatibility}" "class LegacyController : Controller { Response in
 file(WRITE "${invalid_semantic}" "function int missing(bool flag) { if (flag) { return 1; } }\n")
 file(WRITE "${invalid_syntax}" "function int broken( {\n")
 
+foreach(flow_case IN ITEMS branch loop lambda)
+    set(flow_source "function int broken(int? input, bool reset) { let value = input; if (value == null) { return 0; } if (reset) { value = null; } return value; }")
+    if(flow_case STREQUAL "loop")
+        set(flow_source "function int broken(int? input, bool reset) { let value = input; if (value == null) { return 0; } while (reset) { value = null; break; } return value; }")
+    elseif(flow_case STREQUAL "lambda")
+        set(flow_source "function int broken(int? input) { let value = input; const read = () => { if (value == null) { return 0; } return value; }; return value; }")
+    endif()
+    set(flow_input "${root}/invalid-null-flow-${flow_case}.gnr")
+    file(WRITE "${flow_input}" "${flow_source}\n")
+    foreach(mode IN ITEMS --check --verify-ir)
+        execute_process(
+            COMMAND "${GUNGNIRC}" "${flow_input}" "${mode}"
+            RESULT_VARIABLE flow_result
+            OUTPUT_VARIABLE flow_output
+            ERROR_VARIABLE flow_error
+        )
+        if(NOT flow_result EQUAL 1 OR NOT flow_output STREQUAL "" OR
+           NOT flow_error MATCHES "GNR2214")
+            message(FATAL_ERROR "${mode} must reject stale ${flow_case} null facts: ${flow_error}")
+        endif()
+    endforeach()
+endforeach()
+
 # /dev/full opens successfully but rejects writes, including buffered flushes.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "/dev/full")
     foreach(mode IN ITEMS compile format ast ir compat)

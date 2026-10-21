@@ -47,6 +47,21 @@ function int mutateCounter() { let counter = MutableCounter(1); counter.count = 
 function int readCapturedCounter() { let counter = MutableCounter(3); const run = () => counter.count; return run(); }
 function int mutateLambdaLocal() { const run = () => { let counter = MutableCounter(1); counter.count++; return counter.increment(); }; return run(); }
 
+function int flowStableBranch(int? input, bool flag) { let value = input; if (value == null) { return 0; } if (flag) { const other = 1; } return value; }
+function int flowTerminatingBranch(int? input, bool reset) { let value = input; if (value == null) { return 0; } if (reset) { value = null; return 0; } return value; }
+function int flowRecheck(int? input, bool reset) { let value = input; if (value == null) { return 0; } if (reset) { value = null; } if (value == null) { return 9; } return value; }
+function int flowStableWhile(int? input) { let value = input; if (value == null) { return 0; } let total = 0; let i = 0; while (i < 3) { total += value; i++; } return total + value; }
+function int flowStableFor(int? input) { let value = input; if (value == null) { return 0; } let total = 0; for (let i = 0; i < 3; i++) { total += value; } return total + value; }
+function int flowStableEach(int? input) { let value = input; if (value == null) { return 0; } let total = 0; for (item in [1,2,3]) { total += value; } return total + value; }
+function int flowGuardedWhile(int? input) { let value = input; let total = 0; while (value != null) { total += value; value = null; } return total; }
+function int flowGuardedFor(int? input) { let value = input; let total = 0; for (let i = 0; value != null; i++) { total += value; value = null; } return total; }
+function int flowGuardedEach(int? input, List<int> items) { let value = input; let total = 0; for (item in items) { if (value == null) { continue; } total += value; value = null; } return total; }
+function int flowArrowIsolation(int? input) { let value = input; const read = () => { if (value == null) { return 0; } return value; }; const seen = read(); return (value ?? 9) + seen; }
+function int flowCapturedValue(int? input) { let value = input; if (value == null) { return 0; } const read = () => value; value = null; return read(); }
+function int flowShadowedFor(int? input) { let value = input; if (value == null) { return 0; } for (let value = 0; value < 2; value = value + 1) {} return value; }
+function int flowShadowedBody(int? input) { let value = input; if (value == null) { return 0; } let i = 0; while (i < 2) { let value = 0; value = 2; i++; } return value; }
+function int flowRepeatedGuard(int? input) { let value = input; if (value == null) { return 0; } if (null == value) { return 0; } return value; }
+
 controller Home { public index(Request request) { return text(request.header('X-Name')); } private int helper() { return 2; } }
 migration Helpers { up() { helper(); } down() {} private void helper() {} }
 

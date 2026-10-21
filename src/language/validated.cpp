@@ -44,7 +44,8 @@ public:
     unsigned loops = 0;
     TypeId return_type = invalid_id;
     std::vector<TypeId> returned;
-    std::unordered_set<SymbolId> narrowed;
+    using NullFacts = std::unordered_set<SymbolId>;
+    NullFacts narrowed;
     std::unordered_set<SyntaxId> awaited_calls;
     explicit ValidationEngine(SyntaxProject syntax, const CompilerOptions& options) : options(options) {
         v.syntax_ = std::move(syntax); v.expressions_.resize(v.syntax_.expressions.size());
@@ -826,7 +827,20 @@ public:
             return set(e.text == "=" ? assignment_target : lhs);
         }
         if (e.text == "&&" || e.text == "||") { if (lhs != type_id("bool") || rhs != type_id("bool")) report(e.origin, "Logical operands must be bool"); return set(type_id("bool")); }
-        if (e.text == "==" || e.text == "!=") { if (!(numeric(unoptional(lhs)) && numeric(unoptional(rhs))) && unoptional(lhs) != type_id("string") && unoptional(lhs) != type_id("bool") && type(lhs).name != "null" && type(rhs).name != "null") report(e.origin,"Equality is supported for scalar and optional scalar values"); if (!assignable(lhs, rhs) && !assignable(rhs, lhs)) report(e.origin, "Incompatible equality operands"); return set(type_id("bool")); }
+        if (e.text == "==" || e.text == "!=") {
+            const auto nullable_storage = [&](std::size_t operand, TypeId actual) {
+                const auto id = e.operands[operand];
+                const auto symbol = v.expressions_[id].symbol;
+                return v.syntax_.expressions[id].kind == SyntaxExpressionKind::name &&
+                    symbol != invalid_id && type(v.symbols_[symbol].type).optional
+                    ? v.symbols_[symbol].type : actual;
+            };
+            const auto left = type(rhs).name == "null" ? nullable_storage(0, lhs) : lhs;
+            const auto right = type(lhs).name == "null" ? nullable_storage(1, rhs) : rhs;
+            if (!(numeric(unoptional(left)) && numeric(unoptional(right))) && unoptional(left) != type_id("string") && unoptional(left) != type_id("bool") && type(left).name != "null" && type(right).name != "null") report(e.origin,"Equality is supported for scalar and optional scalar values");
+            if (!assignable(left, right) && !assignable(right, left)) report(e.origin, "Incompatible equality operands");
+            return set(type_id("bool"));
+        }
         if (e.text == "<" || e.text == ">" || e.text == "<=" || e.text == ">=") { if (!(numeric(lhs) && numeric(rhs)) && !(lhs == type_id("string") && rhs == lhs)) report(e.origin, "Incompatible comparison operands"); return set(type_id("bool")); }
         if (e.text == "+" && lhs == type_id("string") && rhs == lhs) return set(lhs);
         if (!numeric(lhs) || !numeric(rhs)) {
@@ -904,6 +918,7 @@ public:
     }
     TypeId lambda(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id];
+        const auto previous_narrowed = narrowed;
         auto previous_async = async_context; auto previous_return = return_type; auto previous_returns = std::move(returned); const auto previous_loops = loops;
         const auto first_lambda_symbol = v.symbols_.size();
         async_context = false; return_type = invalid_id; returned.clear(); loops = 0; scopes.emplace_back();
@@ -937,6 +952,7 @@ public:
             else { for (std::size_t i = 0; i + 1 < signature.size(); ++i) if (signature[i] != contextual[i]) report(e.origin,"Callback parameter type does not match its context"); if (type(contextual.back()).name != "Value" && !assignable(contextual.back(),inferred)) report(e.origin,"Callback return type does not match its context"); }
         }
         info.type = intern("Function", "auto", signature);
+        narrowed = previous_narrowed;
         async_context = previous_async; return_type = previous_return; returned = std::move(previous_returns); loops = previous_loops;
         return info.type;
     }
@@ -1773,6 +1789,77 @@ public:
         }
         return result;
     }
+
+    static NullFacts common_facts(NullFacts left, const NullFacts& right) {
+        std::erase_if(left, [&](SymbolId id) { return !right.contains(id); });
+        return left;
+    }
+
+    void refine_condition(SyntaxId id, bool truth) {
+        if (id == invalid_id) return;
+        const auto& condition = v.syntax_.expressions[id];
+        if (condition.kind != SyntaxExpressionKind::binary ||
+            (condition.text != "==" && condition.text != "!=")) return;
+        const auto left = condition.operands[0], right = condition.operands[1];
+        const auto candidate = v.syntax_.expressions[left].literal_type == "null"
+            ? right : v.syntax_.expressions[right].literal_type == "null" ? left : invalid_id;
+        if (candidate == invalid_id ||
+            v.syntax_.expressions[candidate].kind != SyntaxExpressionKind::name) return;
+        const auto symbol = v.expressions_[candidate].symbol;
+        if (symbol == invalid_id || !type(v.symbols_[symbol].type).optional) return;
+        if ((condition.text == "!=") == truth) narrowed.insert(symbol);
+        else narrowed.erase(symbol);
+    }
+
+    SymbolId existing_binding(const std::string& name) const {
+        for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
+            if (const auto found = scope->find(name); found != scope->end()) return found->second;
+        }
+        if (current_owner != invalid_id) {
+            const auto found = members.find(std::to_string(current_owner) + ":" + name);
+            if (found != members.end()) return found->second;
+        }
+        return invalid_id;
+    }
+
+    void expression_writes(SyntaxId id, const std::unordered_set<std::string>& shadowed, NullFacts& writes) const {
+        if (id == invalid_id) return;
+        const auto& expression = v.syntax_.expressions[id];
+        // Value-capture bodies execute separately and cannot write outer locals.
+        if (expression.kind == SyntaxExpressionKind::lambda) return;
+        if (expression.kind == SyntaxExpressionKind::binary && expression.text == "=") {
+            const auto& target = v.syntax_.expressions[expression.operands[0]];
+            if (target.kind == SyntaxExpressionKind::name && !shadowed.contains(target.text)) {
+                const auto symbol = existing_binding(target.text);
+                if (symbol != invalid_id) writes.insert(symbol);
+            }
+        }
+        for (auto operand : expression.operands) expression_writes(operand, shadowed, writes);
+    }
+
+    void statement_writes(const std::vector<SyntaxId>& body, NullFacts& writes,
+                          std::unordered_set<std::string> shadowed = {}) const {
+        for (auto id : body) {
+            const auto& statement = v.syntax_.statements[id];
+            auto nested = shadowed;
+            if (statement.kind == SyntaxStatementKind::for_) {
+                statement_writes(statement.parts, writes, nested);
+                for (auto part : statement.parts) {
+                    const auto& initial = v.syntax_.statements[part];
+                    if (initial.kind == SyntaxStatementKind::binding) nested.insert(initial.name);
+                }
+            }
+            expression_writes(statement.expression, nested, writes);
+            if (statement.kind == SyntaxStatementKind::binding) shadowed.insert(statement.name);
+            if (statement.kind == SyntaxStatementKind::for_in) nested.insert(statement.name);
+            statement_writes(statement.body, writes, nested);
+            statement_writes(statement.alternative, writes, nested);
+        }
+    }
+
+    void invalidate_facts(const NullFacts& writes) {
+        for (auto symbol : writes) narrowed.erase(symbol);
+    }
     void statements(const std::vector<SyntaxId>& body) {
         for (auto id : body) {
             const auto s = v.syntax_.statements[id];
@@ -1785,37 +1872,65 @@ public:
                 const auto actual = expression(s.expression, return_type == invalid_id ? std::nullopt : std::optional{return_type}); returned.push_back(actual);
                 if (return_type != invalid_id && return_type != type_id("inferred") && !assignable(return_type,actual)) report(s.origin, "Return type mismatch", "GNR2214");
             } else if (s.kind == SyntaxStatementKind::break_ || s.kind == SyntaxStatementKind::continue_) { if (!loops) report(s.origin, "Loop control outside a loop"); }
-            else if (s.kind == SyntaxStatementKind::if_ || s.kind == SyntaxStatementKind::while_) {
+            else if (s.kind == SyntaxStatementKind::if_) {
                 if (expression(s.expression) != type_id("bool")) report(s.origin,"Condition must be bool");
-                const auto previous = narrowed; SymbolId guarded = invalid_id; bool nonnull = false;
-                const auto& condition = v.syntax_.expressions[s.expression];
-                if (condition.kind == SyntaxExpressionKind::binary && (condition.text == "!=" || condition.text == "==")) {
-                    const auto a = condition.operands[0], b = condition.operands[1];
-                    const auto candidate = v.syntax_.expressions[a].literal_type == "null" ? b : v.syntax_.expressions[b].literal_type == "null" ? a : invalid_id;
-                    if (candidate != invalid_id && v.syntax_.expressions[candidate].kind == SyntaxExpressionKind::name) { guarded = v.expressions_[candidate].symbol; nonnull = condition.text == "!="; }
-                }
-                const bool body_returns = s.kind == SyntaxStatementKind::if_ && block_flow(s.body).terminates_path();
-                const bool alternative_returns = s.kind == SyntaxStatementKind::if_ && !s.alternative.empty() && block_flow(s.alternative).terminates_path();
-                if (guarded != invalid_id && nonnull) narrowed.insert(guarded);
-                scopes.emplace_back(); if (s.kind == SyntaxStatementKind::while_) ++loops; statements(s.body); if (s.kind == SyntaxStatementKind::while_) --loops; scopes.pop_back();
-                const bool body_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
-                narrowed = previous; if (guarded != invalid_id && !nonnull) narrowed.insert(guarded);
-                scopes.emplace_back(); statements(s.alternative); scopes.pop_back();
-                const bool alternative_keeps_nonnull = guarded != invalid_id && narrowed.contains(guarded);
+                const auto previous = narrowed;
+                refine_condition(s.expression, true);
+                scopes.emplace_back(); statements(s.body); scopes.pop_back();
+                auto body_facts = narrowed;
                 narrowed = previous;
-                if (s.kind == SyntaxStatementKind::if_ && guarded != invalid_id && body_returns != alternative_returns) {
-                    const bool continuation_keeps_nonnull = alternative_returns ? body_keeps_nonnull : alternative_keeps_nonnull;
-                    if (continuation_keeps_nonnull) narrowed.insert(guarded);
-                }
+                refine_condition(s.expression, false);
+                scopes.emplace_back(); statements(s.alternative); scopes.pop_back();
+                const bool body_continues = block_flow(s.body).falls_through;
+                const bool alternative_continues = block_flow(s.alternative).falls_through;
+                if (body_continues && alternative_continues) narrowed = common_facts(std::move(body_facts), narrowed);
+                else if (body_continues) narrowed = std::move(body_facts);
+                else if (!alternative_continues) narrowed.clear();
+            } else if (s.kind == SyntaxStatementKind::while_) {
+                const auto previous = narrowed;
+                NullFacts writes;
+                statement_writes(s.body, writes);
+                expression_writes(s.expression, {}, writes);
+                invalidate_facts(writes);
+                if (expression(s.expression) != type_id("bool")) report(s.origin,"Condition must be bool");
+                refine_condition(s.expression, true);
+                ++loops; scopes.emplace_back(); statements(s.body); scopes.pop_back(); --loops;
+                narrowed = previous;
+                invalidate_facts(writes);
             } else if (s.kind == SyntaxStatementKind::for_) {
-                scopes.emplace_back(); statements(s.parts); if (s.expression != invalid_id && expression(s.expression) != type_id("bool")) report(s.origin,"Loop condition must be bool"); ++loops; scopes.emplace_back(); statements(s.body); scopes.pop_back(); statements(s.alternative); --loops; scopes.pop_back();
+                scopes.emplace_back(); statements(s.parts);
+                const auto previous = narrowed;
+                NullFacts body_writes;
+                statement_writes(s.body, body_writes);
+                auto writes = body_writes;
+                statement_writes(s.alternative, writes);
+                expression_writes(s.expression, {}, writes);
+                invalidate_facts(writes);
+                if (s.expression != invalid_id && expression(s.expression) != type_id("bool")) report(s.origin,"Loop condition must be bool");
+                refine_condition(s.expression, true);
+                const auto iteration_entry = narrowed;
+                ++loops; scopes.emplace_back(); statements(s.body); scopes.pop_back();
+                // continue also reaches the step, so body-only guards cannot
+                // establish facts for it. Reassignments in the body can kill them.
+                narrowed = iteration_entry;
+                invalidate_facts(body_writes);
+                statements(s.alternative); --loops; scopes.pop_back();
+                narrowed = previous;
+                invalidate_facts(writes);
             } else if (s.kind == SyntaxStatementKind::for_in) {
                 const auto collection = expression(s.expression);
                 const auto& range = type(collection);
                 if (range.optional || (range.name != "List" && range.name != "Collection" && range.name != "Map")) {
                     report(s.origin,"for-in requires a non-optional List, Collection or Map"); continue;
                 }
-                scopes.emplace_back(); auto binding = symbol({ResolvedSymbolKind::local,s.name,s.name,type(collection).arguments[0],invalid_id,true}); v.bindings_[id] = binding; bind(s.name,binding,s.origin); ++loops; statements(s.body); --loops; scopes.pop_back();
+                scopes.emplace_back(); auto binding = symbol({ResolvedSymbolKind::local,s.name,s.name,type(collection).arguments[0],invalid_id,true}); v.bindings_[id] = binding; bind(s.name,binding,s.origin);
+                const auto previous = narrowed;
+                NullFacts writes;
+                statement_writes(s.body, writes);
+                invalidate_facts(writes);
+                ++loops; statements(s.body); --loops; scopes.pop_back();
+                narrowed = previous;
+                invalidate_facts(writes);
             } else if (s.kind == SyntaxStatementKind::block) { scopes.emplace_back(); statements(s.body); scopes.pop_back(); }
             else if (s.expression != invalid_id) expression(s.expression);
         }
