@@ -41,7 +41,9 @@ public:
         const auto directory=cwd.wstring();
         if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,TRUE,group?CREATE_NEW_PROCESS_GROUP:0,nullptr,cwd.empty()?nullptr:directory.c_str(),&info,&process))
             throw std::runtime_error("Unable to start " + arguments[0] + " (Windows error " + std::to_string(GetLastError()) + ")");
-        CloseHandle(process.hThread); handle_=process.hProcess;
+        CloseHandle(process.hThread);
+        handle_=process.hProcess;
+        group_id_=group ? process.dwProcessId : 0;
 #else
         std::vector<char*> argv; for(const auto& argument:arguments) argv.push_back(const_cast<char*>(argument.c_str())); argv.push_back(nullptr);
         group_=group;
@@ -60,7 +62,25 @@ public:
     int wait() { return collect(true).value_or(0); }
     void stop() noexcept {
 #ifdef _WIN32
-        if(handle_) { TerminateProcess(handle_,0); WaitForSingleObject(handle_,5000); CloseHandle(handle_); handle_=nullptr; }
+        if (!handle_) return;
+        if (WaitForSingleObject(handle_, 0) != WAIT_OBJECT_0) {
+            // A Windows console child created as its own process group can
+            // receive CTRL+BREAK without also stopping the dev CLI. That
+            // gives generated apps a chance to cancel requests and run their
+            // SignalWatcher-backed shutdown handlers.
+            const bool signalled = group_id_ != 0 &&
+                GetConsoleWindow() != nullptr &&
+                GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, group_id_) != 0;
+            if (!signalled || WaitForSingleObject(handle_, 3000) != WAIT_OBJECT_0) {
+                // A headless runner, detached child, or unresponsive process
+                // cannot accept the console event. Bound restart/shutdown.
+                TerminateProcess(handle_, 0);
+            }
+        }
+        WaitForSingleObject(handle_, 5000);
+        CloseHandle(handle_);
+        handle_=nullptr;
+        group_id_=0;
 #else
         if(pid_<=0) return;
         const auto target=group_?-pid_:pid_;
@@ -72,6 +92,7 @@ public:
 private:
 #ifdef _WIN32
     HANDLE handle_{nullptr};
+    DWORD group_id_{0};
 #else
     pid_t pid_{-1}; bool group_{false};
 #endif
@@ -79,7 +100,7 @@ private:
 #ifdef _WIN32
         if(!handle_) return {};
         const auto result=WaitForSingleObject(handle_,block?INFINITE:0); if(result==WAIT_TIMEOUT) return {};
-        DWORD code=1; GetExitCodeProcess(handle_,&code); CloseHandle(handle_); handle_=nullptr; return static_cast<int>(code);
+        DWORD code=1; GetExitCodeProcess(handle_,&code); CloseHandle(handle_); handle_=nullptr; group_id_=0; return static_cast<int>(code);
 #else
         if(pid_<=0) return {};
         int status=0; pid_t result;
