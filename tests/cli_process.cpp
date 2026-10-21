@@ -46,10 +46,11 @@ int main() {
 
     // The class must remain reusable after a synchronous launch exception.
     Child recovered;
+    bool launch_failed=false;
     try {
         recovered.start({"/gungnir-not-a-real-program/does-not-exist"});
-        throw std::runtime_error("Invalid command unexpectedly launched");
-    } catch(const std::runtime_error&) {}
+    } catch(const std::runtime_error&) { launch_failed=true; }
+    require(launch_failed,"Invalid command unexpectedly launched");
     recovered.start({"/bin/sh","-c","exit 0"});
     require(recovered.wait()==0,"Child must be reusable after a failed launch");
 }
