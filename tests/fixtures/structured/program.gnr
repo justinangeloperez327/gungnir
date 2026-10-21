@@ -62,6 +62,17 @@ function int flowShadowedFor(int? input) { let value = input; if (value == null)
 function int flowShadowedBody(int? input) { let value = input; if (value == null) { return 0; } let i = 0; while (i < 2) { let value = 0; value = 2; i++; } return value; }
 function int flowRepeatedGuard(int? input) { let value = input; if (value == null) { return 0; } if (null == value) { return 0; } return value; }
 
+function int guardedListIndex(List<int>? values) { if (values == null) { return -1; } return values[0]; }
+function int guardedMapIndex(Map<string,int>? values) { if (null != values) { return values['key']; } return -1; }
+function int guardedCollectionIndex(Collection<User>? values) { if (values == null) { return -1; } return values[0].id; }
+function Json guardedJsonIndex(Json? values) { if (values == null) { return null; } return values['key']; }
+function Json guardedDataIndex(Data? values) { if (values != null) { return values['key']; } return null; }
+function int guardedNestedIndex(List<List<int>?> values) { const row = values[0]; if (row == null) { return -1; } return row[0]; }
+function int coalescedListIndex(List<int>? values) { return (values ?? [9])[0]; }
+function int guardedListWrite(List<int>? input) { let values = input; if (values == null) { return -1; } values[0] = 7; values[0] += 2; return values[0]; }
+function int guardedMapWrite(Map<string,int>? input) { let values = input; if (values == null) { return -1; } values['key'] = 7; values['key'] += 2; return values['key']; }
+function int guardedCollectionWrite(Collection<User>? input, User replacement) { let values = input; if (values == null) { return -1; } values[0] = replacement; return values[0].id; }
+
 controller Home { public index(Request request) { return text(request.header('X-Name')); } private int helper() { return 2; } }
 migration Helpers { up() { helper(); } down() {} private void helper() {} }
 
