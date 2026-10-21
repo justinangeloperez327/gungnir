@@ -13,8 +13,21 @@ void interrupt(int signal) { stopped=signal; }
 struct Signals {
     using Handler=void(*)(int);
     Handler previous_int,previous_term;
-    Signals():previous_int(std::signal(SIGINT,interrupt)),previous_term(std::signal(SIGTERM,interrupt)) { stopped=0; }
-    ~Signals() { std::signal(SIGINT,previous_int); std::signal(SIGTERM,previous_term); }
+#ifdef _WIN32
+    Handler previous_break;
+#endif
+    Signals():previous_int(std::signal(SIGINT,interrupt)),previous_term(std::signal(SIGTERM,interrupt))
+#ifdef _WIN32
+        ,previous_break(std::signal(SIGBREAK,interrupt))
+#endif
+    { stopped=0; }
+    ~Signals() {
+        std::signal(SIGINT,previous_int);
+        std::signal(SIGTERM,previous_term);
+#ifdef _WIN32
+        std::signal(SIGBREAK,previous_break);
+#endif
+    }
 };
 using Snapshot=std::map<std::string,std::uint64_t>;
 Snapshot snapshot(const std::filesystem::path& root) {

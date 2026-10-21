@@ -13,6 +13,7 @@ on:
       - "tests/compiler_release_contract.cmake"
       - "tests/cli_integration.cmake"
       - "tests/generated_project.py"
+      - "tests/windows_dev.py"
       - "tests/sdk_application.py"
       - ".github/workflows/release.yml"
       - ".github/workflows/installer-ci.yml"
@@ -216,6 +217,14 @@ jobs:
               }
               finally {
                   Pop-Location
+              }
+
+              # Cover the actual Windows CLI watcher, not only launching app.exe.
+              # One installed-SDK profile is sufficient for the watcher lifecycle
+              # and keeps duplicate native compilations out of the application SDK job.
+              if ('${{ matrix.profile }}' -eq 'core') {
+                  python tests/windows_dev.py "$cli"
+                  if ($LASTEXITCODE -ne 0) { throw "Windows installed-SDK dev watcher acceptance test failed" }
               }
 
               python tests/sdk_application.py "$installDir"
