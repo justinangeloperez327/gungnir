@@ -6,6 +6,8 @@ Use `function int add(int left, int right = 2) { return left + right; }` with `g
 ## Scope
 Defaults currently require literal constants. Native overload resolution, variadic functions and general class inheritance are outside this profile. Async calls require explicit `await` inside an async callable.
 
+Declared instance methods require a mutable receiver. Use a `let` binding when calling these methods; a `const` instance or an immutable value capture is rejected with `GNR2208`. Methods on injected services remain available through their handles.
+
 
 
 - [Structured compiler API](../include/gungnir/language/compiler.hpp)

@@ -111,6 +111,11 @@ int main() {
     rejects("model User {} function Page<User?> invalid() { return User::paginate(); }", "GNR2311");
     rejects("model User {} function bool invalid() { return User::save(); }", "GNR2311");
     rejects("model User {} function bool invalid() { const user = User::findOrFail(1); return user.save(); }", "GNR2208");
+    rejects("model User {} function bool invalid() { let user = User::findOrFail(1); const run = () => user.save(); return run(); }", "GNR2208");
+    rejects("model User {} function void invalid() { const user = User::findOrFail(1); user.unloadRelations(); }", "GNR2208");
+    rejects("model User {} function void invalid() { let user = User::findOrFail(1); const run = () => user.unloadRelations(); run(); }", "GNR2208");
+    rejects("model Role {} model User { roles() { return belongsToMany<Role>(); } } function void invalid() { const user = User::findOrFail(1); user.roles.unload(); }", "GNR2208");
+    rejects("model Role {} model User { roles() { return belongsToMany<Role>(); } } function int invalid() { let user = User::findOrFail(1); const run = () => user.roles.attach(1); return run(); }", "GNR2208");
     rejects("model Post {} model User { posts() { return hasMany<Post>(); } } function int invalid() { return User::posts().count(); }", "GNR2311");
     rejects("model Role { string name; } model User { roles() { return belongsToMany<Role>(relatedKey: \"name\"); } } function int invalid() { let user = User::findOrFail(1); return user.roles.attach(1); }", "GNR2201");
 }

@@ -17,6 +17,18 @@ int main() {
     reject("function int broken() { const x = 1; }","GNR2215");
     reject("function int broken() { return absent; }","GNR2202");
     reject("function int broken() { const x = 1; x = 2; return x; }","GNR2208");
+    reject("controller Counter { int count; } function int broken() { const counter = Counter(0); counter.count = 2; return counter.count; }", "GNR2208");
+    reject("controller Counter { List<int> values; } function int broken() { const counter = Counter([1]); counter.values[0] = 2; return counter.values[0]; }", "GNR2208");
+    reject("controller Counter { int count; } controller Holder { Counter counter; } function int broken() { const holder = Holder(Counter(0)); holder.counter.count++; return holder.counter.count; }", "GNR2208");
+    reject("controller Counter { int count; int increment() { count += 1; return count; } } function int broken() { const counter = Counter(0); return counter.increment(); }", "GNR2208");
+    reject("controller Counter { int count; int number() { return count; } } function int broken() { let counter = Counter(0); const run = () => counter.number(); return run(); }", "GNR2208");
+    reject("controller Counter { int count; } function int broken() { let counter = Counter(0); const run = () => { counter.count = 2; return counter.count; }; return run(); }", "GNR2208");
+    reject("function int broken() { let value = 1; const run = () => { value = 2; return value; }; return run(); }", "GNR2208");
+    reject("function int broken() { let values = [1]; const run = () => { values[0]++; return values[0]; }; return run(); }", "GNR2208");
+    reject("function int broken() { const run = () => { let value = 0; const inner = () => { value++; return value; }; return inner(); }; return run(); }", "GNR2208");
+    reject("function int broken(List<int>? values) { for (value in values) { return value; } return 0; }");
+    reject("function string broken(Map<string,int>? values) { for (key in values) { return key; } return ''; }");
+    reject("function int broken() { const run = (int value) => value; for (value in run) { return value; } return 0; }");
     reject("function int f(int x) { return x; } function int g() { return f(x: 1, x: 2); }","GNR2209");
     reject("async function int f() { return 1; } function int g() { return f(); }","GNR2216");
     reject("function int g() { return await 1; }","GNR2210");
