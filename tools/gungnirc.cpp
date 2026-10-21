@@ -82,6 +82,18 @@ void write_file(
     }
 
     output << content;
+    output.close();
+    if (!output) {
+        throw std::runtime_error("Unable to write output file: " + path.string());
+    }
+}
+
+void write_stdout(const std::string& content) {
+    std::cout << content;
+    std::cout.flush();
+    if (!std::cout) {
+        throw std::runtime_error("Unable to write standard output");
+    }
 }
 
 const char* level_name(gungnir::language::DiagnosticLevel level) {
@@ -218,7 +230,7 @@ int main(int argc, char** argv) {
             gungnir::language::Formatter formatter;
             const auto formatted = formatter.format(source);
             if (check_only) return formatted == source ? 0 : 1;
-            if (output_path.empty()) std::cout << formatted;
+            if (output_path.empty()) write_stdout(formatted);
             else write_file(output_path, formatted);
             return 0;
         }
@@ -263,7 +275,7 @@ int main(int argc, char** argv) {
                     content = result.code;
                 }
 
-                if (output_path.empty()) std::cout << content;
+                if (output_path.empty()) write_stdout(content);
                 else write_file(output_path,content);
             }
             return 0;
@@ -299,7 +311,7 @@ int main(int argc, char** argv) {
         }
 
         if (output_path.empty()) {
-            std::cout << result.code;
+            write_stdout(result.code);
         } else {
             write_file(output_path, result.code);
         }

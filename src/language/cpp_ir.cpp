@@ -31,7 +31,7 @@ class CppIrLoweringRenderer {
         if (t.name == "Decision" && p.types()[source].name == "bool") return "gungnir::auth::Decision{" + value + ", {}}";
         return type(target) + "(" + value + ")";
     }
-    std::string expr(SyntaxId id, bool raw = false) {
+    std::string expr(SyntaxId id, bool raw = false, bool optional_storage = false) {
         if (id == invalid_id) return {};
         const auto& e = s.expressions.at(id); const auto& r = p.expressions().at(id);
         auto child = [&](std::size_t i) { return expr(e.operands.at(i)); };
@@ -40,7 +40,7 @@ class CppIrLoweringRenderer {
             if (e.literal_type == "string") return "gungnir::String{" + quote(e.text) + ", " + std::to_string(e.text.size()) + "}";
             if (e.literal_type == "null") return "nullptr";
             return type(r.type) + "(" + e.text + ")";
-        case SyntaxExpressionKind::name: { auto value = access(r.symbol,raw); if (p.types()[symbol(r.symbol).type].optional && !p.types()[r.type].optional) value += ".value()"; return value; }
+        case SyntaxExpressionKind::name: { auto value = access(r.symbol,raw); if (!optional_storage && p.types()[symbol(r.symbol).type].optional && !p.types()[r.type].optional) value += ".value()"; return value; }
         case SyntaxExpressionKind::member: {
             if (e.literal_type == "::" && r.symbol != invalid_id && symbol(r.symbol).cpp_name.starts_with("::")) return access(r.symbol,raw);
             const auto& receiver = p.expressions()[e.operands[0]];
@@ -53,8 +53,14 @@ class CppIrLoweringRenderer {
         case SyntaxExpressionKind::await_: return "(co_await " + child(0) + ")";
         case SyntaxExpressionKind::unary: return e.text.starts_with("post") ? "(" + expr(e.operands[0],true) + e.text.substr(4) + ")" : "(" + e.text + child(0) + ")";
         case SyntaxExpressionKind::binary:
-            if (e.text == "==" || e.text == "!=") { const auto lhs = s.expressions[e.operands[0]].literal_type == "null" ? "std::nullopt" : child(0); const auto rhs = s.expressions[e.operands[1]].literal_type == "null" ? "std::nullopt" : child(1); return "(" + std::string(lhs) + " " + e.text + " " + rhs + ")"; }
-            if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") return "(" + expr(e.operands[0],true) + " " + e.text + " " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + ")";
+            if (e.text == "==" || e.text == "!=") {
+                const bool left_null = s.expressions[e.operands[0]].literal_type == "null";
+                const bool right_null = s.expressions[e.operands[1]].literal_type == "null";
+                const auto lhs = left_null ? "std::nullopt" : expr(e.operands[0], false, right_null);
+                const auto rhs = right_null ? "std::nullopt" : expr(e.operands[1], false, left_null);
+                return "(" + std::string(lhs) + " " + e.text + " " + rhs + ")";
+            }
+            if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") return "(" + expr(e.operands[0],true,e.text == "=") + " " + e.text + " " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + ")";
             if (e.text == "??") return "([&]() -> " + type(r.type) + " { auto gnr_optional = " + child(0) + "; if (gnr_optional) return *gnr_optional; return " + child(1) + "; }())";
             return "(" + expr(e.operands[0],e.text == "=" || e.text.ends_with("=" ) && e.text.size() == 2 && e.text != "==" && e.text != "!=" && e.text != "<=" && e.text != ">=") + " " + e.text + " " + child(1) + ")";
         case SyntaxExpressionKind::conditional: return "(" + child(0) + " ? " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + " : " + convert(child(2),r.type,p.expressions()[e.operands[2]].type) + ")";
@@ -161,12 +167,19 @@ class CppIrLoweringRenderer {
         case SyntaxStatementKind::block: return block(node.body);
         case SyntaxStatementKind::if_: return "if (" + expr(node.expression) + ") " + block(node.body) + (node.alternative.empty() ? "" : "else " + block(node.alternative));
         case SyntaxStatementKind::while_: return "while (" + expr(node.expression) + ") " + block(node.body);
-        case SyntaxStatementKind::for_in: return "for (const auto& " + node.name + " : " + expr(node.expression) + ") " + block(node.body);
+        case SyntaxStatementKind::for_in: return "for (const auto& " + node.name + " : " + iteration_range(node.expression) + ") " + block(node.body);
         case SyntaxStatementKind::for_: { std::string init; for (auto id : node.parts) init += stmt(id); std::string step; for (auto id : node.alternative) { if (!step.empty()) step += ','; step += expr(s.statements[id].expression); } return "{\n" + init + "for (;" + expr(node.expression) + ";" + step + ") " + block(node.body) + "}\n"; }
         case SyntaxStatementKind::break_: return "break;\n";
         case SyntaxStatementKind::continue_: return "continue;\n";
         }
         return {};
+    }
+
+    std::string iteration_range(SyntaxId id) {
+        const auto value = expr(id);
+        // Map bindings have the key type in the validated program.
+        return p.types()[p.expressions()[id].type].name == "Map"
+            ? "std::views::keys(" + value + ")" : value;
     }
 
     static CppIrExpressionKind ir_expression_kind(
@@ -397,6 +410,15 @@ class CppIrLoweringRenderer {
                 ir,
                 syntax.expression
             );
+            if (p.types()[p.expressions()[syntax.expression].type].name == "Map") {
+                CppIrExpression keys;
+                keys.kind = CppIrExpressionKind::conversion;
+                keys.spelling = iteration_range(syntax.expression);
+                keys.type = CppIrType{"decltype(" + keys.spelling + ")"};
+                keys.operands.push_back(node.expression);
+                node.expression = ir.expressions.size();
+                ir.expressions.push_back(std::move(keys));
+            }
             for (auto child : syntax.body) {
                 node.body.push_back(
                     lower_statement(ir, child)
@@ -1619,6 +1641,7 @@ public:
             "// Generated from a validated Gungnir program.\n"
             "#include <gungnir/language/runtime.hpp>\n"
             "#include <optional>\n"
+            "#include <ranges>\n"
             "#include <tuple>\n"
             "static_assert("
             "gungnir::language::compiler_contract_version == \"";

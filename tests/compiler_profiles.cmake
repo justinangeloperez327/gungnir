@@ -16,6 +16,44 @@ file(WRITE "${compatibility}" "class LegacyController : Controller { Response in
 file(WRITE "${invalid_semantic}" "function int missing(bool flag) { if (flag) { return 1; } }\n")
 file(WRITE "${invalid_syntax}" "function int broken( {\n")
 
+# /dev/full opens successfully but rejects writes, including buffered flushes.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "/dev/full")
+    foreach(mode IN ITEMS compile format ast ir compat)
+        set(arguments)
+        set(source "${structured}")
+        if(mode STREQUAL "format")
+            set(arguments --format)
+        elseif(mode STREQUAL "ast")
+            set(arguments --dump-validated-ast)
+        elseif(mode STREQUAL "ir")
+            set(arguments --dump-cpp-ir)
+        elseif(mode STREQUAL "compat")
+            set(arguments --compat)
+            set(source "${compatibility}")
+        endif()
+        foreach(destination IN ITEMS file stdout)
+            if(destination STREQUAL "file")
+                execute_process(
+                    COMMAND "${GUNGNIRC}" "${source}" ${arguments} -o /dev/full
+                    RESULT_VARIABLE write_result
+                    OUTPUT_VARIABLE write_output
+                    ERROR_VARIABLE write_error
+                )
+            else()
+                execute_process(
+                    COMMAND "${GUNGNIRC}" "${source}" ${arguments}
+                    RESULT_VARIABLE write_result
+                    OUTPUT_FILE /dev/full
+                    ERROR_VARIABLE write_error
+                )
+            endif()
+            if(NOT write_result EQUAL 1 OR NOT write_error MATCHES "Unable to write")
+                message(FATAL_ERROR "${mode} must report ${destination} write/flush failures: ${write_error}")
+            endif()
+        endforeach()
+    endforeach()
+endif()
+
 execute_process(
     COMMAND "${GUNGNIRC}" "${structured}" --check
     RESULT_VARIABLE structured_default

@@ -33,6 +33,20 @@ function string embedded() { return 'a\0b'; }
 function Json lookup() { const value = { item: 'hello' }; return value['item']; }
 function int loop() { let total = 0; for (let i = 0; i < 3; i++) { total += i; } return total; }
 
+function int resetNullable(int? input) { let value = input; if (value != null) { value = null; } return value ?? 7; }
+function int replaceNullable(int? input) { let value = input; if (value != null) { value = 12; } return value ?? 7; }
+function int replaceWithOptional(int? input, int? replacement) { let value = input; if (value != null) { value = replacement; } return value ?? 7; }
+function int incrementNullable(int? input) { let value = input; if (value != null) { value += 2; value++; return value; } return 0; }
+function int mapKeyLength(Map<string,int> values) { let total = 0; for (key in values) { total += key.length(); } return total; }
+function int temporaryMapKeyLength(Map<string,int> values) { for (key in true ? values : values) { return key.length(); } return 0; }
+function int optionalMapKeyLength(Map<string,int>? values) { if (values != null) { let total = 0; for (key in values) { total += key.length(); } return total; } return 0; }
+function int listSum(List<int> values) { let total = 0; for (value in values) { total += value; } return total; }
+function int nestedMapKeyLength(Map<string,int> values) { let total = 0; for (key in values) { const run = () => { let length = 0; for (other in values) { length += key.length() + other.length(); } return length; }; total += run(); } return total; }
+controller MutableCounter { int count; int increment() { count++; return count; } }
+function int mutateCounter() { let counter = MutableCounter(1); counter.count = 4; return counter.increment(); }
+function int readCapturedCounter() { let counter = MutableCounter(3); const run = () => counter.count; return run(); }
+function int mutateLambdaLocal() { const run = () => { let counter = MutableCounter(1); counter.count++; return counter.increment(); }; return run(); }
+
 controller Home { public index(Request request) { return text(request.header('X-Name')); } private int helper() { return 2; } }
 migration Helpers { up() { helper(); } down() {} private void helper() {} }
 

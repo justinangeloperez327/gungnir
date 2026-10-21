@@ -27,6 +27,16 @@ int main() {
     assert(add(5) == 7 && named() == 10 && greeting("Ada") == "Hello Ada");
     assert(doubled() == std::vector<gungnir::Int64>({2,4,6}));
     assert(nullable(std::nullopt) == 9 && nullable(4) == 4);
+    assert(resetNullable(4) == 7 && resetNullable(std::nullopt) == 7);
+    assert(replaceNullable(4) == 12 && replaceNullable(std::nullopt) == 7);
+    assert(replaceWithOptional(4, 9) == 9 && replaceWithOptional(4, std::nullopt) == 7);
+    assert(incrementNullable(4) == 7 && incrementNullable(std::nullopt) == 0);
+    assert(mapKeyLength({{"one", 100}, {"four", 1}}) == 7);
+    assert(temporaryMapKeyLength({{"only", 2}}) == 4);
+    assert(optionalMapKeyLength(std::unordered_map<gungnir::String, gungnir::Int64>{{"one", 100}}) == 3);
+    assert(optionalMapKeyLength(std::nullopt) == 0 && listSum({1, 2, 3}) == 6);
+    assert(nestedMapKeyLength({{"one", 100}, {"four", 1}}) == 28);
+    assert(mutateCounter() == 5 && readCapturedCounter() == 3 && mutateLambdaLocal() == 3);
     assert(closure(6) == 10 && unicode() == "AΩ" && separators() == 1042);
     auto task = twice(4); task.run_inline(); assert(task.done()); assert(task.operator co_await().await_resume() == 10);
     auto nested_task = nested(5); nested_task.run_inline(); assert(nested_task.operator co_await().await_resume() == 8);

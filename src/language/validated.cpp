@@ -37,6 +37,7 @@ public:
     std::unordered_map<SymbolId, std::size_t> declaration_ids;
     std::vector<std::unordered_map<std::string, SymbolId>> scopes;
     std::vector<std::unordered_set<SymbolId>*> capture_sets;
+    std::vector<SymbolId> capture_starts;
     std::size_t current_module = 0;
     SymbolId current_owner = invalid_id;
     bool async_context = false;
@@ -781,7 +782,7 @@ public:
             const auto operand = expression(e.operands[0]);
             if (e.text == "!") { if (operand != type_id("bool")) report(e.origin, "Logical negation requires bool"); return set(type_id("bool")); }
             if (!numeric(operand)) report(e.origin, "Numeric unary operator requires a number");
-            if (e.text.starts_with("post")) writable(e.operands[0]);
+            if (e.text.starts_with("post")) writable(e.operands[0], false);
             return set(operand);
         }
         if (e.kind == SyntaxExpressionKind::conditional) {
@@ -818,7 +819,7 @@ public:
         }
         const auto rhs = expression(e.operands[1], e.text == "=" ? assignment_target : lhs);
         if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") {
-            writable(e.operands[0]);
+            writable(e.operands[0], e.text == "=");
             if (e.text != "=" && !(numeric(lhs) && numeric(rhs)) && !(e.text == "+=" && lhs == type_id("string") && rhs == lhs))
                 report(e.origin,"Compound assignment requires compatible numeric or string operands");
             if (!assignable(e.text == "=" ? assignment_target : lhs, rhs)) report(e.origin, "Assignment type mismatch");
@@ -840,12 +841,34 @@ public:
         }
         return set(*common);
     }
-    void writable(SyntaxId id) {
+    bool immutable_value(SyntaxId id) const {
+        const auto& expression = v.syntax_.expressions[id];
+        const auto symbol = v.expressions_[id].symbol;
+        if (expression.kind == SyntaxExpressionKind::name ||
+            expression.kind == SyntaxExpressionKind::member) {
+            if (symbol != invalid_id && v.symbols_[symbol].immutable) return true;
+            // Arrow captures are immutable value copies, even for outer lets.
+            if (expression.kind == SyntaxExpressionKind::name &&
+                symbol != invalid_id && !capture_starts.empty() &&
+                symbol < capture_starts.back()) return true;
+        }
+        if (expression.kind == SyntaxExpressionKind::member ||
+            expression.kind == SyntaxExpressionKind::subscript) {
+            const auto receiver = expression.operands[0];
+            const auto receiver_symbol = v.expressions_[receiver].symbol;
+            // Injected shared pointers retain access to their mutable service.
+            if (receiver_symbol != invalid_id &&
+                v.symbols_[receiver_symbol].kind == ResolvedSymbolKind::injection)
+                return false;
+            return immutable_value(receiver);
+        }
+        return false;
+    }
+    void writable(SyntaxId id, bool invalidate_narrowing = true) {
         const auto& expression = v.syntax_.expressions[id]; const auto symbol = v.expressions_[id].symbol;
         if (expression.kind != SyntaxExpressionKind::name && expression.kind != SyntaxExpressionKind::member && expression.kind != SyntaxExpressionKind::subscript) report(expression.origin, "Assignment requires a writable target");
-        if (symbol != invalid_id && v.symbols_[symbol].immutable) report(expression.origin, "Cannot modify an immutable binding", "GNR2208");
-        if (expression.kind == SyntaxExpressionKind::name && symbol != invalid_id) narrowed.erase(symbol);
-        if (expression.kind == SyntaxExpressionKind::subscript) writable(expression.operands[0]);
+        if (immutable_value(id)) report(expression.origin, "Cannot modify an immutable binding or value capture", "GNR2208");
+        if (invalidate_narrowing && expression.kind == SyntaxExpressionKind::name && symbol != invalid_id) narrowed.erase(symbol);
     }
     std::optional<long long> integer_constant(SyntaxId id) const {
         const auto& value = v.syntax_.expressions[id];
@@ -885,6 +908,7 @@ public:
         const auto first_lambda_symbol = v.symbols_.size();
         async_context = false; return_type = invalid_id; returned.clear(); loops = 0; scopes.emplace_back();
         std::unordered_set<SymbolId> captures; capture_sets.push_back(&captures);
+        capture_starts.push_back(first_lambda_symbol);
         const auto contextual = expected && type(*expected).name == "Function" ? type(*expected).arguments : std::vector<TypeId>{};
         for (std::size_t i = 0; i < e.parameters.size(); ++i) {
             const auto& parameter = e.parameters[i];
@@ -905,6 +929,7 @@ public:
         }
         if (inferred != type_id("void") && !block_flow(e.body).terminates_path()) report(e.origin, "Lambda may finish without returning a value");
         std::erase_if(captures,[&](auto id){ return id >= first_lambda_symbol; });
+        capture_starts.pop_back();
         info.captures.assign(captures.begin(), captures.end()); std::sort(info.captures.begin(), info.captures.end()); capture_sets.pop_back(); if (!capture_sets.empty()) capture_sets.back()->insert(captures.begin(),captures.end()); scopes.pop_back();
         std::vector<TypeId> signature; for (auto id : info.parameters) signature.push_back(v.symbols_[id].type); signature.push_back(inferred);
         if (!contextual.empty()) {
@@ -1434,7 +1459,12 @@ public:
                 const auto related = t.arguments[0];
                 const bool many = t.name == "HasMany" || t.name == "BelongsToMany" || t.name == "HasManyThrough";
                 if (name == "loaded" || name == "empty") { arity(0, 0); return finish_builtin(type_id("bool"), name); }
-                if (name == "unload") { arity(0, 0); return finish_builtin(type_id("void"), name); }
+                if (name == "unload") {
+                    arity(0, 0);
+                    if (immutable_value(receiver_expression))
+                        report(callee.origin, "Cannot modify an immutable binding", "GNR2208");
+                    return finish_builtin(type_id("void"), name);
+                }
                 if (name == "get") { arity(0, 0); return finish_builtin(many ? sequence("List", related) : related, name); }
                 if (many && (name == "size" || name == "count")) { arity(0, 0); return finish_builtin(type_id("int"), "size"); }
                 if (!many && name == "value") {
@@ -1451,8 +1481,7 @@ public:
                         return finish_builtin(type_id("int"), name);
                     }
                     const auto parent = v.expressions_[field.operands[0]].type;
-                    const auto parent_symbol = v.expressions_[field.operands[0]].symbol;
-                    if (parent_symbol != invalid_id && v.symbols_[parent_symbol].immutable)
+                    if (immutable_value(field.operands[0]))
                         report(e.origin, "Cannot modify an immutable binding", "GNR2208");
                     const auto parent_declaration = declaration_ids.at(owner_of(parent));
                     const auto& relations = v.declarations_[parent_declaration].relationships;
@@ -1512,8 +1541,7 @@ public:
                 if (mutations.contains(name) && (model || (name != "save" && name != "touch" && name != "refresh"))) {
                     arity(name == "update" ? 1 : 0, name == "update" ? 1 : 0);
                     if (model && callee.literal_type == "::") report(callee.origin, "Model mutations require an instance receiver", "GNR2311");
-                    if (model && v.expressions_[receiver_expression].symbol != invalid_id &&
-                        v.symbols_[v.expressions_[receiver_expression].symbol].immutable)
+                    if (model && immutable_value(receiver_expression))
                         report(callee.origin, "Cannot modify an immutable binding", "GNR2208");
                     return finish_builtin(type_id(model ? "bool" : "int"), snake(name), {type_id("Json")});
                 }
@@ -1523,7 +1551,12 @@ public:
                     arity(argument ? 1 : 0, argument ? 1 : 0);
                     return finish_builtin(type_id("bool"), snake(name), {type_id("string")});
                 }
-                if (model && name == "unloadRelations") { arity(0, 0); return finish_builtin(type_id("void"), "unload_relations"); }
+                if (model && name == "unloadRelations") {
+                    arity(0, 0);
+                    if (immutable_value(receiver_expression))
+                        report(callee.origin, "Cannot modify an immutable binding", "GNR2208");
+                    return finish_builtin(type_id("void"), "unload_relations");
+                }
                 if (name == "query") { arity(0, 0); if (model) return finish_builtin(query_type, name); }
                 if (name == "where" || name == "orWhere") {
                     arity(2, 3); scalar_argument(count == 3 ? 2 : 1);
@@ -1646,6 +1679,16 @@ public:
             callable_id = symbol(std::move(callable));
         }
         const auto signature = v.symbols_[callable_id];
+        if (callee.kind == SyntaxExpressionKind::member &&
+            signature.kind == ResolvedSymbolKind::callable &&
+            signature.owner != invalid_id && declaration_ids.contains(signature.owner) &&
+            receiver_expression != invalid_id && callee.literal_type != "::") {
+            const auto receiver_symbol = v.expressions_[receiver_expression].symbol;
+            const bool injection = receiver_symbol != invalid_id &&
+                v.symbols_[receiver_symbol].kind == ResolvedSymbolKind::injection;
+            if (!injection && immutable_value(receiver_expression))
+                report(callee.origin, "Instance methods require a mutable receiver", "GNR2208");
+        }
         if (callee.kind == SyntaxExpressionKind::member && callee.literal_type == "::" && signature.kind == ResolvedSymbolKind::callable && signature.owner != invalid_id && declaration_ids.contains(signature.owner) && v.syntax_.declarations[declaration_ids.at(signature.owner)].kind != DeclarationKind::function)
             report(callee.origin,"Instance methods require an instance receiver");
         std::vector<std::size_t> order(signature.parameters.size(), invalid_id);
@@ -1767,7 +1810,11 @@ public:
             } else if (s.kind == SyntaxStatementKind::for_) {
                 scopes.emplace_back(); statements(s.parts); if (s.expression != invalid_id && expression(s.expression) != type_id("bool")) report(s.origin,"Loop condition must be bool"); ++loops; scopes.emplace_back(); statements(s.body); scopes.pop_back(); statements(s.alternative); --loops; scopes.pop_back();
             } else if (s.kind == SyntaxStatementKind::for_in) {
-                const auto collection = expression(s.expression); if (type(collection).arguments.empty()) { report(s.origin,"for-in requires a collection"); continue; }
+                const auto collection = expression(s.expression);
+                const auto& range = type(collection);
+                if (range.optional || (range.name != "List" && range.name != "Collection" && range.name != "Map")) {
+                    report(s.origin,"for-in requires a non-optional List, Collection or Map"); continue;
+                }
                 scopes.emplace_back(); auto binding = symbol({ResolvedSymbolKind::local,s.name,s.name,type(collection).arguments[0],invalid_id,true}); v.bindings_[id] = binding; bind(s.name,binding,s.origin); ++loops; statements(s.body); --loops; scopes.pop_back();
             } else if (s.kind == SyntaxStatementKind::block) { scopes.emplace_back(); statements(s.body); scopes.pop_back(); }
             else if (s.expression != invalid_id) expression(s.expression);
