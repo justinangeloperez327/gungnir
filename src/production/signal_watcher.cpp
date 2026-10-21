@@ -29,6 +29,12 @@ NativeSignalHandler
     previous_terminate =
         SIG_DFL;
 
+#ifdef _WIN32
+NativeSignalHandler
+    previous_break =
+        SIG_DFL;
+#endif
+
 void signal_bridge(
     int signal_number
 ) noexcept {
@@ -65,6 +71,15 @@ void restore_signal_handlers(
             previous_terminate
         )
     );
+
+#ifdef _WIN32
+    static_cast<void>(
+        std::signal(
+            SIGBREAK,
+            previous_break
+        )
+    );
+#endif
 
     pending_signal = 0;
 
@@ -152,6 +167,37 @@ SignalWatcher::SignalWatcher(
                 "Unable to install SIGTERM handler"
             );
         }
+
+#ifdef _WIN32
+        // CTRL_BREAK_EVENT is the only console event that can be directed
+        // to a specific CREATE_NEW_PROCESS_GROUP on Windows.
+        previous_break =
+            std::signal(
+                SIGBREAK,
+                signal_bridge
+            );
+
+        if (
+            previous_break ==
+            SIG_ERR
+        ) {
+            static_cast<void>(
+                std::signal(
+                    SIGTERM,
+                    previous_terminate
+                )
+            );
+            static_cast<void>(
+                std::signal(
+                    SIGINT,
+                    previous_interrupt
+                )
+            );
+            throw std::runtime_error(
+                "Unable to install SIGBREAK handler"
+            );
+        }
+#endif
 
         active_signal_watcher =
             this;
