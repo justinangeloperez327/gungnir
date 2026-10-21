@@ -20,7 +20,7 @@ if(DEFINED GUNGNIR_STRUCTURED_APPLICATION_GENERATED)
     target_link_libraries(gungnir_installed_application PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
 endif()
 
-if(NOT Gungnir_RELEASE_VERSION STREQUAL "1.0.1")
+if(NOT Gungnir_RELEASE_VERSION STREQUAL "1.0.2")
     message(
         FATAL_ERROR
         "Installed Gungnir release identity is not the v1 release contract"

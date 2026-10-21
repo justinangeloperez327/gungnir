@@ -7,7 +7,7 @@ language with familiar models, controllers, routes, middleware, validation,
 authentication and database access. Applications compile into native C++23
 executables.
 
-> Project status: **Stable 1.0.1**. See the release scope and known limitations in the [installation guide](docs/release-v1.0.1.md).
+> Project status: **Stable 1.0.2**. See the release scope and known limitations in the [installation guide](docs/release-v1.0.2.md).
 
 ## What an application looks like
 
@@ -39,7 +39,7 @@ You need a C++23 compiler and **CMake 3.25 or newer**.
 
 Download the Windows installer or Windows/Linux SDK from
 [GitHub Releases](https://github.com/justinangeloperez327/gungnir/releases).
-Version 1.0.1 provides core and application SDKs. Choose the application SDK
+Version 1.0.2 provides core and application SDKs. Choose the application SDK
 for bundled SQLite persistence and password hashing; other external adapters
 need an appropriately built SDK.
 See [SDK Packages](docs/sdk-packages.md).

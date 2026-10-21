@@ -31,8 +31,8 @@ def main() -> int:
 
     require(
         errors,
-        "project(gungnir VERSION 1.0.1 LANGUAGES CXX)" in cmake,
-        "CMake package version must be 1.0.1",
+        "project(gungnir VERSION 1.0.2 LANGUAGES CXX)" in cmake,
+        "CMake package version must be 1.0.2",
     )
     require(
         errors,
@@ -41,7 +41,7 @@ def main() -> int:
     )
     require(
         errors,
-        'set(GUNGNIR_VERSION_FULL "1.0.1")' in cmake,
+        'set(GUNGNIR_VERSION_FULL "1.0.2")' in cmake,
         "GUNGNIR_VERSION_FULL must match the 1.0 release contract",
     )
     require(
@@ -82,7 +82,7 @@ def main() -> int:
 
     require(
         errors,
-        "Project status: **Stable 1.0.1**" in readme,
+        "Project status: **Stable 1.0.2**" in readme,
         "README must identify the stable release",
     )
     require(

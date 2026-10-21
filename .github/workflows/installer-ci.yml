@@ -169,7 +169,7 @@ jobs:
               }
               if (-not (Test-Path $cli)) { throw "Installer upgrade removed the CLI" }
 
-              $expectedVersion = "Gungnir 1.0.1"
+              $expectedVersion = "Gungnir 1.0.2"
               $actualVersion = (& $cli --version).Trim()
 
               if ($actualVersion -ne $expectedVersion) {
@@ -182,14 +182,14 @@ jobs:
               }
 
               $compilerVersion = (& $compiler --version).Trim()
-              $expectedCompiler = "Gungnir compiler 1.0.1 (language 1.0)"
+              $expectedCompiler = "Gungnir compiler 1.0.2 (language 1.0)"
               if ($compilerVersion -ne $expectedCompiler) {
                   throw "Installed compiler reports '$compilerVersion'; expected '$expectedCompiler'."
               }
 
               $contract = (& $compiler --print-contract) -join "`n"
               foreach ($required in @(
-                  "package_version=1.0.1",
+                  "package_version=1.0.2",
                   "language_version=1.0",
                   "compiler_contract=1.0",
                   "diagnostic_contract=1.0",

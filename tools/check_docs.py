@@ -188,10 +188,10 @@ def check_identity_contract(
 ) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    if internal_version != "1.0.1":
+    if internal_version != "1.0.2":
         fail(
             errors,
-            f"CMake package version must be 1.0.1, got {internal_version}",
+            f"CMake package version must be 1.0.2, got {internal_version}",
         )
 
     if release_channel != "stable":
@@ -200,7 +200,7 @@ def check_identity_contract(
             f"Release channel must be stable, got {release_channel}",
         )
 
-    expected_status = "Project status: **Stable 1.0.1**"
+    expected_status = "Project status: **Stable 1.0.2**"
 
     if expected_status not in readme:
         fail(errors, f"README.md must contain: {expected_status}")
@@ -263,7 +263,7 @@ def main() -> int:
 
         return 1
 
-    print("Documentation contract passed for Gungnir 1.0.1.")
+    print("Documentation contract passed for Gungnir 1.0.2.")
     return 0
 
 

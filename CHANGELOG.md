@@ -8,6 +8,20 @@ For installation and usage instructions, see the [README](README.md) and
 
 No unreleased changes.
 
+## 1.0.2 — 2026-10-21
+
+- Added `gungnirc --verify-ir`, consistent profile/format diagnostics, output-error
+  handling and cross-compiler diagnostic conformance checks.
+- Fixed null-flow tracking across branches, loops and arrows; rejected unguarded
+  nullable indexing and implicit instance-method captures before code generation.
+- Fixed nullable model compound/postfix updates, immutable receiver enforcement
+  and map-key iteration.
+- Preserved healthy development-server processes when replacements fail and
+  improved graceful Windows shutdown and POSIX startup-error reporting.
+- Kept database pools responsive during slow connection validation.
+
+See [Version 1.0.2 Installation](docs/release-v1.0.2.md).
+
 ## 1.0.1 — 2026-10-18
 
 - Application SDK packages for Windows and Linux bundle SQLite persistence and

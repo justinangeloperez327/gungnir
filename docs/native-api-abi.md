@@ -1,10 +1,10 @@
 # Native API and ABI Stability
 
-Version 1.0.1 publishes native source contract `1.0` and ABI epoch `1` for the retained public APIs.
+Version 1.0.2 publishes native source contract `1.0` and ABI epoch `1` for the retained public APIs.
 
 ## Metadata
 
-Include `<gungnir/version.hpp>` to read package version `1.0.1`, release channel `stable`, native API contract `1.0` and native ABI epoch `1`.
+Include `<gungnir/version.hpp>` to read package version `1.0.2`, release channel `stable`, native API contract `1.0` and native ABI epoch `1`.
 
 The installed CMake package exports `Gungnir_VERSION`, `Gungnir_RELEASE_VERSION`, `Gungnir_RELEASE_CHANNEL`, version components, `Gungnir_NATIVE_API_CONTRACT` and `Gungnir_NATIVE_ABI_EPOCH`. Consumers can use:
 
