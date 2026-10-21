@@ -69,8 +69,8 @@ int Project::dev() const {
             std::filesystem::create_directories(next.parent_path());
             std::filesystem::copy_file(executable,next,std::filesystem::copy_options::overwrite_existing);
             // Keep the last known runnable executable until the replacement
-            // has actually started. A failed CreateProcess/exec request must
-            // not permanently take down a previously healthy dev server.
+            // has actually started. A synchronous process-launch failure
+            // must not permanently take down a previously healthy dev server.
             const auto previous=running;
             application.stop();
             try {
@@ -78,7 +78,7 @@ int Project::dev() const {
             } catch(...) {
                 std::error_code ignored;
                 std::filesystem::remove(next,ignored);
-                if(!previous.empty()) {
+                if(!stopped && !previous.empty()) {
                     try {
                         application.start({previous.string()},root_,true);
                         std::cerr << "gungnir dev: restored previous application after launch failure\n";
