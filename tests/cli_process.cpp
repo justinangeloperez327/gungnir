@@ -1,6 +1,5 @@
 #include "process.hpp"
 
-#include <cassert>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -10,6 +9,10 @@
 #include <cerrno>
 
 using gungnir::cli::detail::Child;
+
+void require(bool condition,const char* message) {
+    if(!condition) throw std::runtime_error(message);
+}
 
 void expect_launch_failure(const std::vector<std::string>& arguments,
                            const std::filesystem::path& cwd={}) {
@@ -22,8 +25,8 @@ void expect_launch_failure(const std::vector<std::string>& arguments,
         failed=diagnostic.find("Unable to start")!=std::string::npos &&
                diagnostic.find("errno ")!=std::string::npos;
     }
-    assert(failed && "Failed exec/chdir must report synchronous launch failure");
-    assert(!child.poll().has_value() && "Failed launch must be fully reaped");
+    require(failed,"Failed exec/chdir must report synchronous launch failure");
+    require(!child.poll().has_value(),"Failed launch must be fully reaped");
 }
 
 int main() {
@@ -39,16 +42,16 @@ int main() {
     // application exit is not a launch error.
     Child exited;
     exited.start({"/bin/sh","-c","exit 17"},{},true);
-    assert(exited.wait()==17);
+    require(exited.wait()==17,"A launched nonzero child must retain its exit status");
 
     // The class must remain reusable after a synchronous launch exception.
     Child recovered;
     try {
         recovered.start({"/gungnir-not-a-real-program/does-not-exist"});
-        assert(false && "Invalid command unexpectedly launched");
+        throw std::runtime_error("Invalid command unexpectedly launched");
     } catch(const std::runtime_error&) {}
     recovered.start({"/bin/sh","-c","exit 0"});
-    assert(recovered.wait()==0);
+    require(recovered.wait()==0,"Child must be reusable after a failed launch");
 }
 #else
 int main() { return 0; }
