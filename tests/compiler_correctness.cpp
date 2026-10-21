@@ -730,6 +730,56 @@ void nullable_model_updates_require_guards_and_mutability() {
     }
 }
 
+void arrows_reject_implicit_instance_method_captures() {
+    const std::vector<std::string_view> sources{
+        "controller Counter { int helper() { return 1; } int run() { "
+        "const read = () => helper(); return read(); } }",
+        "controller Counter { int helper() { return 1; } int run() { "
+        "const outer = () => { const inner = () => helper(); return inner(); }; return outer(); } }",
+        "model Counter { int count; int helper() { return count; } int run() { "
+        "const read = () => helper(); return read(); } }",
+        "controller Counter { private int helper() { return 1; } int run() { "
+        "const read = () => helper(); return read(); } }",
+        "controller Counter { int count; int helper() { count++; return count; } int run() { "
+        "const read = () => helper(); return read(); } }",
+        "controller Counter { int helper() { return 1; } int run() { "
+        "const read = () => { const callback = helper; return 0; }; return read(); } }",
+        "controller Counter { int helper(int value) { return value; } int run() { "
+        "return [1].map((item) => helper(item))[0]; } }",
+        "controller Counter { int helper(int value = 2) { return value; } int run() { "
+        "const read = () => helper(value: 3); return read(); } }",
+        "controller Counter { int helper() { return 1; } int run() { "
+        "const unused = () => helper(); return 0; } }"
+    };
+    for (const auto source : sources) {
+        auto options = deterministic_options();
+        const auto emitted = Compiler{}.compile(source, "arrow-method.gnr", options);
+        options.validate_only = true;
+        const auto checked = Compiler{}.compile(source, "arrow-method.gnr", options);
+        assert(!emitted.success() && !checked.success());
+        assert(emitted.code.empty() && checked.code.empty());
+        assert(!emitted.validated && !checked.validated);
+        assert(emitted.diagnostics.size() == checked.diagnostics.size());
+        assert_diagnostic_location(emitted, "arrow-method.gnr");
+        const auto found = std::find_if(
+            emitted.diagnostics.begin(), emitted.diagnostics.end(),
+            [](const auto& diagnostic) {
+                return diagnostic.code == "GNR2208" && diagnostic.message ==
+                    "Arrows cannot implicitly capture instance methods; use a mutable local receiver";
+            });
+        assert(found != emitted.diagnostics.end());
+        assert(found->span.valid);
+        assert(source.substr(found->span.begin_offset,
+            found->span.end_offset - found->span.begin_offset) == "helper");
+        for (std::size_t i = 0; i < emitted.diagnostics.size(); ++i) {
+            assert(emitted.diagnostics[i].code == checked.diagnostics[i].code);
+            assert(emitted.diagnostics[i].message == checked.diagnostics[i].message);
+            assert(emitted.diagnostics[i].span.begin_offset == checked.diagnostics[i].span.begin_offset);
+            assert(emitted.diagnostics[i].span.end_offset == checked.diagnostics[i].span.end_offset);
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -752,4 +802,5 @@ int main() {
     optional_indexing_requires_a_nonnull_receiver();
     guarded_indexing_preserves_immutability();
     nullable_model_updates_require_guards_and_mutability();
+    arrows_reject_implicit_instance_method_captures();
 }

@@ -140,7 +140,16 @@ public:
         if (selected != invalid_id) return selected;
         if (current_owner != invalid_id) {
             const auto found = members.find(std::to_string(current_owner) + ":" + name);
-            if (found != members.end()) { if (!capture_sets.empty()) capture_sets.back()->insert(found->second); return found->second; }
+            if (found != members.end()) {
+                const auto member_id = found->second;
+                if (!capture_sets.empty()) {
+                    // Instance methods need a receiver; arrows capture values.
+                    if (v.symbols_[member_id].kind == ResolvedSymbolKind::callable)
+                        report(where, "Arrows cannot implicitly capture instance methods; use a mutable local receiver", "GNR2208");
+                    else capture_sets.back()->insert(member_id);
+                }
+                return member_id;
+            }
         }
         if (const auto found = declarations.find("native:" + name); found != declarations.end()) return found->second;
         if (type_id(name) != invalid_id) {

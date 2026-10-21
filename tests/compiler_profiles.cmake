@@ -69,6 +69,30 @@ foreach(index_case IN ITEMS list map collection json data nested)
     endforeach()
 endforeach()
 
+foreach(capture_case IN ITEMS direct nested reference)
+    set(capture_source "controller Counter { int helper() { return 1; } int run() { const read = () => helper(); return read(); } }")
+    if(capture_case STREQUAL "nested")
+        set(capture_source "controller Counter { int helper() { return 1; } int run() { const outer = () => { const inner = () => helper(); return inner(); }; return outer(); } }")
+    elseif(capture_case STREQUAL "reference")
+        set(capture_source "controller Counter { int helper() { return 1; } int run() { const read = () => { const callback = helper; return 0; }; return read(); } }")
+    endif()
+    set(capture_input "${root}/invalid-arrow-method-${capture_case}.gnr")
+    file(WRITE "${capture_input}" "${capture_source}\n")
+    foreach(mode IN ITEMS --check --verify-ir)
+        execute_process(
+            COMMAND "${GUNGNIRC}" "${capture_input}" "${mode}"
+            RESULT_VARIABLE capture_result
+            OUTPUT_VARIABLE capture_output
+            ERROR_VARIABLE capture_error
+        )
+        if(NOT capture_result EQUAL 1 OR NOT capture_output STREQUAL "" OR
+           NOT capture_error MATCHES "GNR2208" OR
+           NOT capture_error MATCHES "Arrows cannot implicitly capture instance methods")
+            message(FATAL_ERROR "${mode} must reject ${capture_case} instance method captures: ${capture_error}")
+        endif()
+    endforeach()
+endforeach()
+
 # /dev/full opens successfully but rejects writes, including buffered flushes.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "/dev/full")
     foreach(mode IN ITEMS compile format ast ir compat)

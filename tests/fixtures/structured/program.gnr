@@ -47,6 +47,24 @@ function int mutateCounter() { let counter = MutableCounter(1); counter.count = 
 function int readCapturedCounter() { let counter = MutableCounter(3); const run = () => counter.count; return run(); }
 function int mutateLambdaLocal() { const run = () => { let counter = MutableCounter(1); counter.count++; return counter.increment(); }; return run(); }
 
+function int arrowGlobal(int value) { return value + 2; }
+function int arrowRecursive(int value) { if (value == 0) { return 1; } const run = () => arrowRecursive(value - 1); return run() + 1; }
+controller ArrowMethods {
+    int count;
+    private int helper(int extra = 1) { return count + extra; }
+    int direct() { return helper(extra: 2); }
+    int precomputed() { const value = helper(); const read = () => value; return read(); }
+    int fieldSnapshot() { const read = () => count; count = 9; return read(); }
+    int nestedField() { const outer = () => { const inner = () => count; return inner(); }; return outer(); }
+    int localReceiver() { const read = () => { let local = ArrowMethods(5); return local.helper(extra: 2); }; return read(); }
+    int copiedReceiver(ArrowMethods input) { const read = () => { let local = input; return local.helper(); }; return read(); }
+    int localShadow() { const helper = (int value) => value + 3; const read = () => helper(4); return read(); }
+    int parameterShadow() { const read = (int helper) => helper + 2; return read(3); }
+    int freeFunction() { const read = () => arrowGlobal(count); return read(); }
+}
+controller ArrowInjected { inject Tools tools; int read() { const run = () => tools.number(); return run(); } }
+model ArrowModel { int count; int readField() { const read = () => count; return read(); } }
+
 function int flowStableBranch(int? input, bool flag) { let value = input; if (value == null) { return 0; } if (flag) { const other = 1; } return value; }
 function int flowTerminatingBranch(int? input, bool reset) { let value = input; if (value == null) { return 0; } if (reset) { value = null; return 0; } return value; }
 function int flowRecheck(int? input, bool reset) { let value = input; if (value == null) { return 0; } if (reset) { value = null; } if (value == null) { return 9; } return value; }
