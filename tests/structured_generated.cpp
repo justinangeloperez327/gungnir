@@ -37,6 +37,17 @@ int main() {
     assert(optionalMapKeyLength(std::nullopt) == 0 && listSum({1, 2, 3}) == 6);
     assert(nestedMapKeyLength({{"one", 100}, {"four", 1}}) == 28);
     assert(mutateCounter() == 5 && readCapturedCounter() == 3 && mutateLambdaLocal() == 3);
+    ArrowMethods arrow_methods{4};
+    assert(arrow_methods.direct() == 6 && arrow_methods.precomputed() == 5);
+    assert(arrow_methods.nestedField() == 4 && arrow_methods.freeFunction() == 6);
+    assert(arrow_methods.localReceiver() == 7 && arrow_methods.copiedReceiver(ArrowMethods{10}) == 11);
+    assert(arrow_methods.localShadow() == 7 && arrow_methods.parameterShadow() == 5);
+    assert(arrow_methods.fieldSnapshot() == 4 && arrow_methods.count == 9);
+    assert(arrowRecursive(3) == 4);
+    ArrowInjected arrow_injected{std::make_shared<Tools>()};
+    assert(arrow_injected.read() == 3);
+    ArrowModel arrow_model; arrow_model.count = 6;
+    assert(arrow_model.readField() == 6);
     assert(flowStableBranch(4, true) == 4 && flowStableBranch(std::nullopt, false) == 0);
     assert(flowTerminatingBranch(4, true) == 0 && flowTerminatingBranch(4, false) == 4);
     assert(flowRecheck(4, true) == 9 && flowRecheck(4, false) == 4);
