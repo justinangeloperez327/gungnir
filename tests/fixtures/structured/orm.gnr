@@ -44,6 +44,32 @@ model Node {
     parent() { return belongsTo<Node>(); }
 }
 
+model NullableCounter {
+    int? count;
+    double? fraction;
+    string? label;
+    string plain_label = 'plain';
+
+    int add() { if (count == null) { return -1; } return count += 2; }
+    int subtract() { if (count == null) { return -1; } return count -= 2; }
+    int multiply() { if (count == null) { return -1; } return count *= 2; }
+    int divide() { if (count == null) { return -1; } return count /= 2; }
+    int increment() { if (count == null) { return -1; } return count++; }
+    int decrement() { if (count == null) { return -1; } return count--; }
+    double addFraction() { if (fraction == null) { return -1.0; } return fraction += 0.5; }
+    string append() { if (label == null) { return 'missing'; } return label += '!'; }
+    string appendPlain() { return plain_label += '!'; }
+    void setCount(int? value) { count = value; }
+    void clearCount() { count = null; }
+    void replaceCount() { if (count != null) { count = 20; } }
+}
+
+function string appendExternalLabel(NullableCounter input) {
+    let value = input;
+    value.plain_label += '!';
+    return value.plain_label;
+}
+
 migration CreateOrmTables {
     up() {
         Table::create("users", (table) => {

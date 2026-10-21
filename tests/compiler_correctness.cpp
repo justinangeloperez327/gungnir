@@ -697,6 +697,39 @@ void guarded_indexing_preserves_immutability() {
     }
 }
 
+void nullable_model_updates_require_guards_and_mutability() {
+    struct InvalidCase {
+        std::string_view source;
+        std::string_view code;
+    };
+    const std::vector<InvalidCase> sources{
+        {"model Counter { int? count; void update() { count += 1; } }", "GNR2201"},
+        {"model Counter { double? count; void update() { count *= 2.0; } }", "GNR2201"},
+        {"model Counter { string? label; void update() { label += '!'; } }", "GNR2201"},
+        {"model Counter { int? count; void update() { count++; } }", "GNR2201"},
+        {"model Counter { int? count; void update() { count--; } }", "GNR2201"},
+        {"model Counter { int? count; void update() { if (count == null) { return; } "
+         "count = null; count += 1; } }", "GNR2201"},
+        {"model Counter { int? count; } function void update(Counter value) { "
+         "value.count = 1; }", "GNR2208"},
+        {"model Counter { int? count; void update() { if (count == null) { return; } "
+         "const write = () => { count += 1; }; } }", "GNR2208"}
+    };
+    for (const auto& source : sources) {
+        for (const bool validate_only : {false, true}) {
+            auto options = deterministic_options();
+            options.validate_only = validate_only;
+            const auto result = Compiler{}.compile(source.source, "model-update.gnr", options);
+            assert(!result.success());
+            assert(result.code.empty() && !result.validated);
+            assert_diagnostic_location(result, "model-update.gnr");
+            assert(std::any_of(
+                result.diagnostics.begin(), result.diagnostics.end(),
+                [&](const auto& diagnostic) { return diagnostic.code == source.code; }));
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -718,4 +751,5 @@ int main() {
     optional_flow_rejects_stale_nonnull_facts();
     optional_indexing_requires_a_nonnull_receiver();
     guarded_indexing_preserves_immutability();
+    nullable_model_updates_require_guards_and_mutability();
 }

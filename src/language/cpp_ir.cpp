@@ -51,7 +51,7 @@ class CppIrLoweringRenderer {
             return value;
         }
         case SyntaxExpressionKind::await_: return "(co_await " + child(0) + ")";
-        case SyntaxExpressionKind::unary: return e.text.starts_with("post") ? "(" + expr(e.operands[0],true) + e.text.substr(4) + ")" : "(" + e.text + child(0) + ")";
+        case SyntaxExpressionKind::unary: return e.text.starts_with("post") ? "(" + child(0) + e.text.substr(4) + ")" : "(" + e.text + child(0) + ")";
         case SyntaxExpressionKind::binary:
             if (e.text == "==" || e.text == "!=") {
                 const bool left_null = s.expressions[e.operands[0]].literal_type == "null";
@@ -60,7 +60,12 @@ class CppIrLoweringRenderer {
                 const auto rhs = right_null ? "std::nullopt" : expr(e.operands[1], false, left_null);
                 return "(" + std::string(lhs) + " " + e.text + " " + rhs + ")";
             }
-            if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") return "(" + expr(e.operands[0],true,e.text == "=") + " " + e.text + " " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + ")";
+            if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") {
+                // Plain assignment initializes the Field wrapper; compound
+                // updates use the contained value after optional narrowing.
+                const bool plain_assignment = e.text == "=";
+                return "(" + expr(e.operands[0],plain_assignment,plain_assignment) + " " + e.text + " " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + ")";
+            }
             if (e.text == "??") return "([&]() -> " + type(r.type) + " { auto gnr_optional = " + child(0) + "; if (gnr_optional) return *gnr_optional; return " + child(1) + "; }())";
             return "(" + expr(e.operands[0],e.text == "=" || e.text.ends_with("=" ) && e.text.size() == 2 && e.text != "==" && e.text != "!=" && e.text != "<=" && e.text != ">=") + " " + e.text + " " + child(1) + ")";
         case SyntaxExpressionKind::conditional: return "(" + child(0) + " ? " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + " : " + convert(child(2),r.type,p.expressions()[e.operands[2]].type) + ")";
