@@ -114,6 +114,20 @@ Timestamp-enabled models expose `created_at` and `updated_at`. Soft-delete model
 
 Hydrated models retain their original persisted values. Attribute changes make the model dirty until a successful persistence operation synchronizes its original state.
 
+Inside a model method, guard a nullable field before applying compound assignments or postfix `++` and `--`. These updates participate in dirty tracking:
+
+```gnr
+model Counter {
+    int? count;
+
+    int increment() {
+        if (count == null) { return 0; }
+        count += 1;
+        return count;
+    }
+}
+```
+
 ## Relationships
 
 Models declare relationships to other models and can eager-load them to avoid N+1 query patterns. See [Relationships](relationships.md).
