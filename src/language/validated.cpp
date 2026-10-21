@@ -774,6 +774,7 @@ public:
         if (e.kind == SyntaxExpressionKind::lambda) return lambda(id, expected);
         if (e.kind == SyntaxExpressionKind::subscript) {
             const auto container = expression(e.operands[0]), key = expression(e.operands[1]);
+            if (type(container).optional) report(e.origin, "Optional indexing requires a null guard");
             if ((type(container).name == "List" || type(container).name == "Collection") && key == type_id("int")) return set(type(container).arguments[0]);
             if (type(container).name == "Map" && key == type_id("string")) return set(type(container).arguments[1]);
             if ((type(container).name == "Json" || type(container).name == "Data") && key == type_id("string")) return set(type_id("Json"));

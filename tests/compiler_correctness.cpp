@@ -617,6 +617,86 @@ void optional_flow_rejects_stale_nonnull_facts() {
     }
 }
 
+void optional_indexing_requires_a_nonnull_receiver() {
+    const std::vector<std::string_view> sources{
+        "function int broken(List<int>? values) { return values[0]; }",
+        "function int broken(Map<string,int>? values) { return values['key']; }",
+        "model IndexedUser { table = 'indexed_users'; } "
+        "function int broken(Collection<IndexedUser>? values) { return values[0].id; }",
+        "function Json broken(Json? values) { return values['key']; }",
+        "function Json broken(Data? values) { return values['key']; }",
+        "function int broken(List<List<int>?> values) { return values[0][0]; }",
+        "function int broken(Map<string,List<int>?> values) { return values['key'][0]; }",
+        "function List<int>? missing() { return null; } "
+        "function int broken() { return missing()[0]; }",
+        "function void broken(List<int>? input) { let values = input; values[0] = 7; }",
+        "function void broken(Map<string,int>? input) { let values = input; values['key'] += 1; }",
+        "controller IndexedBox { List<int>? values; int broken() { return values[0]; } }",
+        "function int broken(List<int>? input, bool reset) { let values = input; "
+        "if (values == null) { return 0; } if (reset) { values = null; } return values[0]; }",
+        "function int broken(List<int>? values) { const read = () => { "
+        "if (values == null) { return 0; } return values[0]; }; return values[0]; }"
+    };
+    for (const auto source : sources) {
+        auto options = deterministic_options();
+        const auto emitted = Compiler{}.compile(source, "optional-index.gnr", options);
+        options.validate_only = true;
+        const auto checked = Compiler{}.compile(source, "optional-index.gnr", options);
+        assert(!emitted.success() && !checked.success());
+        assert(emitted.code.empty() && checked.code.empty());
+        assert(!emitted.validated && !checked.validated);
+        assert(emitted.diagnostics.size() == checked.diagnostics.size());
+        assert_diagnostic_location(emitted, "optional-index.gnr");
+        const auto found = std::find_if(
+            emitted.diagnostics.begin(), emitted.diagnostics.end(),
+            [](const auto& diagnostic) {
+                return diagnostic.code == "GNR2201" &&
+                    diagnostic.message == "Optional indexing requires a null guard";
+            });
+        assert(found != emitted.diagnostics.end());
+        assert(found->span.valid);
+        const auto indexed_source = source.substr(
+            found->span.begin_offset,
+            found->span.end_offset - found->span.begin_offset);
+        assert(indexed_source.find('[') != std::string_view::npos);
+        assert(indexed_source.find(']') != std::string_view::npos);
+        for (std::size_t i = 0; i < emitted.diagnostics.size(); ++i) {
+            assert(emitted.diagnostics[i].code == checked.diagnostics[i].code);
+            assert(emitted.diagnostics[i].message == checked.diagnostics[i].message);
+            assert(emitted.diagnostics[i].location.line == checked.diagnostics[i].location.line);
+            assert(emitted.diagnostics[i].location.column == checked.diagnostics[i].location.column);
+        }
+    }
+}
+
+void guarded_indexing_preserves_immutability() {
+    const std::vector<std::string_view> sources{
+        "function void broken(List<int>? values) { "
+        "if (values != null) { values[0] = 7; } }",
+        "function void broken(Map<string,int>? input) { const values = input; "
+        "if (values != null) { values['key'] += 1; } }",
+        "model IndexedUser { table = 'indexed_users'; } "
+        "function void broken(Collection<IndexedUser>? values, IndexedUser replacement) { "
+        "if (values != null) { values[0] = replacement; } }",
+        "function void broken(List<int>? input) { let values = input; "
+        "if (values != null) { const write = () => { values[0] = 7; }; } }"
+    };
+    for (const auto source : sources) {
+        const auto result = Compiler{}.compile(
+            source, "immutable-index.gnr", deterministic_options());
+        assert(!result.success());
+        assert(result.code.empty() && !result.validated);
+        assert(std::any_of(
+            result.diagnostics.begin(), result.diagnostics.end(),
+            [](const auto& diagnostic) { return diagnostic.code == "GNR2208"; }));
+        assert(std::none_of(
+            result.diagnostics.begin(), result.diagnostics.end(),
+            [](const auto& diagnostic) {
+                return diagnostic.message == "Optional indexing requires a null guard";
+            }));
+    }
+}
+
 } // namespace
 
 int main() {
@@ -636,4 +716,6 @@ int main() {
     structured_model_metadata_is_canonical();
     framework_contracts_fail_before_codegen();
     optional_flow_rejects_stale_nonnull_facts();
+    optional_indexing_requires_a_nonnull_receiver();
+    guarded_indexing_preserves_immutability();
 }

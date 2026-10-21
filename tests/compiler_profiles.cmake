@@ -39,6 +39,36 @@ foreach(flow_case IN ITEMS branch loop lambda)
     endforeach()
 endforeach()
 
+foreach(index_case IN ITEMS list map collection json data nested)
+    set(index_source "function int broken(List<int>? values) { return values[0]; }")
+    if(index_case STREQUAL "map")
+        set(index_source "function int broken(Map<string,int>? values) { return values['key']; }")
+    elseif(index_case STREQUAL "collection")
+        set(index_source "model IndexedUser { table = 'indexed_users'; } function int broken(Collection<IndexedUser>? values) { return values[0].id; }")
+    elseif(index_case STREQUAL "json")
+        set(index_source "function Json broken(Json? values) { return values['key']; }")
+    elseif(index_case STREQUAL "data")
+        set(index_source "function Json broken(Data? values) { return values['key']; }")
+    elseif(index_case STREQUAL "nested")
+        set(index_source "function int broken(List<List<int>?> values) { return values[0][0]; }")
+    endif()
+    set(index_input "${root}/invalid-optional-index-${index_case}.gnr")
+    file(WRITE "${index_input}" "${index_source}\n")
+    foreach(mode IN ITEMS --check --verify-ir)
+        execute_process(
+            COMMAND "${GUNGNIRC}" "${index_input}" "${mode}"
+            RESULT_VARIABLE index_result
+            OUTPUT_VARIABLE index_output
+            ERROR_VARIABLE index_error
+        )
+        if(NOT index_result EQUAL 1 OR NOT index_output STREQUAL "" OR
+           NOT index_error MATCHES "GNR2201" OR
+           NOT index_error MATCHES "Optional indexing requires a null guard")
+            message(FATAL_ERROR "${mode} must reject optional ${index_case} indexing: ${index_error}")
+        endif()
+    endforeach()
+endforeach()
+
 # /dev/full opens successfully but rejects writes, including buffered flushes.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "/dev/full")
     foreach(mode IN ITEMS compile format ast ir compat)
