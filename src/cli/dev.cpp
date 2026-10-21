@@ -68,9 +68,32 @@ int Project::dev() const {
             const auto next=root_ / ".gungnir/dev" / ("app-" + std::to_string(++generation) + executable.extension().string());
             std::filesystem::create_directories(next.parent_path());
             std::filesystem::copy_file(executable,next,std::filesystem::copy_options::overwrite_existing);
+            // Keep the last known runnable executable until the replacement
+            // has actually started. A synchronous process-launch failure
+            // must not permanently take down a previously healthy dev server.
+            const auto previous=running;
             application.stop();
-            if(!running.empty()) { std::error_code ignored; std::filesystem::remove(running,ignored); }
-            application.start({next.string()},root_,true); running=next;
+            try {
+                application.start({next.string()},root_,true);
+            } catch(...) {
+                std::error_code ignored;
+                std::filesystem::remove(next,ignored);
+                if(!stopped && !previous.empty()) {
+                    try {
+                        application.start({previous.string()},root_,true);
+                        std::cerr << "gungnir dev: restored previous application after launch failure\n";
+                    } catch(const std::exception& rollback_error) {
+                        std::cerr << "gungnir dev: previous application could not be restarted: "
+                                  << rollback_error.what() << '\n';
+                    }
+                }
+                throw;
+            }
+            running=next;
+            if(!previous.empty()) {
+                std::error_code ignored;
+                std::filesystem::remove(previous,ignored);
+            }
             std::cerr << "gungnir dev: running; watching sources, bootstrap, and configuration; templates reload on render\n";
         } catch(const std::exception& e) { std::cerr << "gungnir dev: " << e.what() << "\nWaiting for changes\n"; }
     };
