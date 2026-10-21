@@ -153,6 +153,19 @@ try:
                         f"Old app did not complete graceful shutdown: {log_tail()}"
                     )
 
+                # A filesystem failure while staging a replacement must leave
+                # the already-running application serving its previous build.
+                # The next predictable generation path is app-3.exe.
+                blocked_copy = dev_dir / "app-3.exe"
+                blocked_copy.mkdir()
+                try:
+                    write_controller("should-not-run")
+                    wait_log("app-3.exe", watcher)
+                    wait_http("dev-second", watcher, seconds=10)
+                    assert len(list(dev_dir.glob("app-*.exe"))) == 1, log_tail()
+                finally:
+                    blocked_copy.rmdir()
+
                 # Reject source errors without replacing the still-serving child.
                 controller.write_text(
                     "controller HomeController { Response index() { return unknown; } }\n",
