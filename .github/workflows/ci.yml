@@ -66,7 +66,7 @@ jobs:
           gungnir_database_scope_safety_test gungnir_orm_transaction_test
           gungnir_orm_relations_test gungnir_orm_soft_deletes_test
           gungnir_orm_timestamps_test
-          gungnir_cli_test gungnir-cli gungnirc
+          gungnir_cli_test gungnir_cli_process_test gungnir-cli gungnirc
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
