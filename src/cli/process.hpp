@@ -12,6 +12,7 @@
 #else
 #include <cerrno>
 #include <csignal>
+#include <fcntl.h>
 #include <cstdio>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -46,16 +47,62 @@ public:
         group_id_=group ? process.dwProcessId : 0;
 #else
         std::vector<char*> argv; for(const auto& argument:arguments) argv.push_back(const_cast<char*>(argument.c_str())); argv.push_back(nullptr);
-        group_=group;
-        pid_=fork();
-        if(pid_<0) throw std::runtime_error("Unable to fork subprocess");
-        if(pid_==0) {
-            if(group) setpgid(0,0);
-            std::signal(SIGINT,SIG_DFL); std::signal(SIGTERM,SIG_DFL);
-            if(!cwd.empty() && chdir(cwd.c_str())!=0) { std::perror("gungnir: chdir"); _exit(127); }
-            execvp(argv[0],argv.data()); std::perror(argv[0]); _exit(127);
+        // The child reports a launch failure through this pipe. Its writer
+        // closes automatically on successful exec (FD_CLOEXEC), allowing
+        // start() to distinguish a launched process from a forked child that
+        // immediately fails chdir/exec. The dev watcher can then roll back.
+        int launch_pipe[2];
+        if (pipe(launch_pipe) != 0)
+            throw std::runtime_error("Unable to create subprocess launch pipe (errno " + std::to_string(errno) + ")");
+        if (fcntl(launch_pipe[1], F_SETFD, FD_CLOEXEC) == -1) {
+            const int error=errno;
+            close(launch_pipe[0]); close(launch_pipe[1]);
+            throw std::runtime_error("Unable to configure subprocess launch pipe (errno " + std::to_string(error) + ")");
         }
-        if(group) setpgid(pid_,pid_);
+        pid_=fork();
+        if(pid_<0) {
+            const int error=errno;
+            close(launch_pipe[0]); close(launch_pipe[1]);
+            throw std::runtime_error("Unable to fork subprocess (errno " + std::to_string(error) + ")");
+        }
+        if(pid_==0) {
+            close(launch_pipe[0]);
+            const auto failed=[&](int error) {
+                // A single int is smaller than PIPE_BUF, so this write is
+                // atomic. Use only async-signal-safe calls after fork.
+                while(write(launch_pipe[1],&error,sizeof(error))<0 && errno==EINTR) {}
+                _exit(127);
+            };
+            if(group && setpgid(0,0)!=0) failed(errno);
+            std::signal(SIGINT,SIG_DFL); std::signal(SIGTERM,SIG_DFL);
+            if(!cwd.empty() && chdir(cwd.c_str())!=0) failed(errno);
+            execvp(argv[0],argv.data());
+            failed(errno);
+        }
+        close(launch_pipe[1]);
+        if(group) (void)setpgid(pid_,pid_);
+        int launch_error=0;
+        std::size_t received=0;
+        bool pipe_failed=false;
+        auto* error_bytes=reinterpret_cast<char*>(&launch_error);
+        while(received<sizeof(launch_error)) {
+            const auto count=read(launch_pipe[0],error_bytes+received,sizeof(launch_error)-received);
+            if(count>0) { received+=static_cast<std::size_t>(count); continue; }
+            if(count==0) break;  // EOF from the close-on-exec writer.
+            if(errno==EINTR) continue;
+            launch_error=errno; pipe_failed=true;
+            break;
+        }
+        close(launch_pipe[0]);
+        if(received>0 || pipe_failed) {
+            if(pipe_failed) (void)kill(pid_,SIGKILL);
+            int status=0;
+            while(waitpid(pid_,&status,0)<0 && errno==EINTR) {}
+            pid_=-1;
+            throw std::runtime_error(
+                "Unable to start " + arguments[0] + " (errno " + std::to_string(launch_error) + ")");
+        }
+        group_=group;
 #endif
     }
     std::optional<int> poll() { return collect(false); }
