@@ -1563,6 +1563,14 @@ if(GUNGNIR_BUILD_TESTS)
         COMMAND gungnir_cli_test
     )
 
+    if(UNIX)
+        add_executable(gungnir_cli_process_test tests/cli_process.cpp)
+        target_include_directories(gungnir_cli_process_test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/cli")
+        target_compile_features(gungnir_cli_process_test PRIVATE cxx_std_23)
+        add_test(NAME gungnir.cli_process COMMAND gungnir_cli_process_test)
+    endif()
+
     if(GUNGNIR_BUILD_TOOLS)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
         add_test(NAME gungnir.application_spear COMMAND ${Python3_EXECUTABLE}
