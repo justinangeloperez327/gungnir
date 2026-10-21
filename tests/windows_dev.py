@@ -71,6 +71,28 @@ try:
                 + value + '"); } }\n', encoding="utf-8"
             )
 
+        # Verify that the app runs its shutdown hooks on Windows restarts,
+        # rather than only observing that its TCP port became available.
+        bootstrap = project / "bootstrap/app.hpp"
+        source = bootstrap.read_text(encoding="utf-8")
+        hook = (
+            '    app.on_shutdown([](gungnir::Application& application) {\n'
+            '        std::ofstream(application.base_path() / "shutdown.marker", '
+            'std::ios::app) << "stopped\\n";\n'
+            '    });\n'
+        )
+        anchor = "    // Add service bindings, middleware, and providers here."
+        assert source.count(anchor) == 1, "Generated bootstrap hook location changed"
+        bootstrap.write_text(
+            "#include <fstream>\n" + source.replace(anchor, hook + anchor),
+            encoding="utf-8",
+        )
+        shutdown_marker = project / "shutdown.marker"
+
+        def shutdown_count():
+            return (shutdown_marker.read_text(encoding="utf-8").count("stopped")
+                    if shutdown_marker.is_file() else 0)
+
         write_controller("dev-first")
         (project / ".env").write_text(
             f"APP_ENV=testing\nAPP_DEBUG=true\nAPP_HOST=127.0.0.1\n"
@@ -126,6 +148,10 @@ try:
                 write_controller("dev-second")
                 wait_http("dev-second", watcher)
                 assert len(list(dev_dir.glob("app-*.exe"))) == 1, log_tail()
+                if console_available:
+                    assert shutdown_count() == 1, (
+                        f"Old app did not complete graceful shutdown: {log_tail()}"
+                    )
 
                 # Reject source errors without replacing the still-serving child.
                 controller.write_text(
@@ -143,6 +169,10 @@ try:
                 write_controller("dev-third")
                 wait_http("dev-third", watcher)
                 assert len(list(dev_dir.glob("app-*.exe"))) == 1, log_tail()
+                if console_available:
+                    assert shutdown_count() == 2, (
+                        f"Restarted app did not complete graceful shutdown: {log_tail()}"
+                    )
 
                 if console_available:
                     watcher.send_signal(signal.CTRL_BREAK_EVENT)
@@ -150,6 +180,10 @@ try:
                     expected = 128 + signal.SIGBREAK
                     assert return_code == expected, (
                         f"Ctrl+Break exit code {return_code}, expected {expected}\n{log_tail()}"
+                    )
+
+                    assert shutdown_count() == 3, (
+                        f"Watcher exit skipped application shutdown: {log_tail()}"
                     )
 
                     # A graceful shutdown must stop the child and remove the
