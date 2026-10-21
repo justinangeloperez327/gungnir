@@ -162,7 +162,8 @@ try:
                     write_controller("should-not-run")
                     wait_log("app-3.exe", watcher)
                     wait_http("dev-second", watcher, seconds=10)
-                    assert len(list(dev_dir.glob("app-*.exe"))) == 1, log_tail()
+                    assert len([path for path in dev_dir.glob("app-*.exe")
+                                if path.is_file()]) == 1, log_tail()
                 finally:
                     blocked_copy.rmdir()
 
