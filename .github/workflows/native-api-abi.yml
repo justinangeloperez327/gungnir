@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Configure shared libraries
         run: >
@@ -98,7 +98,7 @@ jobs:
           test -s native-abi-symbols.txt
 
       - name: Upload ABI symbol manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gungnir-native-abi
           path: native-abi-symbols.txt
@@ -112,7 +112,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Configure shared libraries
         run: >
