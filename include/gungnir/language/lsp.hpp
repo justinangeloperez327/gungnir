@@ -14,6 +14,11 @@ struct DocumentSymbol {
 };
 struct SymbolInfo { std::string name, detail; Origin definition, selection; };
 struct Completion { std::string label, detail; int kind{6}; };
+struct SignatureHelp {
+    std::string label;
+    std::vector<std::string> parameters;
+    std::size_t active_parameter{0};
+};
 // Compiler-backed editor snapshot. Offsets are bytes; the protocol adapter
 // converts them to/from negotiated (UTF-16) document positions.
 class LanguageServer {
@@ -24,6 +29,8 @@ public:
     [[nodiscard]] std::vector<DocumentSymbol> symbols(std::string_view file) const;
     [[nodiscard]] std::optional<SymbolInfo> symbol_at(std::string_view file,std::size_t offset) const;
     [[nodiscard]] std::vector<Completion> completions(std::string_view file,std::size_t offset) const;
+    [[nodiscard]] std::vector<Origin> references(std::string_view file,std::size_t offset,bool include_declaration=true) const;
+    [[nodiscard]] std::optional<SignatureHelp> signature_at(std::string_view file,std::size_t offset) const;
 private:
     std::vector<SourceFile> sources_;
     CompilationResult result_;

@@ -48,6 +48,12 @@ with tempfile.TemporaryDirectory(prefix="gungnir lsp ") as directory:
     for uri, text in ((math_uri, math), (main_uri, main)):
         send("textDocument/didOpen", {"textDocument": {"uri": uri, "text": text, "version": 1, "languageId": "gungnir"}})
     target = {"textDocument": {"uri": main_uri}, "position": pos(main, main.index("add"))}
+    send("textDocument/references", {**target, "context": {"includeDeclaration": True}}, 11)
+    send("textDocument/references", {**target, "context": {"includeDeclaration": False}}, 12)
+    send("textDocument/prepareRename", target, 13)
+    send("textDocument/rename", {**target, "newName": "sum"}, 14)
+    send("textDocument/rename", {**target, "newName": "bad-name"}, 15)
+    send("textDocument/signatureHelp", {"textDocument": {"uri": main_uri}, "position": pos(main, main.index("3)"))}, 16)
     send("textDocument/definition", target, 2)
     send("textDocument/hover", target, 3)
     send("textDocument/documentSymbol", {"textDocument": {"uri": main_uri}}, 4)
@@ -70,6 +76,21 @@ with tempfile.TemporaryDirectory(prefix="gungnir lsp ") as directory:
     by_id = {value["id"]: value for value in responses if "id" in value}
     assert by_id[0]["error"]["code"] == -32002
     assert by_id[1]["result"]["capabilities"]["positionEncoding"] == "utf-16"
+    assert by_id[1]["result"]["capabilities"]["referencesProvider"]
+    assert by_id[1]["result"]["capabilities"]["renameProvider"]["prepareProvider"]
+    assert by_id[1]["result"]["capabilities"]["signatureHelpProvider"]["triggerCharacters"] == ["(", ","]
+    locations = by_id[11]["result"]
+    assert {(v["uri"], v["range"]["start"]["line"]) for v in locations} == {(math_uri, 0), (main_uri, 1)}
+    assert len(by_id[12]["result"]) == 1 and by_id[12]["result"][0]["uri"] == main_uri
+    assert by_id[13]["result"]["placeholder"] == "add"
+    edits = by_id[14]["result"]["changes"]
+    assert set(edits) == {math_uri, main_uri}
+    assert all(item["newText"] == "sum" for edits_for_file in edits.values() for item in edits_for_file)
+    assert by_id[15]["error"]["code"] == -32602
+    signature = by_id[16]["result"]
+    assert "int add(int left, int right)" in signature["signatures"][0]["label"]
+    assert len(signature["signatures"][0]["parameters"]) == 2
+    assert signature["activeParameter"] == 1
     assert by_id[2]["result"] == {"uri": math_uri, "range": {"start": pos(math, math.index("add")), "end": pos(math, math.index("add") + 3)}}
     assert "int add(int left, int right)" in by_id[3]["result"]["contents"]["value"]
     assert by_id[4]["result"][0]["name"] == "answer"

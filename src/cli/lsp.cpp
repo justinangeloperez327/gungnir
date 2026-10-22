@@ -59,6 +59,16 @@ std::size_t offset(std::string_view text,const Json& pos) {
     return i;
 }
 Json range(std::string_view text,std::size_t begin,std::size_t end) { return Json::object({{"start",position(text,begin)},{"end",position(text,end)}}); }
+bool safe_identifier(std::string_view name) {
+    if(name.empty() || name.size()>128 || (!std::isalpha(static_cast<unsigned char>(name.front())) && name.front()!='_')) return false;
+    for(unsigned char c:name) if(!std::isalnum(c) && c!='_') return false;
+    static const std::set<std::string_view> reserved{
+        "model","controller","migration","middleware","policy","event","listener","notification",
+        "mail","job","function","import","const","let","return","if","else","for","while",
+        "async","await","true","false","null","new","throw","break","continue","in"
+    };
+    return !reserved.contains(name);
+}
 struct Document { std::string uri,text; std::int64_t version; };
 class Server {
     std::istream& input; std::ostream& output;
@@ -125,7 +135,7 @@ class Server {
                 if (root.empty()) if (const auto* folders=params.get("workspaceFolders"); folders && folders->is_array() && !folders->as_array().empty())
                     root=path_from_uri(str(folders->as_array().front(),"uri"));
                 initialized=true;
-                reply(*id,Json::object({{"capabilities",Json::object({{"positionEncoding","utf-16"},{"textDocumentSync",Json::object({{"openClose",true},{"change",num(2)},{"save",true}})},{"hoverProvider",true},{"definitionProvider",true},{"documentSymbolProvider",true},{"completionProvider",Json::object({{"resolveProvider",false}})},{"documentFormattingProvider",true}})},{"serverInfo",Json::object({{"name","gungnir"},{"version","0.1.0"}})}})); return true;
+                reply(*id,Json::object({{"capabilities",Json::object({{"positionEncoding","utf-16"},{"textDocumentSync",Json::object({{"openClose",true},{"change",num(2)},{"save",true}})},{"hoverProvider",true},{"definitionProvider",true},{"referencesProvider",true},{"renameProvider",Json::object({{"prepareProvider",true}})},{"signatureHelpProvider",Json::object({{"triggerCharacters",Json::array(Json::Array{Json{"("},Json{","}})}})},{"documentSymbolProvider",true},{"completionProvider",Json::object({{"resolveProvider",false}})},{"documentFormattingProvider",true}})},{"serverInfo",Json::object({{"name","gungnir"},{"version","0.1.0"}})}})); return true;
             }
             if(!initialized) { if(id) error(*id,-32002,"Server not initialized"); return true; }
             if(shutdown) { if(id) error(*id,-32600,"Server is shutting down"); return true; }
@@ -159,7 +169,52 @@ class Server {
                 current.text=std::move(changed); current.version=version; refresh(); return true;
             }
             if(!id) return true;
-            if(name=="textDocument/documentSymbol") { Json::Array result; for(const auto& entry:language.symbols(path)) result.push_back(symbol(entry)); reply(*id,Json::array(std::move(result))); }
+            if(name=="textDocument/references") {
+                bool include=true;
+                if(const auto* context=params.get("context")) if(const auto* value=context->get("includeDeclaration")) {
+                    if(!value->is_boolean()) throw std::invalid_argument("includeDeclaration must be boolean");
+                    include=value->boolean();
+                }
+                Json::Array result;
+                for(const auto& hit:language.references(path,offset(current.text,field(params,"position")),include)) {
+                    const auto source=sources.find(hit.file);
+                    if(source!=sources.end()) result.push_back(Json::object({
+                        {"uri",uri_from_path(hit.file)},{"range",range(source->second,hit.begin,hit.end)}}));
+                }
+                reply(*id,Json::array(std::move(result)));
+            } else if(name=="textDocument/prepareRename" || name=="textDocument/rename") {
+                const auto cursor=offset(current.text,field(params,"position"));
+                const auto info=language.symbol_at(path,cursor);
+                const auto hits=language.references(path,cursor,true);
+                if(!info || info->definition.file.empty() || hits.empty()) reply(*id,nullptr);
+                else if(name=="textDocument/prepareRename")
+                    reply(*id,Json::object({{"range",range(current.text,info->selection.begin,info->selection.end)},{"placeholder",info->name}}));
+                else {
+                    const auto replacement=str(params,"newName");
+                    if(!safe_identifier(replacement)) throw std::invalid_argument("Invalid Gungnir identifier for rename");
+                    Json::Object changes;
+                    for(const auto& hit:hits) {
+                        const auto source=sources.find(hit.file);
+                        if(source==sources.end()) continue;
+                        const auto uri=uri_from_path(hit.file);
+                        auto found=changes.find(uri);
+                        if(found==changes.end()) found=changes.emplace(uri,Json::array(Json::Array{})).first;
+                        found->second.as_array().push_back(Json::object({
+                            {"range",range(source->second,hit.begin,hit.end)},{"newText",replacement}}));
+                    }
+                    reply(*id,Json::object({{"changes",Json::object(std::move(changes))}}));
+                }
+            } else if(name=="textDocument/signatureHelp") {
+                const auto signature=language.signature_at(path,offset(current.text,field(params,"position")));
+                if(!signature) reply(*id,nullptr);
+                else {
+                    Json::Array parameters;
+                    for(const auto& name:signature->parameters) parameters.push_back(Json::object({{"label",name}}));
+                    reply(*id,Json::object({{"signatures",Json::array(Json::Array{
+                        Json::object({{"label",signature->label},{"parameters",Json::array(std::move(parameters))}})})},
+                        {"activeSignature",num(0)},{"activeParameter",num(signature->active_parameter)}}));
+                }
+            } else if(name=="textDocument/documentSymbol") { Json::Array result; for(const auto& entry:language.symbols(path)) result.push_back(symbol(entry)); reply(*id,Json::array(std::move(result))); }
             else if(name=="textDocument/formatting") { const auto formatted=language::Formatter{}.format(current.text); Json::Array edits; if(formatted!=current.text) edits.push_back(Json::object({{"range",range(current.text,0,current.text.size())},{"newText",formatted}})); reply(*id,Json::array(std::move(edits))); }
             else if(name=="textDocument/hover" || name=="textDocument/definition") {
                 const auto info=language.symbol_at(path,offset(current.text,field(params,"position")));

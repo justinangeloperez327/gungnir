@@ -4,6 +4,7 @@
 #include <map>
 #include <functional>
 #include <set>
+#include <tuple>
 
 namespace gungnir::language {
 void LanguageServer::update(std::vector<SourceFile> sources) {
@@ -149,5 +150,119 @@ std::vector<Completion> LanguageServer::completions(std::string_view file,std::s
     }
     for (const auto* keyword : {"function","controller","model","migration","middleware","event","listener","job","policy","notification","mail","import","const","let","return","if","for","async","await"}) entries.try_emplace(keyword,Completion{keyword,"keyword",14});
     std::vector<Completion> result; for (const auto& [_,entry] : entries) result.push_back(entry); return result;
+}
+
+std::vector<Origin> LanguageServer::references(std::string_view file,std::size_t cursor,bool include_declaration) const {
+    if (!result_.validated) return {};
+    const auto& project=*result_.validated;
+    const auto& syntax=project.syntax();
+    // Select a symbol through the compiler's resolved binding identity.
+    SymbolId selected=invalid_id;
+    std::size_t narrow=invalid_id;
+    for(std::size_t i=0;i<syntax.expressions.size();++i) {
+        const auto& expression=syntax.expressions[i];
+        const auto id=project.expressions()[i].symbol;
+        if(id==invalid_id || expression.origin.file!=file ||
+            (expression.kind!=SyntaxExpressionKind::name && expression.kind!=SyntaxExpressionKind::member)) continue;
+        const auto span=selection(expression.origin,expression.text,expression.kind==SyntaxExpressionKind::member);
+        if(cursor>=span.begin && cursor<span.end && span.end-span.begin<narrow) {
+            selected=id; narrow=span.end-span.begin;
+        }
+    }
+    if(selected==invalid_id) {
+        for(SymbolId id=0;id<project.symbols().size();++id) {
+            const auto where=definition(id);
+            if(where && where->file==file && cursor>=where->begin && cursor<where->end) {
+                selected=id; break;
+            }
+        }
+    }
+    if(selected==invalid_id) return {};
+    const auto target=definition(selected);
+    if(!target || target->file.empty()) return {};
+    auto same_symbol=[&](SymbolId id) {
+        if(id==invalid_id) return false;
+        const auto origin=definition(id);
+        return origin && origin->file==target->file
+            && origin->begin==target->begin && origin->end==target->end;
+    };
+    std::vector<Origin> found;
+    std::set<std::tuple<std::string,std::size_t,std::size_t>> visited;
+    auto push=[&](const Origin& origin) {
+        if(origin.file.empty() || origin.end<=origin.begin) return;
+        if(visited.emplace(origin.file,origin.begin,origin.end).second) found.push_back(origin);
+    };
+    if(include_declaration) push(*target);
+    for(std::size_t i=0;i<syntax.expressions.size();++i) {
+        const auto& expr=syntax.expressions[i];
+        if((expr.kind!=SyntaxExpressionKind::name && expr.kind!=SyntaxExpressionKind::member)
+            || !same_symbol(project.expressions()[i].symbol)) continue;
+        const auto span=selection(expr.origin,expr.text,expr.kind==SyntaxExpressionKind::member);
+        push(span);
+    }
+    std::sort(found.begin(),found.end(),[](const Origin& a,const Origin& b) {
+        return std::tie(a.file,a.begin,a.end)<std::tie(b.file,b.begin,b.end);
+    });
+    return found;
+}
+
+std::optional<SignatureHelp> LanguageServer::signature_at(std::string_view file,std::size_t cursor) const {
+    if(!result_.validated) return {};
+    const auto& project=*result_.validated;
+    const auto& syntax=project.syntax();
+    const SourceFile* source=nullptr;
+    for(const auto& candidate:sources_) if(candidate.file==file) { source=&candidate; break; }
+    if(!source || cursor>source->source.size()) return {};
+    const auto tokens=Lexer{source->source}.tokenize(nullptr,file,true);
+    // Innermost callable spanning the cursor wins. Tokenization ignores comma
+    // characters inside quoted strings and nested parenthesized expressions.
+    std::optional<SignatureHelp> best;
+    std::size_t best_width=invalid_id;
+    for(const auto& call:syntax.expressions) {
+        if(call.kind!=SyntaxExpressionKind::call || call.origin.file!=file
+            || cursor<call.origin.begin || cursor>call.origin.end
+            || call.operands.empty()) continue;
+        const auto callee_id=call.operands.front();
+        if(callee_id>=project.expressions().size()) continue;
+        auto symbol=project.expressions()[callee_id].symbol;
+        if(symbol==invalid_id || symbol>=project.symbols().size()) continue;
+        const auto& resolved=project.symbols()[symbol];
+        if(resolved.kind!=ResolvedSymbolKind::callable && resolved.kind!=ResolvedSymbolKind::builtin) continue;
+        const auto begin=syntax.expressions[callee_id].origin.end;
+        std::size_t open=invalid_id;
+        for(const auto& token:tokens) {
+            if(token.offset<begin) continue;
+            if(token.offset>=cursor || token.offset>=call.origin.end) break;
+            if(token.lexeme=="(") { open=token.offset; break; }
+        }
+        if(open==invalid_id) continue;
+        std::size_t active=0,depth=0;
+        for(const auto& token:tokens) {
+            if(token.offset<open) continue;
+            if(token.offset>=cursor) break;
+            if(token.lexeme=="(" || token.lexeme=="[" || token.lexeme=="{") ++depth;
+            else if(token.lexeme==")" || token.lexeme=="]" || token.lexeme=="}") {
+                if(depth==0) break;
+                --depth;
+                if(depth==0) break;
+            } else if(token.lexeme=="," && depth==1) ++active;
+        }
+        const auto span=call.origin.end-call.origin.begin;
+        if(span>=best_width) continue;
+        SignatureHelp help;
+        help.label=detail(symbol);
+        const auto& types=project.types();
+        for(std::size_t index=0;index<resolved.parameters.size();++index) {
+            auto parameter=types.at(resolved.parameters[index]).name;
+            if(index<resolved.parameter_names.size())
+                parameter+=" "+resolved.parameter_names[index];
+            help.parameters.push_back(std::move(parameter));
+        }
+        if(!help.parameters.empty()) active=std::min(active,help.parameters.size()-1);
+        else active=0;
+        help.active_parameter=active;
+        best=std::move(help); best_width=span;
+    }
+    return best;
 }
 }
