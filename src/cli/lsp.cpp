@@ -173,7 +173,7 @@ class Server {
                 bool include=true;
                 if(const auto* context=params.get("context")) if(const auto* value=context->get("includeDeclaration")) {
                     if(!value->is_boolean()) throw std::invalid_argument("includeDeclaration must be boolean");
-                    include=value->boolean();
+                    include=value->dump()=="true";
                 }
                 Json::Array result;
                 for(const auto& hit:language.references(path,offset(current.text,field(params,"position")),include)) {
@@ -192,16 +192,15 @@ class Server {
                 else {
                     const auto replacement=str(params,"newName");
                     if(!safe_identifier(replacement)) throw std::invalid_argument("Invalid Gungnir identifier for rename");
-                    Json::Object changes;
+                    std::map<std::string,Json::Array> collected;
                     for(const auto& hit:hits) {
                         const auto source=sources.find(hit.file);
                         if(source==sources.end()) continue;
-                        const auto uri=uri_from_path(hit.file);
-                        auto found=changes.find(uri);
-                        if(found==changes.end()) found=changes.emplace(uri,Json::array(Json::Array{})).first;
-                        found->second.as_array().push_back(Json::object({
+                        collected[uri_from_path(hit.file)].push_back(Json::object({
                             {"range",range(source->second,hit.begin,hit.end)},{"newText",replacement}}));
                     }
+                    Json::Object changes;
+                    for(auto& [uri,edits]:collected) changes[uri]=Json::array(std::move(edits));
                     reply(*id,Json::object({{"changes",Json::object(std::move(changes))}}));
                 }
             } else if(name=="textDocument/signatureHelp") {
