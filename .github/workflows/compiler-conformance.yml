@@ -88,7 +88,7 @@ jobs:
             cxx: clang++
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y ninja-build g++ clang
@@ -137,7 +137,7 @@ jobs:
           -P tests/compiler_conformance.cmake
 
       - name: Upload conformance snapshot
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: conformance-${{ matrix.name }}
           path: build/conformance/
@@ -149,7 +149,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Configure
         run: >
@@ -189,7 +189,7 @@ jobs:
         run: cmake "-DGUNGNIRC=$PWD/build/Release/gungnirc.exe" "-DGUNGNIR_SOURCE_DIR=$PWD" "-DGUNGNIR_OUTPUT_DIR=$PWD/build/conformance" -P tests/compiler_conformance.cmake
 
       - name: Upload conformance snapshot
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: conformance-MSVC
           path: build/conformance/
@@ -203,7 +203,7 @@ jobs:
       - msvc
     steps:
       - name: Download conformance snapshots
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: conformance-*
           path: snapshots
