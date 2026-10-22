@@ -45,7 +45,7 @@ jobs:
       source: ${{ steps.identity.outputs.source }}
       enabled: ${{ steps.identity.outputs.enabled }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
       - name: Resolve pinned release identity
@@ -77,7 +77,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.identity.outputs.source }}
 
@@ -196,7 +196,7 @@ jobs:
             "$GUNGNIR_PACKAGE"
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-linux-x86_64-${{ matrix.profile }}
           path: ${{ env.GUNGNIR_PACKAGE }}.tar.gz
@@ -218,7 +218,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.identity.outputs.source }}
 
@@ -328,7 +328,7 @@ jobs:
           Pop-Location
 
       - name: Upload portable Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-windows-x86_64-${{ matrix.profile }}
           path: ${{ env.GUNGNIR_PACKAGE }}.zip
@@ -499,7 +499,7 @@ jobs:
           }
 
       - name: Upload Windows installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-windows-installer-${{ matrix.profile }}
           path: installer/${{ env.GUNGNIR_INSTALLER }}
@@ -523,7 +523,7 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.identity.outputs.source }}
           fetch-depth: 0
