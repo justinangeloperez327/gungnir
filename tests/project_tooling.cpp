@@ -22,6 +22,26 @@ int main() {
     struct Cleanup { std::filesystem::path path; ~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);} } cleanup{root};
     auto project=gungnir::cli::Project::create(root,"sample");
     assert(project.structured() && project.name()=="sample");
+
+    // Profile detection must not depend on the OS checkout line endings.
+    // Write in binary mode so CRLF fixtures stay CRLF even on Windows.
+    const auto check_profile = [&](const std::string& content, bool expected) {
+        std::ofstream out{root / ".gungnir-project",
+                         std::ios::binary | std::ios::trunc};
+        out << content;
+        out.close();
+        assert(project.structured() == expected);
+    };
+    check_profile("name=sample\nprofile=structured\n", true);
+    check_profile("name=sample\r\nprofile=structured\r\n", true);
+    check_profile("name=sample\r\nprofile=structured", true);
+    check_profile("name=sample\r\n profile = structured \r\n", true);
+    check_profile("name=sample\n#profile=structured\n", false);
+    check_profile("name=sample\nprofile=structured-extra\n", false);
+    check_profile("name=sample\n", false);
+    check_profile("name=sample\nprofile=structured\nprofile=legacy\n", false);
+    check_profile("name=sample\r\nprofile=structured\r\n", true);
+
     // Both project compilation and application assembly must ignore generated
     // and application-data directories, even when they contain invalid .gnr.
     for (const auto directory : {".git", ".gungnir", "build", "vendor", "storage"}) {
@@ -30,6 +50,10 @@ int main() {
         write(ignored / "invalid.gnr", "function int broken( {\n");
     }
     (void)project.make("model","User");
+    const auto category = project.make("model","Category");
+    write(category, "model Category { table = \"categories\"; "
+                    "fillable = [\"code\", \"name\"]; "
+                    "string code; string name; }\n");
     (void)project.make("event","Created");
     (void)project.make("listener","Record","app.events.Created::Created");
     (void)project.make("policy","User","app.models.User::User");
@@ -39,6 +63,10 @@ int main() {
     assert(validated.success() && validated.validated && validated.code.empty());
     assert(!validated.validated->syntax().modules.empty());
     const auto main=project.assemble();
+    const auto generated_category=read(root/".gungnir/generated/app.models.Category.cpp");
+    assert(generated_category.find("gungnir::Fillable{")!=std::string::npos);
+    assert(generated_category.find("\"code\"")!=std::string::npos);
+    assert(generated_category.find("\"name\"")!=std::string::npos);
     const auto route_file=root/"routes/web.gnr";
     auto generated_app=read(main);
     assert(generated_app.find("::gnr::routes::web::gnr_register_routes(app)")!=std::string::npos);
