@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -824,8 +825,26 @@ std::filesystem::path Project::make_request(String name) { return make("request"
 std::filesystem::path Project::make_job(String name) { return make("job",std::move(name)); }
 
 bool Project::structured() const {
-    const auto marker = read_file(root_ / ".gungnir-project");
-    return marker.find("\nprofile=structured\n") != String::npos || marker.ends_with("\nprofile=structured");
+    // Parse the marker by lines: CRLF files checked out on Windows must
+    // select the same compiler as LF files on Linux/macOS.
+    std::istringstream lines{read_file(root_ / ".gungnir-project")};
+    String line;
+    String profile;
+    while (std::getline(lines, line)) {
+        line = trim(std::move(line));
+        if (line.empty() || line.front() == '#' || line.front() == ';') {
+            continue;
+        }
+
+        const auto separator = line.find('=');
+        if (separator == String::npos) {
+            continue;
+        }
+        if (trim(line.substr(0, separator)) == "profile") {
+            profile = trim(line.substr(separator + 1));
+        }
+    }
+    return profile == "structured";
 }
 
 namespace {
