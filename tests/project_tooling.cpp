@@ -63,10 +63,12 @@ int main() {
     assert(validated.success() && validated.validated && validated.code.empty());
     assert(!validated.validated->syntax().modules.empty());
     const auto main=project.assemble();
-    const auto generated_category=read(root/".gungnir/generated/app.models.Category.cpp");
-    assert(generated_category.find("gungnir::Fillable{")!=std::string::npos);
-    assert(generated_category.find("\"code\"")!=std::string::npos);
-    assert(generated_category.find("\"name\"")!=std::string::npos);
+    // Model declarations, including metadata, live in the generated shared
+    // header. Module .cpp files contain implementation bodies instead.
+    const auto generated_declarations=read(root/".gungnir/generated/program.hpp");
+    assert(generated_declarations.find("gungnir::Fillable{")!=std::string::npos);
+    assert(generated_declarations.find("\"code\"")!=std::string::npos);
+    assert(generated_declarations.find("\"name\"")!=std::string::npos);
     const auto route_file=root/"routes/web.gnr";
     auto generated_app=read(main);
     assert(generated_app.find("::gnr::routes::web::gnr_register_routes(app)")!=std::string::npos);
