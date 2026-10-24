@@ -208,6 +208,23 @@ jobs:
             -max_total_time=10 -timeout=2 -max_len=65536 -rss_limit_mb=2048
 
 
+  windows-project-profile:
+    name: Windows · structured project profile
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Configure
+        run: >-
+          cmake -S . -B build -A x64
+          -DGUNGNIR_BUILD_TESTS=ON
+          -DGUNGNIR_BUILD_TOOLS=ON
+      - name: Build project tooling tests
+        run: cmake --build build --config Debug --target gungnir_project_tooling_test --parallel 2
+      - name: Verify Windows CRLF profile and model metadata
+        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.]project_tooling$" --output-on-failure
+
   postgresql:
     name: Integration · PostgreSQL
     runs-on: ubuntu-24.04
