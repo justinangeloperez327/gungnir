@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -822,30 +823,68 @@ void arrows_reject_implicit_instance_method_captures() {
             assert(emitted.diagnostics[i].span.end_offset == checked.diagnostics[i].span.end_offset);
         }
     }
-}
-
-} // namespace
-
-int main() {
+}int main() {
+    std::fprintf(stderr, "[compiler_correctness] parser_and_validated_ast_invariants\n");
+    std::fflush(stderr);
     parser_and_validated_ast_invariants();
+    std::fprintf(stderr, "[compiler_correctness] cpp_ir_is_an_explicit_deterministic_boundary\n");
+    std::fflush(stderr);
     cpp_ir_is_an_explicit_deterministic_boundary();
+    std::fprintf(stderr, "[compiler_correctness] cpp_ir_recursive_lowering_survives_arena_growth\n");
+    std::fflush(stderr);
     cpp_ir_recursive_lowering_survives_arena_growth();
+    std::fprintf(stderr, "[compiler_correctness] validation_only_stops_at_semantic_firewall\n");
+    std::fflush(stderr);
     validation_only_stops_at_semantic_firewall();
+    std::fprintf(stderr, "[compiler_correctness] authoritative_check_closes_control_flow\n");
+    std::fflush(stderr);
     authoritative_check_closes_control_flow();
+    std::fprintf(stderr, "[compiler_correctness] authoritative_check_matches_full_semantic_gate\n");
+    std::fflush(stderr);
     authoritative_check_matches_full_semantic_gate();
+    std::fprintf(stderr, "[compiler_correctness] diagnostics_preserve_precise_source_spans\n");
+    std::fflush(stderr);
     diagnostics_preserve_precise_source_spans();
+    std::fprintf(stderr, "[compiler_correctness] diagnostic_order_is_deterministic\n");
+    std::fflush(stderr);
     diagnostic_order_is_deterministic();
+    std::fprintf(stderr, "[compiler_correctness] generated_cpp_has_statement_source_mapping\n");
+    std::fflush(stderr);
     generated_cpp_has_statement_source_mapping();
+    std::fprintf(stderr, "[compiler_correctness] invalid_program_never_reaches_codegen\n");
+    std::fflush(stderr);
     invalid_program_never_reaches_codegen();
+    std::fprintf(stderr, "[compiler_correctness] compilation_is_deterministic\n");
+    std::fflush(stderr);
     compilation_is_deterministic();
+    std::fprintf(stderr, "[compiler_correctness] multi_file_order_is_deterministic\n");
+    std::fflush(stderr);
     multi_file_order_is_deterministic();
+    std::fprintf(stderr, "[compiler_correctness] malformed_input_is_controlled\n");
+    std::fflush(stderr);
     malformed_input_is_controlled();
+    std::fprintf(stderr, "[compiler_correctness] structured_model_metadata_is_canonical\n");
+    std::fflush(stderr);
     structured_model_metadata_is_canonical();
+    std::fprintf(stderr, "[compiler_correctness] model_naming_and_cast_contracts_are_canonical\n");
+    std::fflush(stderr);
     model_naming_and_cast_contracts_are_canonical();
+    std::fprintf(stderr, "[compiler_correctness] framework_contracts_fail_before_codegen\n");
+    std::fflush(stderr);
     framework_contracts_fail_before_codegen();
+    std::fprintf(stderr, "[compiler_correctness] optional_flow_rejects_stale_nonnull_facts\n");
+    std::fflush(stderr);
     optional_flow_rejects_stale_nonnull_facts();
+    std::fprintf(stderr, "[compiler_correctness] optional_indexing_requires_a_nonnull_receiver\n");
+    std::fflush(stderr);
     optional_indexing_requires_a_nonnull_receiver();
+    std::fprintf(stderr, "[compiler_correctness] guarded_indexing_preserves_immutability\n");
+    std::fflush(stderr);
     guarded_indexing_preserves_immutability();
+    std::fprintf(stderr, "[compiler_correctness] nullable_model_updates_require_guards_and_mutability\n");
+    std::fflush(stderr);
     nullable_model_updates_require_guards_and_mutability();
+    std::fprintf(stderr, "[compiler_correctness] arrows_reject_implicit_instance_method_captures\n");
+    std::fflush(stderr);
     arrows_reject_implicit_instance_method_captures();
 }
