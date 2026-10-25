@@ -95,6 +95,13 @@ return `bool`. Query `update`, `remove`, `forceRemove` and `restore` return an
 affected-row count. `dirty()` inspects any changed field; `isDirty("name")`
 checks one field. `exists()` reports whether a model was persisted.
 
+## Replicating models
+
+`replicate()` creates a new unsaved model with the original ordinary
+attributes. Its primary key, `created_at`, `updated_at` and (when soft
+deletes are enabled) `deleted_at` are not copied. Saving the replica
+generates fresh lifecycle values and does not inherit a soft-deleted state.
+
 ## Deleting records
 
 ```gnr
