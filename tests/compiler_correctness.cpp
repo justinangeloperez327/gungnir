@@ -823,7 +823,9 @@ void arrows_reject_implicit_instance_method_captures() {
             assert(emitted.diagnostics[i].span.end_offset == checked.diagnostics[i].span.end_offset);
         }
     }
-}int main() {
+}} // namespace
+
+int main() {
     std::fprintf(stderr, "[compiler_correctness] parser_and_validated_ast_invariants\n");
     std::fflush(stderr);
     parser_and_validated_ast_invariants();
