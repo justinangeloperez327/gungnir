@@ -875,7 +875,17 @@ template <typename Derived>
 Derived Model<Derived>::replicate() const {
     Derived copy;
     auto values = attributes();
+    // Replication copies user attributes, not identity or lifecycle state.
+    // Newly inserted copies must generate their own timestamps and must not
+    // inherit a source row's soft-deletion marker.
     values.erase(String{primary_key_name()});
+    if constexpr (uses_timestamps()) {
+        values.erase("created_at");
+        values.erase("updated_at");
+    }
+    if constexpr (uses_soft_deletes()) {
+        values.erase(String{deleted_at_column()});
+    }
     copy.force_fill(values);
     return copy;
 }
