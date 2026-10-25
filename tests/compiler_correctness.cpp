@@ -176,12 +176,14 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
 
 void cpp_ir_recursive_lowering_survives_arena_growth() {
     std::string source{"function int stress() { return "};
-    for (int i = 0; i < 96; ++i) {
+    // Stress arena reallocations without exceeding the bounded portable
+    // recursive-parser depth (Windows uses a smaller default stack).
+    for (int i = 0; i < 32; ++i) {
         source += "(";
     }
     source += "1";
-    for (int i = 0; i < 96; ++i) {
-        source += " + 1)";
+    for (int i = 0; i < 32; ++i) {
+        source += " + 1 + 1 + 1 + 1)";
     }
     source += "; }";
 
@@ -208,6 +210,22 @@ void cpp_ir_recursive_lowering_survives_arena_growth() {
     assert(verification.success());
     assert(ir.expressions.size() > 96);
     assert(!dump_cpp_ir(ir).empty());
+
+    // Pathological recursion must be diagnosed, never crash the compiler.
+    std::string excessive{"function int tooDeep() { return "};
+    excessive.append(96, '(');
+    excessive += "1";
+    excessive.append(96, ')');
+    excessive += "; }";
+    const auto rejected = SyntaxParser{}.parse(
+        excessive, "excessive-nesting.gnr", "app"
+    );
+    assert(std::any_of(
+        rejected.diagnostics.begin(), rejected.diagnostics.end(),
+        [](const auto& diagnostic) {
+            return diagnostic.code == "GNR2004";
+        }
+    ));
 }
 
 void validation_only_stops_at_semantic_firewall() {
