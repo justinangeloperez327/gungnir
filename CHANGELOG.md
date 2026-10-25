@@ -13,9 +13,9 @@ For installation and usage instructions, see the [README](README.md) and
   explicitly typed fields (`GNR2308`), with Windows/Linux compiler tests.
 - Diagnose generated ORM metadata member collisions with model fields, methods,
   and relationships before emitting C++ (`GNR2308`).
-- Guard recursive structured parsing at a portable nesting depth of 48
-  (`GNR2004`) to avoid Windows stack exhaustion while retaining IR arena stress
-  validation.
+- Guard recursive structured parsing and expression AST depth at a portable
+  limit of 48 (`GNR2004`) to avoid Windows parsing and semantic-validator stack
+  exhaustion while retaining IR arena stress validation.
 - Preflight all model mass-assignment keys and value conversions before instance
   field writes, so rejected updates cannot partially mutate models.
 - Fix `Model::replicate()` to omit generated timestamps and soft-delete state
