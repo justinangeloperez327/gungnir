@@ -302,6 +302,41 @@ void invalid_framework_contracts_fail_semantically() {
         "GNR2307"
     );
 
+    // A generated metadata member must not collide with a model's fields,
+    // methods, or relationship names. The compiler must reject the source
+    // before emitting duplicate C++ class members.
+    reject("model Broken { string table; }", "GNR2308");
+    reject(
+        "model Broken { fillable = ['name']; string fillable; }",
+        "GNR2308"
+    );
+    reject(
+        "model Broken { hidden = ['secret']; string hidden; }",
+        "GNR2308"
+    );
+    reject(
+        "model Broken { casts = {'active': 'bool'}; int casts; }",
+        "GNR2308"
+    );
+    reject(
+        "model Broken { timestamps = true; int timestamps; }",
+        "GNR2308"
+    );
+    reject(
+        "model Broken { softDeletes = true; int soft_deletes; }",
+        "GNR2308"
+    );
+    reject(
+        "model Broken { string table() { return 'a'; } }",
+        "GNR2308"
+    );
+    reject(
+        "model Other {} model Broken { "
+        "connection = 'reporting'; "
+        "connection() { return belongsTo<Other>(); } }",
+        "GNR2308"
+    );
+
     reject(
         "model Broken { table = ''; }",
         "GNR2308"
