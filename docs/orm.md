@@ -68,7 +68,11 @@ let user = User::create({
 });
 ```
 
-Mass assignment respects the model's `fillable` contract.
+Mass assignment respects the model's `fillable` contract. Before
+`Model::fill()` or `Model::force_fill()` changes any fields, the native ORM
+checks every attribute name and value conversion. An invalid key or incompatible
+value therefore leaves the model unchanged. These instance-level protections
+do not replace authorization for query-based bulk updates.
 
 ## Updating records
 
