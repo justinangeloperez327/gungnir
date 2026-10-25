@@ -220,10 +220,10 @@ jobs:
           cmake -S . -B build -A x64
           -DGUNGNIR_BUILD_TESTS=ON
           -DGUNGNIR_BUILD_TOOLS=ON
-      - name: Build project tooling, model compiler and ORM tests
-        run: cmake --build build --config Debug --target gungnir_project_tooling_test gungnir_compiler_correctness_test gungnir_framework_semantics_test gungnir_model_plumbing_test --parallel 2
-      - name: Verify Windows project profile, model metadata and ORM writes
-        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.](project_tooling|compiler_correctness|framework_semantics|model_plumbing)$" --output-on-failure
+      - name: Build project tooling, compiler and model ORM regressions
+        run: cmake --build build --config Debug --target gungnir_project_tooling_test gungnir_compiler_correctness_test gungnir_framework_semantics_test gungnir_model_test gungnir_model_plumbing_test gungnir_model_relationships_test --parallel 2
+      - name: Verify Windows project, model metadata, relationships and ORM writes
+        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.](project_tooling|compiler_correctness|framework_semantics|model|model_plumbing|model_relationships)$" --output-on-failure
 
   postgresql:
     name: Integration · PostgreSQL
