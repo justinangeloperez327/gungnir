@@ -2446,14 +2446,20 @@ public:
                     );
                 }
 
+                std::unordered_set<std::string> attribute_names;
                 for (auto id : expr.operands) {
-                    if (
-                        v.syntax_.expressions[id].literal_type !=
-                        "string"
-                    ) {
+                    const auto& item = v.syntax_.expressions[id];
+                    if (item.literal_type != "string") {
                         report(
                             metadata.origin,
                             "Attribute names must be string constants",
+                            "GNR2308"
+                        );
+                    } else if (!attribute_names.insert(item.text).second) {
+                        report(
+                            metadata.origin,
+                            "Duplicate attribute '" + item.text +
+                                "' in " + metadata.name,
                             "GNR2308"
                         );
                     }
@@ -2480,7 +2486,9 @@ public:
                         "datetime"
                     };
 
-                for (auto id : expr.operands) {
+                std::unordered_set<std::string> cast_names;
+                for (std::size_t i = 0; i < expr.operands.size(); ++i) {
+                    const auto id = expr.operands[i];
                     if (
                         v.syntax_.expressions[id].literal_type !=
                             "string" ||
@@ -2491,6 +2499,17 @@ public:
                         report(
                             metadata.origin,
                             "Unknown model cast",
+                            "GNR2308"
+                        );
+                    }
+                    if (
+                        i < expr.argument_names.size() &&
+                        !cast_names.insert(expr.argument_names[i]).second
+                    ) {
+                        report(
+                            metadata.origin,
+                            "Duplicate cast for attribute '" +
+                                expr.argument_names[i] + "'",
                             "GNR2308"
                         );
                     }
@@ -2604,6 +2623,52 @@ public:
 
                 return invalid_id;
             };
+
+            // Metadata-only models synthesize cast-backed fields. When the
+            // author explicitly declares a field, however, its type must
+            // agree with the cast contract before C++ generation.
+            for (const auto& metadata : declaration.metadata) {
+                if (metadata.name != "casts") continue;
+                const auto& entries = v.syntax_.expressions[metadata.value];
+                if (entries.kind != SyntaxExpressionKind::object) continue;
+                for (
+                    std::size_t i = 0;
+                    i < entries.operands.size() &&
+                        i < entries.argument_names.size();
+                    ++i
+                ) {
+                    const auto name = entries.argument_names[i];
+                    const auto& cast = v.syntax_.expressions[entries.operands[i]];
+                    if (cast.literal_type != "string") continue;
+                    std::string expected;
+                    if (cast.text == "bool") expected = "bool";
+                    else if (cast.text == "int" || cast.text == "integer")
+                        expected = "int";
+                    else if (cast.text == "double") expected = "double";
+                    else if (cast.text == "decimal") expected = "Decimal";
+                    else if (cast.text == "json") expected = "Json";
+                    else if (
+                        cast.text == "string" ||
+                        cast.text == "date" ||
+                        cast.text == "datetime"
+                    ) expected = "string";
+                    else continue; // Invalid casts receive their own diagnostic.
+
+                    const auto actual = field_type(name);
+                    if (
+                        actual != invalid_id &&
+                        type(actual).name != expected
+                    ) {
+                        report(
+                            metadata.origin,
+                            "Cast '" + cast.text + "' for attribute '" +
+                                name + "' conflicts with declared field type '" +
+                                type(actual).name + "'",
+                            "GNR2308"
+                        );
+                    }
+                }
+            }
 
             const auto primary_type =
                 field_type(primary);
