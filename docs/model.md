@@ -41,6 +41,23 @@ model AuditEntry {
 }
 ```
 
+## Default table naming
+
+Without a `table` declaration, Gungnir uses plural snake-case names,
+including acronym boundaries and common plural endings:
+
+| Model | Default table |
+| --- | --- |
+| `Product` | `products` |
+| `APIKey` | `api_keys` |
+| `Company` | `companies` |
+| `Buzz` | `buzzes` |
+
+Use `table = "existing_table_name";` to retain a previously deployed
+physical table name. In particular, after upgrading an application that used
+an implicit table name with consecutive uppercase letters or a final `z`,
+confirm the actual schema name before regenerating the application.
+
 ## Primary keys
 
 Models use `id` as their conventional primary key. A different key can be declared explicitly:
@@ -86,7 +103,14 @@ model User {
 
 ## Casts
 
-Casts define the application type of persisted attributes:
+Casts define the application type of persisted attributes. When an
+attribute is explicitly declared with a type, its `casts` entry must agree with
+that type. For example, `bool active` can use `"active": "bool"` but
+not `"active": "integer"`. Metadata-only models may declare cast-backed
+attributes without separate field declarations.
+
+Duplicate entries in `fillable`, `hidden`, `visible`, and `casts` are
+compile-time errors (`GNR2308`).
 
 ```gnr
 model Project {
