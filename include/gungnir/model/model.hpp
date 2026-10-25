@@ -440,7 +440,7 @@ public:
             if (!is_fillable(name)) {
                 throw MassAssignmentError{name};
             }
-            if (!has_attribute(name)) {
+            if (!validate_attribute_value(name, value)) {
                 throw ModelMetadataError{
                     "Fillable attribute '" + name +
                     "' is missing from generated model metadata"
@@ -456,7 +456,7 @@ public:
     Derived& force_fill(const AttributeMap& values) {
         for (const auto& [name, value] : values) {
             (void)value;
-            if (!has_attribute(name)) {
+            if (!validate_attribute_value(name, value)) {
                 throw ModelMetadataError{
                     "Attribute '" + name +
                     "' is missing from generated model metadata"
@@ -547,6 +547,26 @@ protected:
     ~Model() = default;
 
 private:
+    // Validate conversions before applying any member assignment. This avoids
+    // partial updates even when a later field has an incompatible value.
+    bool validate_attribute_value(
+        std::string_view name,
+        const AttributeValue& value
+    ) const {
+        bool found = false;
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            if (descriptor.name != name) return;
+            using Member = std::remove_cvref_t<
+                decltype(derived().*(descriptor.member))
+            >;
+            static_cast<void>(
+                model::value_cast<typename Member::value_type>(value)
+            );
+            found = true;
+        });
+        return found;
+    }
+
     [[nodiscard]] Derived& derived() noexcept {
         return static_cast<Derived&>(*this);
     }
