@@ -11,6 +11,15 @@ A null guard remains valid after an `if` only when every continuing branch prese
 
 Indexing an optional `List`, `Collection`, `Map`, `Json`, or `Data` requires a null guard or a non-null fallback through `??`. This applies to reads and writes, including nested indexing when an element is itself an optional container. For example, `if (values == null) { return 0; } return values[0];` safely indexes a `List<int>?`.
 
+## Portable nesting limit
+
+The parser rejects excessively nested expressions, types, or statements with
+`GNR2004` instead of exhausting the process stack. The current portable
+nesting limit is **48** recursive syntax levels. For very long calculations,
+split deeply parenthesized expressions into named intermediate bindings; this
+does not limit the number of ordinary statements or expression nodes in a
+function.
+
 ## Scope
 String interpolation, general native operators, safe optional method calls and general flow-sensitive narrowing are not supported. Await expressions inside null coalescing require a separate binding. Native APIs must be declared through compiler bindings. Framework compatibility expressions continue through the legacy parser.
 
