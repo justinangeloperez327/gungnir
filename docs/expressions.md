@@ -15,10 +15,12 @@ Indexing an optional `List`, `Collection`, `Map`, `Json`, or `Data` requires a n
 
 The parser rejects excessively nested expressions, types, or statements with
 `GNR2004` instead of exhausting the process stack. The current portable
-nesting limit is **48** recursive syntax levels. For very long calculations,
-split deeply parenthesized expressions into named intermediate bindings; this
-does not limit the number of ordinary statements or expression nodes in a
-function.
+nesting limit is **48** recursive syntax levels. The parser also checks the
+resulting expression tree before semantic validation, so long left-associative
+operator chains cannot exhaust the validator stack. For complex calculations,
+split deeply nested or long chained expressions into named intermediate
+bindings. This does not impose a total limit on ordinary statements or
+expression nodes in a function.
 
 ## Scope
 String interpolation, general native operators, safe optional method calls and general flow-sensitive narrowing are not supported. Await expressions inside null coalescing require a separate binding. Native APIs must be declared through compiler bindings. Framework compatibility expressions continue through the legacy parser.
