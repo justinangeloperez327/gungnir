@@ -1,4 +1,5 @@
 #include <gungnir/language/model_lowering.hpp>
+#include "model_naming.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -85,82 +86,7 @@ std::optional<std::size_t> previous_significant(
 
 
 
-std::string snake_case(std::string_view value) {
-    std::string result;
-
-    for (std::size_t index = 0; index < value.size(); ++index) {
-        const char current = value[index];
-
-        if (
-            std::isupper(static_cast<unsigned char>(current)) != 0 &&
-            !result.empty() &&
-            result.back() != '_'
-        ) {
-            const bool previous_lower =
-                std::islower(static_cast<unsigned char>(value[index - 1])) != 0 ||
-                std::isdigit(static_cast<unsigned char>(value[index - 1])) != 0;
-            const bool next_lower =
-                index + 1 < value.size() &&
-                std::islower(static_cast<unsigned char>(value[index + 1])) != 0;
-
-            if (previous_lower || next_lower) {
-                result.push_back('_');
-            }
-        }
-
-        if (current == '-') {
-            result.push_back('_');
-        } else {
-            result.push_back(
-                static_cast<char>(
-                    std::tolower(static_cast<unsigned char>(current))
-                )
-            );
-        }
-    }
-
-    return result;
-}
-
-std::string pluralize(std::string value) {
-    if (value.empty()) {
-        return value;
-    }
-
-    const auto ends_with = [&](std::string_view suffix) {
-        return value.size() >= suffix.size() &&
-               value.compare(
-                   value.size() - suffix.size(),
-                   suffix.size(),
-                   suffix
-               ) == 0;
-    };
-
-    if (
-        value.size() > 1 &&
-        value.back() == 'y' &&
-        value[value.size() - 2] != 'a' &&
-        value[value.size() - 2] != 'e' &&
-        value[value.size() - 2] != 'i' &&
-        value[value.size() - 2] != 'o' &&
-        value[value.size() - 2] != 'u'
-    ) {
-        value.pop_back();
-        return value + "ies";
-    }
-
-    if (
-        ends_with("s") ||
-        ends_with("x") ||
-        ends_with("z") ||
-        ends_with("ch") ||
-        ends_with("sh")
-    ) {
-        return value + "es";
-    }
-
-    return value + "s";
-}
+using detail::snake_case;
 
 std::optional<std::string> cpp_scalar(std::string_view type) {
     if (type == "string") {
@@ -512,7 +438,7 @@ ModelLoweringResult ModelLowerer::lower(
         const auto body_close_offset = span.end - 1;
         ModelInfo model;
         model.name = name;
-        model.table = pluralize(snake_case(model.name));
+        model.table = detail::model_table_name(model.name);
         model.body_open_end = body_offset + 1;
         model.body_close_offset = body_close_offset;
         model.metadata_offset = span.end;
