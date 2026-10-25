@@ -185,6 +185,7 @@ void cpp_ir_recursive_lowering_survives_arena_growth() {
     }
     source += "; }";
 
+    std::fprintf(stderr, "[arena-growth] parsing nested expressions\n");
     auto parsed = SyntaxParser{}.parse(
         source,
         "ir-arena-growth.gnr",
@@ -192,13 +193,16 @@ void cpp_ir_recursive_lowering_survives_arena_growth() {
     );
     assert(parsed.diagnostics.empty());
 
+    std::fprintf(stderr, "[arena-growth] validating syntax\n");
     auto validation =
         ProgramValidator{}.validate(std::move(parsed.project));
     assert(validation.project.has_value());
     assert(validation.diagnostics.empty());
 
+    std::fprintf(stderr, "[arena-growth] lowering to C++ IR\n");
     const auto ir =
         CppIrLowerer{}.lower(*validation.project, false);
+    std::fprintf(stderr, "[arena-growth] verifying C++ IR\n");
     const auto verification = CppIrVerifier{}.verify(ir);
 
     assert(verification.success());
