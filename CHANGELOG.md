@@ -6,7 +6,11 @@ For installation and usage instructions, see the [README](README.md) and
 
 ## Unreleased
 
-No unreleased changes.
+- Canonicalized default table naming across the structured compiler and model
+  lowering (including acronyms and names ending in `z`). Explicit `table`
+  declarations preserve previously deployed table names.
+- Reject duplicate model attribute/cast metadata and casts that conflict with
+  explicitly typed fields (`GNR2308`), with Windows/Linux compiler tests.
 
 ## 1.0.2 — 2026-10-21
 
