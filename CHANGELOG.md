@@ -18,6 +18,8 @@ For installation and usage instructions, see the [README](README.md) and
   validation.
 - Preflight all model mass-assignment keys and value conversions before instance
   field writes, so rejected updates cannot partially mutate models.
+- Fix `Model::replicate()` to omit generated timestamps and soft-delete state
+  as well as the primary key; test replication of deleted records.
 
 ## 1.0.2 — 2026-10-21
 
