@@ -82,11 +82,27 @@ int main() {
     assert(savedSettings(ada_id));
     const auto hydrated = requireUser(ada_id);
     assert(!hydrated.dirty() && hydrated.settings.get().get("theme")->string() == "silver");
+
+    const auto replicated = hydrated.replicate();
+    const auto replicated_values = replicated.attributes();
+    assert(!replicated.exists() && !replicated.was_recently_created());
+    assert(replicated_values.contains("name"));
+    assert(!replicated_values.contains("id"));
+    assert(!replicated_values.contains("created_at"));
+    assert(!replicated_values.contains("updated_at"));
+    assert(!replicated_values.contains("deleted_at"));
+    assert(!replicated.trashed());
+
     const auto serialized = http::make_json(hydrated);
     assert(!serialized.get("password") && serialized.get("settings")->is_object());
     assert(serialized.get("settings")->get("theme")->string() == "silver");
     assert(bulkName(ada_id) == 1 && requireUser(ada_id).name.get() == "updated");
     assert(removeUser(ada_id) && !findUser(ada_id) && deletedUsers() == 1);
+    const auto deleted = User::only_deleted().first_or_fail();
+    assert(deleted.trashed());
+    const auto restored_replica = deleted.replicate();
+    assert(!restored_replica.trashed());
+    assert(!restored_replica.attributes().contains("deleted_at"));
     assert(restoreUser(ada_id) == 1 && findUser(ada_id) && deletedUsers() == 0);
 
     auto tenant = createTenant("tenant-uuid");
