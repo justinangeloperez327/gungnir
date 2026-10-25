@@ -1,4 +1,5 @@
 #include <gungnir/language/cpp_ir.hpp>
+#include "model_naming.hpp"
 #include <gungnir/language/compiler.hpp>
 #include <gungnir/language/spec.hpp>
 #include <algorithm>
@@ -1011,49 +1012,7 @@ public:
                 }
             )
         ) {
-            std::string table;
-            for (
-                std::size_t i = 0;
-                i < declaration.name.size();
-                ++i
-            ) {
-                const auto value =
-                    declaration.name[i];
-
-                if (
-                    value >= 'A' &&
-                    value <= 'Z'
-                ) {
-                    if (i) {
-                        table += '_';
-                    }
-                    table += static_cast<char>(
-                        value + 32
-                    );
-                } else {
-                    table += value;
-                }
-            }
-
-            if (
-                table.ends_with("y") &&
-                table.size() > 1 &&
-                std::string{"aeiou"}.find(
-                    table[table.size() - 2]
-                ) == std::string::npos
-            ) {
-                table.pop_back();
-                table += "ies";
-            } else if (
-                table.ends_with("s") ||
-                table.ends_with("x") ||
-                table.ends_with("ch") ||
-                table.ends_with("sh")
-            ) {
-                table += "es";
-            } else {
-                table += 's';
-            }
+            const auto table = detail::model_table_name(declaration.name);
 
             block
                 << "inline static constexpr "
