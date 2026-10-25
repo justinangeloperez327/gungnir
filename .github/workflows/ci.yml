@@ -220,10 +220,10 @@ jobs:
           cmake -S . -B build -A x64
           -DGUNGNIR_BUILD_TESTS=ON
           -DGUNGNIR_BUILD_TOOLS=ON
-      - name: Build project tooling tests
-        run: cmake --build build --config Debug --target gungnir_project_tooling_test --parallel 2
-      - name: Verify Windows CRLF profile and model metadata
-        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.]project_tooling$" --output-on-failure
+      - name: Build project tooling and model compiler tests
+        run: cmake --build build --config Debug --target gungnir_project_tooling_test gungnir_compiler_correctness_test --parallel 2
+      - name: Verify Windows project profile and model metadata
+        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.](project_tooling|compiler_correctness)$" --output-on-failure
 
   postgresql:
     name: Integration · PostgreSQL
