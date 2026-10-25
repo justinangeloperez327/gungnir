@@ -559,6 +559,50 @@ void structured_model_metadata_is_canonical() {
     ));
 }
 
+void model_naming_and_cast_contracts_are_canonical() {
+    const auto names = Compiler{}.compile(
+        "model APIKey {} model Buzz {} model Company {}",
+        "model-naming.gnr",
+        deterministic_options()
+    );
+    assert(names.success() && names.validated);
+    assert(names.code.find("gungnir::Table table{\\"api_keys\\"}") != std::string::npos);
+    assert(names.code.find("gungnir::Table table{\\"buzzes\\"}") != std::string::npos);
+    assert(names.code.find("gungnir::Table table{\\"companies\\"}") != std::string::npos);
+
+    const auto consistent = Compiler{}.compile(
+        "model Entry { "
+        "bool active; int quantity; string occurred_at; "
+        "casts = {'active': 'bool', 'quantity': 'integer', "
+        "'occurred_at': 'datetime'}; }",
+        "model-casts.gnr",
+        deterministic_options()
+    );
+    assert(consistent.success() && consistent.validated);
+
+    for (const auto source : {
+        "model Entry { bool active; casts = {'active': 'integer'}; }",
+        "model Entry { int amount; casts = {'amount': 'bool'}; }",
+        "model Entry { fillable = ['name', 'name']; }",
+        "model Entry { casts = {'active': 'bool', 'active': 'bool'}; }"
+    }) {
+        auto options = deterministic_options();
+        const auto full = Compiler{}.compile(source, "invalid-model.gnr", options);
+        options.validate_only = true;
+        const auto check = Compiler{}.compile(source, "invalid-model.gnr", options);
+        assert(!full.success() && !full.validated && full.code.empty());
+        assert(!check.success() && !check.validated && check.code.empty());
+        assert(std::any_of(
+            full.diagnostics.begin(), full.diagnostics.end(),
+            [](const auto& diagnostic) {
+                return diagnostic.code == "GNR2308";
+            }
+        ));
+        assert(full.diagnostics.size() == check.diagnostics.size());
+        assert_diagnostic_location(full, "invalid-model.gnr");
+    }
+}
+
 void framework_contracts_fail_before_codegen() {
     const auto result = Compiler{}.compile(
         "event BrokenEvent { int id; public handle() {} }",
@@ -797,6 +841,7 @@ int main() {
     multi_file_order_is_deterministic();
     malformed_input_is_controlled();
     structured_model_metadata_is_canonical();
+    model_naming_and_cast_contracts_are_canonical();
     framework_contracts_fail_before_codegen();
     optional_flow_rejects_stale_nonnull_facts();
     optional_indexing_requires_a_nonnull_receiver();
