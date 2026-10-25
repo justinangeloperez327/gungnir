@@ -2564,6 +2564,40 @@ public:
         }
 
         if (declaration.kind == DeclarationKind::model) {
+            // These identifiers are emitted as native C++ members, even if
+            // they were not explicitly declared as Gungnir fields. Report
+            // conflicts at the source instead of generating invalid C++.
+            std::unordered_set<std::string> generated_members{"table"};
+            for (const auto& metadata : declaration.metadata) {
+                if (metadata.name == "softDeletes") {
+                    const auto& enabled = v.syntax_.expressions[metadata.value];
+                    if (enabled.literal_type == "bool" &&
+                        enabled.text == "true") {
+                        generated_members.insert("soft_deletes");
+                    }
+                } else if (metadata_allowed.contains(metadata.name)) {
+                    generated_members.insert(metadata.name);
+                }
+            }
+
+            const auto generated_member_conflict =
+                [&](std::string_view name, const Origin& origin) {
+                    if (generated_members.contains(std::string{name})) {
+                        report(
+                            origin,
+                            "Model member '" + std::string{name} +
+                                "' conflicts with generated ORM metadata",
+                            "GNR2308"
+                        );
+                    }
+                };
+            for (const auto& field : declaration.fields)
+                generated_member_conflict(field.name, field.origin);
+            for (const auto& relation : declaration.relationships)
+                generated_member_conflict(relation.name, relation.origin);
+            for (const auto& method : declaration.methods)
+                generated_member_conflict(method.name, method.origin);
+
             std::string primary = "id";
             bool incrementing = true;
             bool incrementing_explicit = false;
