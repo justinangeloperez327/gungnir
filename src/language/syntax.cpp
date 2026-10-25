@@ -461,6 +461,39 @@ public:
 };
 }
 SyntaxResult SyntaxParser::parse(std::string_view source, std::string file, std::string module) const {
-    return Reader{source, std::move(file), std::move(module)}.run();
+    auto parsed = Reader{source, std::move(file), std::move(module)}.run();
+    if (!parsed.diagnostics.empty()) return parsed;
+
+    // Parsing a left-associative operator chain uses little parser stack, but
+    // semantic validation and IR lowering traverse the resulting AST
+    // recursively. Check its depth *iteratively* before handing it to those
+    // stages. All parser-built operand nodes precede their parent nodes.
+    constexpr std::size_t max_expression_depth = 48;
+    const auto& nodes = parsed.project.expressions;
+    std::vector<std::size_t> depths(nodes.size(), 1);
+    for (std::size_t id = 0; id < nodes.size(); ++id) {
+        for (const auto child : nodes[id].operands) {
+            if (child < id) {
+                depths[id] = std::max(depths[id], depths[child] + 1);
+            }
+        }
+        if (depths[id] > max_expression_depth) {
+            const auto& origin = nodes[id].origin;
+            Diagnostic diagnostic{
+                DiagnosticLevel::error,
+                {origin.file, origin.line, origin.column},
+                "Maximum expression depth exceeded",
+                "GNR2004",
+                {}
+            };
+            diagnostic.span.begin_offset = origin.begin;
+            diagnostic.span.end_offset =
+                origin.end > origin.begin ? origin.end : origin.begin + 1;
+            diagnostic.span.valid = true;
+            parsed.diagnostics.push_back(std::move(diagnostic));
+            break;
+        }
+    }
+    return parsed;
 }
 } // namespace gungnir::language
