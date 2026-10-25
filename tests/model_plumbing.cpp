@@ -147,5 +147,61 @@ int main() {
     user.unload_relations();
     assert(!user.relation_loaded("posts"));
 
+    // Reject the entire bulk write before touching any field. This must hold
+    // regardless of the iteration order of AttributeMap.
+    User unchanged;
+    unchanged.name = "Before";
+    unchanged.email = "before@example.com";
+    unchanged.active = false;
+    unchanged.clean();
+
+    guarded = false;
+    try {
+        unchanged.fill({
+            {"name", gungnir::String{"After"}},
+            {"id", gungnir::Int64{55}}
+        });
+    } catch (const gungnir::MassAssignmentError&) {
+        guarded = true;
+    }
+    assert(guarded);
+    assert(unchanged.name.get() == "Before" && !unchanged.dirty());
+
+    guarded = false;
+    try {
+        unchanged.fill({
+            {"name", gungnir::String{"After"}},
+            {"active", gungnir::String{"not-a-boolean"}}
+        });
+    } catch (const std::invalid_argument&) {
+        guarded = true;
+    }
+    assert(guarded);
+    assert(unchanged.name.get() == "Before" && !unchanged.dirty());
+
+    guarded = false;
+    try {
+        unchanged.force_fill({
+            {"name", gungnir::String{"After"}},
+            {"does_not_exist", gungnir::Int64{55}}
+        });
+    } catch (const gungnir::ModelMetadataError&) {
+        guarded = true;
+    }
+    assert(guarded);
+    assert(unchanged.name.get() == "Before" && !unchanged.dirty());
+
+    guarded = false;
+    try {
+        unchanged.force_fill({
+            {"name", gungnir::String{"After"}},
+            {"active", gungnir::String{"not-a-boolean"}}
+        });
+    } catch (const std::invalid_argument&) {
+        guarded = true;
+    }
+    assert(guarded);
+    assert(unchanged.name.get() == "Before" && !unchanged.dirty());
+
     return 0;
 }
