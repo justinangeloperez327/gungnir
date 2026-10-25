@@ -432,32 +432,40 @@ public:
     }
 
     Derived& fill(const AttributeMap& values) {
+        // Preflight the complete set before making any writes. An unordered
+        // input map must never partially change a model before a late
+        // mass-assignment or missing-metadata error is reported.
         for (const auto& [name, value] : values) {
+            (void)value;
             if (!is_fillable(name)) {
                 throw MassAssignmentError{name};
             }
-
-            if (!assign_attribute(name, value, false)) {
+            if (!has_attribute(name)) {
                 throw ModelMetadataError{
                     "Fillable attribute '" + name +
                     "' is missing from generated model metadata"
                 };
             }
         }
-
+        for (const auto& [name, value] : values) {
+            assign_attribute(name, value, false);
+        }
         return derived();
     }
 
     Derived& force_fill(const AttributeMap& values) {
         for (const auto& [name, value] : values) {
-            if (!assign_attribute(name, value, false)) {
+            (void)value;
+            if (!has_attribute(name)) {
                 throw ModelMetadataError{
                     "Attribute '" + name +
                     "' is missing from generated model metadata"
                 };
             }
         }
-
+        for (const auto& [name, value] : values) {
+            assign_attribute(name, value, false);
+        }
         return derived();
     }
 
