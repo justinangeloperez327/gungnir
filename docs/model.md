@@ -112,6 +112,19 @@ attributes without separate field declarations.
 Duplicate entries in `fillable`, `hidden`, `visible`, and `casts` are
 compile-time errors (`GNR2308`).
 
+## Generated metadata and member names
+
+A model cannot declare a field, relationship, or method with the name of a
+generated C++ ORM metadata member. Gungnir reports these conflicts before
+native code generation (`GNR2308`). The `table` name is always reserved;
+other names are reserved when the corresponding metadata is present:
+`connection`, `fillable`, `hidden`, `visible`, `casts`,
+`primaryKey`, `incrementing`, and `timestamps`. The
+`soft_deletes` member is reserved when `softDeletes = true`.
+
+For example, `model Item { string table; }` is invalid because every model
+already has generated `table` metadata. Use a different Gungnir member name.
+
 ```gnr
 model Project {
     casts = {
