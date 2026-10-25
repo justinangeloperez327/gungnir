@@ -175,16 +175,17 @@ void cpp_ir_is_an_explicit_deterministic_boundary() {
 }
 
 void cpp_ir_recursive_lowering_survives_arena_growth() {
-    std::string source{"function int stress() { return "};
-    // Stress arena reallocations without exceeding the bounded portable
-    // recursive-parser depth (Windows uses a smaller default stack).
-    for (int i = 0; i < 32; ++i) {
-        source += "(";
+    // Thousands of source bytes and many IR nodes, but only a small
+    // recursive expression depth: arena growth must not require deep stack
+    // recursion (Windows default process stacks are smaller).
+    std::string source{"function int stress() { let value = 0; "};
+    for (int i = 0; i < 128; ++i) {
+        source += "value += 1;";
     }
-    source += "1";
-    for (int i = 0; i < 32; ++i) {
-        source += " + 1 + 1 + 1 + 1)";
-    }
+    source += "return ";
+    for (int i = 0; i < 12; ++i) source += "(";
+    source += "value";
+    for (int i = 0; i < 12; ++i) source += " + 1)";
     source += "; }";
 
     std::fprintf(stderr, "[arena-growth] parsing nested expressions\n");
@@ -222,6 +223,21 @@ void cpp_ir_recursive_lowering_survives_arena_growth() {
     );
     assert(std::any_of(
         rejected.diagnostics.begin(), rejected.diagnostics.end(),
+        [](const auto& diagnostic) {
+            return diagnostic.code == "GNR2004";
+        }
+    ));
+
+    // A flat operator chain also builds a deeply nested binary AST, even
+    // though the parser itself uses shallow recursion.
+    std::string chain{"function int tooLong() { return 1"};
+    for (int i = 0; i < 128; ++i) chain += " + 1";
+    chain += "; }";
+    const auto rejected_chain = SyntaxParser{}.parse(
+        chain, "excessive-chain.gnr", "app"
+    );
+    assert(std::any_of(
+        rejected_chain.diagnostics.begin(), rejected_chain.diagnostics.end(),
         [](const auto& diagnostic) {
             return diagnostic.code == "GNR2004";
         }
