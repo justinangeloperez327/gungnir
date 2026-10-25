@@ -16,7 +16,9 @@ namespace {
 struct ParseFailure {};
 class Reader {
 public:
-    static constexpr std::size_t max_nesting_depth = 256;
+    // Keep recursive syntax parsing below the default Windows executable
+    // stack reserve. Exhaustion must produce GNR2004 instead of a crash.
+    static constexpr std::size_t max_nesting_depth = 48;
 
     struct NestingGuard {
         Reader& reader;
