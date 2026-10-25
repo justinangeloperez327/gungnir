@@ -566,9 +566,9 @@ void model_naming_and_cast_contracts_are_canonical() {
         deterministic_options()
     );
     assert(names.success() && names.validated);
-    assert(names.code.find("gungnir::Table table{\\"api_keys\\"}") != std::string::npos);
-    assert(names.code.find("gungnir::Table table{\\"buzzes\\"}") != std::string::npos);
-    assert(names.code.find("gungnir::Table table{\\"companies\\"}") != std::string::npos);
+    assert(names.code.find("gungnir::Table table{\"api_keys\"}") != std::string::npos);
+    assert(names.code.find("gungnir::Table table{\"buzzes\"}") != std::string::npos);
+    assert(names.code.find("gungnir::Table table{\"companies\"}") != std::string::npos);
 
     const auto consistent = Compiler{}.compile(
         "model Entry { "
