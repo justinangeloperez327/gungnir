@@ -36,7 +36,7 @@ jobs:
           gungnir_project_tooling_test
           gungnir_frontend_diagnostics_test gungnir_structured_language_test
           gungnir_framework_semantics_test
-          gungnir_model_relationships_test gungnir_structured_orm_contract_test gungnir_structured_orm_test
+          gungnir_model_relationships_test gungnir_compiler_model_contract_test gungnir_model_contract_test gungnir_model_regressions_test gungnir_structured_orm_contract_test gungnir_structured_orm_test
           gungnir_compiler_correctness_test gungnir_compiler_stability_test
           gungnir_compiler_robustness_test gungnir_structured_generated_test
           gungnir_structured_http_test
@@ -70,7 +70,7 @@ jobs:
       - name: Validate
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|docs_delivery_examples|docs_application_examples|docs_background_examples|docs_service_examples|docs_routing_examples|docs_validation_examples|docs_auth_examples|structured_request_context|language|cli|cli_process|docs_orm_examples|docs_http_examples|docs_context_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|cache|scheduler|view|view_runtime|view_security|spear|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
+          -R '^gungnir\.(public_api_contract|project_tooling|frontend_diagnostics|structured_language|framework_semantics|model_relationships|compiler_model_contract|model_contract|model_regressions|structured_orm_contract|structured_orm|compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|docs_delivery_examples|docs_application_examples|docs_background_examples|docs_service_examples|docs_routing_examples|docs_validation_examples|docs_auth_examples|structured_request_context|language|cli|cli_process|docs_orm_examples|docs_http_examples|docs_context_examples|lsp_protocol|cli_integration|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|runtime_safety|timer_runtime|http_reactor|http_server|http_streaming|websocket|runtime_supervisor|runtime_host|runtime_lifecycle|production_resilience|http_overload|security|security_hardening|csrf|auth_session|session_lifecycle|cache|scheduler|view|view_runtime|view_security|spear|database_correctness|orm_correctness|sqlite_correctness|database_cancellation|database_scope_safety|orm_transaction|orm_relations|orm_soft_deletes|orm_timestamps)$'
       - name: Test database examples and installed SQLite application
         run: ctest --test-dir build --no-tests=error -R '^gungnir\.(application_database_sqlite|docs_database_examples)$' --output-on-failure
       - name: Test installed Spear application
@@ -221,9 +221,9 @@ jobs:
           -DGUNGNIR_BUILD_TESTS=ON
           -DGUNGNIR_BUILD_TOOLS=ON
       - name: Build project tooling, compiler and model ORM regressions
-        run: cmake --build build --config Debug --target gungnir_project_tooling_test gungnir_compiler_correctness_test gungnir_framework_semantics_test gungnir_model_test gungnir_model_plumbing_test gungnir_model_relationships_test --parallel 2
+        run: cmake --build build --config Debug --target gungnir_project_tooling_test gungnir_compiler_correctness_test gungnir_framework_semantics_test gungnir_model_test gungnir_model_plumbing_test gungnir_model_relationships_test gungnir_compiler_model_contract_test gungnir_model_regressions_test --parallel 2
       - name: Verify Windows project, model metadata, relationships and ORM writes
-        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.](project_tooling|compiler_correctness|framework_semantics|model|model_plumbing|model_relationships)$" --output-on-failure
+        run: ctest --test-dir build -C Debug --no-tests=error -R "^gungnir[.](project_tooling|compiler_correctness|framework_semantics|model|model_plumbing|model_relationships|compiler_model_contract|model_regressions)$" --output-on-failure
 
   postgresql:
     name: Integration · PostgreSQL

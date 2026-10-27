@@ -48,7 +48,8 @@ const users = User::where("id", ">=", 1).whereIn("id", [1, 2, 3]).get();
 Comparisons are `=`, `==`, `!=`, `<>`, `<`, `<=`, `>` and `>=`, plus `like`.
 `orWhere` combines another predicate; `whereNotIn` excludes list members. An
 empty `whereIn` list matches no rows. Filter values are scalar or optional scalar
-attributes; column names are validated by the database query compiler.
+attributes. Identifiers are validated for empty/control characters and escaped
+by the backend query compiler; application-supplied values remain bound parameters.
 
 ## Ordering and limits
 
@@ -95,6 +96,13 @@ return `bool`. Query `update`, `remove`, `forceRemove` and `restore` return an
 affected-row count. `dirty()` inspects any changed field; `isDirty("name")`
 checks one field. `exists()` reports whether a model was persisted.
 
+`firstOrCreate(search, values)` retrieves an existing row or inserts one.
+`updateOrCreate(search, values)` also updates an existing match and reports
+failed persistence. `createMany(rows)` creates models sequentially; wrap it in
+an explicit transaction for an atomic batch. `findMany(keys)` retrieves matching
+models. Database uniqueness constraints are still required to protect concurrent
+find-or-create calls.
+
 ## Replicating models
 
 `replicate()` creates a new unsaved model with the original ordinary
@@ -129,6 +137,12 @@ const users = User::with("posts").get();
 
 Eager loading batches parent keys so relationship traversal does not degrade into one query per parent.
 
+Use `.withCount('posts')` or `.withCount(['posts', 'roles'])` for relationship
+counts without loading all related models. Model `with` and `withCount` metadata
+supply defaults. `.withoutEagerLoads()` removes both kinds of defaults for one
+query. `fresh()` returns an optional new model, while `refresh()` updates the
+current mutable model, including its automatic relationships and counts.
+
 ## Collections
 
 Multi-record results return typed model collections. Collections provide iteration and application-side collection operations. See [Collections](collection.md).
@@ -155,3 +169,17 @@ Use the database transaction API when multiple persistence operations must commi
 ## Relationships
 
 Relationship queries and mutations use the same ORM infrastructure. See [Relationships](relationships.md).
+
+## Native C++ field mutation and aggregates
+
+Native `Field<T>::get()` returns a read-only reference. Assign to the field or
+use `field.mutate(callback)` for an in-place update that marks previously
+uninitialized fields as initialized. Gungnir compound assignments and increment
+operators use this tracked operation automatically.
+
+Native query `sum()` and `average()` accept database decimal results and return
+`Double`; decimal conversion uses the explicit checked `Decimal::to_double()`
+operation. Use raw decimal results or an exact-decimal calculation when binary
+floating-point rounding is unsuitable. Inserts that require a generated key
+report an error if the adapter omits it. Such an error does not imply the insert
+was rolled back; do not blindly retry it outside a transaction.

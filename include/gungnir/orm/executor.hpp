@@ -16,6 +16,7 @@
 #include <gungnir/orm/advanced_mutation.hpp>
 #include <gungnir/orm/query.hpp>
 #include <gungnir/orm/query_log.hpp>
+#include <gungnir/orm/relation_query.hpp>
 
 namespace gungnir::orm {
 
@@ -25,6 +26,12 @@ inline bool same_value(
     const model::AttributeValue& left,
     const model::AttributeValue& right
 ) {
+    if (const auto* signed_value = std::get_if<Int64>(&left))
+        if (const auto* unsigned_value = std::get_if<UInt64>(&right))
+            return *signed_value >= 0 && static_cast<UInt64>(*signed_value) == *unsigned_value;
+    if (const auto* unsigned_value = std::get_if<UInt64>(&left))
+        if (const auto* signed_value = std::get_if<Int64>(&right))
+            return *signed_value >= 0 && *unsigned_value == static_cast<UInt64>(*signed_value);
     return left == right;
 }
 
@@ -429,10 +436,93 @@ void eager_load(
     }
 }
 
+[[nodiscard]] inline String count_key(const model::AttributeValue& value) {
+    if (const auto* key = std::get_if<Int64>(&value)) return "i" + std::to_string(*key);
+    if (const auto* key = std::get_if<UInt64>(&value)) return "i" + std::to_string(*key);
+    if (const auto* key = std::get_if<String>(&value)) return "s" + *key;
+    throw ModelMetadataError{"Relationship counts require integer or string keys"};
+}
+
+// Counts use one aggregate query per relationship, independent of parent count.
+template <typename ModelType>
+void eager_count(Collection<ModelType>& models, const std::vector<String>& names) {
+    if (models.empty()) return;
+    for (const auto& name : names) {
+        model::for_each_relation<ModelType>([&](const auto& descriptor) {
+            if (descriptor.name != name) return;
+            const auto& relation = models[0].*(descriptor.member);
+            using Relation = std::remove_cvref_t<decltype(relation)>;
+            const auto local = [&]() {
+                if constexpr (relation_traits<Relation>::kind == model::RelationKind::belongs_to) return relation.foreign_key();
+                else if constexpr (requires { relation.parent_key(); }) return relation.parent_key();
+                else return relation.local_key();
+            }();
+            const auto keys = collect_values(models,local);
+            for (auto& model : models) model.set_relation_count(name,0);
+            if (keys.empty()) return;
+            auto query = relation_query(models[0],relation);
+            auto plan = query.plan();
+            auto& filter = plan.predicates.back();
+            filter.kind = PredicateKind::in_list;
+            filter.values = keys;
+            plan.count_group_column = filter.column;
+            plan.groups = {filter.column};
+            plan.columns.clear(); plan.orders.clear(); plan.eager_loads.clear(); plan.eager_counts.clear();
+            plan.limit.reset(); plan.offset.reset();
+            plan.aggregate = Aggregate{AggregateFunction::count,"*"};
+            auto connection = database::runtime::connection(plan.connection);
+            const auto compiled = orm::compile(plan,connection->backend());
+            report(QueryEvent{.connection=plan.connection,.backend=connection->backend(),.statement=compiled.text,.binding_count=compiled.bindings.size()});
+            const auto result = connection->execute(compiled.text,compiled.bindings);
+            std::unordered_map<String,std::size_t> counts;
+            for (const auto& row : result.rows) {
+                const auto grouped = row.find("__gungnir_count_key"), count = row.find("aggregate");
+                if (grouped == row.end() || count == row.end())
+                    throw ModelMetadataError{"Relationship count result is missing its key or aggregate"};
+                counts.insert_or_assign(count_key(grouped->second),model::value_cast<std::size_t>(count->second));
+            }
+            for (auto& model : models) {
+                const auto key = model.attribute_value(local);
+                if (!key || std::holds_alternative<std::nullptr_t>(*key) || std::holds_alternative<std::monostate>(*key)) continue;
+                const auto found = counts.find(count_key(*key));
+                if (found != counts.end()) model.set_relation_count(name,found->second);
+            }
+        });
+    }
+}
+
+// Synchronous ORM operations cannot suspend while this cycle guard is active.
+template <typename ModelType>
+void touch_owners(const ModelType& instance) {
+    if constexpr (requires { ModelType::touches; }) {
+        const auto key = instance.primary_key_value();
+        if (!key) return;
+        static thread_local std::vector<model::AttributeValue> active;
+        if (std::find(active.begin(),active.end(),*key) != active.end()) return;
+        active.push_back(*key);
+        struct Guard { std::vector<model::AttributeValue>& values; ~Guard() { values.pop_back(); } } guard{active};
+        for (const auto name : ModelType::touches) {
+            model::for_each_relation<ModelType>([&](const auto& descriptor) {
+                if (descriptor.name != name) return;
+                using Relation = std::remove_cvref_t<decltype(instance.*descriptor.member)>;
+                if constexpr (relation_traits<Relation>::kind == model::RelationKind::belongs_to) {
+                    auto owner = relation_query(instance,instance.*descriptor.member).without_eager_loads().first();
+                    if (owner && !owner->touch()) throw ModelMetadataError{"Unable to touch parent model"};
+                } else throw ModelMetadataError{"touches requires belongsTo relationships"};
+            });
+        }
+    }
+}
+
+inline constexpr std::size_t max_eager_depth = 32;
+inline thread_local std::size_t eager_depth = 0;
+
 } // namespace detail
 
 template <typename ModelType>
 Collection<ModelType> Query<ModelType>::get() const {
+    if (detail::eager_depth >= detail::max_eager_depth) throw ModelMetadataError{"Cyclic or excessively deep automatic eager loading"};
+    struct DepthGuard { DepthGuard() { ++detail::eager_depth; } ~DepthGuard() { --detail::eager_depth; } } depth_guard;
     auto connection = database::runtime::connection(plan_.connection);
     const auto compiled = orm::compile(plan_, connection->backend());
     report(QueryEvent{
@@ -451,6 +541,7 @@ Collection<ModelType> Query<ModelType>::get() const {
     // theirs before relation loading acquires another connection from the pool.
     connection.reset();
     detail::eager_load(models, plan_.eager_loads, plan_.eager_constraints);
+    detail::eager_count(models, plan_.eager_counts);
     return models;
 }
 
@@ -536,6 +627,7 @@ Derived Model<Derived>::create(const AttributeMap& values) {
 
 template <typename Derived>
 bool Model<Derived>::save() {
+    validate_persisted_identity();
     auto connection = database::runtime::connection(
         connection_name()
     );
@@ -544,20 +636,20 @@ bool Model<Derived>::save() {
 
     if (!exists()) {
         if constexpr (uses_timestamps()) {
-            const auto now = model::timestamp_now();
+            const auto now = model::timestamp_now(timestamp_format());
 
             if (
-                has_attribute("created_at") &&
-                !attribute_value("created_at")
+                has_attribute(created_at_column()) &&
+                !attribute_value(created_at_column())
             ) {
                 force_fill({
-                    {"created_at", now}
+                    {String{created_at_column()}, now}
                 });
             }
 
-            if (has_attribute("updated_at")) {
+            if (has_attribute(updated_at_column())) {
                 force_fill({
-                    {"updated_at", now}
+                    {String{updated_at_column()}, now}
                 });
             }
         }
@@ -601,18 +693,23 @@ bool Model<Derived>::save() {
             });
         }
 
+        if (primary_key_incrementing() && !primary_key_value()) {
+            throw ModelMetadataError{"Insert affected a row but the adapter returned no generated primary key"};
+        }
         mark_persisted(true);
         clean();
+        connection.reset();
+        orm::detail::touch_owners(static_cast<const Derived&>(*this));
         return true;
     }
 
     std::optional<String> updated_timestamp;
 
     if constexpr (uses_timestamps()) {
-        if (has_attribute("updated_at")) {
-            updated_timestamp = model::timestamp_now();
+        if (has_attribute(updated_at_column())) {
+            updated_timestamp = model::timestamp_now(timestamp_format());
             force_fill({
-                {"updated_at", *updated_timestamp}
+                {String{updated_at_column()}, *updated_timestamp}
             });
         }
     }
@@ -622,7 +719,7 @@ bool Model<Derived>::save() {
 
     if (updated_timestamp) {
         changes.insert_or_assign(
-            "updated_at",
+            String{updated_at_column()},
             *updated_timestamp
         );
     }
@@ -658,6 +755,8 @@ bool Model<Derived>::save() {
 
     clean();
     clear_recently_created();
+    connection.reset();
+    orm::detail::touch_owners(static_cast<const Derived&>(*this));
     return true;
 }
 
@@ -669,6 +768,7 @@ bool Model<Derived>::update(const AttributeMap& values) {
 
 template <typename Derived>
 bool Model<Derived>::remove() {
+    validate_persisted_identity();
     if (!exists()) {
         return false;
     }
@@ -693,12 +793,8 @@ bool Model<Derived>::remove() {
         auto connection = database::runtime::connection(
             connection_name()
         );
-        const auto compiled = orm::compile_soft_delete_where(
-            plan,
-            String{deleted_at_column()},
-            false,
-            connection->backend()
-        );
+        const auto values = model::soft_delete_attributes<Derived>(false);
+        const auto compiled = orm::compile_update_where(plan,values,connection->backend());
         const auto result = connection->execute(
             compiled.text,
             compiled.bindings
@@ -708,17 +804,16 @@ bool Model<Derived>::remove() {
             return false;
         }
 
-        if (has_attribute(deleted_at_column())) {
-            force_fill({
-                {
-                    String{deleted_at_column()},
-                    model::timestamp_now()
-                }
-            });
-            sync_attribute(deleted_at_column());
+        for (const auto& [column,value] : values) {
+            if (has_attribute(column)) {
+                force_fill({{column,value}});
+                sync_attribute(column);
+            }
         }
 
         mark_soft_deleted(true);
+        connection.reset();
+        orm::detail::touch_owners(static_cast<const Derived&>(*this));
         return true;
     }
 
@@ -727,6 +822,7 @@ bool Model<Derived>::remove() {
 
 template <typename Derived>
 bool Model<Derived>::force_remove() {
+    validate_persisted_identity();
     if (!exists()) {
         return false;
     }
@@ -760,11 +856,14 @@ bool Model<Derived>::force_remove() {
 
     mark_missing();
     mark_soft_deleted(false);
+    connection.reset();
+    orm::detail::touch_owners(static_cast<const Derived&>(*this));
     return true;
 }
 
 template <typename Derived>
 bool Model<Derived>::restore() {
+    validate_persisted_identity();
     if constexpr (!uses_soft_deletes()) {
         return false;
     }
@@ -792,12 +891,8 @@ bool Model<Derived>::restore() {
     auto connection = database::runtime::connection(
         connection_name()
     );
-    const auto compiled = orm::compile_soft_delete_where(
-        plan,
-        String{deleted_at_column()},
-        true,
-        connection->backend()
-    );
+    const auto values = model::soft_delete_attributes<Derived>(true);
+    const auto compiled = orm::compile_update_where(plan,values,connection->backend());
     const auto result = connection->execute(
         compiled.text,
         compiled.bindings
@@ -807,29 +902,32 @@ bool Model<Derived>::restore() {
         return false;
     }
 
-    if (has_attribute(deleted_at_column())) {
-        force_fill({
-            {String{deleted_at_column()}, nullptr}
-        });
-        sync_attribute(deleted_at_column());
+    for (const auto& [column,value] : values) {
+        if (has_attribute(column)) {
+            force_fill({{column,value}});
+            sync_attribute(column);
+        }
     }
 
     mark_soft_deleted(false);
+    connection.reset();
+    orm::detail::touch_owners(static_cast<const Derived&>(*this));
     return true;
 }
 
 template <typename Derived>
 bool Model<Derived>::touch() {
+    validate_persisted_identity();
     if constexpr (!uses_timestamps()) {
         return false;
     }
 
-    if (!exists() || !has_attribute("updated_at")) {
+    if (!exists() || !has_attribute(updated_at_column())) {
         return false;
     }
 
     force_fill({
-        {"updated_at", model::timestamp_now()}
+        {String{updated_at_column()}, model::timestamp_now(timestamp_format())}
     });
 
     return save();
@@ -837,6 +935,7 @@ bool Model<Derived>::touch() {
 
 template <typename Derived>
 std::optional<Derived> Model<Derived>::fresh() const {
+    validate_persisted_identity();
     if (!exists()) {
         return std::nullopt;
     }
@@ -856,6 +955,7 @@ std::optional<Derived> Model<Derived>::fresh() const {
 
 template <typename Derived>
 bool Model<Derived>::refresh() {
+    validate_persisted_identity();
     auto current = fresh();
 
     if (!current) {
@@ -863,11 +963,18 @@ bool Model<Derived>::refresh() {
         return false;
     }
 
-    force_fill(current->attributes());
-    clean();
-    mark_persisted(false);
-    mark_soft_deleted(current->trashed());
-    unload_relations();
+    model::for_each_attribute<Derived>([&](const auto& descriptor) {
+        derived().*(descriptor.member) = std::move(current.value().*(descriptor.member));
+    });
+    model::for_each_relation<Derived>([&](const auto& descriptor) {
+        derived().*(descriptor.member) = std::move(current.value().*(descriptor.member));
+    });
+    auto& state = static_cast<Model<Derived>&>(*current);
+    exists_ = state.exists_;
+    recently_created_ = state.recently_created_;
+    soft_deleted_ = state.soft_deleted_;
+    persisted_key_ = std::move(state.persisted_key_);
+    relation_counts_ = std::move(state.relation_counts_);
     return true;
 }
 
@@ -880,13 +987,20 @@ Derived Model<Derived>::replicate() const {
     // inherit a source row's soft-deletion marker.
     values.erase(String{primary_key_name()});
     if constexpr (uses_timestamps()) {
-        values.erase("created_at");
-        values.erase("updated_at");
+        values.erase(String{created_at_column()});
+        values.erase(String{updated_at_column()});
     }
     if constexpr (uses_soft_deletes()) {
         values.erase(String{deleted_at_column()});
     }
     copy.force_fill(values);
+    auto& state = static_cast<Model<Derived>&>(copy);
+    state.clear_attribute(primary_key_name());
+    if constexpr (uses_timestamps()) {
+        state.clear_attribute(created_at_column());
+        state.clear_attribute(updated_at_column());
+    }
+    if constexpr (uses_soft_deletes()) state.clear_attribute(deleted_at_column());
     return copy;
 }
 

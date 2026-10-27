@@ -123,7 +123,26 @@ template <typename Model>
 struct Generated {
     inline static constexpr auto attributes = std::tuple{};
     inline static constexpr auto relations = std::tuple{};
+    inline static constexpr auto accessors = std::tuple{};
 };
+
+template <typename Owner, typename Result>
+struct AccessorDescriptor {
+    std::string_view name;
+    Result (Owner::*method)() const;
+};
+
+template <typename Owner, typename Result>
+[[nodiscard]] constexpr auto accessor(std::string_view name, Result (Owner::*method)() const) noexcept {
+    return AccessorDescriptor<Owner, Result>{name, method};
+}
+
+template <typename Model, typename Callback>
+constexpr void for_each_accessor(Callback&& callback) {
+    if constexpr (requires { Generated<Model>::accessors; }) {
+        std::apply([&](const auto&... descriptor) { (callback(descriptor), ...); }, Generated<Model>::accessors);
+    }
+}
 
 template <typename Model, typename Callback>
 constexpr void for_each_attribute(Callback&& callback) {

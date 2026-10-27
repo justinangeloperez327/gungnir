@@ -337,7 +337,7 @@ jobs:
 
       - name: Install NSIS
         shell: pwsh
-        run: choco install nsis --yes --no-progress
+        run: ./cmake/windows/InstallNsis.ps1 -WorkDir "$env:RUNNER_TEMP/gungnir-nsis"
 
       - name: Create Windows installer
         shell: pwsh

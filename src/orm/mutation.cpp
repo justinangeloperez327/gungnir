@@ -1,5 +1,6 @@
 #include <gungnir/orm/mutation.hpp>
 
+#include <gungnir/orm/identifier.hpp>
 #include <algorithm>
 #include <vector>
 
@@ -8,15 +9,7 @@ namespace gungnir::orm {
 namespace {
 
 String quote_identifier(database::Backend backend, std::string_view value) {
-    if (backend == database::Backend::mysql) {
-        return "`" + String{value} + "`";
-    }
-
-    if (backend == database::Backend::mssql) {
-        return "[" + String{value} + "]";
-    }
-
-    return "\"" + String{value} + "\"";
+    return detail::quote_identifier(backend, value);
 }
 
 String placeholder(database::Backend backend, std::size_t index) {
@@ -30,7 +23,7 @@ String placeholder(database::Backend backend, std::size_t index) {
 String mongo_field(std::string_view value) {
     return value == "id"
         ? String{"_id"}
-        : String{value};
+        : detail::json_field_identifier(value);
 }
 
 std::vector<String> sorted_keys(const model::AttributeMap& attributes) {
@@ -54,7 +47,7 @@ CompiledQuery compile_mongo_insert(
     result.kind = CompiledQueryKind::mongodb;
 
     const auto keys = sorted_keys(attributes);
-    result.text = "{\"insert\":\"" + String{table} +
+    result.text = "{\"insert\":\"" + detail::json_identifier(table) +
                   "\",\"documents\":[{";
 
     for (std::size_t index = 0; index < keys.size(); ++index) {
@@ -81,7 +74,7 @@ CompiledQuery compile_mongo_update(
     result.kind = CompiledQueryKind::mongodb;
     const auto keys = sorted_keys(attributes);
 
-    result.text = "{\"update\":\"" + String{table} +
+    result.text = "{\"update\":\"" + detail::json_identifier(table) +
                   "\",\"updates\":[{\"q\":{\"" + mongo_field(key) +
                   "\":{\"$bind\":0}},\"u\":{\"$set\":{";
 
@@ -108,7 +101,7 @@ CompiledQuery compile_mongo_delete(
 ) {
     CompiledQuery result;
     result.kind = CompiledQueryKind::mongodb;
-    result.text = "{\"delete\":\"" + String{table} +
+    result.text = "{\"delete\":\"" + detail::json_identifier(table) +
                   "\",\"deletes\":[{\"q\":{\"" + mongo_field(key) +
                   "\":{\"$bind\":0}},\"limit\":1}]}";
     result.bindings.push_back(std::move(key_value));
@@ -139,7 +132,18 @@ CompiledQuery compile_insert(
     result.kind = CompiledQueryKind::sql;
     const auto keys = sorted_keys(attributes);
 
-    result.text = "INSERT INTO " + quote_identifier(backend, table) + " (";
+    if (keys.empty()) {
+        result.text = "INSERT INTO " + detail::quote_path(backend, table);
+        if (backend == database::Backend::mssql && !generated_key.empty())
+            result.text += " OUTPUT INSERTED." + quote_identifier(backend, generated_key) + " AS [id]";
+        result.text += backend == database::Backend::mysql ? " () VALUES ()" : " DEFAULT VALUES";
+        if (backend == database::Backend::postgresql && !generated_key.empty())
+            result.text += " RETURNING " + quote_identifier(backend, generated_key) + " AS \"id\"";
+        result.text += ";";
+        return result;
+    }
+
+    result.text = "INSERT INTO " + detail::quote_path(backend, table) + " (";
 
     for (std::size_t index = 0; index < keys.size(); ++index) {
         if (index != 0) {
@@ -191,7 +195,7 @@ CompiledQuery compile_update(
     result.kind = CompiledQueryKind::sql;
     const auto keys = sorted_keys(attributes);
 
-    result.text = "UPDATE " + quote_identifier(backend, table) + " SET ";
+    result.text = "UPDATE " + detail::quote_path(backend, table) + " SET ";
 
     for (std::size_t index = 0; index < keys.size(); ++index) {
         if (index != 0) {
@@ -226,7 +230,7 @@ CompiledQuery compile_delete(
 
     CompiledQuery result;
     result.kind = CompiledQueryKind::sql;
-    result.text = "DELETE FROM " + quote_identifier(backend, table) +
+    result.text = "DELETE FROM " + detail::quote_path(backend, table) +
                   " WHERE " + quote_identifier(backend, key) + " = " +
                   placeholder(backend, 0) + ";";
     result.bindings.push_back(std::move(key_value));

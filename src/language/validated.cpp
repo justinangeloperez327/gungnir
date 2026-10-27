@@ -1,4 +1,5 @@
 #include <gungnir/language/compiler.hpp>
+#include <gungnir/model/decimal.hpp>
 #include <gungnir/validation/definition.hpp>
 #include <algorithm>
 #include <charconv>
@@ -25,6 +26,17 @@ std::string snake(std::string value) {
     return result;
 }
 }
+static std::optional<std::string_view> model_cast_type(std::string_view cast) {
+    if (cast == "bool" || cast == "boolean") return "bool";
+    if (cast == "int" || cast == "integer" || cast == "int64") return "int";
+    if (cast == "uint64") return "uint64";
+    if (cast == "double" || cast == "float" || cast == "real") return "double";
+    if (cast == "decimal") return "Decimal";
+    if (cast == "json" || cast == "array" || cast == "object") return "Json";
+    if (cast == "string" || cast == "date" || cast == "datetime") return "string";
+    return std::nullopt;
+}
+
 class ValidationEngine {
 public:
     ValidatedProject v;
@@ -40,6 +52,7 @@ public:
     std::vector<SymbolId> capture_starts;
     std::size_t current_module = 0;
     SymbolId current_owner = invalid_id;
+    bool const_model_accessor = false;
     bool async_context = false;
     unsigned loops = 0;
     TypeId return_type = invalid_id;
@@ -81,6 +94,13 @@ public:
     TypeId unoptional(TypeId id) { const auto t = type(id); if (!t.optional) return id; return intern(t.name, t.cpp_name.substr(14, t.cpp_name.size() - 15), t.arguments); }
     TypeId sequence(std::string name, TypeId element) {
         return intern(name, (name == "Query" ? "gungnir::orm::Query<" : name == "Collection" ? "gungnir::orm::Collection<" : name == "Page" ? "gungnir::orm::Page<" : "std::vector<") + type(element).cpp_name + ">", {element});
+    }
+    bool appended(const DeclarationSyntax& declaration, std::string_view name) const {
+        for (const auto& metadata : declaration.metadata)
+            if (metadata.name == "appends")
+                for (auto id : v.syntax_.expressions[metadata.value].operands)
+                    if (v.syntax_.expressions[id].text == name) return true;
+        return false;
     }
     bool valid_identifier(std::string_view name) const {
         if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name.front())) || name.front() == '_')) return false;
@@ -323,6 +343,12 @@ public:
                 return found->second;
             }
         }
+        if (owner != invalid_id && v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model && name.ends_with("_count")) {
+            const auto relation = name.substr(0,name.size()-6);
+            const auto& declaration = v.syntax_.declarations[declaration_ids.at(owner)];
+            if (std::any_of(declaration.relationships.begin(),declaration.relationships.end(),[&](const auto& value){return value.name == relation;}))
+                return symbol({ResolvedSymbolKind::field,name,"relation_count(\""+relation+"\")",type_id("int"),owner,true});
+        }
         for (const auto& field : options.native_fields) if (type(receiver).name == field.owner && name == field.name) {
             const auto id = symbol({ResolvedSymbolKind::field, name, name, resolve({field.type, {}, false, origin}), owner});
             return id;
@@ -515,7 +541,19 @@ public:
                 std::unordered_map<std::string, std::string> casts;
                 bool timestamps = false;
                 bool soft_deletes = false;
-                std::string primary = "id";
+                std::string primary = "id", created = "created_at", updated = "updated_at";
+                std::unordered_map<std::string, SyntaxId> defaults;
+                for (const auto& metadata : declaration.metadata) {
+                    const auto& value = v.syntax_.expressions[metadata.value];
+                    if ((metadata.name == "createdAt" || metadata.name == "updatedAt") && value.literal_type == "string" && !valid_identifier(value.text)) report(metadata.origin,"Timestamp columns must name valid model attributes", "GNR2308");
+                    if (metadata.name == "createdAt" && value.literal_type == "string") created = value.text;
+                    if (metadata.name == "updatedAt" && value.literal_type == "string") updated = value.text;
+                    if (metadata.name == "attributes" && value.kind == SyntaxExpressionKind::object)
+                        for (std::size_t i = 0; i < value.operands.size(); ++i) {
+                            defaults.insert_or_assign(value.argument_names[i], value.operands[i]);
+                            attributes.insert(value.argument_names[i]);
+                        }
+                }
 
                 for (const auto& metadata : declaration.metadata) {
                     const auto& expression =
@@ -524,13 +562,13 @@ public:
                     if (
                         metadata.name == "fillable" ||
                         metadata.name == "hidden" ||
-                        metadata.name == "visible"
+                        metadata.name == "visible" || metadata.name == "guarded"
                     ) {
                         for (auto id : expression.operands) {
                             const auto& item =
                                 v.syntax_.expressions[id];
 
-                            if (item.literal_type == "string") {
+                            if (item.literal_type == "string" && item.text != "*") {
                                 attributes.insert(item.text);
                             }
                         }
@@ -588,8 +626,8 @@ public:
                 attributes.insert(primary);
 
                 if (timestamps) {
-                    attributes.insert("created_at");
-                    attributes.insert("updated_at");
+                    attributes.insert(created);
+                    attributes.insert(updated);
                 }
 
                 if (soft_deletes) {
@@ -600,37 +638,28 @@ public:
                     const auto found = casts.find(name);
 
                     if (found == casts.end()) {
-                        return name == primary
-                            ? std::string{"int"}
-                            : std::string{"string"};
+                        if (const auto initial = defaults.find(name); initial != defaults.end()) {
+                            const auto& value = v.syntax_.expressions[initial->second];
+                            if (value.literal_type == "bool" || value.literal_type == "int" || value.literal_type == "double") return value.literal_type;
+                            if (value.kind == SyntaxExpressionKind::unary && !value.operands.empty()) return v.syntax_.expressions[value.operands[0]].literal_type;
+                            if (value.kind == SyntaxExpressionKind::object || value.kind == SyntaxExpressionKind::list) return std::string{"Json"};
+                        }
+                        return name == primary ? std::string{"int"} : std::string{"string"};
                     }
 
-                    if (
-                        found->second == "int" ||
-                        found->second == "integer"
-                    ) {
-                        return std::string{"int"};
-                    }
-
-                    if (found->second == "bool") {
-                        return std::string{"bool"};
-                    }
-
-                    if (found->second == "double") {
-                        return std::string{"double"};
-                    }
-
-                    if (found->second == "decimal") {
-                        return std::string{"Decimal"};
-                    }
-
-                    if (found->second == "json") {
-                        return std::string{"Json"};
-                    }
-
-                    return std::string{"string"};
+                    const auto resolved = model_cast_type(found->second);
+                    return resolved ? std::string{*resolved} : std::string{"string"};
                 };
 
+                for (const auto& method : declaration.methods)
+                    if (appended(declaration, method.name)) attributes.erase(method.name);
+                for (const auto& relation : declaration.relationships) attributes.erase(relation.name + "_count");
+                for (auto& field : declaration.fields) {
+                    if (const auto initial = defaults.find(field.name); initial != defaults.end()) {
+                        if (field.initializer != invalid_id) report(field.origin,"Default is declared both on the field and in attributes", "GNR2308");
+                        else field.initializer = initial->second;
+                    }
+                }
                 for (const auto& name : attributes) {
                     if (
                         std::any_of(
@@ -646,8 +675,7 @@ public:
 
                     const bool lifecycle_nullable =
                         (timestamps &&
-                         (name == "created_at" ||
-                          name == "updated_at")) ||
+                         (name == created || name == updated)) ||
                         (soft_deletes &&
                          name == "deleted_at");
 
@@ -658,10 +686,10 @@ public:
                             TypeSyntax{
                                 cast_type(name),
                                 {},
-                                lifecycle_nullable,
+                                lifecycle_nullable || (defaults.contains(name) && v.syntax_.expressions[defaults.at(name)].literal_type == "null"),
                                 declaration.origin
                             },
-                            false, invalid_id, Visibility::public_,
+                            false, defaults.contains(name) ? defaults.at(name) : invalid_id, Visibility::public_,
                             name != primary && !casts.contains(name) && !lifecycle_nullable
                         }
                     );
@@ -687,6 +715,7 @@ public:
                     report(field.origin, "Request context types cannot be declaration fields; store their data explicitly");
                 if (resolve(field.type) == type_id("void")) report(field.origin,"Fields cannot have type void");
                 if (!valid_identifier(field.name)) report(field.origin,"Field name is not a valid native identifier");
+
                 const auto id = symbol({field.injection ? ResolvedSymbolKind::injection : ResolvedSymbolKind::field, field.name, field.name, resolve(field.type), current_owner,
                     declaration.kind == DeclarationKind::event || declaration.kind == DeclarationKind::mail || declaration.kind == DeclarationKind::notification || declaration.kind == DeclarationKind::job, false, field.visibility});
                 if (!members.emplace(std::to_string(current_owner) + ":" + field.name, id).second) report(field.origin, "Duplicate field '" + field.name + "'");
@@ -870,7 +899,8 @@ public:
         const auto symbol = v.expressions_[id].symbol;
         if (expression.kind == SyntaxExpressionKind::name ||
             expression.kind == SyntaxExpressionKind::member) {
-            if (symbol != invalid_id && v.symbols_[symbol].immutable) return true;
+            if (symbol != invalid_id && (v.symbols_[symbol].immutable ||
+                (const_model_accessor && v.symbols_[symbol].kind == ResolvedSymbolKind::field && v.symbols_[symbol].owner == current_owner))) return true;
             // Arrow captures are immutable value copies, even for outer lets.
             if (expression.kind == SyntaxExpressionKind::name &&
                 symbol != invalid_id && !capture_starts.empty() &&
@@ -1556,7 +1586,34 @@ public:
                     if (!model) v.symbols_[info.symbol].receives_receiver = true;
                     return result;
                 }
-                if (model && name == "create") { arity(1, 1); return finish_builtin(model_type, name, {type_id("Json")}); }
+                if (model && (name == "fresh" || name == "replicate")) {
+                    arity(0,0);
+                    if (callee.literal_type == "::") report(callee.origin,"Model state methods require an instance receiver", "GNR2311");
+                    return finish_builtin(name == "fresh" ? optional(model_type) : model_type,name);
+                }
+                if (model && (name == "firstOrCreate" || name == "updateOrCreate")) {
+                    arity(name == "firstOrCreate" ? 1 : 2,2);
+                    if (const_model_accessor) report(callee.origin,"Accessors cannot persist models", "GNR2308");
+                    return finish_builtin(model_type,snake(name),{type_id("Json"),type_id("Json")});
+                }
+                if (model && name == "createMany") {
+                    arity(1,1);
+                    if (const_model_accessor) report(callee.origin,"Accessors cannot persist models", "GNR2308");
+                    return finish_builtin(sequence("Collection",model_type),"create_many",{sequence("List",type_id("Json"))});
+                }
+                if (model && name == "findMany") {
+                    arity(1,1);
+                    const auto key = relationship_key_type(model_declaration,primary_key(model_declaration),e.origin);
+                    return finish_builtin(sequence("Collection",model_type),"find_many",{sequence("List",key)});
+                }
+                if (model && (name == "fill" || name == "forceFill")) {
+                    arity(1,1);
+                    if (callee.literal_type == "::" || const_model_accessor || immutable_value(receiver_expression)) report(callee.origin,"Mass assignment requires a mutable model instance", "GNR2208");
+                    return finish_builtin(model_type,snake(name),{type_id("Json")});
+                }
+                if (!model && name == "withoutEagerLoads") { arity(0,0); return finish_builtin(query_type,"without_eager_loads"); }
+                if (model && name == "relationCount") { arity(1,1); return finish_builtin(type_id("int"),"relation_count",{type_id("string")}); }
+                if (model && name == "create") { if (const_model_accessor) report(callee.origin,"Accessors cannot persist models", "GNR2308"); arity(1, 1); return finish_builtin(model_type, name, {type_id("Json")}); }
                 if (name == "count" || (!model && name == "exists")) {
                     arity(0, 0); return finish_builtin(type_id(name == "exists" ? "bool" : "int"), query_cpp(name));
                 }
@@ -1564,6 +1621,7 @@ public:
                     arity(0, 2); return finish_builtin(sequence("Page", model_type), query_cpp(name), {type_id("int"), type_id("int")});
                 }
                 static const std::unordered_set<std::string> mutations{"save", "remove", "forceRemove", "update", "restore", "touch", "refresh"};
+                if (const_model_accessor && mutations.contains(name)) report(callee.origin,"Accessors cannot persist models", "GNR2308");
                 if (mutations.contains(name) && (model || (name != "save" && name != "touch" && name != "refresh"))) {
                     arity(name == "update" ? 1 : 0, name == "update" ? 1 : 0);
                     if (model && callee.literal_type == "::") report(callee.origin, "Model mutations require an instance receiver", "GNR2311");
@@ -1624,11 +1682,11 @@ public:
                 if (name == "limit" || name == "offset" || name == "take" || name == "skip") {
                     arity(1, 1); return finish_builtin(query_type, query_cpp(name), {type_id("int")});
                 }
-                if (name == "with") {
+                if (name == "with" || name == "withCount") {
                     arity(1, 1);
                     const bool list = count && (v.syntax_.expressions[e.operands[1]].kind == SyntaxExpressionKind::list ||
                         type(expression(e.operands[1])).name == "List");
-                    return finish_builtin(query_type, query_cpp(name), {list
+                    return finish_builtin(query_type, query_cpp(snake(name)), {list
                         ? sequence("List", type_id("string")) : type_id("string")});
                 }
                 if (name == "select") { arity(1, 1); return finish_builtin(query_type, query_cpp(name), {sequence("List", type_id("string"))}); }
@@ -1705,6 +1763,11 @@ public:
             callable_id = symbol(std::move(callable));
         }
         const auto signature = v.symbols_[callable_id];
+        if (const_model_accessor && callee.kind == SyntaxExpressionKind::name &&
+            signature.kind == ResolvedSymbolKind::callable &&
+            signature.owner == current_owner && declaration_ids.contains(current_owner) &&
+            !appended(v.syntax_.declarations[declaration_ids.at(current_owner)], signature.name))
+            report(callee.origin, "Accessors cannot call mutable instance methods", "GNR2208");
         if (callee.kind == SyntaxExpressionKind::member &&
             signature.kind == ResolvedSymbolKind::callable &&
             signature.owner != invalid_id && declaration_ids.contains(signature.owner) &&
@@ -1712,7 +1775,8 @@ public:
             const auto receiver_symbol = v.expressions_[receiver_expression].symbol;
             const bool injection = receiver_symbol != invalid_id &&
                 v.symbols_[receiver_symbol].kind == ResolvedSymbolKind::injection;
-            if (!injection && immutable_value(receiver_expression))
+            const auto& owner_declaration = v.syntax_.declarations[declaration_ids.at(signature.owner)];
+            if (!injection && immutable_value(receiver_expression) && !appended(owner_declaration, signature.name))
                 report(callee.origin, "Instance methods require a mutable receiver", "GNR2208");
         }
         if (callee.kind == SyntaxExpressionKind::member && callee.literal_type == "::" && signature.kind == ResolvedSymbolKind::callable && signature.owner != invalid_id && declaration_ids.contains(signature.owner) && v.syntax_.declarations[declaration_ids.at(signature.owner)].kind != DeclarationKind::function)
@@ -2396,7 +2460,8 @@ public:
                 "timestamps",
                 "softDeletes",
                 "primaryKey",
-                "incrementing"
+                "incrementing", "guarded", "perPage", "createdAt", "updatedAt", "dateFormat",
+                "attributes", "appends", "with", "withCount", "touches"
             };
 
         for (const auto& metadata : declaration.metadata) {
@@ -2436,7 +2501,8 @@ public:
             if (
                 metadata.name == "fillable" ||
                 metadata.name == "hidden" ||
-                metadata.name == "visible"
+                metadata.name == "visible" || metadata.name == "guarded" || metadata.name == "appends" ||
+                metadata.name == "with" || metadata.name == "withCount" || metadata.name == "touches"
             ) {
                 if (expr.kind != SyntaxExpressionKind::list) {
                     report(
@@ -2464,6 +2530,28 @@ public:
                         );
                     }
                 }
+            } else if (metadata.name == "perPage") {
+                const auto number = integer_constant(metadata.value);
+                if (!number || *number <= 0)
+                    report(metadata.origin,"perPage must be a positive integer", "GNR2308");
+            } else if (metadata.name == "attributes") {
+                if (expr.kind != SyntaxExpressionKind::object) {
+                    report(metadata.origin,"attributes requires a constant object", "GNR2308");
+                    continue;
+                }
+                std::unordered_set<std::string> names;
+                std::function<bool(SyntaxId)> constant = [&](SyntaxId id) {
+                    const auto& value = v.syntax_.expressions[id];
+                    if (value.kind == SyntaxExpressionKind::literal) return true;
+                    if (value.kind == SyntaxExpressionKind::unary && (value.text == "-" || value.text == "+")) return constant(value.operands[0]);
+                    if (value.kind != SyntaxExpressionKind::object && value.kind != SyntaxExpressionKind::list) return false;
+                    return std::all_of(value.operands.begin(),value.operands.end(),constant);
+                };
+                for (std::size_t i=0; i<expr.operands.size(); ++i) {
+                    if (!valid_identifier(expr.argument_names[i]) || !names.insert(expr.argument_names[i]).second)
+                        report(metadata.origin,"Invalid or duplicate default attribute", "GNR2308");
+                    if (!constant(expr.operands[i])) report(metadata.origin,"Model defaults require constant values", "GNR2308");
+                }
             } else if (metadata.name == "casts") {
                 if (expr.kind != SyntaxExpressionKind::object) {
                     report(
@@ -2471,20 +2559,8 @@ public:
                         "casts requires a constant object",
                         "GNR2308"
                     );
+                    continue;
                 }
-
-                static const std::unordered_set<std::string>
-                    supported{
-                        "bool",
-                        "int",
-                        "integer",
-                        "string",
-                        "double",
-                        "decimal",
-                        "json",
-                        "date",
-                        "datetime"
-                    };
 
                 std::unordered_set<std::string> cast_names;
                 for (std::size_t i = 0; i < expr.operands.size(); ++i) {
@@ -2492,9 +2568,7 @@ public:
                     if (
                         v.syntax_.expressions[id].literal_type !=
                             "string" ||
-                        !supported.contains(
-                            v.syntax_.expressions[id].text
-                        )
+                        !model_cast_type(v.syntax_.expressions[id].text)
                     ) {
                         report(
                             metadata.origin,
@@ -2564,10 +2638,17 @@ public:
         }
 
         if (declaration.kind == DeclarationKind::model) {
+            static const std::unordered_set<std::string> persistent{"int","uint64","double","decimal","bool","string","Decimal","Json"};
+            for (std::size_t i = 0; i < declaration.fields.size(); ++i)
+                if (!persistent.contains(type(v.symbols_[resolved.fields[i]].type).name))
+                    report(declaration.fields[i].origin,"Unsupported persistent model field type; use a supported scalar or Json cast", "GNR2308");
             // These identifiers are emitted as native C++ members, even if
             // they were not explicitly declared as Gungnir fields. Report
             // conflicts at the source instead of generating invalid C++.
-            std::unordered_set<std::string> generated_members{"table"};
+            std::unordered_set<std::string> generated_members{
+                "table", "connection", "fillable", "guarded", "hidden", "visible", "casts", "timestamps",
+                "perPage", "createdAt", "updatedAt", "dateFormat", "default_with", "default_with_count", "touches", "soft_deletes"
+            };
             for (const auto& metadata : declaration.metadata) {
                 if (metadata.name == "softDeletes") {
                     const auto& enabled = v.syntax_.expressions[metadata.value];
@@ -2575,11 +2656,14 @@ public:
                         enabled.text == "true") {
                         generated_members.insert("soft_deletes");
                     }
-                } else if (metadata_allowed.contains(metadata.name)) {
+                } else if (metadata.name == "with") generated_members.insert("default_with");
+                else if (metadata.name == "withCount") generated_members.insert("default_with_count");
+                else if (metadata.name != "attributes" && metadata.name != "appends" && metadata_allowed.contains(metadata.name)) {
                     generated_members.insert(metadata.name);
                 }
             }
 
+            for (const auto* name : {"query","create","create_many","first_or_create","update_or_create","save","update","remove","force_remove","restore","touch","fresh","refresh","replicate","hydrate","fill","force_fill","attributes","serialized_attributes","attribute_value","primary_key_name","primary_key_value","primary_key_incrementing","table_name","connection_name","uses_timestamps","uses_soft_deletes","created_at_column","updated_at_column","deleted_at_column","timestamp_format","default_per_page","is_fillable","fillable_fields","has_attribute","serializes","dirty","is_dirty","dirty_fields","dirty_attributes","clean","exists","was_recently_created","trashed","mark_persisted","mark_missing","clear_recently_created","validate_persisted_identity","set_relation_count","relation_count","relation_names","relation_loaded","unload_relations","all","first","first_or_fail","paginate","find","find_or_fail","find_many","select","distinct","with","where","or_where","order_by","limit","take","offset","skip","with_deleted","only_deleted"}) generated_members.insert(name);
             const auto generated_member_conflict =
                 [&](std::string_view name, const Origin& origin) {
                     if (generated_members.contains(std::string{name})) {
@@ -2603,17 +2687,27 @@ public:
             bool incrementing_explicit = false;
             bool timestamps = false;
             bool soft_deletes = false;
+            std::string created = "created_at", updated = "updated_at";
 
             for (const auto& metadata : declaration.metadata) {
                 const auto& expr =
                     v.syntax_.expressions[metadata.value];
 
-                if (
-                    metadata.name == "primaryKey" &&
-                    expr.literal_type == "string"
-                ) {
-                    primary = expr.text;
+                if (metadata.name == "createdAt" && expr.literal_type == "string") created = expr.text;
+                if (metadata.name == "updatedAt" && expr.literal_type == "string") updated = expr.text;
+                if (metadata.name == "dateFormat" && expr.literal_type == "string") {
+                    bool escape = false;
+                    bool valid = !expr.text.empty();
+                    for (const auto c : expr.text) {
+                        if (escape) { escape = false; continue; }
+                        if (c == '\\') { escape = true; continue; }
+                        if (std::isalpha(static_cast<unsigned char>(c)) && std::string_view{"YymdHisuUv"}.find(c) == std::string_view::npos) valid = false;
+                    }
+                    if (!valid || escape) report(metadata.origin,"Unsupported or empty dateFormat", "GNR2308");
                 }
+                if ((metadata.name == "createdAt" || metadata.name == "updatedAt") && !valid_identifier(expr.text))
+                    report(metadata.origin,"Timestamp columns must name valid model attributes", "GNR2308");
+                if (metadata.name == "primaryKey" && expr.literal_type == "string") primary = expr.text;
 
                 if (
                     metadata.name == "incrementing" &&
@@ -2674,24 +2768,13 @@ public:
                     const auto name = entries.argument_names[i];
                     const auto& cast = v.syntax_.expressions[entries.operands[i]];
                     if (cast.literal_type != "string") continue;
-                    std::string expected;
-                    if (cast.text == "bool") expected = "bool";
-                    else if (cast.text == "int" || cast.text == "integer")
-                        expected = "int";
-                    else if (cast.text == "double") expected = "double";
-                    else if (cast.text == "decimal") expected = "Decimal";
-                    else if (cast.text == "json") expected = "Json";
-                    else if (
-                        cast.text == "string" ||
-                        cast.text == "date" ||
-                        cast.text == "datetime"
-                    ) expected = "string";
-                    else continue; // Invalid casts receive their own diagnostic.
+                    const auto expected = model_cast_type(cast.text);
+                    if (!expected) continue;
 
                     const auto actual = field_type(name);
                     if (
                         actual != invalid_id &&
-                        type(actual).name != expected
+                        type(actual).name != *expected
                     ) {
                         report(
                             metadata.origin,
@@ -2737,6 +2820,49 @@ public:
                 );
             }
 
+            if (timestamps && (created == updated || created == primary || updated == primary ||
+                (soft_deletes && (created == "deleted_at" || updated == "deleted_at"))))
+                report(declaration.origin,"Timestamp columns must be distinct from each other, the primary key and deleted_at", "GNR2308");
+            for (const auto& metadata : declaration.metadata) {
+                const auto& entries = v.syntax_.expressions[metadata.value];
+                if (metadata.name == "appends") {
+                    for (auto id : entries.operands) {
+                        const auto& name = v.syntax_.expressions[id].text;
+                        const auto method = std::find_if(declaration.methods.begin(),declaration.methods.end(),[&](const auto& m){ return m.name == name; });
+                        const auto index = static_cast<std::size_t>(method - declaration.methods.begin());
+                        static const std::unordered_set<std::string> outputs{"int","uint64","double","decimal","bool","string","Decimal","Json"};
+                        if (method == declaration.methods.end() || !outputs.contains(type(v.symbols_[resolved.methods[index].symbol].type).name) || !method->parameters.empty() || method->asynchronous || method->visibility != Visibility::public_ || method->result.name == "void")
+                            report(metadata.origin,"appends requires public synchronous zero-argument accessor methods", "GNR2308");
+                    }
+                }
+                if (metadata.name == "with" || metadata.name == "withCount" || metadata.name == "touches") {
+                    for (auto id : entries.operands) {
+                        auto name = v.syntax_.expressions[id].text;
+                        if (metadata.name == "withCount" && field_type(name + "_count") != invalid_id)
+                            report(metadata.origin,"Relationship count conflicts with a persistent attribute", "GNR2308");
+                        std::size_t target = declaration_ids.at(resolved.symbol);
+                        std::size_t start = 0;
+                        do {
+                            const auto dot = name.find('.',start);
+                            const auto part = name.substr(start,dot == std::string::npos ? dot : dot-start);
+                            const auto& owner = v.syntax_.declarations[target];
+                            const auto relation = std::find_if(owner.relationships.begin(),owner.relationships.end(),[&](const auto& r){return r.name == part;});
+                            if (relation == owner.relationships.end() || (metadata.name != "with" && dot != std::string::npos)) { report(metadata.origin,"Unknown or unsupported relationship in " + metadata.name,"GNR2308"); break; }
+                            const auto index = static_cast<std::size_t>(relation-owner.relationships.begin());
+                            const auto related = declaration_ids.at(owner_of(v.declarations_[target].relationships[index].related));
+                            if (metadata.name == "touches") {
+                                bool timestamped = false;
+                                for (const auto& setting : v.syntax_.declarations[related].metadata)
+                                    if (setting.name == "timestamps" && v.syntax_.expressions[setting.value].text == "true") timestamped = true;
+                                if (relation->kind != "belongsTo" || !timestamped) report(metadata.origin,"touches requires a belongsTo parent with timestamps enabled", "GNR2308");
+                            }
+                            if (dot == std::string::npos) break;
+                            start = dot+1; target = related;
+                        } while (true);
+                    }
+                }
+            }
+
             const auto lifecycle_string =
                 [&](std::string_view name) {
                     const auto id = field_type(name);
@@ -2750,8 +2876,7 @@ public:
             if (
                 timestamps &&
                 (
-                    !lifecycle_string("created_at") ||
-                    !lifecycle_string("updated_at")
+                    !lifecycle_string(created) || !lifecycle_string(updated)
                 )
             ) {
                 report(
@@ -2968,7 +3093,9 @@ public:
         for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) for (std::size_t m = 0; m < v.syntax_.declarations[d].methods.size(); ++m) work.emplace_back(d,m);
         std::stable_sort(work.begin(),work.end(),[&](auto a,auto b){return (v.syntax_.declarations[a.first].methods[a.second].result.name == "inferred") > (v.syntax_.declarations[b.first].methods[b.second].result.name == "inferred");});
         for (auto [d,m] : work) {
-            const auto method = v.syntax_.declarations[d].methods[m]; auto& resolved = v.declarations_[d].methods[m]; current_module = v.syntax_.declarations[d].module; current_owner = v.declarations_[d].symbol;
+            const auto method = v.syntax_.declarations[d].methods[m];
+            const_model_accessor = v.syntax_.declarations[d].kind == DeclarationKind::model && appended(v.syntax_.declarations[d], method.name);
+            auto& resolved = v.declarations_[d].methods[m]; current_module = v.syntax_.declarations[d].module; current_owner = v.declarations_[d].symbol;
             scopes.clear(); narrowed.clear(); scopes.emplace_back(); async_context = method.asynchronous; loops = 0; return_type = v.symbols_[resolved.symbol].type; returned.clear();
             for (std::size_t p = 0; p < method.parameters.size(); ++p) {
                 const auto& parameter = method.parameters[p]; const auto parameter_type = v.symbols_[resolved.symbol].parameters[p];
@@ -2992,9 +3119,33 @@ public:
             }
             if (return_type != type_id("void") && !resolved.all_paths_return) report(method.origin,"Callable may finish without returning a value", "GNR2215");
         }
+        const_model_accessor = false;
         for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
             current_module = v.syntax_.declarations[d].module; current_owner = v.declarations_[d].symbol; scopes.clear(); scopes.emplace_back(); async_context = false; loops = 0; contracts(d);
-            for (std::size_t f = 0; f < v.syntax_.declarations[d].fields.size(); ++f) { const auto& field = v.syntax_.declarations[d].fields[f]; if (field.initializer != invalid_id && !assignable(v.symbols_[v.declarations_[d].fields[f]].type, expression(field.initializer))) report(field.origin,"Field initializer type mismatch"); }
+            const auto& declaration = v.syntax_.declarations[d];
+            for (std::size_t f = 0; f < declaration.fields.size(); ++f) {
+                const auto& field = declaration.fields[f];
+                if (field.initializer == invalid_id) continue;
+                const auto target = v.symbols_[v.declarations_[d].fields[f]].type;
+                const auto actual = expression(field.initializer,target);
+                bool metadata_default = false;
+                for (const auto& metadata : declaration.metadata)
+                    if (metadata.name == "attributes") {
+                        const auto& values = v.syntax_.expressions[metadata.value];
+                        metadata_default |= std::find(values.argument_names.begin(),values.argument_names.end(),field.name) != values.argument_names.end();
+                    }
+                bool cast_default = metadata_default && type(target).name == "bool" && (type(actual).name == "int" || type(actual).name == "uint64");
+                if (metadata_default && type(target).name == "uint64" && type(actual).name == "int") {
+                    const auto number = integer_constant(field.initializer);
+                    if (number && *number >= 0) cast_default = true;
+                    else report(field.origin,"Unsigned model defaults require a nonnegative integer", "GNR2308");
+                }
+                if (metadata_default && type(target).name == "Decimal" && type(actual).name == "string") {
+                    try { static_cast<void>(model::Decimal{v.syntax_.expressions[field.initializer].text}); cast_default = true; }
+                    catch (const std::invalid_argument&) { report(field.origin,"Invalid decimal default", "GNR2308"); }
+                }
+                if (!assignable(target,actual) && !cast_default) report(field.origin,"Field initializer type mismatch");
+            }
         }
         for (std::size_t d = 0; d < v.syntax_.declarations.size(); ++d) {
             const auto& declaration = v.syntax_.declarations[d];

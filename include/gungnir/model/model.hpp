@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 
 #include <gungnir/core/types.hpp>
 #include <gungnir/model/connection.hpp>
@@ -137,7 +138,7 @@ public:
 
     [[nodiscard]] static orm::Page<Derived> paginate(
         std::size_t page = 1,
-        std::size_t per_page = 15
+        std::size_t per_page = default_per_page()
     );
 
     [[nodiscard]] static std::optional<Derived> find(
@@ -214,6 +215,26 @@ public:
         return false;
     }
 
+    [[nodiscard]] static constexpr std::size_t default_per_page() noexcept {
+        if constexpr (requires { Derived::perPage; }) return Derived::perPage;
+        return 15;
+    }
+
+    [[nodiscard]] static constexpr std::string_view created_at_column() noexcept {
+        if constexpr (requires { Derived::createdAt; }) return Derived::createdAt;
+        return "created_at";
+    }
+
+    [[nodiscard]] static constexpr std::string_view updated_at_column() noexcept {
+        if constexpr (requires { Derived::updatedAt; }) return Derived::updatedAt;
+        return "updated_at";
+    }
+
+    [[nodiscard]] static constexpr std::string_view timestamp_format() noexcept {
+        if constexpr (requires { Derived::dateFormat; }) return Derived::dateFormat;
+        return "Y-m-d H:i:s";
+    }
+
     [[nodiscard]] static constexpr bool has_attribute(
         std::string_view attribute
     ) noexcept {
@@ -247,7 +268,14 @@ public:
         std::string_view attribute
     ) noexcept {
         if constexpr (requires { Derived::fillable.contains(attribute); }) {
-            return Derived::fillable.contains(attribute);
+            if (Derived::fillable.contains(attribute)) return true;
+            if (!Derived::fillable.values().empty()) return false;
+        }
+
+        if constexpr (requires { Derived::guarded; }) {
+            for (const auto name : Derived::guarded)
+                if (name == "*" || name == attribute) return false;
+            return has_attribute(attribute);
         }
 
         return false;
@@ -370,6 +398,8 @@ public:
 
     [[nodiscard]] AttributeMap serialized_attributes() const {
         auto result = attributes();
+        for (const auto& [name, count] : relation_counts_)
+            result.insert_or_assign(name + "_count", static_cast<UInt64>(count));
         std::erase_if(result, [&](const auto& entry) { return !serializes(entry.first); });
         return result;
     }
@@ -412,6 +442,23 @@ public:
 
     [[nodiscard]] std::optional<AttributeValue> primary_key_value() const {
         return attribute_value(primary_key_name());
+    }
+
+    void validate_persisted_identity() const {
+        if (!exists_) return;
+        if (!persisted_key_ || primary_key_value() != persisted_key_)
+            throw ModelMetadataError{"Persisted model identity is missing or its primary key was changed"};
+    }
+
+    void set_relation_count(String name, std::size_t count) {
+        relation_counts_.insert_or_assign(std::move(name), count);
+    }
+
+    [[nodiscard]] std::size_t relation_count(std::string_view name) const {
+        const auto found = relation_counts_.find(String{name});
+        if (found == relation_counts_.end())
+            throw ModelMetadataError{"Relationship count is not loaded: " + String{name}};
+        return found->second;
     }
 
     [[nodiscard]] AttributeMap dirty_attributes() const {
@@ -472,6 +519,13 @@ public:
     [[nodiscard]] static Derived hydrate(const AttributeMap& values) {
         Derived instance;
 
+        // Constructor defaults describe new records, not the identity of a
+        // partially selected database row.
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            if (descriptor.kind == model::AttributeKind::primary_key)
+                (instance.*(descriptor.member)).clear();
+        });
+
         for (const auto& [name, value] : values) {
             instance.assign_attribute(name, value, true);
         }
@@ -526,9 +580,16 @@ public:
         model::for_each_relation<Derived>([&](const auto& descriptor) {
             (derived().*(descriptor.member)).unload();
         });
+        relation_counts_.clear();
     }
 
-    void mark_persisted(bool newly_created = false) noexcept {
+    void mark_persisted(bool newly_created = false) {
+        persisted_key_.reset();
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            const auto& member = derived().*(descriptor.member);
+            if (descriptor.kind == model::AttributeKind::primary_key && member.initialized())
+                persisted_key_ = model::to_value(member.get());
+        });
         exists_ = true;
         recently_created_ = newly_created;
     }
@@ -536,6 +597,7 @@ public:
     void mark_missing() noexcept {
         exists_ = false;
         recently_created_ = false;
+        persisted_key_.reset();
     }
 
     void clear_recently_created() noexcept {
@@ -547,6 +609,20 @@ protected:
     ~Model() = default;
 
 private:
+    template <typename Value>
+    [[nodiscard]] static Value cast_attribute(std::string_view name, const AttributeValue& value) {
+        if constexpr (requires { Derived::casts; })
+            for (const auto& [attribute, cast] : Derived::casts)
+                if (attribute == name) return model::cast_value<Value>(value,cast);
+        return model::value_cast<Value>(value);
+    }
+
+    void clear_attribute(std::string_view name) {
+        model::for_each_attribute<Derived>([&](const auto& descriptor) {
+            if (descriptor.name == name) (derived().*(descriptor.member)).clear();
+        });
+    }
+
     // Validate conversions before applying any member assignment. This avoids
     // partial updates even when a later field has an incompatible value.
     bool validate_attribute_value(
@@ -560,7 +636,7 @@ private:
                 decltype(derived().*(descriptor.member))
             >;
             static_cast<void>(
-                model::value_cast<typename Member::value_type>(value)
+                cast_attribute<typename Member::value_type>(name,value)
             );
             found = true;
         });
@@ -590,7 +666,7 @@ private:
             auto& member = derived().*(descriptor.member);
             using Value = typename std::remove_cvref_t<decltype(member)>::value_type;
 
-            member = model::value_cast<Value>(value);
+            member = cast_attribute<Value>(name,value);
 
             if (hydrated) {
                 member.sync_original();
@@ -617,6 +693,8 @@ private:
     bool exists_{false};
     bool recently_created_{false};
     bool soft_deleted_{false};
+    std::optional<AttributeValue> persisted_key_;
+    std::unordered_map<String, std::size_t> relation_counts_;
 };
 
 } // namespace gungnir

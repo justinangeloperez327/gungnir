@@ -9,6 +9,7 @@
 #include <gungnir/orm/advanced_mutation.hpp>
 #include <gungnir/orm/mutation.hpp>
 #include <gungnir/orm/query.hpp>
+#include <gungnir/model/timestamps.hpp>
 
 namespace gungnir::orm {
 
@@ -25,6 +26,9 @@ inline Double numeric_value(
     }
     if (const auto* number = std::get_if<UInt64>(&value)) {
         return static_cast<Double>(*number);
+    }
+    if (const auto* number = std::get_if<model::Decimal>(&value)) {
+        return number->to_double();
     }
 
     throw std::invalid_argument(
@@ -240,12 +244,14 @@ std::size_t Query<ModelType>::update(
         return 0;
     }
 
+    auto changes = values;
+    if constexpr (ModelType::uses_timestamps()) {
+        const String column{ModelType::updated_at_column()};
+        if (ModelType::has_attribute(column) && !changes.contains(column))
+            changes.emplace(column,model::timestamp_now(ModelType::timestamp_format()));
+    }
     auto connection = database::runtime::connection(plan_.connection);
-    const auto compiled = compile_update_where(
-        plan_,
-        values,
-        connection->backend()
-    );
+    const auto compiled = compile_update_where(plan_,changes,connection->backend());
 
     return connection->execute(
         compiled.text,
@@ -257,11 +263,8 @@ template <typename ModelType>
 std::size_t Query<ModelType>::remove() const {
     if constexpr (ModelType::uses_soft_deletes()) {
         auto connection = database::runtime::connection(plan_.connection);
-        const auto compiled = compile_soft_delete_where(
-            plan_,
-            String{ModelType::deleted_at_column()},
-            false,
-            connection->backend()
+        const auto compiled = compile_update_where(
+            plan_, model::soft_delete_attributes<ModelType>(false), connection->backend()
         );
 
         return connection->execute(
@@ -297,11 +300,8 @@ std::size_t Query<ModelType>::restore() const {
     query.erase_soft_delete_scope();
 
     auto connection = database::runtime::connection(query.plan_.connection);
-    const auto compiled = compile_soft_delete_where(
-        query.plan_,
-        String{ModelType::deleted_at_column()},
-        true,
-        connection->backend()
+    const auto compiled = compile_update_where(
+        query.plan_, model::soft_delete_attributes<ModelType>(true), connection->backend()
     );
 
     return connection->execute(

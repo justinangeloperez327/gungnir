@@ -138,6 +138,11 @@ template <JsonModel T>
         if (found != object.end()) found->second = make_json((value.*descriptor.member).get());
     });
 
+    model::for_each_accessor<T>([&](const auto& descriptor) {
+        if (value.serializes(descriptor.name))
+            object.insert_or_assign(String{descriptor.name}, make_json((value.*descriptor.method)()));
+    });
+
     return Json::object(std::move(object));
 }
 

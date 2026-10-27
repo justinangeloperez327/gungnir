@@ -40,10 +40,34 @@ public:
                 .automatic = true
             });
         }
+        if constexpr (requires { ModelType::default_with; })
+            for (const auto name : ModelType::default_with) with(String{name});
+        if constexpr (requires { ModelType::default_with_count; })
+            for (const auto name : ModelType::default_with_count) with_count(String{name});
+    }
+
+    Query& with_count(String relation) {
+        bool known = false;
+        model::for_each_relation<ModelType>([&](const auto& descriptor) { known |= descriptor.name == relation; });
+        if (!known) throw ModelMetadataError{"Unknown relationship count: " + relation};
+        if (ModelType::has_attribute(relation + "_count")) throw ModelMetadataError{"Relationship count conflicts with a persistent attribute: " + relation};
+        if (std::find(plan_.eager_counts.begin(), plan_.eager_counts.end(), relation) == plan_.eager_counts.end())
+            plan_.eager_counts.push_back(std::move(relation));
+        return *this;
+    }
+
+    Query& with_count(const std::vector<String>& relations) {
+        for (const auto& relation : relations) with_count(relation);
+        return *this;
     }
 
     [[nodiscard]] const QueryPlan& plan() const noexcept {
         return plan_;
+    }
+
+    Query& protect_last_predicate() {
+        if (!plan_.predicates.empty()) plan_.predicates.back().protected_scope = true;
+        return *this;
     }
 
     [[nodiscard]] bool has_eager_loads() const noexcept {
@@ -53,6 +77,7 @@ public:
     Query& without_eager_loads() noexcept {
         plan_.eager_loads.clear();
         plan_.eager_constraints.clear();
+        plan_.eager_counts.clear();
         return *this;
     }
 
@@ -420,6 +445,7 @@ public:
         if constexpr (ModelType::uses_soft_deletes()) {
             erase_soft_delete_scope();
             where_not_null(String{ModelType::deleted_at_column()});
+            plan_.predicates.back().automatic = true;
         }
         return *this;
     }
@@ -467,7 +493,7 @@ public:
 
     [[nodiscard]] Page<ModelType> paginate(
         std::size_t page = 1,
-        std::size_t per_page = 15
+        std::size_t per_page = ModelType::default_per_page()
     ) const;
 
     std::size_t update(const model::AttributeMap& values) const;

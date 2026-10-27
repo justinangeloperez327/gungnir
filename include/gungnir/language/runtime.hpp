@@ -286,6 +286,15 @@ template<class Model> model::AttributeMap attributes(const Json& value) {
     }
     return result;
 }
+
+template <class Model>
+std::vector<model::AttributeMap> attribute_rows(const std::vector<Json>& rows) {
+    std::vector<model::AttributeMap> result;
+    result.reserve(rows.size());
+    for (const auto& row : rows) result.push_back(attributes<Model>(row));
+    return result;
+}
+
 namespace detail {
 struct WaitState { std::mutex mutex; std::condition_variable completed; bool ready = false; std::exception_ptr error; };
 struct Waiter {

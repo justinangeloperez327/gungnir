@@ -30,6 +30,13 @@ public:
         return incrementing_;
     }
 
+    [[nodiscard]] static PrimaryKey with_value(std::string_view name, bool incrementing, T value) {
+        PrimaryKey key{name, incrementing};
+        key = std::move(value);
+        key.sync_original();
+        return key;
+    }
+
 private:
     std::string_view name_;
     bool incrementing_;

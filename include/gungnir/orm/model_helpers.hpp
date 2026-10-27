@@ -76,7 +76,9 @@ Derived Model<Derived>::update_or_create(
     }
 
     if (auto found = query_builder.first()) {
-        found->update(values);
+        if (!found->update(values)) {
+            throw std::runtime_error("Gungnir ORM update_or_create did not update the matching row");
+        }
         return std::move(*found);
     }
 

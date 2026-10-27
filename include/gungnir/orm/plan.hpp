@@ -70,6 +70,7 @@ struct Predicate {
     String other_column;
     std::vector<model::AttributeValue> values;
     bool automatic{false};
+    bool protected_scope{false};
 };
 
 struct Order {
@@ -105,6 +106,8 @@ struct QueryPlan {
     std::vector<Predicate> having;
     std::vector<Order> orders;
     std::vector<String> eager_loads;
+    std::vector<String> eager_counts;
+    String count_group_column;
     std::unordered_map<String,RelationConstraint> eager_constraints;
     std::optional<Aggregate> aggregate;
     std::optional<std::size_t> limit;
