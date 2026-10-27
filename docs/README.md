@@ -84,7 +84,8 @@ project, build it and run the local server.
 - [Native API and ABI](native-api-abi.md) — native compatibility
 - [Stability](stability.md) — compatibility and version contracts
 - [Upgrading](upgrading.md) — rebuild applications with a different SDK
-- [Version 1.0.2 Installation](release-v1.0.2.md) — current binary downloads and their scope
+- [Version 1.0.3 Installation](release-v1.0.3.md) — current binary downloads and their scope
+- [Version 1.0.2 Installation](release-v1.0.2.md) — previous compiler and runtime fixes
 - [Version 1.0.1 Installation](release-v1.0.1.md) — previous SDK packages and their scope
 - [Version 1.0.0 Installation](release-v1.md) — older core-only binary downloads
 
@@ -94,6 +95,6 @@ project, build it and run the local server.
 - [Spear](../examples/spear/README.md) — server-rendered views
 - [Linux Application](../examples/production-deployment/README.md) — deployment walkthrough
 
-**SDK note:** Version 1.0.2 provides core and application SDKs. Choose the
+**SDK note:** Version 1.0.3 provides core and application SDKs. Choose the
 application profile for bundled SQLite and password hashing; see
 [SDK Packages](sdk-packages.md) for other adapters and source builds.

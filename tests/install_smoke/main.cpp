@@ -6,7 +6,7 @@
 #include <gungnir/version.hpp>
 
 static_assert(
-    gungnir::version == "1.0.2"
+    gungnir::version == "1.0.3"
 );
 
 static_assert(

@@ -6,6 +6,16 @@ For installation and usage instructions, see the [README](README.md) and
 
 ## Unreleased
 
+## 1.0.3 — 2026-10-27
+
+- Complete model metadata, casts/defaults, serialization accessors, relationship
+  loading/counts, parent touching and `.gnr` helper support.
+- Fix record identity, identifier escaping, soft-delete OR scoping, field
+  mutation tracking, insert failure handling and decimal aggregates.
+- Add compiler validation, generated-code and SQLite regression tests.
+- Use verified NSIS mirror fallback for Windows installer builds.
+
+
 - Canonicalized default table naming across the structured compiler and model
   lowering (including acronyms and names ending in `z`). Explicit `table`
   declarations preserve previously deployed table names.
