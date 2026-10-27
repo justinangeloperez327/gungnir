@@ -1,0 +1,110 @@
+model ContractParent {
+    table = 'contract_parents';
+    softDeletes = true;
+    guarded = ['id', 'secret'];
+    attributes = {'name': 'Guest', 'enabled': true, 'score': 2, 'settings': {'theme': 'blue'}};
+    casts = {'enabled': 'bool', 'score': 'integer', 'settings': 'json'};
+    timestamps = true;
+    createdAt = 'created_on';
+    updatedAt = 'modified_on';
+    dateFormat = 'Y/m/d H:i:s.u';
+    perPage = 2;
+    hidden = ['secret', 'hiddenLabel'];
+    appends = ['label', 'hiddenLabel'];
+    with = ['children'];
+    withCount = ['children', 'firstChild', 'roles', 'notes', 'firstNote'];
+
+    bool secret = false;
+    string label() { return name + '!'; }
+    string hiddenLabel() { return 'private'; }
+    children() { return hasMany<ContractChild>('parent_id'); }
+    firstChild() { return hasOne<ContractChild>('parent_id'); }
+    roles() { return belongsToMany<ContractRole>('contract_parent_role', 'parent_id', 'role_id'); }
+    notes() { return hasManyThrough<ContractNote, ContractChild>('parent_id', 'child_id'); }
+    firstNote() { return hasOneThrough<ContractNote, ContractChild>('parent_id', 'child_id'); }
+}
+
+model ContractChild {
+    table = 'contract_children';
+    fillable = ['parent_id', 'name'];
+    timestamps = true;
+    touches = ['parent'];
+    withCount = ['parent'];
+    parent() { return belongsTo<ContractParent>('parent_id'); }
+}
+
+model ContractRole { table = 'contract_roles'; fillable = ['name']; }
+model ContractNote { table = 'contract_notes'; fillable = ['child_id', 'name']; }
+model ContractEmpty { table = 'contract_empty'; }
+model ContractCounter {
+    table = 'contract_counters';
+    guarded = [];
+    int count;
+    string text;
+    int next() { return count++; }
+    int add() { return count += 2; }
+    string append() { return text += '!'; }
+}
+model ContractDefaultKey {
+    table = 'contract_default_keys';
+    incrementing = false;
+    int id = 7;
+    string name = 'default';
+}
+model ContractVisible {
+    table = 'contract_parents';
+    string name;
+    string password;
+    hidden = ['password'];
+    visible = ['name', 'label', 'password'];
+    appends = ['label'];
+    string label() { return name + '!'; }
+}
+
+function ContractParent createContractParent(string name) { return ContractParent::create({'name': name}); }
+function ContractChild createContractChild(int parent_id, string name) { return ContractChild::create({'parent_id': parent_id, 'name': name}); }
+function Page<ContractParent> defaultContractPage() { return ContractParent::paginate(); }
+function ContractParent copyContractParent(ContractParent original) { return original.replicate(); }
+function ContractParent? freshContractParent(ContractParent original) { return original.fresh(); }
+function ContractParent firstContractParent(string name) { return ContractParent::firstOrCreate({'name': name}); }
+function ContractParent updateContractParent(string name) { return ContractParent::updateOrCreate({'name': name}, {'enabled': false}); }
+function Collection<ContractRole> createContractRoles() { return ContractRole::createMany([{'name': 'reader'}, {'name': 'writer'}]); }
+function Collection<ContractRole> findContractRoles(int first, int second) { return ContractRole::findMany([first, second]); }
+function int countContractChildren(int id) { const parent = ContractParent::findOrFail(id); return parent.children_count; }
+function Collection<ContractRole> explicitContractCounts() { return ContractRole::withCount([]).get(); }
+
+model ContractAllow {
+    table = 'contract_counters';
+    int count = 2;
+    string text;
+    fillable = ['count'];
+    guarded = ['*'];
+}
+model ContractClosed { string name; guarded = ['*']; }
+model ContractCountVisible {
+    table = 'contract_parents';
+    string name;
+    visible = ['name', 'children_count'];
+    hidden = ['roles_count'];
+    withCount = ['children', 'roles'];
+    children() { return hasMany<ContractChild>('parent_id'); }
+    roles() { return belongsToMany<ContractRole>('contract_parent_role', 'parent_id', 'role_id'); }
+}
+model ContractLoop {
+    table = 'contract_loops';
+    with = ['children'];
+    children() { return hasMany<ContractLoop>('parent_id'); }
+}
+model ContractTouchLoop {
+    table = 'contract_touch_loops';
+    timestamps = true;
+    touches = ['parent'];
+    parent() { return belongsTo<ContractTouchLoop>('parent_id'); }
+}
+function ContractParent withoutContractRelations(int id) { return ContractParent::query().withoutEagerLoads().findOrFail(id); }
+function ContractParent fillContractParent(ContractParent original) { let parent = original; parent.fill({'name': 'filled'}); parent.forceFill({'secret': true}); return parent; }
+
+model ContractCasts {
+    casts = {'amount': 'decimal', 'active': 'boolean', 'owner': 'uint64', 'settings': 'array', 'rate': 'float', 'starts_at': 'datetime'};
+    attributes = {'amount': '0.10', 'active': 1, 'owner': 2, 'settings': [1, 2], 'rate': 1.5, 'initial_balance': -2, 'starts_at': '2026-10-26 00:00:00'};
+}

@@ -23,6 +23,19 @@ class CppIrLoweringRenderer {
     std::unordered_set<SymbolId> model_fields;
     std::string type(TypeId id) const { return p.types().at(id).cpp_name; }
     const ResolvedSymbol& symbol(SymbolId id) const { return p.symbols().at(id); }
+    bool appended(const DeclarationSyntax& declaration, std::string_view name) const {
+        for (const auto& metadata : declaration.metadata)
+            if (metadata.name == "appends")
+                for (auto id : s.expressions[metadata.value].operands)
+                    if (s.expressions[id].text == name) return true;
+        return false;
+    }
+    std::string tracked_update(SyntaxId target, std::string operation) {
+        const auto& resolution = p.expressions()[target];
+        const auto value = p.types()[symbol(resolution.symbol).type].optional && !p.types()[resolution.type].optional
+            ? "gnr_value.value()" : "gnr_value";
+        return expr(target, true, true) + ".mutate([&](auto& gnr_value) { return " + value + operation + "; })";
+    }
     std::string access(SymbolId id, bool raw = false) const { const auto& v = symbol(id); std::string name = captured.contains(id) ? "gnr_capture_" + std::to_string(id) : v.cpp_name; if (!raw && !captured.contains(id) && model_fields.contains(id)) name += ".get()"; return name; }
     std::string convert(std::string value, TypeId target, TypeId source) const {
         if (target == source) return value;
@@ -52,7 +65,15 @@ class CppIrLoweringRenderer {
             return value;
         }
         case SyntaxExpressionKind::await_: return "(co_await " + child(0) + ")";
-        case SyntaxExpressionKind::unary: return e.text.starts_with("post") ? "(" + child(0) + e.text.substr(4) + ")" : "(" + e.text + child(0) + ")";
+        case SyntaxExpressionKind::unary:
+            if ((e.text == "post++" || e.text == "post--" || e.text == "++" || e.text == "--") && model_fields.contains(p.expressions()[e.operands[0]].symbol)) {
+                if (e.text.starts_with("post")) return tracked_update(e.operands[0], e.text.substr(4));
+                const auto target = e.operands[0];
+                const auto& resolution = p.expressions()[target];
+                const auto value = p.types()[symbol(resolution.symbol).type].optional && !p.types()[resolution.type].optional ? "gnr_value.value()" : "gnr_value";
+                return expr(target,true,true) + ".mutate([&](auto& gnr_value) { return " + e.text + value + "; })";
+            }
+            return e.text.starts_with("post") ? "(" + child(0) + e.text.substr(4) + ")" : "(" + e.text + child(0) + ")";
         case SyntaxExpressionKind::binary:
             if (e.text == "==" || e.text == "!=") {
                 const bool left_null = s.expressions[e.operands[0]].literal_type == "null";
@@ -64,6 +85,8 @@ class CppIrLoweringRenderer {
             if (e.text == "=" || e.text == "+=" || e.text == "-=" || e.text == "*=" || e.text == "/=") {
                 // Plain assignment initializes the Field wrapper; compound
                 // updates use the contained value after optional narrowing.
+                if (e.text != "=" && model_fields.contains(p.expressions()[e.operands[0]].symbol))
+                    return tracked_update(e.operands[0], " " + e.text + " " + convert(child(1),r.type,p.expressions()[e.operands[1]].type));
                 const bool plain_assignment = e.text == "=";
                 return "(" + expr(e.operands[0],plain_assignment,plain_assignment) + " " + e.text + " " + convert(child(1),r.type,p.expressions()[e.operands[1]].type) + ")";
             }
@@ -138,8 +161,10 @@ class CppIrLoweringRenderer {
                 else {
                     auto value = convert("std::get<" + std::to_string(index + (receiver.empty() ? 0 : 1)) + ">(gnr_values)",r.argument_conversions[i],p.expressions()[e.operands[index+1]].type);
                     if (orm_model != invalid_id) {
-                        if ((callable.name == "create" || callable.name == "update") && p.types()[p.expressions()[e.operands[index+1]].type].name == "Json")
+                        if ((callable.name == "create" || callable.name == "update" || callable.name == "firstOrCreate" || callable.name == "updateOrCreate" || callable.name == "fill" || callable.name == "forceFill") && p.types()[p.expressions()[e.operands[index+1]].type].name == "Json")
                             value = "gungnir::language::runtime::attributes<" + type(orm_model) + ">(" + value + ")";
+                        if (callable.name == "createMany") value = "gungnir::language::runtime::attribute_rows<" + type(orm_model) + ">(" + value + ")";
+                        if (callable.name == "findMany") value = "gungnir::language::runtime::attribute_values(" + value + ")";
                         if (callable.name == "orderBy" && i == 1) value = "gungnir::language::runtime::sort_direction(" + value + ")";
                         if ((callable.name == "where" || callable.name == "orWhere") && r.argument_order.size() == 3 && i == 1) value = "gungnir::language::runtime::comparison(" + value + ")";
                         if ((callable.name == "whereIn" || callable.name == "whereNotIn") && i == 1) value = "gungnir::language::runtime::attribute_values(" + value + ")";
@@ -514,6 +539,7 @@ class CppIrLoweringRenderer {
                     result(method, method_resolution)
                 };
                 function.coroutine = method.asynchronous;
+                function.const_receiver = declaration.kind == DeclarationKind::model && appended(declaration, method.name);
                 function.line_directive = lines;
                 function.source = ir_source(method.origin);
 
@@ -810,9 +836,13 @@ public:
                 original != declaration.fields.end() &&
                 original->initializer != invalid_id
             ) {
-                block
-                    << " = "
-                    << expr(original->initializer);
+                const auto initial = convert(expr(original->initializer),field.type,p.expressions()[original->initializer].type);
+                if (declaration.kind == DeclarationKind::model && field.name == primary) {
+                    bool incrementing = p.types()[field.type].name != "string";
+                    for (const auto& metadata : declaration.metadata)
+                        if (metadata.name == "incrementing") incrementing = s.expressions[metadata.value].text == "true";
+                    block << " = gungnir::PrimaryKey<" << type(field.type) << ">::with_value(" << quote(primary) << ',' << (incrementing ? "true" : "false") << ',' << initial << ')';
+                } else block << " = " << initial;
             } else if (
                 declaration.kind ==
                     DeclarationKind::model &&
@@ -1026,6 +1056,7 @@ public:
             const auto& value =
                 s.expressions[metadata.value];
 
+            if (metadata.name == "attributes" || metadata.name == "appends") continue;
             if (
                 metadata.name == "table" ||
                 metadata.name == "connection"
@@ -1068,15 +1099,15 @@ public:
 
                 block << "};\n";
             } else if (
-                metadata.name == "hidden" ||
-                metadata.name == "visible"
+                metadata.name == "hidden" || metadata.name == "visible" || metadata.name == "guarded" ||
+                metadata.name == "with" || metadata.name == "withCount" || metadata.name == "touches"
             ) {
                 block
                     << "inline static constexpr "
                        "std::array<std::string_view,"
                     << value.operands.size()
                     << "> "
-                    << metadata.name
+                    << (metadata.name == "with" ? "default_with" : metadata.name == "withCount" ? "default_with_count" : metadata.name)
                     << "{";
 
                 for (auto expression_id :
@@ -1090,11 +1121,11 @@ public:
 
                 block << "};\n";
             } else if (
-                metadata.name == "primaryKey"
+                metadata.name == "primaryKey" || metadata.name == "createdAt" || metadata.name == "updatedAt" || metadata.name == "dateFormat"
             ) {
                 block
                     << "inline static constexpr "
-                       "std::string_view primaryKey = "
+                       "std::string_view " << metadata.name << " = "
                     << quote(value.text)
                     << ";\n";
             } else if (
@@ -1208,6 +1239,7 @@ public:
                         ? " override"
                         : ""
                 )
+                << (declaration.kind == DeclarationKind::model && appended(declaration, method.name) ? " const" : "")
                 << ";\n";
         }
 
@@ -1588,6 +1620,10 @@ public:
             block << "relation(" << quote(field.name) << ",&" << qualified
                   << "::" << field.cpp_name << "),";
         }
+        block << "}; inline static constexpr auto accessors = std::tuple{";
+        for (const auto& method : declaration.methods)
+            if (appended(declaration, method.name))
+                block << "accessor(" << quote(method.name) << ",&" << qualified << "::" << method.name << "),";
         block << "}; }; }\n";
 
         return CppIrDeclaration{

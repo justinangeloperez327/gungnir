@@ -1,5 +1,7 @@
 #include <gungnir/orm/compiler.hpp>
 
+#include <gungnir/orm/identifier.hpp>
+#include <algorithm>
 #include <stdexcept>
 
 namespace gungnir::orm {
@@ -7,52 +9,10 @@ namespace gungnir::orm {
 namespace {
 
 String quote_segment(database::Backend backend, const String& value) {
-    if (value == "*") {
-        return value;
-    }
-
-    if (backend == database::Backend::mysql) {
-        return "`" + value + "`";
-    }
-
-    if (backend == database::Backend::mssql) {
-        return "[" + value + "]";
-    }
-
-    return "\"" + value + "\"";
+    return value == "*" ? value : detail::quote_identifier(backend, value);
 }
-
 String quote_path(database::Backend backend, const String& value) {
-    String result;
-    std::size_t start = 0;
-
-    while (start <= value.size()) {
-        const auto dot = value.find('.', start);
-        const auto length = dot == String::npos
-            ? value.size() - start
-            : dot - start;
-        const auto segment = value.substr(start, length);
-
-        if (!result.empty()) {
-            result += ".";
-        }
-
-        result +=
-            segment == "*"
-                ? "*"
-                : quote_segment(
-                    backend,
-                    segment
-                );
-
-        if (dot == String::npos) {
-            break;
-        }
-
-        start = dot + 1;
-    }
-
-    return result;
+    return detail::quote_path(backend, value);
 }
 
 String sql_operator(Comparison value) {
@@ -199,8 +159,24 @@ void append_sql_predicate(
 void append_predicates(
     CompiledQuery& result,
     database::Backend backend,
-    const std::vector<Predicate>& predicates
+    const std::vector<Predicate>& predicates,
+    const String& joined_table = {}
 ) {
+    if (std::any_of(predicates.begin(), predicates.end(), [](const auto& p) { return p.automatic || p.protected_scope; }) &&
+        std::any_of(predicates.begin(), predicates.end(), [](const auto& p) { return p.connector == BooleanConnector::or_; })) {
+        std::vector<Predicate> automatic, user;
+        for (auto predicate : predicates) {
+            if (predicate.automatic || predicate.protected_scope) predicate.connector = BooleanConnector::and_;
+            ((predicate.automatic || predicate.protected_scope) ? automatic : user).push_back(std::move(predicate));
+        }
+        append_predicates(result, backend, automatic, joined_table);
+        if (!user.empty()) {
+            result.text += " AND (";
+            append_predicates(result, backend, user, joined_table);
+            result.text += ')';
+        }
+        return;
+    }
     for (std::size_t index = 0; index < predicates.size(); ++index) {
         if (index != 0) {
             result.text +=
@@ -209,7 +185,10 @@ void append_predicates(
                 : " OR ";
         }
 
-        append_sql_predicate(result, backend, predicates[index]);
+        auto predicate = predicates[index];
+        if (predicate.automatic && !joined_table.empty() && predicate.column.find('.') == String::npos)
+            predicate.column = joined_table + "." + predicate.column;
+        append_sql_predicate(result, backend, predicate);
     }
 }
 
@@ -228,6 +207,8 @@ CompiledQuery compile_sql(
     }
 
     if (plan.aggregate) {
+        if (!plan.count_group_column.empty())
+            result.text += quote_path(backend, plan.count_group_column) + " AS " + quote_segment(backend,"__gungnir_count_key") + ", ";
         result.text += aggregate_name(plan.aggregate->function) + "(";
         result.text += plan.aggregate->column == "*"
             ? "*"
@@ -267,7 +248,7 @@ CompiledQuery compile_sql(
 
     if (!plan.predicates.empty()) {
         result.text += " WHERE ";
-        append_predicates(result, backend, plan.predicates);
+        append_predicates(result, backend, plan.predicates, plan.joins.empty() ? String{} : plan.table);
     }
 
     if (!plan.groups.empty()) {
@@ -353,7 +334,7 @@ CompiledQuery compile_sql(
 String mongo_field(std::string_view value) {
     return value == "id"
         ? String{"_id"}
-        : String{value};
+        : detail::json_field_identifier(value);
 }
 
 String mongo_operator(Comparison value) {
@@ -453,6 +434,17 @@ String mongo_filter(
     const std::vector<Predicate>& predicates,
     std::vector<model::AttributeValue>& bindings
 ) {
+    if (std::any_of(predicates.begin(), predicates.end(), [](const auto& p) { return p.automatic || p.protected_scope; }) &&
+        std::any_of(predicates.begin(), predicates.end(), [](const auto& p) { return p.connector == BooleanConnector::or_; })) {
+        std::vector<Predicate> automatic, user;
+        for (auto predicate : predicates) {
+            if (predicate.automatic || predicate.protected_scope) predicate.connector = BooleanConnector::and_;
+            ((predicate.automatic || predicate.protected_scope) ? automatic : user).push_back(std::move(predicate));
+        }
+        const auto scoped = mongo_filter(automatic,bindings);
+        const auto filtered = mongo_filter(user,bindings);
+        return "{\"$and\":[" + scoped + "," + filtered + "]}";
+    }
     if (predicates.empty()) {
         return "{}";
     }
@@ -486,7 +478,7 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
         );
     }
 
-    if (!plan.groups.empty() || !plan.having.empty()) {
+    if ((!plan.groups.empty() && plan.count_group_column.empty()) || !plan.having.empty()) {
         throw std::logic_error(
             "MongoDB group_by/having is not part of the document query surface"
         );
@@ -527,14 +519,16 @@ CompiledQuery compile_mongodb(const QueryPlan& plan) {
                 break;
         }
 
-        result.text = "{\"aggregate\":\"" + plan.table +
+        const auto group = plan.count_group_column.empty() ? String{"null"} : "\"$" + mongo_field(plan.count_group_column) + "\"";
+        result.text = "{\"aggregate\":\"" + detail::json_identifier(plan.table) +
                       "\",\"pipeline\":[{\"$match\":" + filter +
-                      "},{\"$group\":{\"_id\":null,\"aggregate\":" +
-                      accumulator + "}}],\"cursor\":{}}";
+                      "},{\"$group\":{\"_id\":" + group + ",\"aggregate\":" + accumulator + "}}";
+        if (!plan.count_group_column.empty()) result.text += ",{\"$project\":{\"__gungnir_count_key\":\"$_id\",\"aggregate\":1,\"_id\":0}}";
+        result.text += "],\"cursor\":{}}";
         return result;
     }
 
-    result.text = "{\"find\":\"" + plan.table +
+    result.text = "{\"find\":\"" + detail::json_identifier(plan.table) +
                   "\",\"filter\":" + filter;
 
     if (!plan.columns.empty()) {

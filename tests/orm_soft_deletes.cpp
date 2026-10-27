@@ -108,6 +108,7 @@ int main() {
     assert(contains(only_deleted.text, "\"deleted_at\" IS NOT NULL"));
 
     std::vector<String> statements;
+    std::vector<model::AttributeValue> last_bindings;
 
     database::Manager manager;
     manager.add(
@@ -116,8 +117,9 @@ int main() {
         [&] {
             return std::make_shared<database::CallbackDriver>(
                 database::Backend::postgresql,
-                [&](const String& statement, const auto&) {
+                [&](const String& statement, const auto& bindings) {
                     statements.push_back(statement);
+                    last_bindings = bindings;
 
                     if (contains(statement, "FROM \"users\"")) {
                         return database::Result{
@@ -186,13 +188,18 @@ int main() {
     assert(post.trashed());
     assert(post.exists());
     assert(post.deleted_at.get().has_value());
-    assert(contains(statements.back(), "CURRENT_TIMESTAMP"));
+    assert(contains(statements.back(), "SET \"deleted_at\" = $1"));
+    assert(last_bindings.size() == 2);
+    assert(std::get<String>(last_bindings[0]) == *post.deleted_at.get());
+    assert(std::get<Int64>(last_bindings[1]) == post.id.get());
 
     assert(post.restore());
     assert(!post.trashed());
     assert(!post.deleted_at.get().has_value());
     assert(post.exists());
-    assert(contains(statements.back(), "SET \"deleted_at\" = NULL"));
+    assert(contains(statements.back(), "SET \"deleted_at\" = $1"));
+    assert(std::holds_alternative<std::nullptr_t>(last_bindings[0]));
+    assert(std::get<Int64>(last_bindings[1]) == post.id.get());
 
     assert(post.force_remove());
     assert(!post.exists());

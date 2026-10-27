@@ -1281,6 +1281,16 @@ if(GUNGNIR_BUILD_TESTS)
     target_compile_features(gungnir_compiler_correctness_test PRIVATE cxx_std_23)
     add_test(NAME gungnir.compiler_correctness COMMAND gungnir_compiler_correctness_test)
 
+    add_executable(gungnir_model_regressions_test tests/model_regressions.cpp)
+    target_link_libraries(gungnir_model_regressions_test PRIVATE gungnir::gungnir gungnir::orm)
+    target_compile_features(gungnir_model_regressions_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.model_regressions COMMAND gungnir_model_regressions_test)
+
+    add_executable(gungnir_compiler_model_contract_test tests/compiler_model_contract.cpp)
+    target_link_libraries(gungnir_compiler_model_contract_test PRIVATE gungnir::language)
+    target_compile_features(gungnir_compiler_model_contract_test PRIVATE cxx_std_23)
+    add_test(NAME gungnir.compiler_model_contract COMMAND gungnir_compiler_model_contract_test)
+
     add_executable(gungnir_model_relationships_test tests/model_relationships.cpp)
     target_link_libraries(gungnir_model_relationships_test PRIVATE gungnir::language)
     target_compile_features(gungnir_model_relationships_test PRIVATE cxx_std_23)
@@ -1303,6 +1313,18 @@ if(GUNGNIR_BUILD_TESTS)
     add_test(NAME gungnir.language COMMAND gungnir_language_test)
 
     if(GUNGNIR_BUILD_TOOLS)
+        set(GUNGNIR_MODEL_CONTRACT "${CMAKE_CURRENT_BINARY_DIR}/generated/model_contract_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_MODEL_CONTRACT}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/model_contract.gnr" --strict --no-line-directives -o "${GUNGNIR_MODEL_CONTRACT}"
+            DEPENDS gungnirc tests/fixtures/structured/model_contract.gnr VERBATIM)
+        set_source_files_properties("${GUNGNIR_MODEL_CONTRACT}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        if(GUNGNIR_WITH_SQLITE)
+            add_executable(gungnir_model_contract_test tests/model_contract.cpp "${GUNGNIR_MODEL_CONTRACT}")
+            target_include_directories(gungnir_model_contract_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+            target_link_libraries(gungnir_model_contract_test PRIVATE gungnir::gungnir gungnir::orm)
+            target_compile_features(gungnir_model_contract_test PRIVATE cxx_std_23)
+            add_test(NAME gungnir.model_contract COMMAND gungnir_model_contract_test)
+        endif()
         set(GUNGNIR_STRUCTURED_ORM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_orm_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_ORM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/orm.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_ORM}"

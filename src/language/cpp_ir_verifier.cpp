@@ -647,6 +647,9 @@ private:
                 );
             }
 
+            if (function.const_receiver && function.owner.empty())
+                error("C++ IR const receiver requires a member function");
+
             if (!function.result.valid()) {
                 error(
                     "C++ IR function has no result type"

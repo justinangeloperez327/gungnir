@@ -209,7 +209,7 @@ public:
             result += parameter.name;
         }
 
-        result += ") {\n";
+        result += value.const_receiver ? ") const {\n" : ") {\n";
         for (auto statement_id : value.body) {
             result += statement(statement_id, value.line_directive);
         }

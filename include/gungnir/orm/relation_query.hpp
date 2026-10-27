@@ -35,7 +35,7 @@ Query<Related> empty_relation_query(
         .where_in(
             std::move(column),
             {}
-        );
+        ).protect_last_predicate();
 }
 
 template <typename ModelType>
@@ -71,14 +71,14 @@ Query<Related> relation_query(
                 Related
             >(
                 relation.foreign_key()
-            );
+            ).protect_last_predicate();
     }
 
     return Query<Related>{}
         .where(
             relation.foreign_key(),
             *key
-        );
+        ).protect_last_predicate();
 }
 
 template <typename Parent, typename Related>
@@ -99,14 +99,14 @@ Query<Related> relation_query(
                 Related
             >(
                 relation.foreign_key()
-            );
+            ).protect_last_predicate();
     }
 
     return Query<Related>{}
         .where(
             relation.foreign_key(),
             *key
-        );
+        ).protect_last_predicate();
 }
 
 template <typename Parent, typename Related>
@@ -127,14 +127,14 @@ Query<Related> relation_query(
                 Related
             >(
                 relation.owner_key()
-            );
+            ).protect_last_predicate();
     }
 
     return Query<Related>{}
         .where(
             relation.owner_key(),
             *key
-        );
+        ).protect_last_predicate();
 }
 
 template <typename Parent, typename Related>
@@ -178,7 +178,7 @@ Query<Related> relation_query(
                 "." +
                 relation.foreign_pivot_key(),
             {}
-        );
+        ).protect_last_predicate();
     }
 
     return query.where(
@@ -186,7 +186,7 @@ Query<Related> relation_query(
             "." +
             relation.foreign_pivot_key(),
         *key
-    );
+    ).protect_last_predicate();
 }
 
 template <
@@ -230,6 +230,10 @@ Query<Related> relation_query(
                     relation.second_local_key()
             );
 
+    if constexpr (Through::uses_soft_deletes()) {
+        query.where_null(through_table + "." + String{Through::deleted_at_column()}).protect_last_predicate();
+    }
+
     const auto key =
         detail::relation_key(
             parent,
@@ -242,7 +246,7 @@ Query<Related> relation_query(
                 "." +
                 relation.first_key(),
             {}
-        );
+        ).protect_last_predicate();
     }
 
     return query.where(
@@ -250,7 +254,7 @@ Query<Related> relation_query(
             "." +
             relation.first_key(),
         *key
-    );
+    ).protect_last_predicate();
 }
 
 template <
@@ -294,6 +298,10 @@ Query<Related> relation_query(
                     relation.second_local_key()
             );
 
+    if constexpr (Through::uses_soft_deletes()) {
+        query.where_null(through_table + "." + String{Through::deleted_at_column()}).protect_last_predicate();
+    }
+
     const auto key =
         detail::relation_key(
             parent,
@@ -306,7 +314,7 @@ Query<Related> relation_query(
                 "." +
                 relation.first_key(),
             {}
-        );
+        ).protect_last_predicate();
     }
 
     return query.where(
@@ -314,7 +322,7 @@ Query<Related> relation_query(
             "." +
             relation.first_key(),
         *key
-    );
+    ).protect_last_predicate();
 }
 
 // Relation-only queries cannot be scoped safely because the relation

@@ -108,6 +108,7 @@ struct CppIrFunction {
     std::string name;
     CppIrType result;
     bool coroutine{false};
+    bool const_receiver{false};
     bool line_directive{true};
     CppIrSource source;
     std::vector<CppIrParameter> parameters;

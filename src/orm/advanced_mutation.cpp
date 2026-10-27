@@ -1,5 +1,6 @@
 #include <gungnir/orm/advanced_mutation.hpp>
 
+#include <gungnir/orm/identifier.hpp>
 #include <algorithm>
 #include <stdexcept>
 
@@ -7,43 +8,8 @@ namespace gungnir::orm {
 
 namespace {
 
-String quote_segment(database::Backend backend, const String& value) {
-    if (backend == database::Backend::mysql) {
-        return "`" + value + "`";
-    }
-    if (backend == database::Backend::mssql) {
-        return "[" + value + "]";
-    }
-    return "\"" + value + "\"";
-}
-
 String quote_path(database::Backend backend, const String& value) {
-    String result;
-    std::size_t start = 0;
-
-    while (start <= value.size()) {
-        const auto dot = value.find('.', start);
-        const auto length = dot == String::npos
-            ? value.size() - start
-            : dot - start;
-
-        if (!result.empty()) {
-            result += ".";
-        }
-
-        result += quote_segment(
-            backend,
-            value.substr(start, length)
-        );
-
-        if (dot == String::npos) {
-            break;
-        }
-
-        start = dot + 1;
-    }
-
-    return result;
+    return detail::quote_path(backend, value);
 }
 
 String placeholder(database::Backend backend, std::size_t index) {
@@ -85,6 +51,23 @@ void append_where_sql(
     database::Backend backend
 ) {
     if (plan.predicates.empty()) {
+        return;
+    }
+
+    if (std::any_of(plan.predicates.begin(), plan.predicates.end(), [](const auto& p) { return p.automatic || p.protected_scope; }) &&
+        std::any_of(plan.predicates.begin(), plan.predicates.end(), [](const auto& p) { return p.connector == BooleanConnector::or_; })) {
+        QueryPlan automatic, user;
+        for (auto predicate : plan.predicates) {
+            if (predicate.automatic || predicate.protected_scope) predicate.connector = BooleanConnector::and_;
+            ((predicate.automatic || predicate.protected_scope) ? automatic : user).predicates.push_back(std::move(predicate));
+        }
+        append_where_sql(result, automatic, backend);
+        if (user.predicates.empty()) return;
+        CompiledQuery nested;
+        nested.bindings = result.bindings;
+        append_where_sql(nested, user, backend);
+        result.text += " AND (" + nested.text.substr(7) + ")";
+        result.bindings = std::move(nested.bindings);
         return;
     }
 
@@ -186,7 +169,7 @@ void append_where_sql(
 String mongo_field(std::string_view value) {
     return value == "id"
         ? String{"_id"}
-        : String{value};
+        : detail::json_field_identifier(value);
 }
 
 String mongo_bind(
@@ -278,6 +261,17 @@ String mongo_filter(
     CompiledQuery& result,
     const QueryPlan& plan
 ) {
+    if (std::any_of(plan.predicates.begin(), plan.predicates.end(), [](const auto& p) { return p.automatic || p.protected_scope; }) &&
+        std::any_of(plan.predicates.begin(), plan.predicates.end(), [](const auto& p) { return p.connector == BooleanConnector::or_; })) {
+        QueryPlan automatic, user;
+        for (auto predicate : plan.predicates) {
+            if (predicate.automatic || predicate.protected_scope) predicate.connector = BooleanConnector::and_;
+            ((predicate.automatic || predicate.protected_scope) ? automatic : user).predicates.push_back(std::move(predicate));
+        }
+        const auto scoped = mongo_filter(result, automatic);
+        const auto filtered = mongo_filter(result, user);
+        return "{\"$and\":[" + scoped + "," + filtered + "]}";
+    }
     if (plan.predicates.empty()) {
         return "{}";
     }
@@ -332,7 +326,7 @@ CompiledQuery compile_update_where(
     if (backend == database::Backend::mongodb) {
         result.kind = CompiledQueryKind::mongodb;
         const auto filter = mongo_filter(result, plan);
-        result.text = "{\"update\":\"" + plan.table +
+        result.text = "{\"update\":\"" + detail::json_identifier(plan.table) +
                       "\",\"updates\":[{\"q\":" + filter +
                       ",\"u\":{\"$set\":{";
 
@@ -375,7 +369,7 @@ CompiledQuery compile_delete_where(
     if (backend == database::Backend::mongodb) {
         result.kind = CompiledQueryKind::mongodb;
         const auto filter = mongo_filter(result, plan);
-        result.text = "{\"delete\":\"" + plan.table +
+        result.text = "{\"delete\":\"" + detail::json_identifier(plan.table) +
                       "\",\"deletes\":[{\"q\":" + filter +
                       ",\"limit\":0}]}";
         return result;
@@ -400,9 +394,9 @@ CompiledQuery compile_increment_where(
     if (backend == database::Backend::mongodb) {
         result.kind = CompiledQueryKind::mongodb;
         const auto filter = mongo_filter(result, plan);
-        result.text = "{\"update\":\"" + plan.table +
+        result.text = "{\"update\":\"" + detail::json_identifier(plan.table) +
                       "\",\"updates\":[{\"q\":" + filter +
-                      ",\"u\":{\"$inc\":{\"" + column +
+                      ",\"u\":{\"$inc\":{\"" + mongo_field(column) +
                       "\":" + mongo_bind(result, amount) +
                       "}},\"multi\":true}]}";
         return result;
@@ -444,7 +438,7 @@ CompiledQuery compile_insert_many(
 
     if (backend == database::Backend::mongodb) {
         result.kind = CompiledQueryKind::mongodb;
-        result.text = "{\"insert\":\"" + table + "\",\"documents\":[";
+        result.text = "{\"insert\":\"" + detail::json_identifier(table) + "\",\"documents\":[";
 
         for (std::size_t row_index = 0; row_index < rows.size(); ++row_index) {
             if (row_index != 0) {
@@ -564,7 +558,7 @@ CompiledQuery compile_upsert(
 
     if (backend == database::Backend::mongodb) {
         result.kind = CompiledQueryKind::mongodb;
-        result.text = "{\"update\":\"" + table + "\",\"updates\":[";
+        result.text = "{\"update\":\"" + detail::json_identifier(table) + "\",\"updates\":[";
 
         for (std::size_t row_index = 0; row_index < rows.size(); ++row_index) {
             if (row_index != 0) {
@@ -745,14 +739,14 @@ CompiledQuery compile_soft_delete_where(
         const auto filter = mongo_filter(result, plan);
 
         if (restore) {
-            result.text = "{\"update\":\"" + plan.table +
+            result.text = "{\"update\":\"" + detail::json_identifier(plan.table) +
                           "\",\"updates\":[{\"q\":" + filter +
-                          ",\"u\":{\"$set\":{\"" + column +
+                          ",\"u\":{\"$set\":{\"" + mongo_field(column) +
                           "\":null}},\"multi\":true}]}";
         } else {
-            result.text = "{\"update\":\"" + plan.table +
+            result.text = "{\"update\":\"" + detail::json_identifier(plan.table) +
                           "\",\"updates\":[{\"q\":" + filter +
-                          ",\"u\":{\"$currentDate\":{\"" + column +
+                          ",\"u\":{\"$currentDate\":{\"" + mongo_field(column) +
                           "\":true}},\"multi\":true}]}";
         }
 
