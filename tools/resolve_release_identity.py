@@ -22,7 +22,9 @@ def resolve(root, event, ref, requested_tag):
         raise ValueError('Unable to read the stable package version from CMakeLists.txt')
     tag = 'v' + version[1]
     if requested_tag and requested_tag != tag:
-        raise ValueError(f'Requested tag {requested_tag} differs from selected source version {tag}')
+        raise ValueError(f'Requested tag {requested_tag} differs from selected source version {tag}. '
+                         'Update and validate the source package version before tagging it; '
+                         'rerunning this tag still checks out the same mismatched source.')
     source = git(root, 'rev-parse', 'HEAD')
     if event != 'pull_request':
         tag_ref = 'refs/tags/' + tag

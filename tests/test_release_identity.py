@@ -38,6 +38,25 @@ class ReleaseIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'differs from selected source'):
             self.manual('v1.0.0')
 
+    def test_tag_push_must_match_source_package_version(self):
+        path = self.root / 'CMakeLists.txt'
+        path.write_text(path.read_text().replace('1.0.1', '1.0.2'))
+        git(self.root, 'add', 'CMakeLists.txt')
+        git(self.root, 'commit', '-qm', 'Source still declares 1.0.2')
+        git(self.root, 'tag', 'v1.0.3')
+        with self.assertRaisesRegex(ValueError, 'before tagging it'):
+            resolve(self.root, 'push', 'refs/tags/v1.0.3', 'v1.0.3')
+
+    def test_corrected_103_source_and_matching_tag_are_accepted(self):
+        path = self.root / 'CMakeLists.txt'
+        path.write_text(path.read_text().replace('1.0.1', '1.0.3'))
+        git(self.root, 'add', 'CMakeLists.txt')
+        git(self.root, 'commit', '-qm', 'Prepare 1.0.3')
+        git(self.root, 'tag', 'v1.0.3')
+        identity = resolve(self.root, 'push', 'refs/tags/v1.0.3', 'v1.0.3')
+        self.assertEqual(identity['tag'], 'v1.0.3')
+        self.assertEqual(identity['source'], git(self.root, 'rev-parse', 'HEAD'))
+
     def test_existing_matching_annotated_tag_is_accepted(self):
         git(self.root, 'tag', '-a', 'v1.0.1', '-m', 'Release')
         self.assertEqual(self.manual()['source'], self.source)

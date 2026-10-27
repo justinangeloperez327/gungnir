@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
-# Package, compiler and native contracts are assigned together for v1.0.2.
-project(gungnir VERSION 1.0.2 LANGUAGES CXX)
+# Package, compiler and native contracts are assigned together for v1.0.3.
+project(gungnir VERSION 1.0.3 LANGUAGES CXX)
 
 set(GUNGNIR_RELEASE_CHANNEL "stable")
-set(GUNGNIR_VERSION_FULL "1.0.2")
+set(GUNGNIR_VERSION_FULL "1.0.3")
 
 set(
     GUNGNIR_GENERATED_INCLUDE_DIR
