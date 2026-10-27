@@ -7,23 +7,14 @@ $version = '3.13'
 $expectedHash = 'ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8'
 New-Item $WorkDir -ItemType Directory -Force | Out-Null
 $archive = Join-Path $WorkDir "nsis-$version.zip"
-$downloaded = $false
-foreach ($url in @(
+. (Join-Path $PSScriptRoot 'DownloadVerifiedArchive.ps1')
+# Tauri mirrors the byte-identical official archive on GitHub. Keep the
+# upstream checksum authoritative for every source, including the mirror.
+Get-VerifiedArchive -Destination $archive -ExpectedHash $expectedHash -Urls @(
+    "https://github.com/tauri-apps/binary-releases/releases/download/nsis-$version/nsis-$version.zip",
     "https://downloads.sourceforge.net/project/nsis/NSIS%203/$version/nsis-$version.zip",
     "https://sourceforge.net/projects/nsis/files/NSIS%203/$version/nsis-$version.zip/download"
-)) {
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $archive -MaximumRetryCount 3 -RetryIntervalSec 2 -TimeoutSec 180
-        $downloaded = $true
-        break
-    } catch {
-        Write-Warning "NSIS download failed from ${url}: $($_.Exception.Message)"
-    }
-}
-if (-not $downloaded) { throw 'Unable to download the pinned NSIS distribution' }
-if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedHash) {
-    throw 'NSIS archive SHA-256 mismatch; refusing to extract or execute it'
-}
+)
 
 Expand-Archive -Path $archive -DestinationPath $WorkDir -Force
 $nsis = Join-Path $WorkDir "nsis-$version"
