@@ -88,7 +88,24 @@ public:
                     : " " + expression(node.expression)) +
                 ";\n";
         case CppIrStatementKind::throw_:
-            return prefix + "throw " + expression(node.expression) + ";\n";
+            return prefix + "gungnir::language::runtime::raise_error(" + expression(node.expression) + "," + quote(node.source.file) + "," + std::to_string(node.source.line) + ");\n";
+        case CppIrStatementKind::rethrow_:
+            return prefix + "std::rethrow_exception(" + node.name + ");\n";
+        case CppIrStatementKind::try_: {
+            const auto done = node.name + "_done";
+            std::string result = prefix + "{\nstd::exception_ptr " + node.name + ";\ntry {\n";
+            for (auto child : node.body) result += statement(child,line_directives);
+            result += "goto " + done + ";\n} catch (...) { " + node.name + " = std::current_exception(); }\n";
+            for (std::size_t i = 0; i < node.alternative.size(); ++i) {
+                const auto handler_id = node.alternative[i]; const auto& handler = project_.statements.at(handler_id);
+                const auto caught = "gnr_caught_" + std::to_string(handler_id);
+                result += std::string{i ? "else " : ""} + "if (auto " + caught + " = gungnir::language::runtime::catch_error<" + handler.type.spelling + ">(" + node.name + "); " + caught + ") {\nconst auto& " + handler.name + " = *" + caught + ";\n";
+                for (auto child : handler.body) result += statement(child,line_directives);
+                result += "}\n";
+            }
+            return result + "else { std::rethrow_exception(" + node.name + "); }\n" + done + ":;\n" + (node.terminates ? "std::terminate();\n" : "") + "}\n";
+        }
+        case CppIrStatementKind::catch_: throw std::logic_error("Catch outside try emission");
         case CppIrStatementKind::block:
             return prefix + block(node.body, line_directives);
         case CppIrStatementKind::if_:

@@ -23,7 +23,7 @@ struct Origin {
 struct TypeSyntax { std::string name; std::vector<TypeSyntax> arguments; bool optional{false}; Origin origin; };
 struct ParameterSyntax { std::string name; TypeSyntax type; SyntaxId default_value{invalid_id}; Origin origin; };
 enum class SyntaxExpressionKind { literal, name, member, call, unary, binary, subscript, list, object, lambda, await_, conditional };
-enum class SyntaxStatementKind { binding, expression, return_, block, if_, while_, for_, for_in, break_, continue_, throw_ };
+enum class SyntaxStatementKind { binding, expression, return_, block, if_, while_, for_, for_in, break_, continue_, throw_, try_, catch_ };
 enum class DeclarationKind { function, model, controller, migration, middleware, policy, event, listener, notification, mail, job };
 enum class Visibility { public_, protected_, private_ };
 struct SyntaxExpression {
@@ -175,6 +175,7 @@ public:
     [[nodiscard]] const std::vector<ResolvedSymbol>& symbols() const noexcept { return symbols_; }
     [[nodiscard]] const std::vector<ExpressionResolution>& expressions() const noexcept { return expressions_; }
     [[nodiscard]] const std::vector<SymbolId>& bindings() const noexcept { return bindings_; }
+    [[nodiscard]] bool statement_terminates(SyntaxId id) const { return statement_termination_.at(id); }
     [[nodiscard]] const std::vector<DeclarationResolution>& declarations() const noexcept { return declarations_; }
     [[nodiscard]] const std::vector<std::size_t>& declaration_order() const noexcept { return declaration_order_; }
     [[nodiscard]] const std::vector<std::size_t>& module_order() const noexcept { return module_order_; }
@@ -188,6 +189,7 @@ private:
     std::vector<ResolvedSymbol> symbols_;
     std::vector<ExpressionResolution> expressions_;
     std::vector<SymbolId> bindings_;
+    std::vector<bool> statement_termination_;
     std::vector<DeclarationResolution> declarations_;
     std::vector<RouteResolution> routes_;
     std::vector<std::size_t> module_order_, declaration_order_;

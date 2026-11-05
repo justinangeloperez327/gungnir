@@ -292,6 +292,16 @@ public:
         if (is("const") || is("let")) return binding(true);
         SyntaxStatement node; node.origin = origin();
         if (is("{")) { node.kind = SyntaxStatementKind::block; node.body = block(); return add(std::move(node)); }
+        if (take("try")) {
+            node.kind = SyntaxStatementKind::try_; node.body = block();
+            while (take("catch")) {
+                SyntaxStatement handler{SyntaxStatementKind::catch_, origin()};
+                need("("); handler.declared_type = type(); handler.name = name(); need(")"); handler.body = block();
+                node.alternative.push_back(add(std::move(handler)));
+            }
+            if (node.alternative.empty()) error("try requires at least one catch clause", "GNR2380");
+            return add(std::move(node));
+        }
         if (take("return") || take("throw")) { node.kind = tokens[at - 1].lexeme == "return" ? SyntaxStatementKind::return_ : SyntaxStatementKind::throw_; if (!is(";")) node.expression = expression(); need(";"); return add(std::move(node)); }
         if (take("break") || take("continue")) { node.kind = tokens[at - 1].lexeme == "break" ? SyntaxStatementKind::break_ : SyntaxStatementKind::continue_; need(";"); return add(std::move(node)); }
         if (take("if") || take("while")) {

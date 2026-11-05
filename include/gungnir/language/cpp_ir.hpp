@@ -65,7 +65,10 @@ enum class CppIrStatementKind {
     for_in,
     break_,
     continue_,
-    route_registration
+    route_registration,
+    try_,
+    catch_,
+    rethrow_
 };
 
 struct CppIrStatement {
@@ -79,6 +82,7 @@ struct CppIrStatement {
     std::vector<CppIrId> alternative;
     std::vector<CppIrId> parts;
     CppIrId route{invalid_cpp_ir_id};
+    bool terminates{false};
 };
 
 enum class CppIrRouteMethod { get, post, put, patch, delete_, options, head, fallback };

@@ -28,6 +28,8 @@ public:
     }
 
 private:
+    std::vector<std::string> exception_scopes_;
+    std::vector<CppIrId> handler_scopes_;
     void error(std::string message) {
         errors_.push_back(std::move(message));
     }
@@ -226,6 +228,9 @@ private:
             expression.kind ==
             CppIrExpressionKind::lambda
         ) {
+            const auto saved_exceptions = std::move(exception_scopes_);
+            const auto saved_handlers = std::move(handler_scopes_);
+            exception_scopes_.clear(); handler_scopes_.clear();
             for (auto statement : expression.body) {
                 verify_statement(
                     statement,
@@ -235,6 +240,7 @@ private:
                     active_statements
                 );
             }
+            exception_scopes_ = saved_exceptions; handler_scopes_ = saved_handlers;
         } else if (!expression.body.empty()) {
             error(
                 "only lambda C++ IR expressions may own statements"
@@ -276,6 +282,25 @@ private:
             };
 
         switch (statement.kind) {
+        case CppIrStatementKind::try_:
+            if (statement.name.empty() || statement.alternative.empty()) error("C++ IR try requires an exception slot and handlers");
+            verify_body(statement.body,coroutine,loop_depth,active_expressions,active_statements);
+            for (auto handler : statement.alternative) {
+                if (!statement_id(handler)) continue;
+                if (project_.statements[handler].kind != CppIrStatementKind::catch_) { error("C++ IR try contains a non-catch handler"); continue; }
+                exception_scopes_.push_back(statement.name); handler_scopes_.push_back(handler);
+                verify_statement(handler,coroutine,loop_depth,active_expressions,active_statements);
+                handler_scopes_.pop_back(); exception_scopes_.pop_back();
+            }
+            break;
+        case CppIrStatementKind::catch_:
+            if (handler_scopes_.empty() || handler_scopes_.back() != id || statement.name.empty() || !statement.type.valid())
+                error("C++ IR catch requires an owning try, a type and a binding");
+            verify_body(statement.body,coroutine,loop_depth,active_expressions,active_statements);
+            break;
+        case CppIrStatementKind::rethrow_:
+            if (exception_scopes_.empty() || exception_scopes_.back() != statement.name) error("C++ IR rethrow has no enclosing catch");
+            break;
         case CppIrStatementKind::route_registration:
             if (coroutine) error("C++ IR route registration appears in a coroutine");
             if (statement.route >= project_.routes.size()) error("invalid C++ IR route id");

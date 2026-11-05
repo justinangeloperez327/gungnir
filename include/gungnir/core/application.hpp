@@ -72,6 +72,7 @@ public:
     [[nodiscard]] const config::Environment& env() const noexcept;
 
     [[nodiscard]] http::MiddlewareRegistry& middleware_registry() noexcept;
+    [[nodiscard]] http::ExceptionHandler& exceptions() noexcept;
 
     [[nodiscard]] const std::filesystem::path& base_path()
         const noexcept;

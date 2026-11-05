@@ -124,6 +124,7 @@ public:
     Router& fallback(Handler handler);
     Router& fallback(SyncHandler handler);
     Router& fallback(SimpleHandler handler);
+    [[nodiscard]] http::ExceptionHandler& exceptions() noexcept;
     [[nodiscard]] bool has(std::string_view name) const noexcept;
     [[nodiscard]] std::size_t route_count() const noexcept;
 

@@ -283,6 +283,7 @@ add_library(gungnir
     src/core/executor.cpp
     src/core/timer.cpp
     src/controller/controller.cpp
+    src/errors/error.cpp
     src/database/compiler.cpp
     src/database/connection.cpp
     src/database/driver.cpp
@@ -1362,6 +1363,21 @@ if(GUNGNIR_BUILD_TESTS)
         target_link_libraries(gungnir_structured_request_context_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
         target_compile_features(gungnir_structured_request_context_test PRIVATE cxx_std_23)
         add_test(NAME gungnir.structured_request_context COMMAND gungnir_structured_request_context_test)
+        set(GUNGNIR_STRUCTURED_ERRORS_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_errors_program.cpp")
+        add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_ERRORS_PROGRAM}"
+            COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/errors.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_ERRORS_PROGRAM}"
+            DEPENDS gungnirc tests/fixtures/structured/errors.gnr VERBATIM)
+        add_executable(gungnir_structured_errors_test tests/structured_errors.cpp "${GUNGNIR_STRUCTURED_ERRORS_PROGRAM}")
+        set_source_files_properties("${GUNGNIR_STRUCTURED_ERRORS_PROGRAM}" PROPERTIES HEADER_FILE_ONLY TRUE)
+        target_include_directories(gungnir_structured_errors_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+        target_link_libraries(gungnir_structured_errors_test PRIVATE gungnir::gungnir gungnir::orm gungnir::language)
+        target_compile_features(gungnir_structured_errors_test PRIVATE cxx_std_23)
+        if(MSVC)
+            target_compile_options(gungnir_structured_errors_test PRIVATE /we4715)
+        else()
+            target_compile_options(gungnir_structured_errors_test PRIVATE -Werror=return-type)
+        endif()
+        add_test(NAME gungnir.structured_errors COMMAND gungnir_structured_errors_test)
         set(GUNGNIR_STRUCTURED_ROUTING_PROGRAM "${CMAKE_CURRENT_BINARY_DIR}/generated/structured_routing_program.cpp")
         add_custom_command(OUTPUT "${GUNGNIR_STRUCTURED_ROUTING_PROGRAM}"
             COMMAND $<TARGET_FILE:gungnirc> "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/structured/routing.gnr" --strict --no-line-directives -o "${GUNGNIR_STRUCTURED_ROUTING_PROGRAM}"
