@@ -50,6 +50,15 @@ int main() {
         write(ignored / "invalid.gnr", "function int broken( {\n");
     }
     (void)project.make("model","User");
+    const auto missing_model_import = root / "app/controllers/ImportHintController.gnr";
+    write(missing_model_import, "controller ImportHintController { show(User user) { return json(user); } }\n");
+    bool import_hint_reported = false;
+    try { (void)project.assemble(); }
+    catch (const std::runtime_error& error) {
+        import_hint_reported = std::string{error.what()}.find("help: Add 'import app.models.User;'") != std::string::npos;
+    }
+    assert(import_hint_reported);
+    std::filesystem::remove(missing_model_import);
     const auto category = project.make("model","Category");
     write(category, "model Category { table = \"categories\"; "
                     "fillable = [\"code\", \"name\"]; "

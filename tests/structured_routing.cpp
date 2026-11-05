@@ -95,6 +95,38 @@ void exercise_routing() {
         {"route.gnr","routes.web","import app.child; controller Home { show(Child child) { return json(child); } } Route::get(\"/children/{child}\", Home::show);"}};
     const auto model_project = language::Compiler{}.compile_sources(model_modules,options);
     CHECK(model_project.success() && model_project.validated->routes().size() == 1);
+    auto crud_modules = model_modules;
+    crud_modules.back().source = "import app.child as Models; controller Home { "
+        "update(Models::Child child, Request request) { child.parent_id = 7; child.save(); return json(child); } "
+        "destroy(Models::Child child) { child.remove(); return noContent(); } } "
+        "Route::patch(\"/children/{child}\", Home::update); Route::delete(\"/children/{child}\", Home::destroy);";
+    CHECK(language::Compiler{}.compile_sources(crud_modules,options).success());
+    // Copies retain ordinary const/capture semantics, and other parameters
+    // remain immutable. Only owned model parameters of public actions change.
+    reject("", "model User { string name; } function void change(User user) { user.name = 'bad'; }", false);
+    reject("", "model User { string name; } controller Home { private void change(User user) { user.name = 'bad'; } }", false);
+    reject("", "controller Home { update(int id) { id = 7; return json(id); } }", false);
+    reject("", "model User { string name; } controller Home { update(User user) { const copy = user; copy.name = 'bad'; return json(copy); } }", false);
+    reject("", "model User { string name; } controller Home { update(User user) { const run = () => { user.name = 'bad'; }; run(); return json(user); } }", false);
+    auto missing_import = model_modules;
+    missing_import.back().source = "controller Home { show(Child child) { return json(child); } }";
+    const auto missing_model = language::Compiler{}.compile_sources(missing_import,options);
+    CHECK(!missing_model.success());
+    CHECK(std::any_of(missing_model.diagnostics.begin(),missing_model.diagnostics.end(),[](const auto& diagnostic) {
+        return diagnostic.code == "GNR2203" && diagnostic.hint == "Add 'import app.child;' at the top of this file.";
+    }));
+    missing_import.back().source = "controller Home { index() { return json(Child::all()); } }";
+    const auto missing_static = language::Compiler{}.compile_sources(missing_import,options);
+    CHECK(!missing_static.success());
+    CHECK(std::any_of(missing_static.diagnostics.begin(),missing_static.diagnostics.end(),[](const auto& diagnostic) {
+        return diagnostic.code == "GNR2202" && diagnostic.hint == "Add 'import app.child;' at the top of this file.";
+    }));
+    missing_import.back().source = "import app.child as Models; controller Home { show(Child child) { return json(child); } }";
+    const auto aliased_model = language::Compiler{}.compile_sources(missing_import,options);
+    CHECK(!aliased_model.success());
+    CHECK(std::any_of(aliased_model.diagnostics.begin(),aliased_model.diagnostics.end(),[](const auto& diagnostic) {
+        return diagnostic.code == "GNR2203" && diagnostic.hint == "Use 'Models::Child' for this aliased model import.";
+    }));
     auto ir = language::CppIrLowerer{}.lower(*selected.validated,false);
     CHECK(ir.routes.size() == 1 && language::CppIrVerifier{}.verify(ir).success());
     ir.routes.front().controller.spelling.clear();
@@ -176,9 +208,17 @@ void exercise_routing() {
     const auto calls = trace->calls;
     CHECK(send(app.router(),"/api/v1/projects/999999").status() == 404 && trace->calls == calls);
     CHECK(send(app.router(),"/api/v1/projects/not-an-integer").status() == 404 && trace->calls == calls);
-    CHECK(deleteRoutingProject(project.id.get()));
-    CHECK(send(app.router(),"/api/v1/projects/" + std::to_string(project.id.get())).status() == 404 && trace->calls == calls);
-    CHECK(send(app.router(),"/api/v1/documents/missing").status() == 404 && trace->calls == calls);
+    app.router().add(http::Method::post,"/update/{project}",routing::bind_controller<RoutingController>(app.container(),&RoutingController::update,{"project","request"}));
+    app.router().add(http::Method::delete_,"/delete/{project}",routing::bind_controller<RoutingController>(app.container(),&RoutingController::destroy,{"project"}));
+    queries.clear();
+    const auto updated = send(app.router(),"/update/" + std::to_string(project.id.get()) + "?name=updated",http::Method::post);
+    CHECK(updated.status() == 200 && Json::parse(updated.body()).get("name")->string() == "updated");
+    CHECK(queries.size() == 1); // One binding SELECT; the action needs no second find.
+    CHECK(Json::parse(send(app.router(),"/api/v1/projects/" + std::to_string(project.id.get())).body()).get("project")->get("name")->string() == "updated");
+    CHECK(send(app.router(),"/delete/" + std::to_string(project.id.get()),http::Method::delete_).status() == 204);
+    const auto after_crud = trace->calls;
+    CHECK(send(app.router(),"/api/v1/projects/" + std::to_string(project.id.get())).status() == 404 && trace->calls == after_crud);
+    CHECK(send(app.router(),"/api/v1/documents/missing").status() == 404 && trace->calls == after_crud);
     orm::stop_listening();
 #endif
     stage("URL parameter round trip");

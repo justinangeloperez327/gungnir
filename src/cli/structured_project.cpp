@@ -26,8 +26,10 @@ void write(const std::filesystem::path& path,const std::string& content) {
 std::string quote(const std::string& value) { std::ostringstream out; out << std::quoted(value); return out.str(); }
 void check(const std::vector<language::Diagnostic>& diagnostics) {
     std::string message;
-    for (const auto& d : diagnostics) if (d.level == language::DiagnosticLevel::error)
+    for (const auto& d : diagnostics) if (d.level == language::DiagnosticLevel::error) {
         message += d.location.file + ":" + std::to_string(d.location.line) + ":" + std::to_string(d.location.column) + " [" + d.code + "]: " + d.message + "\n";
+        if (!d.hint.empty()) message += "  help: " + d.hint + "\n";
+    }
     if (!message.empty()) throw std::runtime_error(message);
 }
 

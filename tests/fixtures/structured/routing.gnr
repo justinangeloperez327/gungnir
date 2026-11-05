@@ -82,6 +82,13 @@ controller RoutingController {
         return json({ project: project, checkpoint: checkpoint });
     }
     document(RoutingDocument document, Request request) { trace.action(); return json(document); }
+    update(RoutingProject project, Request request) {
+        trace.action();
+        project.name = request.input("name");
+        project.save();
+        return json(project);
+    }
+    destroy(RoutingProject project) { trace.action(); project.remove(); return noContent(); }
     url(int id) { return text(Route::url("api.v1.project", { project: id })); }
     echoUrl(string value) { return text(Route::url("echo", { value: value })); }
     known() { return json(Route::has("api.v1.project") && !Route::has("unknown")); }
