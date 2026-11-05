@@ -25,6 +25,7 @@ on:
       - "include/gungnir/routing/**"
       - "src/routing/**"
       - "tests/structured_request_context.cpp"
+      - "tests/structured_errors.cpp"
       - "tests/model_relationships.cpp"
       - "tests/structured_orm_contract.cpp"
       - "tests/fixtures/structured/**"
@@ -58,6 +59,7 @@ on:
       - "include/gungnir/routing/**"
       - "src/routing/**"
       - "tests/structured_request_context.cpp"
+      - "tests/structured_errors.cpp"
       - "tests/model_relationships.cpp"
       - "tests/structured_orm_contract.cpp"
       - "tests/fixtures/structured/**"
@@ -120,13 +122,14 @@ jobs:
           gungnir_structured_application_test
           gungnir_structured_delivery_test
           gungnir_structured_request_context_test
+          gungnir_structured_errors_test
           gungnir_spear_test gungnir_view_test gungnir_view_runtime_test gungnir_view_security_test
           gungnirc
 
       - name: Run compiler conformance tests
         run: >
           ctest --test-dir build --output-on-failure --no-tests=error
-          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|structured_request_context|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|spear|view|view_runtime|view_security)$'
+          -R '^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|structured_request_context|structured_errors|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|spear|view|view_runtime|view_security)$'
 
       - name: Produce deterministic compiler snapshot
         run: >
@@ -175,6 +178,7 @@ jobs:
           gungnir_structured_application_test
           gungnir_structured_delivery_test
           gungnir_structured_request_context_test
+          gungnir_structured_errors_test
           gungnir_spear_test gungnir_view_test gungnir_view_runtime_test gungnir_view_security_test
           gungnirc
 
@@ -182,7 +186,7 @@ jobs:
         run: >
           ctest --test-dir build --build-config Release
           --output-on-failure --no-tests=error
-          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|structured_request_context|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|spear|view|view_runtime|view_security)$"
+          -R "^gungnir\.(compiler_correctness|compiler_stability|compiler_robustness|structured_generated|structured_http|structured_authentication|structured_services|structured_routing|structured_validation|structured_background|structured_application|structured_delivery|structured_request_context|structured_errors|model_relationships|structured_orm_contract|compiler_profiles_cli|compiler_release_contract|compiler_conformance_snapshot|spear|view|view_runtime|view_security)$"
 
       - name: Produce deterministic compiler snapshot
         shell: pwsh
@@ -221,7 +225,7 @@ jobs:
           cmp gcc.diagnostics clang.diagnostics
           cmp gcc.diagnostics msvc.diagnostics
 
-          for file in program.cpp program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir services.cpp services.validated services.ir routing.cpp routing.validated routing.ir validation.cpp validation.validated validation.ir background.cpp background.validated background.ir application.cpp application.validated application.ir delivery.cpp delivery.validated delivery.ir; do
+          for file in program.cpp program.validated program.ir modules.cpp orm.cpp orm.validated orm.ir http.cpp http.validated http.ir context.cpp context.validated context.ir authentication.cpp authentication.validated authentication.ir services.cpp services.validated services.ir routing.cpp routing.validated routing.ir validation.cpp validation.validated validation.ir background.cpp background.validated background.ir application.cpp application.validated application.ir delivery.cpp delivery.validated delivery.ir errors.cpp errors.validated errors.ir; do
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-Clang/$file"
             cmp "snapshots/conformance-GCC/$file" "snapshots/conformance-MSVC/$file"
           done
