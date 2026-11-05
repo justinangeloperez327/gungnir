@@ -58,6 +58,8 @@ Route::get("/background", BackgroundController::send);
 Route::prefix("/api").name("api.").middleware("PassMiddleware").group(() => {
     Route::prefix("/v1").name("v1.").middleware(RouteMiddleware).group(() => {
         Route::get("/users/{user}", RouteController::show).name("users.show").whereNumber("user");
+        Route::post("/users/{user}", RouteController::update).whereNumber("user");
+        Route::delete("/users/{user}", RouteController::destroy).whereNumber("user");
         Route::get("/url/{id}", RouteController::url);
         Route::get("/scalar/{id}/{enabled}", RouteController::scalar);
         Route::get("/echo/{value}", RouteController::echo).name("echo");
@@ -68,6 +70,13 @@ Route::fallback(RouteController::missing);
 (project / "app/controllers/RouteController.gnr").write_text('''import app.models.User;
 controller RouteController {
     async show(User user) { return json(user); }
+    update(User user, Request request) {
+        request.validate({ "name": "required|string" });
+        user.name = request.input("name");
+        user.save();
+        return json(user);
+    }
+    destroy(User user) { user.remove(); return noContent(); }
     url(int id) { return text(Route::url("api.v1.users.show", { user: id })); }
     scalar(bool enabled, Request request, int id) { return json({ id: id, enabled: enabled }); }
     echo(string value) { return text(value); }
@@ -207,9 +216,9 @@ def stop(process):
         raise AssertionError("Process failed to stop")
 
 
-def response(path, data=None, content_type=None):
+def response(path, data=None, content_type=None, method=None):
     request = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data,
-        headers={"Content-Type": content_type, "Accept": "application/json"} if content_type else {})
+        headers={"Content-Type": content_type, "Accept": "application/json"} if content_type else {}, method=method)
     try:
         result = urllib.request.urlopen(request, timeout=5)
     except urllib.error.HTTPError as error:
@@ -292,6 +301,15 @@ with (project / "dev.log").open("w") as log:
             assert headers["X-Route"] == "yes"
             assert response("/api/v1/users/999999")[0] == 404
             assert response("/api/v1/users/invalid")[:2] == (404, "fallback")
+            status, body, _ = response("/api/v1/users/42", json.dumps({"name": "updated user"}).encode(), "application/json")
+            assert status == 200 and json.loads(body)["name"] == "updated user"
+            assert json.loads(response("/api/v1/users/42")[1])["name"] == "updated user"
+            with sqlite3.connect(project / "test.sqlite") as connection:
+                assert connection.execute("SELECT name FROM users WHERE id = 42").fetchone() == ("updated user",)
+            assert response("/api/v1/users/42", method="DELETE")[0] == 204
+            assert response("/api/v1/users/42")[0] == 404
+            assert response("/api/v1/users/999999", b'{"name":"missing"}', "application/json")[0] == 404
+            assert response("/api/v1/users/999999", method="DELETE")[0] == 404
         if os.name != "nt":
             time.sleep(0.4)
             extra.write_text("controller ExtraController { index() { return text('second'); } }\n")

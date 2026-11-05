@@ -5,6 +5,8 @@ Controllers organize HTTP request handling into typed application actions.
 ## Defining a controller
 
 ```gnr
+import app.models.User;
+
 controller UserController {
     index() {
         return json(User::all());
@@ -60,15 +62,54 @@ Async actions use the same logical `Response` contract while executing on Gungni
 
 ## Route parameters and model binding
 
-Route parameters are matched to typed action parameters. Model parameters can use route model binding:
+Import the model's project-relative module in the controller file. For example,
+`app/models/Project.gnr` is imported with `import app.models.Project;`.
+Gungnir uses `import`, and the module path is case-sensitive. An alias refers to
+the module: `import app.models.Project as Models;` exposes `Models::Project`.
+
+Route segments are matched to action parameter names. Model parameters use the
+model's primary key, connection, and soft-delete rules:
 
 ```gnr
+// app/controllers/ProjectController.gnr
+import app.models.Project;
+
 controller ProjectController {
     show(Project project) {
         return json(project);
     }
+
+    update(Project project, Request request) {
+        request.validate({ "name": "required|string" });
+        project.name = request.input("name");
+        project.save();
+        return json(project);
+    }
+
+    destroy(Project project) {
+        project.remove();
+        return noContent();
+    }
 }
 ```
+
+```gnr
+// routes/web.gnr
+import app.controllers.ProjectController;
+
+Route::get("/projects/{project}", ProjectController::show);
+Route::patch("/projects/{project}", ProjectController::update);
+Route::delete("/projects/{project}", ProjectController::destroy);
+```
+
+The `{project}` segment matches the `project` parameter. The bound model is
+required: missing records, invalid keys, and soft-deleted records return 404
+before the action runs. No null check or second `findOrFail()` is needed.
+
+Public `Response` actions own their model parameters by value and may change,
+save, or remove those models directly. Other parameters remain immutable;
+`const` copies and arrow captures also remain immutable. Use `remove()` for
+model deletion.
 
 ## Responses
 

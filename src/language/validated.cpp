@@ -65,13 +65,13 @@ public:
         v.bindings_.resize(v.syntax_.statements.size(), invalid_id); v.declarations_.resize(v.syntax_.declarations.size());
         builtin_types();
     }
-    void report(const Origin& origin, std::string message, std::string code = "GNR2201") {
+    void report(const Origin& origin, std::string message, std::string code = "GNR2201", std::string hint = {}) {
         Diagnostic diagnostic{
             DiagnosticLevel::error,
             {origin.file, origin.line, origin.column},
             std::move(message),
             std::move(code),
-            {}
+            std::move(hint)
         };
         if (!origin.file.empty()) {
             diagnostic.span.begin_offset = origin.begin;
@@ -133,6 +133,20 @@ public:
             else intern(native.name, native.cpp_name);
         }
     }
+    std::string model_import_hint(std::string_view name) const {
+        const DeclarationSyntax* candidate = nullptr;
+        for (const auto& declaration : v.syntax_.declarations) {
+            if (declaration.kind != DeclarationKind::model || declaration.name != name || declaration.module == current_module) continue;
+            if (candidate) return {};
+            candidate = &declaration;
+        }
+        if (!candidate) return {};
+        const auto& module = v.syntax_.modules[candidate->module].name;
+        for (const auto& import : v.syntax_.modules[current_module].imports)
+            if (import.module == module && !import.alias.empty())
+                return "Use '" + import.alias + "::" + std::string{name} + "' for this aliased model import.";
+        return "Add 'import " + module + ";' at the top of this file.";
+    }
     SymbolId visible(std::string name, const Origin& where, bool diagnose = true) {
         for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) if (const auto found = it->find(name); found != it->end()) {
             if (!capture_sets.empty()) capture_sets.back()->insert(found->second);
@@ -176,7 +190,7 @@ public:
             const auto id = symbol({ResolvedSymbolKind::builtin, name, type(type_id(name)).cpp_name, type_id(name)});
             declarations.emplace("native:" + name, id); return id;
         }
-        if (diagnose) report(where, "Unknown name '" + name + "'", "GNR2202");
+        if (diagnose) report(where, "Unknown name '" + name + "'", "GNR2202", model_import_hint(name));
         return invalid_id;
     }
     TypeId resolve(const TypeSyntax& syntax) {
@@ -208,7 +222,7 @@ public:
         } else {
             value = type_id(name);
             if (value == invalid_id) { auto id = visible(name, syntax.origin, false); if (id != invalid_id) value = v.symbols_[id].type; }
-            if (value == invalid_id) { report(syntax.origin, "Unknown type '" + name + "'", "GNR2203"); value = type_id("Value"); }
+            if (value == invalid_id) { report(syntax.origin, "Unknown type '" + name + "'", "GNR2203", model_import_hint(name)); value = type_id("Value"); }
             if (!syntax.arguments.empty()) report(syntax.origin, "This type does not accept type arguments: " + name);
         }
         if ((syntax.optional || !syntax.arguments.empty()) &&
@@ -3100,7 +3114,14 @@ public:
             for (std::size_t p = 0; p < method.parameters.size(); ++p) {
                 const auto& parameter = method.parameters[p]; const auto parameter_type = v.symbols_[resolved.symbol].parameters[p];
                 if (parameter.default_value != invalid_id) { const auto& expression_node = v.syntax_.expressions[parameter.default_value]; if (expression_node.kind != SyntaxExpressionKind::literal) report(parameter.origin,"Default arguments currently require literal constants"); if (!assignable(parameter_type,expression(parameter.default_value,parameter_type))) report(parameter.origin,"Default argument type mismatch"); }
-                const auto id = symbol({ResolvedSymbolKind::parameter,parameter.name,parameter.name,parameter_type,resolved.symbol,true}); resolved.parameters.push_back(id); bind(parameter.name,id,parameter.origin);
+                const auto owner = owner_of(parameter_type);
+                // Public Response actions own their model arguments by value.
+                // Allow CRUD on that copy without a redundant ORM lookup.
+                const bool action_model = v.syntax_.declarations[d].kind == DeclarationKind::controller &&
+                    method.visibility == Visibility::public_ && return_type == type_id("Response") &&
+                    !type(parameter_type).optional && owner != invalid_id &&
+                    v.syntax_.declarations[declaration_ids.at(owner)].kind == DeclarationKind::model;
+                const auto id = symbol({ResolvedSymbolKind::parameter,parameter.name,parameter.name,parameter_type,resolved.symbol,!action_model}); resolved.parameters.push_back(id); bind(parameter.name,id,parameter.origin);
             }
             statements(method.body); resolved.all_paths_return = block_flow(method.body).terminates_path();
             if (return_type == type_id("inferred")) {
