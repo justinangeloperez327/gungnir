@@ -15,6 +15,40 @@
 #include <stdexcept>
 #include <vector>
 namespace gungnir::language::runtime {
+inline errors::Error make_error(String message, String file, std::size_t line) { return errors::Error{std::move(message), {}, std::move(file), line}; }
+[[noreturn]] inline void raise_error(const String& message, const String& file, std::size_t line) { throw make_error(message, file, line); }
+[[noreturn]] inline void raise_error(const errors::Error& error, const String&, std::size_t) { error.rethrow(); }
+template<class E> requires std::derived_from<E,std::exception>
+[[noreturn]] void raise_error(const E& error, const String&, std::size_t) { throw error; }
+[[noreturn]] inline void abort_request(Int64 status, String message, String file, std::size_t line) {
+    if (status < 400 || status > 599) throw std::invalid_argument("abort requires an HTTP error status between 400 and 599");
+    throw http::HttpException{static_cast<Integer>(status), std::move(message), std::move(file), line};
+}
+template<class E> std::optional<E> catch_error(std::exception_ptr exception) {
+    if constexpr (std::same_as<E,http::HttpException>) {
+        if (const auto original = errors::catch_as<auth::AuthorizationError>(exception)) return E{original->status(),original->what()};
+    }
+    if constexpr (std::same_as<E,http::AuthenticationException> || std::same_as<E,http::AuthorizationException>) {
+        if (const auto original = errors::catch_as<auth::AuthorizationError>(exception)) {
+            if (original->status() == (std::same_as<E,http::AuthenticationException> ? 401 : 403)) return E{original->what()};
+        }
+    }
+    return errors::catch_as<E>(exception);
+}
+inline String error_message(const std::exception& error) { return error.what(); }
+template<class E> Int64 error_status(const E& error) { return errors::Error::from_exception(std::make_exception_ptr(error)).status(); }
+template<class E> String error_type(const E& error) { return errors::Error::from_exception(std::make_exception_ptr(error)).type(); }
+template<class E> Json error_errors(const E& error) {
+    if constexpr (std::same_as<E,validation::ValidationException>) return http::make_json(error.errors());
+    else if constexpr (std::same_as<E,errors::Error>) {
+        if (const auto validation = errors::catch_as<validation::ValidationException>(error.exception())) return http::make_json(validation->errors());
+    }
+    return Json::object({});
+}
+template<class E> void report_error(const E& error, Request& request) {
+    const auto exception = [&] { if constexpr (std::same_as<E,errors::Error>) return error.exception(); else return std::make_exception_ptr(error); }();
+    routing::detail::route_router().exceptions().report(request, exception);
+}
 inline bool route_has(const String& name) { return routing::detail::route_router().has(name); }
 inline String route_url(const String& name, const Json& parameters = Json::object({})) {
     if (!parameters.is_object()) throw std::invalid_argument("URL parameters must be an object");

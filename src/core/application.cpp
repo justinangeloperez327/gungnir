@@ -255,6 +255,11 @@ Application::Application()
     impl_->router->execution_context(impl_->context);
     impl_->router->middleware_registry(*impl_->middleware_registry);
     impl_->router->service_container(*impl_->container);
+    impl_->router->exceptions().debug_when([config=impl_->config] {
+        return config->boolean("app.debug", false);
+    }).debug_allowed_when([config=impl_->config] {
+        return !::gungnir::is_production(application_mode(config->string("app.env", "production")));
+    });
 
     impl_->container->instance<
         config::Repository
@@ -285,6 +290,7 @@ Application::Application()
 }
 
 Application::~Application() { shutdown(); }
+http::ExceptionHandler& Application::exceptions() noexcept { return impl_->router->exceptions(); }
 
 Application::Application(Application&& other) noexcept = default;
 Application& Application::operator=(Application&& other) noexcept {

@@ -16,6 +16,7 @@ public:
 
 class Logger {
 public:
+    [[nodiscard]] bool has_sinks() const noexcept { return !sinks_.empty(); }
     Logger& sink(std::shared_ptr<Sink> value) {
         if (value) sinks_.push_back(std::move(value));
         return *this;

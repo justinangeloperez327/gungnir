@@ -55,6 +55,7 @@ public:
     bool const_model_accessor = false;
     bool async_context = false;
     unsigned loops = 0;
+    std::vector<SyntaxId> catch_scopes;
     TypeId return_type = invalid_id;
     std::vector<TypeId> returned;
     using NullFacts = std::unordered_set<SymbolId>;
@@ -121,6 +122,10 @@ public:
             {"Validator","gungnir::validation::Engine"},{"ValidationResult","gungnir::validation::Report"},{"UploadedFile","gungnir::http::UploadedFile"},
             {"Authentication","gungnir::language::runtime::Authentication"},{"Password","gungnir::auth::Password"},
             {"Database","gungnir::language::runtime::Database"},
+            {"Error","gungnir::errors::Error"},{"HttpError","gungnir::http::HttpException"},
+            {"ModelNotFoundError","gungnir::ModelNotFoundError"},{"ValidationError","gungnir::validation::ValidationException"},
+            {"AuthenticationError","gungnir::http::AuthenticationException"},{"AuthorizationError","gungnir::http::AuthorizationException"},
+            {"DatabaseError","gungnir::database::Error"},
             {"Route","gungnir::Route"},{"Next","gungnir::Next"},{"Decision","gungnir::auth::Decision"},{"Table","gungnir::migration::Table"},{"Column","gungnir::migration::Column"},
             {"ColumnDefinition","gungnir::migration::ColumnDefinition"},{"IndexDefinition","gungnir::migration::IndexDefinition"},{"ForeignKeyDefinition","gungnir::migration::ForeignKeyDefinition"},
             {"Callable","auto"},{"inferred","auto"}}) intern(name, cpp);
@@ -716,6 +721,7 @@ public:
             auto& declaration = v.syntax_.declarations[d]; auto& resolved = v.declarations_[d]; current_module = declaration.module; current_owner = resolved.symbol;
             for (const auto& field : declaration.fields) {
                 const auto field_type = resolve(field.type);
+                if (error_type(field_type)) report(field.origin,"Error values belong to locals, parameters and catch clauses rather than declaration fields", "GNR2380");
                 if (type(field_type).name == "PendingMail")
                     report(field.origin,"Pending mail is obtained through Mail.to and cannot be a declaration field", "GNR2360");
                 if (declaration.kind == DeclarationKind::job && !field.injection && !job_payload_type(field_type))
@@ -782,6 +788,8 @@ public:
         if (e.kind == SyntaxExpressionKind::literal) return set(type_id(e.literal_type));
         if (e.kind == SyntaxExpressionKind::name) {
             const auto symbol_id = visible(e.text, e.origin); if (symbol_id == invalid_id) return set(type_id("Value"));
+            if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && error_type(v.symbols_[symbol_id].type))
+                report(e.origin,"Construct Error(\"message\") or obtain an error from a catch clause", "GNR2380");
             if (v.symbols_[symbol_id].type == type_id("Route")) report(e.origin,"Route is a static API, not a value", "GNR2320");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && v.symbols_[symbol_id].name == "Validator") report(e.origin,"Construct a validation registry with Validator::make()", "GNR2330");
             if (v.symbols_[symbol_id].kind == ResolvedSymbolKind::builtin && (v.symbols_[symbol_id].name == "UploadedFile" || v.symbols_[symbol_id].name == "ValidationResult")) report(e.origin,"Obtain upload and validation-result values through their request or validation APIs", "GNR2330");
@@ -973,6 +981,7 @@ public:
     TypeId lambda(SyntaxId id, std::optional<TypeId> expected) {
         const auto e = v.syntax_.expressions[id]; auto& info = v.expressions_[id];
         const auto previous_narrowed = narrowed;
+        const auto previous_catches = std::move(catch_scopes); catch_scopes.clear();
         auto previous_async = async_context; auto previous_return = return_type; auto previous_returns = std::move(returned); const auto previous_loops = loops;
         const auto first_lambda_symbol = v.symbols_.size();
         async_context = false; return_type = invalid_id; returned.clear(); loops = 0; scopes.emplace_back();
@@ -1007,6 +1016,7 @@ public:
         }
         info.type = intern("Function", "auto", signature);
         narrowed = previous_narrowed;
+        catch_scopes = previous_catches;
         async_context = previous_async; return_type = previous_return; returned = std::move(previous_returns); loops = previous_loops;
         return info.type;
     }
@@ -1092,7 +1102,27 @@ public:
         if (receiver == invalid_id && callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::builtin &&
             (name == "Config" || name == "Logger" || name == "Telemetry" || name == "Span"))
             report(e.origin,"Application services and spans cannot be constructed in application source", "GNR2350");
+        if (receiver == invalid_id && name == "Error" && callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::builtin) {
+            arity(1,1); return finish_builtin(type_id("Error"), "gungnir::language::runtime::make_error", {type_id("string")});
+        }
+        if (receiver == invalid_id && callable_id != invalid_id && v.symbols_[callable_id].kind == ResolvedSymbolKind::builtin && error_type(v.symbols_[callable_id].type)) {
+            report(e.origin,"Use Error(\"message\") to create an error or abort(status, message) for HTTP errors", "GNR2380");
+            return finish_builtin(v.symbols_[callable_id].type,v.symbols_[callable_id].cpp_name);
+        }
         if (callable_id == invalid_id && receiver == invalid_id) {
+            if (name == "abort") {
+                arity(1,2); const auto result = finish_builtin(type_id("void"), "gungnir::language::runtime::abort_request", {type_id("int"),type_id("string")});
+                if (count && v.syntax_.expressions[e.operands[1]].kind == SyntaxExpressionKind::literal) {
+                    const auto status = integer_constant(e.operands[1]);
+                    if (status && (*status < 400 || *status > 599)) report(e.origin,"abort requires a status between 400 and 599", "GNR2380");
+                }
+                return result;
+            }
+            if (name == "report") {
+                arity(2,2); const auto result = finish_builtin(type_id("void"), "gungnir::language::runtime::report_error", {std::nullopt,type_id("Request")});
+                if (count && !error_type(argument_types.front())) report(e.origin,"report requires an error value", "GNR2380");
+                return result;
+            }
             if (name == "noContent") { arity(0,0); return finish_builtin(type_id("Response"), "gungnir::language::runtime::no_content"); }
             if (name == "download") { arity(2,4); return finish_builtin(type_id("Response"), "gungnir::language::runtime::download", {type_id("string"),type_id("string"),type_id("string"),type_id("int")}); }
             if (name == "text" || name == "html" || name == "json" || name == "view" || name == "redirect" || name == "response") {
@@ -1122,6 +1152,13 @@ public:
         }
         if (receiver != invalid_id && (callable_id == invalid_id || v.symbols_[callable_id].kind == ResolvedSymbolKind::field)) {
             const auto t = type(unoptional(receiver));
+            if (error_type(unoptional(receiver)) && (name == "message" || name == "status" || name == "type" || name == "errors")) {
+                if (callee.literal_type == "::") report(callee.origin,"Error methods require an instance", "GNR2380");
+                arity(0,0);
+                const auto result = finish_builtin(type_id(name == "errors" ? "Json" : name == "status" ? "int" : "string"), "gungnir::language::runtime::error_" + name);
+                v.symbols_[info.symbol].receives_receiver = true;
+                return result;
+            }
             if (t.name == "Database" && name == "transaction") {
                 arity(1,1);
                 TypeId result = type_id("void");
@@ -1823,6 +1860,10 @@ public:
             return !falls_through;
         }
     };
+    bool error_type(TypeId id) const {
+        static const std::unordered_set<std::string> names{"Error","HttpError","ModelNotFoundError","ValidationError","AuthenticationError","AuthorizationError","DatabaseError"};
+        return !type(id).optional && names.contains(type(id).name);
+    }
 
     FlowResult statement_flow(SyntaxId id) const {
         const auto& statement = v.syntax_.statements[id];
@@ -1831,12 +1872,28 @@ public:
             return {false, true, false, false, false};
         case SyntaxStatementKind::throw_:
             return {false, false, true, false, false};
+        case SyntaxStatementKind::expression:
+            if (statement.expression != invalid_id && v.expressions_[statement.expression].symbol != invalid_id &&
+                v.symbols_[v.expressions_[statement.expression].symbol].cpp_name == "gungnir::language::runtime::abort_request")
+                return {false, false, true, false, false};
+            return {};
         case SyntaxStatementKind::break_:
             return {false, false, false, true, false};
         case SyntaxStatementKind::continue_:
             return {false, false, false, false, true};
         case SyntaxStatementKind::block:
+        case SyntaxStatementKind::catch_:
             return block_flow(statement.body);
+        case SyntaxStatementKind::try_: {
+            auto result = block_flow(statement.body);
+            for (auto handler : statement.alternative) {
+                const auto flow = block_flow(v.syntax_.statements[handler].body);
+                result.falls_through |= flow.falls_through;
+                result.returns |= flow.returns; result.throws |= flow.throws;
+                result.breaks |= flow.breaks; result.continues |= flow.continues;
+            }
+            return result;
+        }
         case SyntaxStatementKind::if_: {
             const auto body = block_flow(statement.body);
             const auto alternative = statement.alternative.empty()
@@ -1940,6 +1997,7 @@ public:
             expression_writes(statement.expression, nested, writes);
             if (statement.kind == SyntaxStatementKind::binding) shadowed.insert(statement.name);
             if (statement.kind == SyntaxStatementKind::for_in) nested.insert(statement.name);
+            if (statement.kind == SyntaxStatementKind::catch_) nested.insert(statement.name);
             statement_writes(statement.body, writes, nested);
             statement_writes(statement.alternative, writes, nested);
         }
@@ -1951,7 +2009,45 @@ public:
     void statements(const std::vector<SyntaxId>& body) {
         for (auto id : body) {
             const auto s = v.syntax_.statements[id];
-            if (s.kind == SyntaxStatementKind::binding) {
+            if (s.kind == SyntaxStatementKind::throw_) {
+                if (s.expression == invalid_id) {
+                    if (catch_scopes.empty()) report(s.origin,"Rethrow requires an enclosing catch in this callable", "GNR2380");
+                    else v.syntax_.statements[id].name = "gnr_exception_" + std::to_string(catch_scopes.back());
+                } else {
+                    const auto thrown = expression(s.expression);
+                    if (thrown != type_id("string") && !error_type(thrown)) report(s.origin,"throw requires an Error or a string message", "GNR2380");
+                }
+            } else if (s.kind == SyntaxStatementKind::try_) {
+                const auto previous = narrowed;
+                NullFacts writes; statement_writes(s.body, writes);
+                scopes.emplace_back(); statements(s.body); scopes.pop_back();
+                auto merged = narrowed;
+                bool continues = block_flow(s.body).falls_through;
+                std::unordered_set<TypeId> caught;
+                bool catches_all = false, catches_http = false;
+                for (const auto handler_id : s.alternative) {
+                    const auto& handler = v.syntax_.statements[handler_id];
+                    if (handler.kind != SyntaxStatementKind::catch_) { report(handler.origin,"try requires catch handlers", "GNR2380"); continue; }
+                    const auto caught_type = handler.declared_type ? resolve(*handler.declared_type) : type_id("Value");
+                    if (!error_type(caught_type)) report(handler.origin,"catch requires a non-optional built-in error type", "GNR2380");
+                    if (catches_all || !caught.insert(caught_type).second || (catches_http && (type(caught_type).name == "AuthenticationError" || type(caught_type).name == "AuthorizationError")))
+                        report(handler.origin,"Unreachable catch clause; put specific error types before Error", "GNR2380");
+                    catches_all |= type(caught_type).name == "Error";
+                    catches_http |= type(caught_type).name == "HttpError";
+                    narrowed = previous; invalidate_facts(writes);
+                    scopes.emplace_back();
+                    const auto binding = symbol({ResolvedSymbolKind::local,handler.name,handler.name,caught_type,invalid_id,true});
+                    v.bindings_[handler_id] = binding; bind(handler.name,binding,handler.origin);
+                    catch_scopes.push_back(id); statements(handler.body); catch_scopes.pop_back(); scopes.pop_back();
+                    if (block_flow(handler.body).falls_through) {
+                        merged = continues ? common_facts(std::move(merged),narrowed) : narrowed;
+                        continues = true;
+                    }
+                }
+                narrowed = continues ? std::move(merged) : NullFacts{};
+            } else if (s.kind == SyntaxStatementKind::catch_) {
+                report(s.origin,"catch requires an owning try statement", "GNR2380");
+            } else if (s.kind == SyntaxStatementKind::binding) {
                 const auto expected = s.declared_type ? std::optional{resolve(*s.declared_type)} : std::nullopt;
                 const auto actual = expression(s.expression, expected); if (actual == type_id("void")) report(s.origin, "A binding cannot contain void");
                 if (expected && !assignable(*expected, actual)) report(s.origin, "Binding type mismatch");
@@ -3184,6 +3280,8 @@ public:
     ValidationResult run() {
         index(); if (diagnostics.empty()) declaration_dependencies(); if (diagnostics.empty()) routing_contracts(); if (diagnostics.empty()) bodies();
         if (!diagnostics.empty()) return {std::nullopt,std::move(diagnostics)};
+        v.statement_termination_.reserve(v.syntax_.statements.size());
+        for (std::size_t id = 0; id < v.syntax_.statements.size(); ++id) v.statement_termination_.push_back(statement_flow(id).terminates_path());
         return {std::move(v),{}};
     }
 };

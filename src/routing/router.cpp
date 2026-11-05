@@ -1,4 +1,5 @@
 #include <gungnir/routing/router.hpp>
+#include <gungnir/http/errors.hpp>
 
 #include <gungnir/core/container.hpp>
 
@@ -160,6 +161,7 @@ RouteRegistration Router::remove(std::string p, SyncHandler h){return delete_(st
 RouteRegistration Router::remove(std::string p, SimpleHandler h){return delete_(std::move(p),std::move(h));}
 
 Router& Router::use(http::MiddlewareHandler m){impl_->middleware.push_back(std::move(m));return *this;}
+http::ExceptionHandler& Router::exceptions() noexcept { return impl_->exceptions; }
 Router& Router::middleware_registry(http::MiddlewareRegistry& registry){impl_->middleware_registry=&registry;return *this;}
 Router& Router::service_container(Container& container) noexcept{impl_->container=&container;return *this;}
 Router& Router::fallback(Handler h){impl_->fallback=std::move(h);return *this;}
@@ -217,7 +219,7 @@ Task<http::Response> Router::dispatch(http::Request& request) const {
     request.clear_route_parameters(); const RouteEntry* selected=nullptr;
     for(const auto& route:impl_->routes){if(route.method!=request.method())continue;http::Request::Parameters params;if(!match(route,request.path(),params))continue;for(auto& [k,v]:params)request.set_route_parameter(k,std::move(v));selected=&route;break;}
     std::vector<http::MiddlewareHandler> chain=impl_->middleware;
-    Handler terminal=impl_->fallback.value_or(Handler{[](http::Request&)->Task<http::Response>{co_return http::Response::not_found();}});
+    Handler terminal=impl_->fallback.value_or(Handler{[](http::Request&)->Task<http::Response>{throw http::NotFoundException{}; co_return http::Response::not_found();}});
     if(selected){chain.insert(chain.end(),selected->middleware.begin(),selected->middleware.end());terminal=selected->handler;}
     try{co_return co_await pipeline(chain,0,terminal,request);}catch(...){co_return impl_->exceptions.render(request,std::current_exception());}
 }

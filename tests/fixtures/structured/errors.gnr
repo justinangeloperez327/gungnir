@@ -1,0 +1,86 @@
+function string catchMessage() {
+    try { throw "caught message"; }
+    catch (Error error) { return error.message(); }
+}
+function int catchStatus() {
+    try { abort(409, "Conflict"); }
+    catch (HttpError error) { return error.status(); }
+}
+function int normalTryReturn() {
+    try { return 42; }
+    catch (Error error) { return -1; }
+}
+function int normalTryFallthrough() {
+    let result = 0;
+    try { result = 42; }
+    catch (Error error) { result = -1; }
+    return result;
+}
+function string rethrowMessage() {
+    try {
+        try { throw Error("original"); }
+        catch (Error inner) { throw; }
+    } catch (Error outer) { return outer.message(); }
+}
+function string catchInArrow() {
+    const run = () => {
+        try { throw "arrow"; }
+        catch (Error error) { return error.message(); }
+    };
+    return run();
+}
+function int loopInTry() {
+    let count = 0;
+    for (let i = 0; i < 5; i++) {
+        try {
+            if (i == 1) { continue; }
+            if (i == 3) { break; }
+            count += 1;
+        } catch (Error error) { count = -100; }
+    }
+    return count;
+}
+async function int errorCheckpoint() { return 1; }
+async function int failAfterAwait() {
+    const checkpoint = await errorCheckpoint();
+    throw "async failure";
+}
+async function string catchAfterAwait() {
+    try { const result = await failAfterAwait(); return "wrong"; }
+    catch (Error error) {
+        const checkpoint = await errorCheckpoint();
+        return error.message();
+    }
+}
+async function string rethrowAfterAwait() {
+    try {
+        try { const result = await failAfterAwait(); return "wrong"; }
+        catch (Error inner) { const checkpoint = await errorCheckpoint(); throw; }
+    } catch (Error error) { return error.message(); }
+}
+model ErrorUser { table = "error_users"; string name; }
+controller ErrorController {
+    boom() { throw Error("private failure"); }
+    async asynchronous() { const checkpoint = await errorCheckpoint(); throw "private async failure"; }
+    rejected() { abort(409, "Conflict"); }
+    validation(Request request) {
+        try { request.validate({"name": "required|string"}); return noContent(); }
+        catch (ValidationError error) { return json({"message": error.message(), "errors": error.errors()}, error.status()); }
+    }
+    missing(ErrorUser user) { return json(user); }
+    caughtModel(int id) {
+        try { const user = ErrorUser::findOrFail(id); return json(user); }
+        catch (ModelNotFoundError error) { return text("caught missing model", error.status()); }
+    }
+    handled(Request request) {
+        try { throw Error("handled failure"); }
+        catch (Error error) { report(error, request); return text("recovered"); }
+    }
+}
+Route::get("/boom", ErrorController::boom);
+Route::get("/async", ErrorController::asynchronous);
+Route::get("/conflict", ErrorController::rejected);
+Route::post("/validation", ErrorController::validation);
+Route::get("/users/{user}", ErrorController::missing);
+Route::get("/caught/{id}", ErrorController::caughtModel);
+Route::get("/handled", ErrorController::handled);

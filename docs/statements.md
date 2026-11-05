@@ -10,6 +10,15 @@ After a null guard, assigning to a mutable optional still replaces the optional 
 ## Scope
 The target grammar is stricter and more complete than current parsing. Full definite assignment and all-path return analysis are not guaranteed for arbitrary native escape forms.
 
+## Structured exceptions
+
+Structured `.gnr` projects support `try { ... } catch (Error error) { ... }`,
+specific error catches, and `throw;` inside a catch. Catch variables are
+immutable. Both try and catch bodies may use `await` in an async callable.
+Use `throw Error("message");` for an application failure and `abort(404);` for
+an HTTP failure. See [Error handling](errors.md) for reporting, rendering, debug
+responses, supported catch types, and exception control flow.
+
 
 
 - [include/gungnir/language/ast.hpp](../include/gungnir/language/ast.hpp)

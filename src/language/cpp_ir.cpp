@@ -111,6 +111,8 @@ class CppIrLoweringRenderer {
         }
         case SyntaxExpressionKind::call: {
             const auto& callable = symbol(r.symbol); const auto& callee = s.expressions[e.operands[0]];
+            if (callable.cpp_name == "gungnir::language::runtime::abort_request")
+                return callable.cpp_name + "(" + child(1) + "," + (e.operands.size() > 2 ? child(2) : "gungnir::String{}") + "," + quote(e.origin.file) + "," + std::to_string(e.origin.line) + ")";
             std::string target = callable.cpp_name, receiver;
             if (callable.owner != invalid_id && p.types()[symbol(callable.owner).type].name == "Next")
                 return access(callable.owner) + "(" + expr(e.operands.at(1)) + ")";
@@ -174,6 +176,7 @@ class CppIrLoweringRenderer {
                     arguments += value;
                 }
             }
+            if (callable.cpp_name == "gungnir::language::runtime::make_error") arguments += "," + quote(e.origin.file) + "," + std::to_string(e.origin.line);
             auto invocation = target + "(" + arguments + ")";
             if (!callable.asynchronous && p.types()[r.type].name == "string" && !p.types()[r.type].optional) invocation = "gungnir::String(" + invocation + ")";
             // Queries and loaded values must outlive temporary receivers.
@@ -194,7 +197,25 @@ class CppIrLoweringRenderer {
         case SyntaxStatementKind::binding: { const auto& b = symbol(p.bindings()[id]); return (b.immutable ? "const " : "") + (p.types()[b.type].name == "Function" ? "auto" : type(b.type)) + " " + b.cpp_name + " = " + convert(expr(node.expression),b.type,p.expressions()[node.expression].type) + ";\n"; }
         case SyntaxStatementKind::expression: return expr(node.expression) + ";\n";
         case SyntaxStatementKind::return_: return std::string(async ? "co_return" : "return") + (node.expression == invalid_id ? "" : " " + (return_type == invalid_id ? expr(node.expression) : convert(expr(node.expression),return_type,p.expressions()[node.expression].type))) + ";\n";
-        case SyntaxStatementKind::throw_: return "throw " + expr(node.expression) + ";\n";
+        case SyntaxStatementKind::throw_:
+            if (node.expression == invalid_id) return "std::rethrow_exception(" + node.name + ");\n";
+            return "gungnir::language::runtime::raise_error(" + expr(node.expression) + "," + quote(node.origin.file) + "," + std::to_string(node.origin.line) + ");\n";
+        case SyntaxStatementKind::try_: {
+            const auto exception = "gnr_exception_" + std::to_string(id), done = "gnr_after_try_" + std::to_string(id);
+            std::string result = "{\nstd::exception_ptr " + exception + ";\ntry {\n";
+            for (auto child : node.body) result += stmt(child);
+            result += "goto " + done + ";\n} catch (...) { " + exception + " = std::current_exception(); }\n";
+            for (std::size_t i = 0; i < node.alternative.size(); ++i) {
+                const auto handler_id = node.alternative[i]; const auto& handler = s.statements[handler_id];
+                const auto& binding = symbol(p.bindings()[handler_id]);
+                const auto caught = "gnr_caught_" + std::to_string(handler_id);
+                result += std::string{i ? "else " : ""} + "if (auto " + caught + " = gungnir::language::runtime::catch_error<" + type(binding.type) + ">(" + exception + "); " + caught + ") {\nconst auto& " + binding.cpp_name + " = *" + caught + ";\n";
+                for (auto child : handler.body) result += stmt(child);
+                result += "}\n";
+            }
+            return result + "else { std::rethrow_exception(" + exception + "); }\n" + done + ":;\n" + (p.statement_terminates(id) ? "std::terminate();\n" : "") + "}\n";
+        }
+        case SyntaxStatementKind::catch_: throw std::logic_error("Catch outside try lowering");
         case SyntaxStatementKind::block: return block(node.body);
         case SyntaxStatementKind::if_: return "if (" + expr(node.expression) + ") " + block(node.body) + (node.alternative.empty() ? "" : "else " + block(node.alternative));
         case SyntaxStatementKind::while_: return "while (" + expr(node.expression) + ") " + block(node.body);
@@ -391,12 +412,27 @@ class CppIrLoweringRenderer {
                 );
             break;
         case SyntaxStatementKind::throw_:
+            if (syntax.expression == invalid_id) { node.kind = CppIrStatementKind::rethrow_; node.name = syntax.name; break; }
             node.kind = CppIrStatementKind::throw_;
             node.expression = lower_expression(
                 ir,
                 syntax.expression
             );
             break;
+        case SyntaxStatementKind::try_:
+            node.kind = CppIrStatementKind::try_;
+            node.terminates = p.statement_terminates(id);
+            node.name = "gnr_exception_" + std::to_string(id);
+            for (auto child : syntax.body) node.body.push_back(lower_statement(ir, child));
+            for (auto handler : syntax.alternative) node.alternative.push_back(lower_statement(ir, handler));
+            break;
+        case SyntaxStatementKind::catch_: {
+            node.kind = CppIrStatementKind::catch_;
+            const auto& binding = symbol(p.bindings().at(id));
+            node.name = binding.cpp_name; node.type = CppIrType{type(binding.type)};
+            for (auto child : syntax.body) node.body.push_back(lower_statement(ir, child));
+            break;
+        }
         case SyntaxStatementKind::block:
             node.kind = CppIrStatementKind::block;
             for (auto child : syntax.body) {

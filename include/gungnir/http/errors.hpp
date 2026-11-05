@@ -4,14 +4,17 @@
 #include <utility>
 
 #include <gungnir/core/types.hpp>
+#include <gungnir/errors/error.hpp>
 
 namespace gungnir::http {
 
-class HttpException : public std::runtime_error {
+class HttpException : public errors::Error {
 public:
     HttpException(Integer status, String message)
-        : std::runtime_error(message),
+        : errors::Error(message, "http"),
           status_(status) {}
+    HttpException(Integer status, String message, String file, std::size_t line)
+        : errors::Error(std::move(message), "http", std::move(file), line), status_(status) {}
 
     [[nodiscard]] Integer status() const noexcept {
         return status_;
